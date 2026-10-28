@@ -82,13 +82,13 @@ export function usageLines(b: TabInput): Line[] {
   if (series.length > 0) out.push([{ text: 'per turn  ', tone: 'dim' }, { chart: series.slice(-20) }])
 
   for (const w of windowsInOrder(u.windows)) {
-    const name = w.kind === 'five_hour' ? '5h' : w.kind === 'seven_day' ? 'Weekly' : w.kind
+    const name = w.kind === 'five_hour' ? '5h' : w.kind === 'seven_day' ? '7d' : w.kind
     const line: Line = [{ text: `${name.padEnd(9)} ` }, ...barSegs(w.percentUsed), pctSeg(w.percentUsed)]
     const reset = parse(w.resetsAt)
-    if (reset !== null) line.push({ text: `   resets ${when(reset, b.now)}`, tone: 'dim' })
-    const p = pace(b.pace[w.kind]?.points ?? [], reset, b.now)
+    if (reset !== null) line.push({ text: `   resets ${when(reset)}`, tone: 'dim' })
+    const p = pace(w.kind, b.pace[w.kind]?.points ?? [], reset, b.now)
     if (p === 'on-pace') line.push({ text: '   on pace', tone: 'ok' })
-    else if (p !== null) line.push({ text: `   limit ≈${clock(p.limitAt)}`, tone: 'warn' })
+    else if (p !== null) line.push({ text: `   full ≈${clock(p.limitAt)}`, tone: 'warn' })
     out.push(line)
   }
 

@@ -10,8 +10,8 @@ import { START, engine, rows, stubAll } from './kit.ts'
 const SURFACES = ['terminal', 'desktop'] as const
 // Three hours before the 5h window resets, three days before the 7d one: each reset as the band words it
 const NOW = Date.parse('2026-10-28T14:00:00Z')
-const R5 = clock(Date.parse('2026-10-28T17:00:00Z'))
-const R7 = when(Date.parse('2026-10-31T09:00:00Z'), NOW)
+const R5 = when(Date.parse('2026-10-28T17:00:00Z'))
+const R7 = when(Date.parse('2026-10-31T09:00:00Z'))
 
 const band = (isWorking: boolean, bodyColumns = 120, hasSurvey = false) =>
   ({ hasSurvey, isWorking, maxRows: 6, bodyColumns, scroll: { offset: 0, bodyRows: 6 }, view: {} })
@@ -66,7 +66,7 @@ for (const surface of SURFACES) {
     const lines = await rows(ui)
 
     expect(lines).toHaveLength(1)
-    expect(lines[0]).toMatch(new RegExp(`^ctx ▰▰▰▱▱▱▱▱▱▱ 30% │ 5h ▰▱▱▱▱▱▱▱▱▱ 15% ↻${R5} │ 7d 40% ↻${R7} │ you `))
+    expect(lines[0]).toMatch(new RegExp(`^ctx ▰▱▱▱▱ 30% │ 5h ▱▱▱▱▱ 15% \\(${R5}\\) │ 7d 40% \\(${R7}\\) │ you \\d\\d:\\d\\d · Claude \\d\\d:\\d\\d$`))
     // The runs inside the line's one truncating Text carry the style; the Text around them carries none
     const texts = (await ui.findAll({ type: 'Text' })).filter(t => t.props.wrap === undefined)
     expect(texts.length).toBeGreaterThan(0)
@@ -133,11 +133,12 @@ for (const surface of SURFACES) {
     const runs = (await ui.findAll({ type: 'Text' })).filter(t => t.props.wrap === 'truncate-end')
 
     expect(runs.some(t => /^✓ Turn 1 · 3s · 1 tool · 1 ✗ │ you /.test(t.text ?? ''))).toBe(true)
-    expect(runs.some(t => /^ctx .* │ 5h .* │ 7d 30% ↻\S+ \d\d:\d\d$/.test(t.text ?? ''))).toBe(true)
+    expect(runs.some(t => /^ctx .* │ 5h .* │ 7d 30% \(\d\d\.\d\d \d\d:\d\d\)$/.test(t.text ?? ''))).toBe(true)
   })
 
   // At 120 columns '≈N turns', 'on pace' and the cost pushed the times past the width (Task 8, live)
-  test(`the longest calm line keeps every figure at 120 columns (${surface})`, async ($, on) => {
+  // Every gauge stays; the times drop whole, Claude's first, where the line would pass the width
+  test(`the longest calm line drops the times whole to fit (${surface})`, async ($, on) => {
     const { usage, clock: time } = stubAll(on, { usage: reading(10, 15, 40, 3.12), now: NOW })
     engine(on)
     for (const [i, ctx] of [10, 15, 20].entries()) {
@@ -146,14 +147,21 @@ for (const surface of SURFACES) {
       await $.turn.start({ text: 'q', turnId: `t${i}` })
       await $.session.measure({ context: usage.current.context, rateLimits: usage.current.rateLimits, changed: ['rateLimits'] })
       await $.turn.complete({ answer: '', durationMs: 3000, isAborted: false, turnId: `t${i}`, reason: 'answer' })
-      await time.advance(60_000)
+      await time.advance(480_000)
     }
 
-    const lines = await rows(await mount($, surface, band(false, 120)))
+    const at120 = await rows(await mount($, surface, band(false, 120)))
+    const at110 = await rows(await mount($, surface, band(false, 110)))
+    const at100 = await rows(await mount($, surface, band(false, 100)))
 
-    expect(lines).toHaveLength(1)
-    expect(lines[0]?.length ?? 0).toBeLessThanOrEqual(120)
-    expect(lines[0]).toMatch(new RegExp(`^ctx ▰▰▱▱▱▱▱▱▱▱ 20% ≈\\d+ turns │ 5h ▰▱▱▱▱▱▱▱▱▱ 15% ↻${R5} on pace │ 7d 40% ↻${R7} │ \\$3\\.12 │ you \\d\\d:\\d\\d · Claude \\d\\d:\\d\\d$`))
+    const gauges = `^ctx ▰▱▱▱▱ 20% ≈\\d+ turns │ 5h ▱▱▱▱▱ 15% \\(${R5}\\) on pace │ 7d 40% \\(${R7}\\) │ \\$3\\.12`
+    expect(at120).toHaveLength(1)
+    expect(at120[0]?.length ?? 0).toBeLessThanOrEqual(120)
+    expect(at120[0]).toMatch(new RegExp(`${gauges} │ you \\d\\d:\\d\\d · Claude \\d\\d:\\d\\d$`))
+    expect(at110[0]?.length ?? 0).toBeLessThanOrEqual(110)
+    expect(at110[0]).toMatch(new RegExp(`${gauges} │ you \\d\\d:\\d\\d$`))
+    expect(at100[0]?.length ?? 0).toBeLessThanOrEqual(100)
+    expect(at100[0]).toMatch(new RegExp(`${gauges}$`))
   })
 
   // A 5h window that runs out before it resets: its reset, then when it runs out
@@ -173,7 +181,7 @@ for (const surface of SURFACES) {
 
     // 1% a minute from 60% at 14:20 runs out at 15:00, before the 17:00 reset
     const out = clock(Date.parse('2026-10-28T15:00:00Z'))
-    expect(lines.some(l => new RegExp(`5h ▰▰▰▰▰▰▱▱▱▱ 60% ↻${R5} limit ≈${out} │ 7d 30% ↻${R7}`).test(l))).toBe(true)
+    expect(lines.some(l => new RegExp(`5h ▰▰▰▱▱ 60% \\(${R5}\\) full ≈${out} │ 7d 30% \\(${R7}\\)`).test(l))).toBe(true)
   })
 
   // The number reads at a glance as the bar does (the deck's slides, 2026-10-28)
@@ -220,7 +228,7 @@ for (const surface of SURFACES) {
 
     const lines = await rows(await mount($, surface, band(false, 90)))
 
-    expect(lines.some(l => l.startsWith(`ctx ▰▰▰▰▱▱▱▱▱▱ 45% · 5h ▰▰▱▱▱▱▱▱▱▱ 25% ↻${R5} · 7d ▰▰▰▰▰▰▱▱▱▱ 62% ↻${R7}`))).toBe(true)
+    expect(lines.some(l => l.startsWith(`ctx ▰▰▱▱▱ 45% · 5h ▰▱▱▱▱ 25% (${R5}) · 7d ▰▰▰▱▱ 62% (${R7})`))).toBe(true)
   })
 
   test(`NO_COLOR drops every colour (${surface})`, async ($, on) => {

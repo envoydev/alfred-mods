@@ -7,7 +7,7 @@ import type { EngineInterface, Register, SessionRateLimit, SessionUsage, UiOpenR
 import { bandLines } from './band.ts'
 import { baseCost, pruneCost, recordCost, todayUsd } from './cost.ts'
 import { drawLines } from './draw.tsx'
-import { clock, fingerprint, weekday } from './format.ts'
+import { fingerprint, when } from './format.ts'
 import { toast } from './mask.ts'
 import { nowLines, tabBar, timelineLines, toolsLines, usageLines } from './tabs.ts'
 import { classify, fold, targetOf, toolKey } from './outcome.ts'
@@ -52,7 +52,7 @@ const agents = atom({ plugin: 'session-inspector', key: 'agents' } as const, INI
 const tick = atom({ plugin: 'session-inspector', key: 'tick' } as const, 0)
 
 const NO_FACTS: Omit<CallFacts, 'tool'> = {
-  checked: null, checkReason: null, asked: false, failedInTool: false, interrupted: false, classifierReason: null, result: null,
+  checked: null, checkReason: null, asked: false, failedInTool: false, interrupted: false, classifierReason: null, hookDeny: null, result: null,
 }
 
 function tally(stat: ToolStat | undefined, outcome: Outcome, by: 1 | -1): ToolStat {
@@ -153,7 +153,7 @@ async function resetAll($: EngineInterface): Promise<void> {
   await update($, tick, () => 0)
 }
 
-const LABEL: Record<string, string> = { five_hour: '5h', seven_day: 'weekly' }
+const LABEL: Record<string, string> = { five_hour: '5h', seven_day: '7d' }
 
 // Appends each window's reading while its reset is unchanged; a new reset starts it over. Returns the toasts due:
 // the highest of 75 and 90 that the 5h or weekly window crossed upward since its last reading, once per window.
@@ -174,8 +174,7 @@ async function trackPace($: EngineInterface, limits: readonly SessionRateLimit[]
         : []
       if (marks.length > 0) {
         const reset = resetsAt === null ? NaN : Date.parse(resetsAt)
-        const when = Number.isNaN(reset) ? 'later' : reset - now < 86_400_000 ? clock(reset) : weekday(reset)
-        due.push(`${LABEL[w.kind]} limit at ${Math.max(...marks)}%, resets ${when}`)
+        due.push(`${LABEL[w.kind]} limit at ${Math.max(...marks)}%, resets ${Number.isNaN(reset) ? 'later' : when(reset)}`)
       }
       out[w.kind] = { resetsAt, points: [...points, { at: now, percent: w.percentUsed }].slice(-20), toasted: [...toasted, ...marks] }
     }
@@ -292,7 +291,9 @@ export const register: Register = on => {
   on('classic.PermissionRequest', async ($, e, next) => {
     const answered = await next(e)
     const call = [...calls.values()].reverse().find(c => !c.settled && c.facts.tool === e.tool_name && c.facts.checked === 'ask')
-    if (call !== undefined && answered.decision === undefined) call.facts = { ...call.facts, asked: true }
+    const decision = answered.decision
+    if (call !== undefined && decision === undefined) call.facts = { ...call.facts, asked: true }
+    if (call !== undefined && decision?.behavior === 'deny') call.facts = { ...call.facts, hookDeny: decision.message ?? '' }
     return answered
   }).catch(($, e, next) => next(e))
 

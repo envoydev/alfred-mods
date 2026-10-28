@@ -2,26 +2,28 @@ import { expect, test } from 'claude-code/testing'
 
 import { bar, duration, elapsed, oneLine, printable, tokens, usd, when } from '../hooks/format.ts'
 
-test('a bar is 10 cells of 10%, a cell filled only when its share is reached', () => {
-  expect(bar(45)).toEqual(['▰▰▰▰', '▱▱▱▱▱▱'])
-  expect(bar(7).join('')).toBe('▱▱▱▱▱▱▱▱▱▱')
-  expect(bar(10).join('')).toBe('▰▱▱▱▱▱▱▱▱▱')
-  expect(bar(100).join('')).toBe('▰▰▰▰▰▰▰▰▰▰')
-  expect(bar(-3).join('')).toBe('▱▱▱▱▱▱▱▱▱▱')
-  expect(bar(130).join('')).toBe('▰▰▰▰▰▰▰▰▰▰')
+test('a bar is 5 cells of 20%, one character each, a cell filled only when its share is reached', () => {
+  expect(bar(45)).toEqual(['▰▰', '▱▱▱'])
+  expect(bar(19).join('')).toBe('▱▱▱▱▱')
+  expect(bar(20).join('')).toBe('▰▱▱▱▱')
+  expect(bar(100).join('')).toBe('▰▰▰▰▰')
+  expect(bar(-3).join('')).toBe('▱▱▱▱▱')
+  expect(bar(130).join('')).toBe('▰▰▰▰▰')
 })
 
-// Local times: within 24 hours the clock, else the day and month
-test('a reset reads as its clock, or its date and clock past 24 hours', () => {
-  const now = new Date(2026, 9, 28, 14, 0).getTime()
-  expect(when(new Date(2026, 9, 28, 17, 0).getTime(), now)).toBe('17:00')
-  expect(when(new Date(2026, 9, 31, 11, 0).getTime(), now)).toBe('31.10 11:00')
-  expect(when(new Date(2026, 10, 5, 9, 30).getTime(), now)).toBe('05.11 09:30')
+// Local times, always with the day and month (the user, 2026-10-28)
+test('a reset reads as its date and clock', () => {
+  expect(when(new Date(2026, 9, 28, 17, 0).getTime())).toBe('28.10 17:00')
+  expect(when(new Date(2026, 9, 31, 11, 0).getTime())).toBe('31.10 11:00')
+  expect(when(new Date(2026, 10, 5, 9, 30).getTime())).toBe('05.11 09:30')
 })
 
 test('token counts read as the mockups do', () => {
   expect([54, 900, 2100, 8000, 12000, 412000, 1_900_000].map(tokens))
     .toEqual(['54', '0.9k', '2.1k', '8k', '12k', '412k', '1.9M'])
+  // 999,600 rounded to '1000k' (final review minor)
+  expect(tokens(999_400)).toBe('999k')
+  expect(tokens(999_600)).toBe('1.0M')
 })
 
 test('durations and money', () => {

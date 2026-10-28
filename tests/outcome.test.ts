@@ -5,7 +5,7 @@ import type { CallFacts } from '../hooks/outcome.ts'
 import type { Failure } from '../types'
 
 // Each fixture is a Phase 0 shape (the brief's question 12)
-const base: CallFacts = { tool: 'Bash', checked: null, checkReason: null, asked: false, failedInTool: false, interrupted: false, classifierReason: null, result: null }
+const base: CallFacts = { tool: 'Bash', checked: null, checkReason: null, asked: false, failedInTool: false, interrupted: false, classifierReason: null, hookDeny: null, result: null }
 
 test('a Bash exit is a new error with its first line', () => {
   expect(classify({ ...base, checked: 'allow', failedInTool: true, result: { isError: true, deny: null, text: 'Exit code 1\nboom' } }))
@@ -50,6 +50,19 @@ test('an ask that errors with no prompt and no PermissionDenied is refused', () 
 test('an interrupted call is an error that is not new', () => {
   expect(classify({ ...base, checked: 'allow', failedInTool: true, interrupted: true, result: { isError: true, deny: null, text: '' } }))
     .toEqual({ outcome: 'error', reason: 'interrupted', isNew: false })
+})
+
+// An empty reason left the row with nothing after the target (final review minor)
+test("an error with no text reads 'failed'", () => {
+  expect(classify({ ...base, failedInTool: true, result: { isError: true, deny: null, text: '' } }).reason).toBe('failed')
+  expect(classify({ ...base, result: { isError: true, deny: null, text: '  ' } }).reason).toBe('failed')
+})
+
+// A PermissionRequest hook's deny read 'refused' with no reason; the hook blocked it and said why (final review minor)
+test("a permission hook's deny is blocked with its message", () => {
+  expect(classify({ ...base, checked: 'ask', hookDeny: 'not on main', result: { isError: true, deny: null, text: 'not on main' } }))
+    .toEqual({ outcome: 'blocked', reason: 'hook: not on main', isNew: false })
+  expect(classify({ ...base, checked: 'ask', hookDeny: '', result: { isError: true, deny: null, text: '' } }).reason).toBe('blocked by a hook')
 })
 
 test('a long multi-line reason is one line of 80', () => {

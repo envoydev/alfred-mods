@@ -44,13 +44,13 @@ export function fiveHourPace(b: Pick<BandInput, 'usage' | 'pace' | 'now'>): Retu
   const w = b.usage.windows.find(x => x.kind === 'five_hour')
   if (w === undefined) return null
   const reset = w.resetsAt === null ? NaN : Date.parse(w.resetsAt)
-  return pace(b.pace.five_hour?.points ?? [], Number.isNaN(reset) ? null : reset, b.now)
+  return pace('five_hour', b.pace.five_hour?.points ?? [], Number.isNaN(reset) ? null : reset, b.now)
 }
 
-// ' ↻16:15': when the window resets, or nothing while it reports none
-function resetSegs(w: Window, now: number): Line {
+// ' (02.11 16:15)': when the window resets, or nothing while it reports none
+function resetSegs(w: Window): Line {
   const reset = w.resetsAt === null ? NaN : Date.parse(w.resetsAt)
-  return Number.isNaN(reset) ? [] : [{ text: ` ↻${when(reset, now)}`, tone: 'dim' }]
+  return Number.isNaN(reset) ? [] : [{ text: ` (${when(reset)})`, tone: 'dim' }]
 }
 
 function gauges(b: BandInput): Line {
@@ -69,11 +69,11 @@ function gauges(b: BandInput): Line {
     sep()
     const label = LABEL[w.kind] ?? w.kind
     if (w.kind === 'five_hour') {
-      out.push({ text: `${label} `, tone: 'usage' }, ...barSegs(w.percentUsed), pctSeg(w.percentUsed), ...resetSegs(w, b.now))
+      out.push({ text: `${label} `, tone: 'usage' }, ...barSegs(w.percentUsed), pctSeg(w.percentUsed), ...resetSegs(w))
       const p = fiveHourPace(b)
       if (p === 'on-pace') out.push({ text: ' on pace', tone: 'ok' })
-      else if (p !== null) out.push({ text: ` limit ≈${clock(p.limitAt)}`, tone: 'warn' })
-    } else out.push({ text: `${label} `, tone: 'usage' }, { text: pct(w.percentUsed), tone: toneOf(w.percentUsed) }, ...resetSegs(w, b.now))
+      else if (p !== null) out.push({ text: ` full ≈${clock(p.limitAt)}`, tone: 'warn' })
+    } else out.push({ text: `${label} `, tone: 'usage' }, { text: pct(w.percentUsed), tone: toneOf(w.percentUsed) }, ...resetSegs(w))
   }
   if (u.costUsd !== null) {
     sep()
@@ -82,7 +82,7 @@ function gauges(b: BandInput): Line {
   return out
 }
 
-function narrowGauges(u: Usage, now: number): Line {
+function narrowGauges(u: Usage): Line {
   const out: Line = []
   const sep = (): void => {
     if (out.length > 0) out.push({ text: ' · ', tone: 'dim' })
@@ -91,17 +91,29 @@ function narrowGauges(u: Usage, now: number): Line {
   else out.push({ text: 'ctx ', tone: 'usage' }, ...barSegs(u.percent), pctSeg(u.percent))
   for (const w of windowsInOrder(u.windows)) {
     sep()
-    out.push({ text: `${LABEL[w.kind] ?? w.kind} `, tone: 'usage' }, ...barSegs(w.percentUsed), pctSeg(w.percentUsed), ...resetSegs(w, now))
+    out.push({ text: `${LABEL[w.kind] ?? w.kind} `, tone: 'usage' }, ...barSegs(w.percentUsed), pctSeg(w.percentUsed), ...resetSegs(w))
   }
   return out
 }
 
-// ' │ you 14:02 · Claude 14:05': the person's last prompt and Claude's last reply
-function times(b: BandInput): Line {
+// ' │ you 14:02 · Claude 14:05': the person's last prompt and Claude's last reply, the first `upTo` of them
+function times(b: BandInput, upTo = 2): Line {
   const you = b.turns[b.turns.length - 1]?.promptAt ?? b.meta.lastPromptAt
   const parts = [you === null ? null : `you ${clock(you)}`, b.meta.lastReplyAt === null ? null : `Claude ${clock(b.meta.lastReplyAt)}`]
     .filter((p): p is string => p !== null)
+    .slice(0, upTo)
   return parts.length === 0 ? [] : [{ text: ` │ ${parts.join(' · ')}`, tone: 'dim' }]
+}
+
+const widthOf = (line: Line): number => line.reduce((n, s) => n + ('text' in s ? s.text.length : 0), 0)
+
+// The gauges and as many times as fit the width, each dropped whole: Claude's first, then yours
+function withTimes(b: BandInput, line: Line): Line {
+  for (const upTo of [2, 1]) {
+    const full = [...line, ...times(b, upTo)]
+    if (widthOf(full) <= b.columns) return full
+  }
+  return line
 }
 
 function lastTurn(b: BandInput, isNarrow: boolean): Line {
@@ -132,11 +144,11 @@ export function bandLines(b: BandInput): Line[] {
   const u = b.usage
   if (b.turns.length === 0 && u.percent === null) return []
   const isNarrow = b.columns < 100
-  const line2 = isNarrow ? narrowGauges(u, b.now) : gauges(b)
+  const line2 = isNarrow ? narrowGauges(u) : gauges(b)
   const p = fiveHourPace(b)
   const isHot = (u.percent ?? 0) >= 60 || u.windows.some(w => w.percentUsed >= 60) || (p !== null && p !== 'on-pace')
   if (!isHot && b.newFailures === 0 && !b.isWorking) {
-    const calm = isNarrow ? line2 : [...line2, ...times(b)]
+    const calm = isNarrow ? line2 : withTimes(b, line2)
     return [calm.map(s => ('text' in s ? { text: s.text, tone: 'dim' as const } : s))]
   }
   if (b.isWorking) return [working(b, isNarrow), line2]

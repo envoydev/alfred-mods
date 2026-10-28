@@ -113,8 +113,8 @@ Ten features, F1 to F10. The probe must settle every Medium row before the verdi
 - **F2 and F3 skills line** (the user, 2026-10-28, from the deck's slides): `skills fired: watch ×1 · plugin-authoring ×4` closes the Agents tab and the Now tab's AGENTS section, from F2's skill counts. (agent)
 - **F4 cache has no size capacity:** what matters is time to expiry, hit rate and rewrite cost. Never show a cache fill bar; the reuse rate's bar is a ratio, so it takes the one bar.
 - **F4 hit rate:** cache read ÷ (cache read + cache write + uncached input) for each main-loop request. Subagent requests count in totals only.
-- **F4 wording** (the user, 2026-10-28, from the deck's slides): `warm 52m ▰▰▰▰▰▰▰▰▰▱ 94% reused · 180k cached · rewrite ≈ $1.44`. Warm or cold with the time left replaces the expiry clock time, and 'reused' names the hit rate. (agent)
-- **F8 from the deck's slides** (the user, 2026-10-28): the HANDOFF line reads `ctx ▰▰▰▰▰▰▱▱▱▱ 62% · asks at 80% · h: save now` in ask mode and `ctx 62% · saves at 80%` in auto mode, so `h` saves now. With Alfred Code the threshold is the stack's resume trigger from the status file. Still the deck's and unverified: what `c` and `r` do, the toasts' text, and when HANDOFF.md is written. Slides are evidence of the deck's behaviour, not its code. (agent)
+- **F4 wording** (the user, 2026-10-28, from the deck's slides): `warm 52m ▰▰▰▰▱ 94% reused · 180k cached · rewrite ≈ $1.44`. Warm or cold with the time left replaces the expiry clock time, and 'reused' names the hit rate. (agent)
+- **F8 from the deck's slides** (the user, 2026-10-28): the HANDOFF line reads `ctx ▰▰▰▱▱ 62% · asks at 80% · h: save now` in ask mode and `ctx 62% · saves at 80%` in auto mode, so `h` saves now. With Alfred Code the threshold is the stack's resume trigger from the status file. Still the deck's and unverified: what `c` and `r` do, the toasts' text, and when HANDOFF.md is written. Slides are evidence of the deck's behaviour, not its code. (agent)
 - **F9 masking:** pass every string this plugin draws through `mask()`, so REC covers the band, panes, toasts and spinner suffixes, not only messages. REC is display-only: the model still sees secrets in context.
 - **F9 status** (the user, 2026-10-28, from the deck's slides): REC on reads `REC on · hiding keys · emails · phones · 3 private words`, so by default it hides keys, emails and phones, plus the person's private words, counted. What `/rec strict` adds stays as Phase 4's Done when says. (agent)
 - **F10 compact rows:** display only, so Claude still reads the full output and no tokens are saved. Show the Bash call's `description` instead of the command, falling back to its first 60 characters. Compact first, then pass the row through `mask()`, so REC also covers compact rows. Claude's own text (`AssistantMessage`) is never compacted.
@@ -138,13 +138,14 @@ Hooks only update the shared state. Every surface reads that state and passes it
 
 - **Calm by default:** idle and healthy, the band is one dim line. Colour appears only when a threshold is crossed.
 - **Now first:** while Claude works, line 1 shows what is running: the plan step, each agent's current action, and a running Bash command with its elapsed time. When idle, it shows the last turn: duration, tool calls, failures, and the time of your last prompt and of Claude's reply.
-- **Room left:** line 2 holds the gauges. Context and 5h get bars because they move within a session; the 7d window and cost are numbers. Each window shows when it resets after its percent, marked ↻: the clock within 24 hours, else the day, month and clock, such as 31.10 09:00 (the user, 2026-10-28).
-- **Bars:** one bar everywhere, in the band and the pane: 10 cells of 10%, ▰ filled and ▱ empty, with no gaps, such as ▰▰▰▰▱▱▱▱▱▱ (the user, 2026-10-28). A cell fills only when its share is reached, the filled part takes the threshold colour and the empty part stays dim, so the shape reads without colour.
-- **Forecasts:** shown next to the gauges, marked ≈, and only after 3 data points: turns left until the handoff threshold (mean context growth over the last 5 turns), when the 5h or weekly limit runs out at the current pace compared with its reset time, and the plan's time left (remaining step estimates, calibrated by the actual time of finished steps).
+- **Room left:** line 2 holds the gauges. Context and 5h get bars because they move within a session; the 7d window and cost are numbers. Each window shows when it resets after its percent, as its day, month and clock in brackets, such as (31.10 09:00) (the user, 2026-10-28).
+- **Bars:** one bar everywhere, in the band and the pane: 5 cells of 20%, one character each, ▰ filled and ▱ empty, with no gaps, such as ▰▰▱▱▱ at 40% (the user, 2026-10-28). A cell fills only when its share is reached, the filled part takes the threshold colour and the empty part stays dim, so the shape reads without colour.
+- **Forecasts:** shown next to the gauges, marked ≈, and only after 3 data points: turns left until the handoff threshold (mean context growth over the last 5 turns), when the 5h or weekly limit runs out at the current pace compared with its reset time, as `full ≈15:40` and only once the readings span 5% of the window (15 minutes of 5h, 8.4 hours of a week; the user, 2026-10-28), and the plan's time left (remaining step estimates, calibrated by the actual time of finished steps).
 - **Actions, not just alerts:** line 3 appears only when something needs you, and each item carries its button: Handoff, Compact or Inspect. Band buttons get digit hotkeys, which fire when you type the digit alone into an empty prompt and pause, and not while the band is collapsed; every item that needs you also raises its toast or shows in the Now tab, since the mod cannot tell the band is collapsed. (agent)
 - **Failure inbox:** failed and denied calls count as new until you open the Now or Tools tab. Blocked calls never count as new, because Claude recovers from them by itself.
-- **Narrow terminals, under 100 columns:** line 2 keeps the 10-cell bars and resets with the 7d window as a bar too, and drops forecasts and cost; line 1 keeps only the plan step and the agent count.
-- **Glyphs and colour:** ⟳ running, ✓ done, ✗ failed, ⊘ denied or blocked, ✎ your note, ≈ estimate, ⚠ needs you, ↻ resets at. Colour adds state, model and feature on top, as set out under Colours, so no meaning depends on colour alone.
+- **Times fit or drop:** when the calm line passes the width, Claude's time drops first, then yours, each whole and never cut mid-word; every gauge, reset and the cost stay. The times still show on line 1 whenever a turn needs you, and in the Timeline. (the user, 2026-10-28)
+- **Narrow terminals, under 100 columns:** line 2 keeps the bars and resets with the 7d window as a bar too, and drops forecasts and cost; line 1 keeps only the plan step and the agent count.
+- **Glyphs and colour:** ⟳ running, ✓ done, ✗ failed, ⊘ denied or blocked, ✎ your note, ≈ estimate, ⚠ needs you. Colour adds state, model and feature on top, as set out under Colours, so no meaning depends on colour alone.
 
 **Colours**
 
@@ -158,7 +159,7 @@ Colour marks three things: state, model and feature. Every state keeps its glyph
 | Running | bold default text | ⟳ rows; no colour, so amber keeps meaning warning |
 | Secondary | the terminal's dim colour | Empty bar cells, separators, times, error text |
 | Opus, Sonnet, Haiku, Fable | `#ff8c1a`, `#3d9bff`, `#19c3a6`, `#d16bff` | Model badges in the band, agent rows and spinners |
-| Skills | lime `#a3e635` | Skill names |
+| Skills | green `#65a30d` | Skill names |
 | Usage | blue `#60a5fa` | ctx, 5h and 7d labels; Usage tab label |
 | Agents | pink `#f472b6` | AGENTS heading; Agents tab label |
 | Plan | gold `#facc15` | PLAN heading; Plan tab label; ✎ your note |
@@ -168,7 +169,7 @@ Colour marks three things: state, model and feature. Every state keeps its glyph
 - **Bars:** filled cells and the percent beside them take the state colour, and empty cells stay dim (the user, 2026-10-28).
 - **Buttons:** bold, in the colour of the feature they act on; \[Inspect\], \[Show\] and \[Copy\] stay in the default colour.
 - **No colour:** when `NO_COLOR` is set, everything draws in the default colour and the glyphs carry the meaning.
-- **Light terminal themes:** gold and lime read poorly on white. Check them in Phase 1 and switch to `#ca8a04` and `#65a30d` there if needed.
+- **Light terminal themes:** Phase 1 measured lime `#a3e635` at 1.51:1 on white, so skills use `#65a30d` (3.09:1 on white, 5.40:1 on `#1e1e1e`). Gold reads poorly on white too: check it in Phase 3, where plan progress first draws it, and switch to `#ca8a04` if needed.
 
 The band and Now tab mockups below use this palette in the terminal.
 
@@ -176,35 +177,35 @@ The band and Now tab mockups below use this palette in the terminal.
 
 ```text
 ⟳ S4 Update interceptor 12m │ Explore ▸ Grep AuthService │ Bash ▸ npm test 0:12
-ctx ▰▰▰▰▱▱▱▱▱▱ 45% ≈6 turns │ 5h ▰▰▱▱▱▱▱▱▱▱ 25% ↻16:15 on pace │ 7d 62% ↻31.10 09:00 │ $3.12
+ctx ▰▰▱▱▱ 45% ≈6 turns │ 5h ▰▱▱▱▱ 25% (28.10 16:15) on pace │ 7d 62% (31.10 09:00) │ $3.12
 ```
 
 **Band: idle, needs you**
 
 ```text
 ✓ Turn 7 · 3m 10s · 9 tools · 1 ✗ │ you 14:02 · Claude 14:05 │ PLAN 3/5 · score 8.1 ▲1.3
-ctx ▰▰▰▰▰▰▰▰▱▱ 82% │ 5h ▰▰▰▰▰▱▱▱▱▱ 55% ↻16:15 limit ≈15:40 │ 7d 62% ↻31.10 09:00 │ $3.12
+ctx ▰▰▰▰▱ 82% │ 5h ▰▰▱▱▱ 55% (28.10 16:15) full ≈15:40 │ 7d 62% (31.10 09:00) │ $3.12
 ⚠ ctx past 80% [4 Handoff]    ⚠ cache cold in 4m [3 Compact]    ✗ 2 new [1 Inspect]
 ```
 
 **Band: idle and healthy, one dim line**
 
 ```text
-ctx ▰▰▰▱▱▱▱▱▱▱ 30% │ 5h ▰▱▱▱▱▱▱▱▱▱ 15% ↻16:15 │ 7d 40% ↻31.10 09:00 │ $1.08 │ you 14:02 · Claude 14:05
+ctx ▰▱▱▱▱ 30% │ 5h ▱▱▱▱▱ 15% (28.10 16:15) │ 7d 40% (31.10 09:00) │ $1.08 │ you 14:02 · Claude 14:05
 ```
 
 **Band: narrow terminal**
 
 ```text
 ⟳ S4 12m · 2 agents
-ctx ▰▰▰▰▱▱▱▱▱▱ 45% · 5h ▰▰▱▱▱▱▱▱▱▱ 25% ↻16:15 · 7d ▰▰▰▰▰▰▱▱▱▱ 62% ↻31.10 09:00
+ctx ▰▰▱▱▱ 45% · 5h ▰▱▱▱▱ 25% (28.10 16:15) · 7d ▰▰▰▱▱ 62% (31.10 09:00)
 ```
 
 **Band: plan progress** (Phase 3; the user, 2026-10-28)
 
 ```text
-Build the mods ▰▰▰▰▰▰▱▱▱▱ 4/6 · 67% · 18m · ≈9m left │ ▶ Write the deck
-Build the mods ▰▰▰▰▰▰▰▰▰▰ done ✓ in 27m
+Build the mods ▰▰▰▱▱ 4/6 · 67% · 18m · ≈9m left │ ▶ Write the deck
+Build the mods ▰▰▰▰▰ done ✓ in 27m
 ```
 
 - **The line:** the plan's title (`Tasks` for the task list), the one bar by percent done, steps done of all, the percent, working time so far, the time left marked ≈, and ▶ the current step. Once the last step is done, the second form.
@@ -229,8 +230,8 @@ PLAN   Token refresh · 3/5 · ≈30m left of ≈1h 37m
   ⟳ S4 Update interceptor                     12m of ≈24m
   · S5 E2E tests                              ≈18m
 AGENTS 2 running
-  ⟳ Explore [haiku ◑ medium] ▸ Grep 'AuthService' in src/   ctx ▰▱▱▱▱▱▱▱▱▱ 17%
-  ⟳ Plan [opus ◑ high] ▸ Read src/auth/token.ts             ctx ▱▱▱▱▱▱▱▱▱▱ 9%
+  ⟳ Explore [haiku ◑ medium] ▸ Grep 'AuthService' in src/   ctx ▱▱▱▱▱ 17%
+  ⟳ Plan [opus ◑ high] ▸ Read src/auth/token.ts             ctx ▱▱▱▱▱ 9%
 NEEDS A LOOK  2 new
   ✗ 14:21 Edit  src/auth/token.ts   old_string not found          [Show] [Copy]
   ⊘ 13:55 Bash  rm -rf dist         denied by you
@@ -238,10 +239,10 @@ NEEDS A LOOK  2 new
 
 ```text
 Usage                                                session 1h 12m
-Context   ▰▰▰▰▱▱▱▱▱▱ 45%   90k / 200k     ≈6 turns to 80%
+Context   ▰▰▱▱▱ 45%   90k / 200k     ≈6 turns to 80%
           per turn ▁▂▂▃▃▄▅▅
-5h        ▰▰▱▱▱▱▱▱▱▱ 25%   resets 16:15       on pace
-Weekly    ▰▰▰▰▰▰▱▱▱▱ 62%   resets 31.10 09:00   on pace
+5h        ▰▱▱▱▱ 25%   resets 28.10 16:15       on pace
+7d        ▰▰▰▱▱ 62%   resets 31.10 09:00   on pace
 Cost      $3.12 session · $18.49 today, est.
 Tokens    in 412k · out 38k · cache read 1.9M · cache write 210k · 70.5 tok/s
 Account   Max 20x · <account>              Compactions 1, at 14:40
@@ -251,7 +252,7 @@ Account   Max 20x · <account>              Compactions 1, at 14:40
 Agents (3)                                             opus 1 · haiku 2
 ⟳ Explore [haiku ◑ medium]  Finding auth code                   2m 15s
    ▸ Grep 'AuthService' in src/
-   ctx ▰▱▱▱▱▱▱▱▱▱ 17%   tools Read ×6 ✓ · Grep ×3 ✓ · Bash ×1 ✗
+   ctx ▱▱▱▱▱ 17%   tools Read ×6 ✓ · Grep ×3 ✓ · Bash ×1 ✗
 ⟳ Plan [opus ◑ high]  Design token refresh                      0m 40s
    ▸ Read src/auth/token.ts
 ✓ general-purpose [haiku]  Check test coverage                  done in 1m 05s

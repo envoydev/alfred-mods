@@ -143,7 +143,7 @@ for (const surface of SURFACES) {
   })
 
   // One bar everywhere, the band's (the user, 2026-10-28)
-  test(`the Usage tab draws the band's 10-cell bar (${surface})`, async ($, on) => {
+  test(`the Usage tab draws the band's bar (${surface})`, async ($, on) => {
     stubAll(on, { usage: SUBSCRIPTION })
     engine(on)
     await turn($, 't1')
@@ -151,9 +151,9 @@ for (const surface of SURFACES) {
 
     const lines = await rows(await pane($, surface))
 
-    expect(lines.some(l => /^Context\s+▰▰▰▱▱▱▱▱▱▱ 30%/.test(l))).toBe(true)
-    expect(lines.some(l => /^5h\s+▰▰▱▱▱▱▱▱▱▱ 20%/.test(l))).toBe(true)
-    expect(lines.some(l => /^Weekly\s+▰▰▰▰▱▱▱▱▱▱ 40%/.test(l))).toBe(true)
+    expect(lines.some(l => /^Context\s+▰▱▱▱▱ 30%/.test(l))).toBe(true)
+    expect(lines.some(l => /^5h\s+▰▱▱▱▱ 20%   resets \d\d\.\d\d \d\d:\d\d/.test(l))).toBe(true)
+    expect(lines.some(l => /^7d\s+▰▰▱▱▱ 40%   resets \d\d\.\d\d \d\d:\d\d/.test(l))).toBe(true)
   })
 
   test(`a Usage tab percent takes its threshold colour (${surface})`, async ($, on) => {
@@ -166,6 +166,21 @@ for (const surface of SURFACES) {
 
     expect(texts.find(t => t.text === ' 90%')?.props.color).toBe('#ef4444')
     expect(texts.find(t => t.text === ' 40%')?.props.color).toBe('#22c55e')
+  })
+
+  test(`the Usage tab says when a window runs out before its reset (${surface})`, async ($, on) => {
+    const { clock } = stubAll(on, { usage: SUBSCRIPTION, now: Date.parse('2026-10-28T14:00:00Z') })
+    engine(on)
+    await turn($, 't1')
+    for (const percentUsed of [40, 50, 60]) {
+      await $.session.measure({ context: SUBSCRIPTION.context, changed: ['rateLimits'], rateLimits: [{ kind: 'five_hour', percentUsed, resetsAt: '2026-10-28T17:00:00Z' }] })
+      await clock.advance(600_000)
+    }
+    await inspect($, 'usage')
+
+    const lines = await rows(await pane($, surface))
+
+    expect(lines.some(l => /^5h\s+.* 60%   resets .*   full ≈\d\d:\d\d/.test(l))).toBe(true)
   })
 
   test(`the Timeline lists turns newest first (${surface})`, async ($, on) => {

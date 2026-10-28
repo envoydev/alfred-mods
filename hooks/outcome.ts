@@ -11,6 +11,7 @@ export type CallFacts = {
   failedInTool: boolean
   interrupted: boolean
   classifierReason: string | null
+  hookDeny: string | null
   result: { isError: boolean; deny: string | null; text: string } | null
 }
 
@@ -22,13 +23,15 @@ export function classify(f: CallFacts): { outcome: Outcome; reason: string; isNe
   if (f.result?.deny) return { outcome: 'blocked', reason: `blocked: ${f.result.deny}`, isNew: false }
   if (f.checked === 'deny') return { outcome: 'blocked', reason: f.checkReason === null ? 'blocked by a rule' : hookReason(f.checkReason), isNew: false }
   if (f.classifierReason) return { outcome: 'blocked', reason: `auto mode: ${f.classifierReason}`, isNew: false }
+  // A PermissionRequest hook answered the ask with a deny, so the person never saw it
+  if (f.hookDeny !== null) return { outcome: 'blocked', reason: f.hookDeny.trim() === '' ? 'blocked by a hook' : `hook: ${oneLine(f.hookDeny, 80)}`, isNew: false }
   if (!f.result?.isError) return { outcome: 'ok', reason: '', isNew: false }
   if (f.failedInTool && f.interrupted) return { outcome: 'error', reason: 'interrupted', isNew: false }
-  if (f.failedInTool) return { outcome: 'error', reason: oneLine(text, 80), isNew: true }
+  if (f.failedInTool) return { outcome: 'error', reason: oneLine(text, 80) || 'failed', isNew: true }
   if (f.checked === 'ask' && f.asked) return { outcome: 'denied', reason: 'denied by you', isNew: true }
   if (f.checked === 'ask') return { outcome: 'refused', reason: oneLine(text, 80) || 'refused', isNew: false }
   // No check, an error, no failure: an input error or Claude Code's own refusal, shown as an error by the ruling
-  return { outcome: 'error', reason: oneLine(text, 80), isNew: true }
+  return { outcome: 'error', reason: oneLine(text, 80) || 'failed', isNew: true }
 }
 
 // A plugin's hook names its command before its message ('hook error: [node "…/guard.js"]: Blocked: …'): the message

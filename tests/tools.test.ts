@@ -44,16 +44,16 @@ test('an ask answered No shows as denied', async ($, on) => {
   expect((state.get('failures') as Failure[])[0]).toMatchObject({ outcome: 'denied', reason: 'denied by you', isNew: true })
 })
 
-test('a PermissionDenied after the result turns refused into blocked', async ($, on) => {
+test("a permission hook's deny is blocked with its message, and a later PermissionDenied names the classifier", async ($, on) => {
   stubAll(on)
   const state = watchState(on)
-  // A hook answers the request, so the person never sees it: the ask ends refused
+  // A hook answers the request, so the person never sees it: the hook blocked the call
   on('tool.check', () => ({ decision: 'ask' }))
   on('classic.PermissionRequest', () => ({ decision: { behavior: 'deny', message: 'no' } }))
   on('tool.call', () => answered())
 
   await $.tool.call({ tool: 'Bash', command: 'git reset --hard', tool_use_id: 't1' })
-  expect((state.get('failures') as Failure[])[0]?.outcome).toBe('refused')
+  expect((state.get('failures') as Failure[])[0]).toMatchObject({ outcome: 'blocked', reason: 'hook: no', isNew: false })
   await $.classic.PermissionDenied({ tool_name: 'Bash', tool_input: {}, tool_use_id: 't1', reason: 'destructive git' })
 
   const rows = state.get('failures') as Failure[]

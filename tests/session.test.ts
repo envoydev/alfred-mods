@@ -2,6 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import type { SessionUsage } from 'claude-code'
 
 import { localDate } from '../hooks/forecast.ts'
+import { when } from '../hooks/format.ts'
 import { PRESENTATION, SPAWN, START, engine, stubAll, watchState } from './kit.ts'
 import type { Meta, Totals, Turn, Usage } from '../types'
 
@@ -63,8 +64,22 @@ test('the 5h window toasts once at 75 and once at 90', async ($, on) => {
   }
 
   expect(toasts).toHaveLength(2)
-  expect(toasts[0]).toMatch(/^5h limit at 75%, resets /)
-  expect(toasts[1]).toMatch(/^5h limit at 90%, resets /)
+  const reset = when(Date.parse('2026-10-28T17:00:00Z'))
+  expect(toasts).toEqual([`5h limit at 75%, resets ${reset}`, `5h limit at 90%, resets ${reset}`])
+})
+
+// The window's band name and the band's date form (the user, 2026-10-28)
+test('the 7d window toasts as 7d with its reset date', async ($, on) => {
+  const { toasts } = stubAll(on, { usage: READING })
+  engine(on)
+
+  for (const percentUsed of [70, 76]) {
+    await $.session.measure({
+      context: { window: 200_000 }, rateLimits: [{ kind: 'seven_day', percentUsed, resetsAt: '2026-10-31T09:00:00Z' }], changed: ['rateLimits'],
+    })
+  }
+
+  expect(toasts).toEqual([`7d limit at 75%, resets ${when(Date.parse('2026-10-31T09:00:00Z'))}`])
 })
 
 test('a precompute or skipped compaction is not counted', async ($, on) => {
