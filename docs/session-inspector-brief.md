@@ -589,6 +589,7 @@ only into an empty prompt.
 | Ask mode, an ask goes up                    | `Context past 80%: press 4 or run /auto-handoff now to save a handoff`   |
 | Auto mode, first save of the session        | `Handoff saved at 82% to .claude/session-inspector/HANDOFF.md - /clear fills a resume prompt` |
 | A save by h, 4 or `now`                     | `Handoff saved to .claude/session-inspector/HANDOFF.md - /clear fills a resume prompt` |
+| The same while Alfred Code stands F8 down   | `Handoff saved to .claude/session-inspector/HANDOFF.md`                   |
 | A save by c                                 | `Handoff saved to .claude/session-inspector/HANDOFF.md - compacting`      |
 | After `/clear`, the resume prompt filled    | `Resume prompt filled from the handoff saved 14:05 - press Enter to send` |
 | After `/clear`, the draft not empty         | `Handoff saved 14:05: ask Claude to read .claude/session-inspector/HANDOFF.md` |
@@ -695,6 +696,8 @@ The rules below are the contract. The samples in [F8 and F9 acceptance](#f8-and-
 - **Strict adds:**
   - **Home paths:** the home folder prefix becomes `~`, with `/` or `\` separators. The home folder is
     `$.env.get('HOME')`, else `$.env.get('USERPROFILE')`, as the brief's Platforms row says. It matches case-insensitively on Windows.
+    A Windows home also hides in its other spelling: Git Bash sets HOME to `/c/Users/jane` while Claude Code prints
+    `C:\Users\jane`, so each form hides the other.
   - **The account**, drawn `‹user›`: the local user name, the home folder's last segment, as a whole word,
     case-insensitively. A name
     under 3 characters is skipped, and `/rec test` says so. The mod does not read the Claude account (F1's account

@@ -403,11 +403,12 @@ test('no save, or past 2 hours, fills nothing', async ($, on) => {
   expect(toasts).toEqual([SAVED])
 })
 
-test('a stood-down session arms no resume prompt', async ($, on) => {
+test('a stood-down session arms no resume prompt, and its save toast promises none', async ($, on) => {
   const { prompt, clock, toasts, h } = await start($, on, { files: { [STATUS]: status() } })
   await handoff($, 'now')
   await saved(clock, h)
   expect(h().lastSave).toMatchObject({ isOk: true })
+  expect(toasts.at(-1)).toBe('Handoff saved to .claude/session-inspector/HANDOFF.md')
   await $.classic.SessionStart({ source: 'clear' })
   expect(prompt.fills).toEqual([])
   expect(toasts.filter(t => t.startsWith('Resume') || t.includes('ask Claude to read'))).toEqual([])

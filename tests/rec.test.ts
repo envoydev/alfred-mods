@@ -67,6 +67,16 @@ test('a home folder matches case-insensitively on Windows only', () => {
   expect(maskText(compile('strict', [], '/Users/jane'), '/USERS/JANE/src')).toBe('/USERS/‹user›/src')
 })
 
+// Git Bash on Windows sets HOME to /c/Users/jane while Claude Code and Windows tools print C:\Users\jane
+test("a Git Bash home hides its Windows form too, and a Windows home its Git Bash form, either case", () => {
+  const bash = compile('strict', [], '/c/Users/jane')
+  expect(maskText(bash, 'C:\\Users\\jane\\src and C:/USERS/JANE/x and /c/Users/jane/y')).toBe('~\\src and ~/x and ~/y')
+  const windows = compile('strict', [], 'C:\\Users\\jane')
+  expect(maskText(windows, 'cd /c/Users/jane/src')).toBe('cd ~/src')
+  // A macOS or Linux home has no Windows form: /Users/jane is no drive path
+  expect(maskText(compile('strict', [], '/Users/jane'), 'U:/jane/x')).toBe('U:/‹user›/x')
+})
+
 test('a name under 3 characters is not hidden as the account', () => {
   expect(maskText(compile('strict', [], '/home/jo'), 'jo and /home/jo/x')).toBe('jo and ~/x')
 })

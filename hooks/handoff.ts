@@ -85,6 +85,8 @@ export const TOASTS = {
   ask: (step: number): string => `Context past ${step}%: press 4 or run /auto-handoff now to save a handoff`,
   autoFirst: (percent: number): string => `Handoff saved at ${percent}% to ${HANDOFF_PATH} - /clear fills a resume prompt`,
   saved: (): string => `Handoff saved to ${HANDOFF_PATH} - /clear fills a resume prompt`,
+  // While the stack stands F8 down, a save arms no resume prompt
+  savedOnly: (): string => `Handoff saved to ${HANDOFF_PATH}`,
   compacting: (): string => `Handoff saved to ${HANDOFF_PATH} - compacting`,
   filled: (at: number): string => `Resume prompt filled from the handoff saved ${clock(at)} - press Enter to send`,
   fallback: (at: number): string => `Handoff saved ${clock(at)}: ask Claude to read ${HANDOFF_PATH}`,

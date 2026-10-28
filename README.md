@@ -104,6 +104,8 @@ the ask comes before that compaction.
   JSON in the mod's store file on this machine, not encrypted, and never in session state, a log, a toast, a file the
   mod writes or Claude's context. With REC on, the pane shows only how many there are.
 - **`/rec test`** runs the masker over fake samples of each kind and your private words, and prints what it hid.
+- **Before you record:** run `/rec test` and check that each sample and private word is hidden, then clear the
+  terminal or start a new session, so no row drawn before REC went on is left in view.
 
 What REC cannot hide:
 

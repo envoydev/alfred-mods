@@ -848,7 +848,7 @@ async function writeHandoff($: EngineInterface, by: SaveBy): Promise<SaveResult>
   handoffMem.savedStep = (await read($, handoff)).handled
   if (!handoffMem.stoodDown) handoffMem.armedAt = at
   if (by === 'compact') toast($, TOASTS.compacting())
-  else if (by === 'press') toast($, TOASTS.saved())
+  else if (by === 'press') toast($, handoffMem.stoodDown ? TOASTS.savedOnly() : TOASTS.saved())
   else if (before.lastSave?.isOk !== true && percent !== null) toast($, TOASTS.autoFirst(percent))
   return result
 }
@@ -1532,6 +1532,9 @@ export const register: Register = on => {
   // next(e)'s tree, the classifier line in it, its preview gone. Under REC, so does an errored result whose row drew
   // its masked error text
   on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {
+    // Fullscreen's ctrl+o draws no group, so nothing there unmarks the rows a group unfolded; an expanded result draws
+    // only in that view (an unfolded group draws its rows' output inline), so it unmarks its row and redraws it in full
+    if (e.props.isExpanded === true && compactMem.marks.delete(e.props.tool_use_id)) $.ui.invalidate('ui.render')
     let props = e.props
     if ((await read($, quiet)).isOn && e.props.isExpanded !== true) {
       if (e.props.isErrored || DROPS_RESULT.includes(e.props.tool)) return drawLines($, e, [], { noColor: false, press: {} })

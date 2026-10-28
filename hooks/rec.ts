@@ -57,16 +57,28 @@ const AMOUNT: Klass = {
 const escape = (s: string): string => s.replace(/[\\^$.*+?()[\]{}|\/]/g, '\\$&')
 const WORD_EDGE = String.raw`[\p{L}\p{N}_]`
 
+// A home and its other spelling on Windows: Git Bash's HOME /c/Users/jane is C:\Users\jane to Claude Code and Windows
+// tools, and a Windows home is /c/Users/jane inside Git Bash
+function homeForms(home: string): string[] {
+  const bash = /^\/([A-Za-z])(\/.+)$/.exec(home)
+  if (bash !== null) return [home, `${bash[1]!}:${bash[2]!}`]
+  const drive = /^([A-Za-z]):([\\/].+)$/.exec(home)
+  if (drive !== null) return [home, `/${drive[1]!.toLowerCase()}${drive[2]!.replace(/\\/g, '/')}`]
+  return [home]
+}
+
 function homeClasses(home: string): Klass[] {
-  const parts = home.split(/[\\/]+/)
-  while (parts.length > 0 && parts[parts.length - 1] === '') parts.pop()
-  if (parts.filter(p => p !== '').length === 0) return []
-  const isWindows = /^[A-Za-z]:/.test(home) || home.includes('\\')
-  const out: Klass[] = [{
-    re: new RegExp(`${parts.map(escape).join('[\\\\/]')}(?![\\p{L}\\p{N}_.-])`, isWindows ? 'giu' : 'gu'),
-    hit: whole('~'),
-  }]
-  const name = parts[parts.length - 1]!
+  const forms = homeForms(home)
+  const isWindows = forms.length > 1 || /^[A-Za-z]:/.test(home) || home.includes('\\')
+  const out: Klass[] = []
+  let name = ''
+  for (const form of forms) {
+    const parts = form.split(/[\\/]+/)
+    while (parts.length > 0 && parts[parts.length - 1] === '') parts.pop()
+    if (parts.filter(p => p !== '').length === 0) continue
+    out.push({ re: new RegExp(`${parts.map(escape).join('[\\\\/]')}(?![\\p{L}\\p{N}_.-])`, isWindows ? 'giu' : 'gu'), hit: whole('~') })
+    name = parts[parts.length - 1]!
+  }
   if (name.length >= 3) out.push({ re: new RegExp(`(?<!${WORD_EDGE})${escape(name)}(?!${WORD_EDGE})`, 'giu'), hit: whole('‹user›') })
   return out
 }

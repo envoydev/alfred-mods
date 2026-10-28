@@ -88,12 +88,13 @@ function sites(on: On): void {
   on('ui.render', { component: 'AssistantMessage' }, json)
 }
 
-async function start($: Engine, on: On, store: Record<string, unknown>, calls?: (e: { tool: string }) => unknown): Promise<void> {
-  stubAll(on, { env: { HOME: '/Users/jane' }, store })
+async function start($: Engine, on: On, store: Record<string, unknown>, calls?: (e: { tool: string }) => unknown): Promise<ReturnType<typeof stubAll>> {
+  const kit = stubAll(on, { env: { HOME: '/Users/jane' }, store })
   sites(on)
   if (calls !== undefined) on('tool.call', (_, e) => calls(e) as never)
   engine(on, calls === undefined ? [] : ['tool.call'])
   await $.session.start(START)
+  return kit
 }
 
 // What a site drew: the props handed down when Claude Code drew it, else the mod's own lines
@@ -169,6 +170,23 @@ for (const surface of SURFACES) {
     // ctrl+o on the main screen draws the group expanded: its rows show in full again
     await draw($, surface, 'ToolGroup', { calls, isActive: false, isExpanded: true, isCallsOnly: false })
     expect((await draw($, surface, 'ToolUse', row)).props).toEqual(row)
+  })
+
+  // Fullscreen's ctrl+o draws no group, only ToolUse rows over their ToolResults (types, ToolGroup), while an unfolded
+  // group draws its rows' output inline with no ToolResult: an expanded result is the sign its row is in that view
+  test(`in fullscreen's ctrl+o, a marked row's expanded result unmarks it and redraws, so the row shows in full (${surface})`, async ($, on) => {
+    const { invalidates } = await start($, on, QUIET)
+    const calls = [groupCall('g1', 'Bash', { command: 'false' }, { isErrored: true, output: 'Exit code 1\nboom' })]
+    await draw($, surface, 'ToolGroup', { calls, isActive: false, isExpanded: false, isCallsOnly: false })
+    const row = { ...USE, tool_use_id: 'g1', tool: 'Bash', input: { command: 'false' }, isErrored: true, output: 'Exit code 1\nboom', isExpanded: true }
+    expect((await draw($, surface, 'ToolUse', row)).lines[0]).toBe('⏺ Bash · false · ✗ exit 1')
+    const before = invalidates.length
+    await draw($, surface, 'ToolResult', { tool_use_id: 'g1', tool: 'Bash', output: 'Exit code 1\nboom', isErrored: true, isExpanded: true })
+    expect(invalidates.slice(before)).toEqual(['ui.render'])
+    expect((await draw($, surface, 'ToolUse', row)).props).toEqual(row)
+    // Back in the normal view the group draws again and marks its calls
+    await draw($, surface, 'ToolGroup', { calls, isActive: false, isExpanded: false, isCallsOnly: false })
+    expect((await draw($, surface, 'ToolUse', row)).lines[0]).toBe('⏺ Bash · false · ✗ exit 1')
   })
 
   test(`an expanded row or group passes next(e); a running call passes next(e) (${surface})`, async ($, on) => {
