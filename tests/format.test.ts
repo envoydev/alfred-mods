@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { bar, duration, elapsed, oneLine, printable, tokens, usd, when } from '../hooks/format.ts'
+import { bar, duration, elapsed, mins, oneLine, printable, tokens, usd, when } from '../hooks/format.ts'
 
 test('a bar is 5 cells of 20%, one character each, a cell filled only when its share is reached', () => {
   expect(bar(45)).toEqual(['▰▰', '▱▱▱'])
@@ -42,4 +42,8 @@ test('a long multi-line text is one line', () => {
 test('drawn text keeps tab and newline as its only control characters', () => {
   expect(printable('\x1b]8;;https://x\x07link\x1b]8;;\x07 \x1b[1;31mred\x1b[0m\tok')).toBe('link red\tok')
   expect(printable('a\r\nb\rc\x00\x7f\x9b')).toBe('a\nb\nc')
+})
+
+test('plan times are whole minutes', () => {
+  expect([30_000, 720_000, 5_820_000, 7_200_000].map(mins)).toEqual(['<1m', '12m', '1h 37m', '2h'])
 })

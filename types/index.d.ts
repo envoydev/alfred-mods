@@ -30,8 +30,9 @@ export type Meta = {
   // The main loop's settled tool calls this session
   mainCalls: number
 }
-export type Tab = 'now' | 'usage' | 'agents' | 'tools' | 'cache' | 'timeline'
-export type View = { tab: Tab; shown: string[] }
+export type Tab = 'now' | 'usage' | 'agents' | 'tools' | 'cache' | 'timeline' | 'plan'
+// `planSlug`: the plan `/inspect plan <name>` pinned, shown while its file parses
+export type View = { tab: Tab; shown: string[]; planSlug: string | null }
 export type PacePoint = { at: number; percent: number }
 export type Pace = Record<string, { resetsAt: string | null; points: PacePoint[]; toasted: number[] }>
 // The engine's AgentStatus, copied: a contract imports nothing
@@ -61,12 +62,46 @@ export type Cache = {
   toastedFor: number | null
 }
 
+// A plan file and a scores file, as the README's 'Plan and score files' contract gives them; times in epoch ms
+export type StepStatus = 'pending' | 'in_progress' | 'done' | 'failed' | 'blocked' | 'skipped'
+export type PlanStep = { id: string; title: string; status: StepStatus; estimateMin: number | null; startedAt: number | null; doneAt: number | null }
+export type PlanChange = {
+  at: number | null; kind: 'created' | 'step_added' | 'step_changed' | 'step_removed' | 'integrated'
+  source: 'user' | 'claude'; step: string | null; note: string | null
+}
+// A step's working time, every session's summed; shared when a turn was split among several running steps
+export type StepTime = { ms: number; isShared: boolean }
+// A loop's working time since its turn began: the main loop's, or an agent's by its id. `named`: the main slice's
+// `<plan>:<step>` marks, one per agent naming a step that was live during the turn; `waits`: its all-wait calls still
+// open, by call id, with their start
+export type Slice = { at: number; waitMs: number; named: string[]; waits?: Record<string, number> }
+// The open slices, and this session's step and overhead totals by their $.store key
+export type Credit = { slices: Record<string, Slice>; mine: Record<string, StepTime> }
+export type Plan = { title: string; updatedAt: number | null; steps: PlanStep[]; changes: PlanChange[] }
+export type Severity = 'BLOCKER' | 'MATERIAL' | 'MINOR'
+export type Finding = { id: string | null; text: string; severity: Severity | null; status: 'open' | 'fixed' | 'improved' | 'wontfix' | null; by: string | null }
+export type ScoreRound = { round: number; at: number | null; total: number; criteria: Record<string, number>; findings: Finding[] }
+export type Scores = { subject: { kind: 'plan' | 'diagnosis' | 'reply'; ref: string }; updatedAt: number | null; scale: number; rounds: ScoreRound[] }
+// A file of the folder as last read: its last good parse, kept while a newer read fails
+export type Watched<T> = { name: string; mtimeMs: number; size: number; value: T | null; isInvalid: boolean }
+// The folder's plans and scores; every session's step times summed per plan; when each plan finished this session;
+// the notes and finishes already seen; and when this session began, which a plan's file must be written after to run
+export type Plans = {
+  plans: Watched<Plan>[]; scores: Watched<Scores>[]
+  times: Record<string, Record<string, StepTime>>; overhead: Record<string, number>
+  finished: Record<string, number>; toasted: string[]; since: number | null
+}
+// A main-loop task list item, from TaskCreate, TaskUpdate or TodoWrite: its subject is a tool input, kept in $.state
+// only; `ms`, the working time credited to it while in progress
+export type TaskItem = { id: string; subject: string; status: 'pending' | 'in_progress' | 'completed'; ms: number }
+
 declare module 'claude-code' {
   interface PluginState {
     'session-inspector': {
       stats: Shaped<Record<string, ToolStat>>; failures: Shaped<Failure[]>; turns: Shaped<Turn[]>
       live: Shaped<Live>; usage: Shaped<Usage>; totals: Shaped<Totals>; meta: Shaped<Meta>
       view: Shaped<View>; pace: Shaped<Pace>; agents: Shaped<AgentRow[]>; cache: Shaped<Cache>; tick: number
+      plans: Shaped<Plans>; credit: Shaped<Credit>; tasks: Shaped<TaskItem[]>
     }
   }
 }

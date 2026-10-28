@@ -5,6 +5,7 @@ import { IDLE_COMPACT_MS, billingOf, cacheLine, cacheView, selfCompacts, toastAt
 import type { BandInput, Line, Seg, Tone } from './band.ts'
 import { clock, duration, modelParts, modelText, oneLine, printable, tokens, usd, when } from './format.ts'
 import { pace, turnsLeft } from './forecast.ts'
+import { planSection } from './planlines.ts'
 
 import type { AgentRow, Failure, Tab, ToolStat, Totals, Turn, View } from '../types'
 
@@ -12,23 +13,31 @@ export type TabInput = BandInput & { failures: Failure[]; stats: Record<string, 
 
 const TABS: [Tab, string, string, Tone?][] = [
   ['now', 'Now', 'n'], ['usage', 'Usage', 'u', 'usage'], ['agents', 'Agents', 'a', 'agents'], ['tools', 'Tools', 't'],
-  ['cache', 'Cache', 'c', 'cache'], ['timeline', 'Timeline', 'l'],
+  ['cache', 'Cache', 'c', 'cache'], ['timeline', 'Timeline', 'l'], ['plan', 'Plan', 'p', 'plan'],
 ]
 
-// The current tab is bold text in its feature's colour; the others are buttons. Wider than the pane (a docked one is
-// about 46 columns), the bar wraps after its third tab: on one line the buttons keep their width and the current
-// tab's name is squeezed to '…'.
+// The current tab is bold text in its feature's colour; the others are buttons. The bar wraps by width (a docked pane
+// is about 46 columns): each tab joins the line while it fits, else starts the next, as on one line the buttons keep
+// their width and the current tab's name is squeezed to '…'.
 export function tabBar(tab: Tab, isLive: boolean, columns: number): Line[] {
-  const tabs = TABS.map(([t, label, hotkey, tone]): Line => {
+  // A button draws as '[ label ]', the current tab as ' label ', each with a space after; '● live' is 6 wide
+  const items: [Line, number][] = TABS.map(([t, label, hotkey, tone]) => {
     const current: Seg = tone === undefined ? { text: ` ${label} `, bold: true } : { text: ` ${label} `, bold: true, tone }
     const button: Seg = { button: tone === undefined ? { key: `tab-${t}`, label, hotkey } : { key: `tab-${t}`, label, hotkey, tone } }
-    return [t === tab ? current : button, { text: ' ' }]
+    return [[t === tab ? current : button, { text: ' ' }], label.length + (t === tab ? 3 : 5)]
   })
-  const live: Line = isLive ? [{ text: '● live', tone: 'ok' }] : []
-  // A button draws as '[ label ]', the current tab as ' label ', each with a space after
-  const width = TABS.reduce((n, [t, label]) => n + label.length + (t === tab ? 3 : 5), 0) + (isLive ? 6 : 0)
-  if (width <= columns) return [[...tabs.flat(), ...live]]
-  return [tabs.slice(0, 3).flat(), [...tabs.slice(3).flat(), ...live]]
+  if (isLive) items.push([[{ text: '● live', tone: 'ok' }], 6])
+  const out: Line[] = [[]]
+  let used = 0
+  for (const [segs, width] of items) {
+    if (used > 0 && used + width > columns) {
+      out.push([])
+      used = 0
+    }
+    out[out.length - 1]?.push(...segs)
+    used += width
+  }
+  return out
 }
 
 // 'skills fired: watch ×1 · plugin-authoring ×4', first fired first; null with no skill
@@ -199,7 +208,9 @@ function failureRows(f: Failure, shown: string[]): Line[] {
 
 export function nowLines(b: TabInput): Line[] {
   const out: Line[] = []
-  if (b.isWorking) out.push(working(b, false))
+  // The turn's line here; the plan has its own section
+  if (b.isWorking) out.push(working({ ...b, plan: null }, false))
+  if (b.plan !== null) out.push(...planSection(b.plan, b.columns))
   out.push(...agentsSection(b))
   const fresh = b.failures.filter(f => f.isNew).length
   out.push([{ text: 'NEEDS A LOOK', bold: true }, ...(fresh > 0 ? [{ text: `  ${fresh} new`, tone: 'fail' as const }] : [])])

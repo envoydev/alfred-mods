@@ -2,12 +2,14 @@
 // appears only when a threshold is crossed, something failed or a turn runs.
 import { actionOf, isLive } from './agents.ts'
 import { billingOf, cacheView, minutes } from './cache.ts'
-import { bar, clock, duration, elapsed, oneLine, toneOf, tokens, usd, when } from './format.ts'
+import { bar, clock, duration, elapsed, oneLine, toneOf, tokens, usd, when, widthOf } from './format.ts'
 import { pace, turnsLeft } from './forecast.ts'
+import { narrowPlan, planLine, scoreSeg } from './planlines.ts'
+import type { PlanView, ScoresView } from './plan.ts'
 
 import type { AgentRow, Cache, Live, Meta, Pace, Turn, Usage, Window } from '../types'
 
-export type Tone = 'ok' | 'warn' | 'fail' | 'dim' | 'usage' | 'skill' | 'agents' | 'cache' | 'opus' | 'sonnet' | 'haiku' | 'fable'
+export type Tone = 'ok' | 'warn' | 'fail' | 'dim' | 'usage' | 'skill' | 'agents' | 'cache' | 'plan' | 'opus' | 'sonnet' | 'haiku' | 'fable'
 export type Seg =
   | { text: string; tone?: Tone; bold?: boolean }
   // A toned button draws its label bold in the colour of the feature it acts on
@@ -15,9 +17,12 @@ export type Seg =
   | { code: string }
   | { chart: number[] }
 export type Line = Seg[]
+// `plan`: the shown plan or task list while it runs, or for 10 minutes after it finished; `planInvalid`: the shown
+// plan's file failed its last read; `score`: the shown plan's scores, else the newest scores file's
 export type BandInput = {
   now: number; columns: number; isWorking: boolean; live: Live; usage: Usage; meta: Meta; turns: Turn[]
   newFailures: number; pace: Pace; agents: AgentRow[]; cache: Cache
+  plan: PlanView | null; planInvalid: boolean; score: ScoresView | null
 }
 
 const ORDER = ['five_hour', 'seven_day']
@@ -104,8 +109,6 @@ function times(b: BandInput, upTo = 2): Line {
   return parts.length === 0 ? [] : [{ text: ` │ ${parts.join(' · ')}`, tone: 'dim' }]
 }
 
-const widthOf = (line: Line): number => line.reduce((n, s) => n + ('text' in s ? s.text.length : 0), 0)
-
 // The gauges and as many times as fit the width, each dropped whole: Claude's first, then yours
 function withTimes(b: BandInput, line: Line): Line {
   for (const upTo of [2, 1]) {
@@ -128,10 +131,21 @@ function lastTurn(b: BandInput, isNarrow: boolean): Line {
 
 const agentCount = (k: number): string => `${k} ${k === 1 ? 'agent' : 'agents'}`
 
-// The turn, or the agents while only they run; then each live agent's action and the running Bash. Agent parts past
-// the width fold into ' +N agents'.
+// ' │ PLAN 3/5 · score 81 ▲13', each part only when known, for an idle line 1 that needs you
+function planTail(b: BandInput): Line {
+  const parts: Line[] = []
+  if (b.plan !== null) parts.push([{ text: 'PLAN', tone: 'plan' }, { text: ` ${b.plan.finished}/${b.plan.total}` }])
+  if (b.score !== null) parts.push(scoreSeg(b.score))
+  if (parts.length === 0) return []
+  return [{ text: ' │ ', tone: 'dim' }, ...parts.flatMap((p, i) => (i === 0 ? p : [{ text: ' · ' }, ...p]))]
+}
+
+// The turn, or the agents while only they run, or the plan line while a plan runs; then each live agent's action and
+// the running Bash. Past the width the agent parts fold into ' +N agents', then the Bash part goes, then the plan's
+// step, then its title is cut.
 export function working(b: BandInput, isNarrow: boolean): Line {
   const running = b.agents.filter(r => isLive(r.status))
+  if (b.plan !== null && isNarrow) return narrowPlan(b.plan, running.length)
   const n = b.meta.turnCount + 1
   const took = elapsed(b.now - (b.live.startedAt ?? b.now))
   const head: Seg = b.isWorking
@@ -146,11 +160,17 @@ export function working(b: BandInput, isNarrow: boolean): Line {
     if (calls.length > 1) bash.push({ text: ` +${calls.length - 1}`, tone: 'dim' })
   }
   const parts: Line = running.map(r => ({ text: r.action === null ? ` │ ${r.type}` : ` │ ${r.type} ▸ ${r.action}` }))
-  for (let kept = parts.length; ; kept--) {
+  const folded = (kept: number): Line => {
     const rest = parts.length - kept
-    const line: Line = [head, ...parts.slice(0, kept), ...(rest > 0 ? [{ text: ` +${agentCount(rest)}`, tone: 'dim' as const }] : []), ...bash]
-    if (kept === 0 || widthOf(line) <= b.columns) return line
+    return [...parts.slice(0, kept), ...(rest > 0 ? [{ text: ` +${agentCount(rest)}`, tone: 'dim' as const }] : [])]
   }
+  const lead: Line = b.plan === null ? [head] : planLine(b.plan, Infinity)
+  for (let kept = parts.length; kept >= 0; kept--) {
+    const line: Line = [...lead, ...folded(kept), ...bash]
+    if (widthOf(line) <= b.columns) return line
+  }
+  if (b.plan === null) return [head, ...folded(0), ...bash]
+  return [...planLine(b.plan, b.columns - widthOf(folded(0))), ...folded(0)]
 }
 
 // What the spinner adds after the engine's suffix: an agent's action and context on that agent's spinner; on the main
@@ -183,21 +203,29 @@ export function cacheWarning(b: BandInput, hasHotkey: boolean): Line | null {
   return [{ text: `⚠ cache cold in ${v.tier.isEstimate ? '≈' : ''}${minutes(v.leftMs ?? 0)} `, tone: 'warn' }, { button }]
 }
 
+// The idle line 1 with ' │ PLAN 3/5 · score 81 ▲13' while it fits
+function withPlanTail(b: BandInput, line: Line): Line {
+  const full = [...line, ...planTail(b)]
+  return line.length > 0 && widthOf(full) <= b.columns ? full : line
+}
+
 export function bandLines(b: BandInput): Line[] {
   const u = b.usage
   if (b.turns.length === 0 && u.percent === null) return []
   const isNarrow = b.columns < 100
-  const line2 = isNarrow ? narrowGauges(u) : gauges(b)
+  const invalid: Line = b.planInvalid ? [{ text: ' │ ', tone: 'dim' }, { text: 'plan file invalid', tone: 'warn' }] : []
+  const gaugeLine = isNarrow ? narrowGauges(u) : gauges(b)
+  const line2 = [...gaugeLine, ...invalid]
   const p = fiveHourPace(b)
   const isHot = (u.percent ?? 0) >= 60 || u.windows.some(w => w.percentUsed >= 60) || (p !== null && p !== 'on-pace')
   const agentsRun = b.agents.some(r => isLive(r.status))
   const warning = cacheWarning(b, true)
   if (!isHot && b.newFailures === 0 && !b.isWorking && !agentsRun && warning === null) {
-    const calm = isNarrow ? line2 : withTimes(b, line2)
-    return [calm.map(s => ('text' in s ? { text: s.text, tone: 'dim' as const } : s))]
+    const calm = isNarrow ? gaugeLine : withTimes(b, gaugeLine)
+    return [[...calm.map(s => ('text' in s ? { text: s.text, tone: 'dim' as const } : s)), ...invalid]]
   }
   if (b.isWorking) return [working(b, isNarrow), line2]
-  const out = [agentsRun ? working(b, isNarrow) : lastTurn(b, isNarrow), line2].filter(l => l.length > 0)
+  const out = [agentsRun ? working(b, isNarrow) : withPlanTail(b, lastTurn(b, isNarrow)), line2].filter(l => l.length > 0)
   const failed: Line = b.newFailures > 0
     ? [{ text: `✗ ${b.newFailures} new `, tone: 'fail' }, { button: { key: 'inspect', label: 'Inspect', hotkey: '1' } }]
     : []

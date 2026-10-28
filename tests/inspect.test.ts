@@ -52,7 +52,7 @@ for (const surface of SURFACES) {
     const { opened } = stubAll(on, { usage: SUBSCRIPTION })
     engine(on)
 
-    expect((await inspect($, 'bogus')).text).toBe('Tabs: now, usage, agents, tools, cache, timeline.')
+    expect((await inspect($, 'bogus')).text).toBe('Tabs: now, usage, agents, tools, cache, timeline, plan.')
     expect(opened).toEqual([])
   })
 

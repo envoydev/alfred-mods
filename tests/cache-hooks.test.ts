@@ -123,7 +123,8 @@ test('the 5 min toast fires once per warm stretch', async ($, on) => {
   expect(cacheToasts(toasts)).toHaveLength(2)
 })
 
-test('after a reload, a warm 1h cache still gets its toast', async ($, on) => {
+// It walks an hour of the clock, 2 to 4 s of real time: a full run on a loaded machine needs more than the kit's 5 s
+test('after a reload, a warm 1h cache still gets its toast', { timeoutMs: 15_000 }, async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: PLAN })
   engine(on)
   // A reload keeps $.state and runs register and session.start again: the cache stands warm from a switch at 0

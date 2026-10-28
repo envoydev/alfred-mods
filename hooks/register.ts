@@ -13,23 +13,38 @@ import {
 } from './cache.ts'
 import { baseCost, pruneCost, recordCost, todayUsd } from './cost.ts'
 import { drawLines } from './draw.tsx'
-import { fingerprint, printable, usd, when } from './format.ts'
+import { fingerprint, mins, oneLine, printable, usd, when } from './format.ts'
 import { mask, toast } from './mask.ts'
+import { creditedPlan, isFinishedStep, parsePlan, parseScores, planView, runs, scoresView, shownPlan, taskView, tasksAfter } from './plan.ts'
+import type { PlanView, ScoresView } from './plan.ts'
+import { PLANS_DIR, SCORES_DIR, readFolder } from './planfiles.ts'
+import { planLines, scoresLabel } from './planlines.ts'
+import { closeOf, closeSlices, closeWait, isAllWait, liveSpans, mineOf, openWait, overheadKey, sliceMs, staleKeys, stepKey, sumTimes, waitOf } from './steptime.ts'
+import type { Close } from './steptime.ts'
 import { agentsLines, cacheLines, nowLines, tabBar, timelineLines, toolsLines, usageLines } from './tabs.ts'
 import { classify, fold, targetOf, toolKey } from './outcome.ts'
 import type { CallFacts } from './outcome.ts'
-import type { AgentRow, Cache, CacheConfig, Failure, Live, Meta, Outcome, Pace, Tab, ToolStat, Totals, Turn, Usage, View, Window } from '../types'
+import type {
+  AgentRow, Cache, CacheConfig, Credit, Failure, Live, Meta, Outcome, Pace, Plan, PlanChange, Plans, Scores, Tab, TaskItem, ToolStat, Totals, Turn, Usage, View,
+  Watched, Window,
+} from '../types'
 
 // What the events said about one call. Never drawn, so a reload losing the calls in flight costs only those.
+// `pendingMs`: a call the person was asked about, settled before its `duration_ms` arrived, waits for it.
 type Call = {
   facts: CallFacts; key: string; tool: string; target: string; agentId: string | null
   settled: boolean; outcome: Outcome | null; rowId: string | null
+  startedAt: number | null; durationMs: number | null; pendingMs: number | null
 }
 
 // What outlives one hook but is no $.state value: the cache's toast timer, a [Compact] in flight, the compactions the
-// mod's own hook counted, and whether the session started in the terminal's REPL, which only session.start says and
-// /clear does not repeat
-type Held = { close: Timer | null; compacting: boolean; counted: number; isTerminal: boolean }
+// mod's own hook counted, whether the session started in the terminal's REPL, which only session.start says and
+// /clear does not repeat, the plan folders' next read and the read running, one at a time, and the step-time writes,
+// in order
+type Held = {
+  close: Timer | null; compacting: boolean; counted: number; isTerminal: boolean; reload: Timer | null; reading: Promise<void>
+  writes: Promise<void>
+}
 
 const INITIAL = {
   stats: {} as Record<string, ToolStat>,
@@ -44,7 +59,7 @@ const INITIAL = {
     model: null, effort: null, compactions: 0, lastCompactAt: null, lastPromptAt: null, lastReplyAt: null, turnCount: 0,
     waiting: [], mainCalls: 0,
   } as Meta,
-  view: { tab: 'now', shown: [] } as View,
+  view: { tab: 'now', shown: [], planSlug: null } as View,
   pace: {} as Pace,
   agents: [] as AgentRow[],
   cache: {
@@ -52,6 +67,9 @@ const INITIAL = {
     config: { pin: null, idleOff: false, idleMinTokens: 200_000, isTerminal: false },
     ratePerToken: null, rateModel: null, lastAt: null, last: null, session: { read: 0, write: 0, input: 0 }, toastedFor: null,
   } as Cache,
+  plans: { plans: [], scores: [], times: {}, overhead: {}, finished: {}, toasted: [], since: null } as Plans,
+  credit: { slices: {}, mine: {} } as Credit,
+  tasks: [] as TaskItem[],
 }
 
 // Change a tag when that value's fields change: it declines what an earlier version stored, which outlives a reload.
@@ -62,11 +80,14 @@ const live = atom({ plugin: 'session-inspector', key: 'live' } as const, INITIAL
 const usage = atom({ plugin: 'session-inspector', key: 'usage' } as const, INITIAL.usage, { shape: 'usage-1' })
 const totals = atom({ plugin: 'session-inspector', key: 'totals' } as const, INITIAL.totals, { shape: 'totals-1' })
 const meta = atom({ plugin: 'session-inspector', key: 'meta' } as const, INITIAL.meta, { shape: 'meta-3' })
-const view = atom({ plugin: 'session-inspector', key: 'view' } as const, INITIAL.view, { shape: 'view-2' })
+const view = atom({ plugin: 'session-inspector', key: 'view' } as const, INITIAL.view, { shape: 'view-3' })
 const pace = atom({ plugin: 'session-inspector', key: 'pace' } as const, INITIAL.pace, { shape: 'pace-1' })
 const agents = atom({ plugin: 'session-inspector', key: 'agents' } as const, INITIAL.agents, { shape: 'agents-2' })
 const cache = atom({ plugin: 'session-inspector', key: 'cache' } as const, INITIAL.cache, { shape: 'cache-1' })
 const tick = atom({ plugin: 'session-inspector', key: 'tick' } as const, 0)
+const plans = atom({ plugin: 'session-inspector', key: 'plans' } as const, INITIAL.plans, { shape: 'plans-1' })
+const credit = atom({ plugin: 'session-inspector', key: 'credit' } as const, INITIAL.credit, { shape: 'credit-1' })
+const tasks = atom({ plugin: 'session-inspector', key: 'tasks' } as const, INITIAL.tasks, { shape: 'tasks-1' })
 
 const NO_FACTS: Omit<CallFacts, 'tool'> = {
   checked: null, checkReason: null, asked: false, failedInTool: false, interrupted: false, classifierReason: null, hookDeny: null, result: null,
@@ -248,6 +269,254 @@ async function resetAll($: EngineInterface): Promise<void> {
   await update($, agents, () => INITIAL.agents)
   await update($, cache, () => INITIAL.cache)
   await update($, tick, () => 0)
+  await update($, plans, () => INITIAL.plans)
+  await update($, credit, () => INITIAL.credit)
+  await update($, tasks, () => INITIAL.tasks)
+}
+
+// Every session's step and overhead time in the store; this session's own totals are the credit atom's
+async function storedTimes($: EngineInterface): Promise<Record<string, unknown>> {
+  const entries: Record<string, unknown> = {}
+  for (const key of await $.store.keys()) {
+    if (key.startsWith('step:') || key.startsWith('overhead:')) entries[key] = await $.store.get(key)
+  }
+  return entries
+}
+
+// Each plan's time: every other session's from the store, this session's from its own totals
+async function timesOf($: EngineInterface, files: Watched<Plan>[]): Promise<Pick<Plans, 'times' | 'overhead'>> {
+  const entries = { ...(await storedTimes($)), ...(await read($, credit)).mine }
+  const times: Plans['times'] = {}
+  const overhead: Plans['overhead'] = {}
+  for (const w of files) {
+    const sum = sumTimes(entries, w.name)
+    times[w.name] = sum.times
+    overhead[w.name] = sum.overhead
+  }
+  return { times, overhead }
+}
+
+const statusesOfTasks = (items: TaskItem[]): string => JSON.stringify(items.map(t => [t.id, t.status]))
+
+const statusesOf = (files: Watched<Plan>[]): string =>
+  JSON.stringify(files.map(w => [w.name, w.value?.steps.map(s => [s.id, s.status]) ?? null]))
+
+// The loops named (every open one when null) close at `now`: each span goes to its keys (Decision 9) in one update,
+// so a span two closers race for counts once. This session's totals are then stored whole, in order.
+async function closeLoops($: EngineInterface, held: Held, loops: string[] | null, now: number, reopen: boolean, given?: Plans): Promise<void> {
+  const c = await read($, credit)
+  const open = Object.keys(c.slices).filter(loop => loops === null || loops.includes(loop))
+  if (open.length === 0) return
+  const p = given ?? await read($, plans)
+  const rows = await read($, agents)
+  const shown = creditedPlan(p, (await read($, view)).planSlug, (await read($, tasks)).length > 0)
+  const closes = await closesOf($, c, open, p, shown)
+  let spans: Record<string, number> = {}
+  const after = await update($, credit, cur => {
+    const closed = closeSlices(cur, closes, now, reopen)
+    spans = closed.spans
+    return closed.credit
+  })
+  // With the task list shown, the main loop's span and those of agents whose spawn was seen go to its running items
+  if (shown === 'tasks') {
+    const ms = Object.entries(spans).filter(([loop]) => loop === 'main' || rows.some(r => r.id === loop)).reduce((n, [, x]) => n + x, 0)
+    const running = (await read($, tasks)).filter(t => t.status === 'in_progress').length
+    if (ms > 0 && running > 0) {
+      await update($, tasks, list => {
+        const n = list.filter(t => t.status === 'in_progress').length
+        return n === 0 ? list : list.map(t => (t.status === 'in_progress' ? { ...t, ms: t.ms + ms / n } : t))
+      })
+    }
+  }
+  const keys = [...new Set(closes.flatMap(x => x.keys))]
+  for (const key of keys) {
+    const t = after.mine[key]
+    if (t === undefined) continue
+    const value = key.startsWith('overhead:') ? { ms: t.ms, at: now } : { ms: t.ms, isShared: t.isShared, at: now }
+    held.writes = held.writes.then(() => $.store.set(key, value)).catch(() => undefined)
+  }
+  await held.writes
+  if (keys.length === 0) return
+  const files = (await read($, plans)).plans
+  const sums = await timesOf($, files)
+  await update($, plans, x => ({ ...x, ...sums }))
+}
+
+// Where each named open loop's span goes (Decision 9)
+async function closesOf($: EngineInterface, c: Credit, loops: string[], p: Plans, shown: Watched<Plan> | 'tasks' | null): Promise<Close[]> {
+  const rows = await read($, agents)
+  const session = await $.session.id()
+  return loops.map(loop => {
+    const row = rows.find(r => r.id === loop)
+    const lines = loop === 'main' ? null : row === undefined ? undefined : { plan: row.plan, task: row.task }
+    const slice = c.slices[loop] ?? { at: 0, waitMs: 0, named: [] }
+    return closeOf(loop, slice, lines, p.plans, p.since, shown === 'tasks' ? null : shown, session)
+  })
+}
+
+// The open slices' time so far, by step id (or task id) and as overhead, for the shown plan or task list to draw
+async function liveOf($: EngineInterface, p: Plans, shown: Watched<Plan> | 'tasks' | null, now: number): Promise<{ steps: Record<string, number>; overhead: number }> {
+  const c = await read($, credit)
+  const loops = Object.keys(c.slices)
+  if (loops.length === 0 || shown === null) return { steps: {}, overhead: 0 }
+  if (shown === 'tasks') {
+    const rows = await read($, agents)
+    const ms = loops.filter(loop => loop === 'main' || rows.some(r => r.id === loop))
+      .reduce((n, loop) => n + sliceMs(c.slices[loop] ?? { at: now, waitMs: 0, named: [] }, now), 0)
+    const running = (await read($, tasks)).filter(t => t.status === 'in_progress')
+    return { steps: Object.fromEntries(running.map(t => [t.id, ms / running.length])), overhead: 0 }
+  }
+  const spans = liveSpans(c, await closesOf($, c, loops, p, shown), now)
+  const session = await $.session.id()
+  const steps: Record<string, number> = {}
+  for (const s of shown.value?.steps ?? []) {
+    const ms = spans[stepKey(shown.name, s.id, session)]
+    if (ms !== undefined) steps[s.id] = ms
+  }
+  return { steps, overhead: spans[overheadKey(shown.name, session)] ?? 0 }
+}
+
+const FINISH_SHOWN_MS = 10 * 60_000
+
+// What the band and the Plan tab draw of the plans (Decisions 5, 7, 18): the tab the shown plan or task list, the
+// band the one this session's time goes to, only while it runs or for 10 minutes after it finished this session;
+// their scores, else the newest; the rest
+type PlanDraw = {
+  shown: PlanView | null; band: PlanView | null; invalid: boolean; scores: ScoresView | null; score: ScoresView | null
+  others: string[]; otherScores: string[]; updatedAt: number | null
+}
+
+async function planDraw($: EngineInterface, now: number): Promise<PlanDraw> {
+  const p = await read($, plans)
+  const items = await read($, tasks)
+  const pinned = (await read($, view)).planSlug
+  const shown = shownPlan(p, pinned, items.length > 0)
+  const credited = creditedPlan(p, pinned, items.length > 0)
+  const tab = await drawnPlan($, p, items, shown, now)
+  const band = credited === shown ? tab : await drawnPlan($, p, items, credited, now)
+  const nameOf = (w: Watched<Plan> | 'tasks' | null): string | null => (w === null || w === 'tasks' ? null : w.name)
+  const name = nameOf(shown)
+  const scored = p.scores.filter((w): w is Watched<Scores> & { value: Scores } => w.value !== null).sort((a, b) => b.mtimeMs - a.mtimeMs)
+  const ownOf = (n: string | null) => (n === null ? undefined : scored.find(w => w.value.subject.kind === 'plan' && w.value.subject.ref === n))
+  const full = name === null ? scored[0] : ownOf(name)
+  const newest = ownOf(nameOf(credited)) ?? scored[0]
+  return {
+    shown: tab.v, band: band.isRunning ? band.v : null, invalid: shown !== null && shown !== 'tasks' && shown.isInvalid,
+    scores: full === undefined ? null : scoresView(full.value), score: newest === undefined ? null : scoresView(newest.value),
+    others: p.plans.filter(w => w.name !== name).map(w => (w.value === null ? `${w.name} (invalid)` : w.name)).sort(),
+    otherScores: scored.filter(w => w !== full).slice(0, 3).map(w => scoresLabel(w.name, w.value)),
+    updatedAt: shown === null || shown === 'tasks' ? null : shown.value?.updatedAt ?? null,
+  }
+}
+
+// One plan's view with its live time, and whether the band draws it
+async function drawnPlan($: EngineInterface, p: Plans, items: TaskItem[], w: Watched<Plan> | 'tasks' | null, now: number): Promise<{ v: PlanView | null; isRunning: boolean }> {
+  const live = await liveOf($, p, w, now)
+  if (w === 'tasks') {
+    return { v: taskView(items, live.steps), isRunning: items.some(t => t.status !== 'completed') && items.some(t => t.status !== 'pending') }
+  }
+  if (w === null || w.value === null) return { v: null, isRunning: false }
+  const doneAt = p.finished[w.name]
+  return {
+    v: planView(w.value, p.times[w.name] ?? {}, (p.overhead[w.name] ?? 0) + live.overhead, live.steps, now),
+    isRunning: runs(w, p.since) || (doneAt !== undefined && now - doneAt < FINISH_SHOWN_MS),
+  }
+}
+
+// A loop's slice opens at its turn's start; the main slice marks each live agent that names a step
+async function openSlice($: EngineInterface, loop: string, now: number): Promise<void> {
+  const named = loop === 'main' ? (await read($, agents)).filter(r => isLive(r.status)).map(markOf).filter((m): m is string => m !== null) : []
+  await update($, credit, c => ({ ...c, slices: { ...c.slices, [loop]: { at: now, waitMs: 0, named } } }))
+}
+
+const markOf = (r: AgentRow): string | null => (r.plan !== null && r.task !== null ? `${r.plan}:${r.task}` : null)
+
+// An agent naming a step, spawned or starting a turn while the main loop's turn runs, makes that turn overhead
+async function addMark($: EngineInterface, mark: string | null): Promise<void> {
+  if (mark === null) return
+  const main = (await read($, credit)).slices.main
+  if (main === undefined || main.named.includes(mark)) return
+  await update($, credit, c => {
+    const m = c.slices.main
+    return m === undefined || m.named.includes(mark) ? c : { ...c, slices: { ...c.slices, main: { ...m, named: [...m.named, mark] } } }
+  })
+}
+
+// A wait known only once its call settles goes to the slice open now, at most that slice's age, so a slice reopened
+// during the call never loses the work after the reopen
+async function addWait($: EngineInterface, loop: string, ms: number, now: number): Promise<void> {
+  if (ms <= 0 || (await read($, credit)).slices[loop] === undefined) return
+  await update($, credit, c => {
+    const s = c.slices[loop]
+    return s === undefined ? c : { ...c, slices: { ...c.slices, [loop]: { ...s, waitMs: s.waitMs + Math.min(ms, Math.max(0, now - s.at)) } } }
+  })
+}
+
+// A session resumed under its own id starts from its stored totals, so its first close adds to them
+async function seedMine($: EngineInterface): Promise<void> {
+  if (Object.keys((await read($, credit)).mine).length > 0) return
+  const mine = mineOf(await storedTimes($), await $.session.id())
+  if (Object.keys(mine).length > 0) await update($, credit, c => ({ ...c, mine: { ...mine, ...c.mine } }))
+}
+
+// The plan and scores folders read again. A step whose status changed closes and reopens the open slices first, so
+// the time before the change goes to the steps that were running then. A note the file's previous good parse this
+// session lacks, and a plan that finishes this session (its previous good parse unfinished), raise their toasts once.
+async function reloadPlans($: EngineInterface, held: Held): Promise<void> {
+  const before = await read($, plans)
+  const planFiles = await readFolder($, PLANS_DIR, before.plans, parsePlan)
+  const scoreFiles = await readFolder($, SCORES_DIR, before.scores, parseScores)
+  const now = await $.clock.now()
+  if (statusesOf(before.plans) !== statusesOf(planFiles)) await closeLoops($, held, null, now, true, before)
+  const { times, overhead } = await timesOf($, planFiles)
+  const seen = new Set(before.toasted)
+  const finished: Record<string, number> = {}
+  const due: string[] = []
+  for (const w of planFiles) {
+    const plan = w.value
+    if (plan === null || w.isInvalid) continue
+    const had = before.plans.find(b => b.name === w.name)?.value ?? null
+    if (had !== null) {
+      for (const c of newNotes(had.changes, plan.changes)) due.push(`✎ Note folded into ${c.step ?? 'the plan'}: '${oneLine(c.note ?? '', 60)}'`)
+    }
+    const key = `done:${w.name}`
+    if (!plan.steps.every(isFinishedStep) || seen.has(key)) continue
+    seen.add(key)
+    if (had !== null && !had.steps.every(isFinishedStep)) {
+      finished[w.name] = now
+      due.push(`Plan done: ${plan.title} in ${mins(planView(plan, times[w.name] ?? {}, overhead[w.name] ?? 0, {}, now).workedMs)}`)
+    }
+  }
+  const toasted = [...seen].slice(-100)
+  await update($, plans, p => ({ ...p, plans: planFiles, scores: scoreFiles, times, overhead, finished: { ...p.finished, ...finished }, toasted }))
+  for (const text of due) toast($, text)
+}
+
+// The user's notes in `after` that `before` lacks, each counted by its time, step and text, so two alike are two
+function newNotes(before: PlanChange[], after: PlanChange[]): PlanChange[] {
+  const idOf = (c: PlanChange): string => JSON.stringify([c.at, c.step, c.note])
+  const isNote = (c: PlanChange): boolean => c.kind === 'integrated' && c.source === 'user' && c.note !== null
+  const left = new Map<string, number>()
+  for (const c of before.filter(isNote)) left.set(idOf(c), (left.get(idOf(c)) ?? 0) + 1)
+  return after.filter(isNote).filter(c => {
+    const n = left.get(idOf(c)) ?? 0
+    if (n > 0) left.set(idOf(c), n - 1)
+    return n === 0
+  })
+}
+
+// Reads run one at a time, so two never raise the same toast
+function queueReload($: EngineInterface, held: Held): void {
+  held.reading = held.reading.then(() => reloadPlans($, held)).catch(() => undefined)
+}
+
+// The folders are read 300 ms after a file edit settles and after each main turn, never inside the hook
+function scheduleReload($: EngineInterface, held: Held): void {
+  held.reload?.cancel()
+  held.reload = $.clock.after(300, () => {
+    held.reload = null
+    queueReload($, held)
+  })
 }
 
 const LABEL: Record<string, string> = { five_hour: '5h', seven_day: '7d' }
@@ -323,7 +592,7 @@ async function toggleShown($: EngineInterface, id: string): Promise<void> {
   await update($, view, v => ({ ...v, shown: v.shown.includes(id) ? v.shown.filter(x => x !== id) : [...v.shown, id] }))
 }
 
-const TABS: Tab[] = ['now', 'usage', 'agents', 'tools', 'cache', 'timeline']
+const TABS: Tab[] = ['now', 'usage', 'agents', 'tools', 'cache', 'timeline', 'plan']
 
 // A main-loop compaction that stands: counted, and the cache cold, as its cached prefix is gone
 async function countCompaction($: EngineInterface, held: Held): Promise<void> {
@@ -362,12 +631,17 @@ async function isNoColor($: EngineInterface): Promise<boolean> {
 export const register: Register = on => {
   // Keyed by call id, at most 100, the oldest dropped first
   const calls = new Map<string, Call>()
-  const held: Held = { close: null, compacting: false, counted: 0, isTerminal: false }
+  const held: Held = {
+    close: null, compacting: false, counted: 0, isTerminal: false, reload: null, reading: Promise.resolve(), writes: Promise.resolve(),
+  }
 
   const remember = (id: string, tool: string): Call => {
     let call = calls.get(id)
     if (call === undefined) {
-      call = { facts: { tool, ...NO_FACTS }, key: tool, tool, target: '', agentId: null, settled: false, outcome: null, rowId: null }
+      call = {
+        facts: { tool, ...NO_FACTS }, key: tool, tool, target: '', agentId: null, settled: false, outcome: null, rowId: null,
+        startedAt: null, durationMs: null, pendingMs: null,
+      }
       calls.set(id, call)
       if (calls.size > 100) calls.delete(calls.keys().next().value as string)
     }
@@ -385,6 +659,7 @@ export const register: Register = on => {
         isTeammate: e.isTeammate === true, model: spawned.model,
       }, now)
       await update($, agents, rows => upsertSpawn(rows, row, e.resume !== undefined))
+      await addMark($, markOf(row))
     }
     return spawned
   }).catch(($, e, next) => next(e))
@@ -396,17 +671,46 @@ export const register: Register = on => {
     call.key = toolKey(e.tool, input)
     call.target = targetOf(e.tool, input, await $.session.cwd())
     call.agentId = e.agentId ?? null
+    const startedAt = await $.clock.now()
+    call.startedAt = startedAt
     if (call.agentId === null) {
-      const startedAt = await $.clock.now()
       await update($, live, l => ({ ...l, running: [...l.running, { id: e.tool_use_id, tool: e.tool, label: call.target, startedAt }] }))
     } else {
       const action = actionOf(e.tool, call.target)
       await updateRow($, call.agentId, r => ({ ...r, action }))
     }
+    const loop = call.agentId ?? 'main'
+    const isWait = isAllWait(e.tool, call.agentId === null)
+    if (isWait) await update($, credit, c => openWait(c, loop, e.tool_use_id, startedAt))
     const ran = await next(e)
     const text = ran.text ?? (typeof ran.result === 'string' ? ran.result : '')
     call.facts = { ...call.facts, result: { isError: ran.isError === true || ran.deny !== undefined, deny: ran.deny ?? null, text } }
     await settle($, e.tool_use_id, call)
+    const endedAt = await $.clock.now()
+    const ms = endedAt - startedAt
+    const wait = waitOf({ tool: e.tool, ms, isMain: call.agentId === null, isAsked: call.facts.asked, outcome: call.outcome, durationMs: call.durationMs })
+    let isClosed = false
+    if (isWait) {
+      await update($, credit, c => {
+        const closed = closeWait(c, loop, e.tool_use_id, endedAt)
+        isClosed = closed !== null
+        return closed ?? c
+      })
+    }
+    if (wait === null) call.pendingMs = ms
+    else if (!isClosed) await addWait($, loop, wait, endedAt)
+    if (e.tool === 'Write' || e.tool === 'Edit' || e.tool === 'NotebookEdit') scheduleReload($, held)
+    if (call.agentId === null && call.outcome === 'ok') {
+      const result = ran.result
+      const list = await read($, tasks)
+      const after = tasksAfter(list, e.tool, input, result)
+      if (after !== null) {
+        // As with a plan's steps, a status change closes and reopens the open slices first, so the time before it goes
+        // to the items in progress then
+        if (statusesOfTasks(after) !== statusesOfTasks(list)) await closeLoops($, held, null, await $.clock.now(), true)
+        await update($, tasks, items => tasksAfter(items, e.tool, input, result) ?? items)
+      }
+    }
     return ran
   }).catch(($, e, next) => next(e))
 
@@ -422,6 +726,20 @@ export const register: Register = on => {
   on('classic.PostToolUseFailure', ($, e, next) => {
     const call = calls.get(e.tool_use_id)
     if (call !== undefined) call.facts = { ...call.facts, failedInTool: true, interrupted: e.is_interrupt === true }
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // The tool's own time, without the permission prompt or hooks: a call the person was asked about waited the rest
+  on('classic.PostToolUse', async ($, e, next) => {
+    const call = calls.get(e.tool_use_id)
+    if (call !== undefined) {
+      call.durationMs = e.duration_ms ?? null
+      const ms = call.pendingMs
+      if (ms !== null && call.durationMs !== null) {
+        call.pendingMs = null
+        await addWait($, call.agentId ?? 'main', Math.max(0, ms - call.durationMs), await $.clock.now())
+      }
+    }
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -458,19 +776,27 @@ export const register: Register = on => {
 
   on('session.start', async ($, e, next) => {
     const started = await next(e)
-    await $.command.register({ name: 'inspect', description: 'Session metrics, agents, tool failures, cache and the timeline in a pane', argumentHint: '[now|usage|agents|tools|cache|timeline]' })
+    await $.command.register({ name: 'inspect', description: 'Session metrics, agents, tool failures, cache, the timeline and the plan in a pane', argumentHint: '[now|usage|agents|tools|cache|timeline|plan [name]]' })
     // Moves the agent rows and redraws the running times once a second
     $.clock.every(1000, () => {
       tickOnce($).catch(() => undefined)
     })
     const now = await $.clock.now()
     await pruneCost($, now)
+    for (const key of staleKeys(await storedTimes($), now)) await $.store.delete(key)
+    await seedMine($)
     const reading = await takeUsage($, await todayUsd($, now))
     await baseline($, reading)
     held.isTerminal = e.surface === 'terminal' && e.isInteractive
     await readCacheConfig($, held)
     // A reload keeps $.state but not the module's timer: a cache still warm gets its toast armed again
     await armCacheClose($, held)
+    // A plan's file must be written after this to run; a reload keeps the first start's time
+    await update($, plans, p => (p.since === null ? { ...p, since: now } : p))
+    $.clock.every(30_000, () => {
+      queueReload($, held)
+    })
+    scheduleReload($, held)
     return started
   }).catch(($, e, next) => next(e))
 
@@ -482,7 +808,11 @@ export const register: Register = on => {
       held.close = null
       calls.clear()
       await resetAll($)
-      await baseline($, await takeUsage($, await todayUsd($, await $.clock.now())))
+      const now = await $.clock.now()
+      await update($, plans, p => ({ ...p, since: now }))
+      await seedMine($)
+      scheduleReload($, held)
+      await baseline($, await takeUsage($, await todayUsd($, now)))
       const cost = e.estimated_cache_write_usd
       const tokens = e.context_tokens ?? 0
       if (e.source !== 'clear' && cost !== undefined && tokens > 0) {
@@ -515,9 +845,16 @@ export const register: Register = on => {
   }).catch(($, e, next) => next(e))
 
   on('turn.start', async ($, e, next) => {
-    if (e.agentId !== undefined) await updateRow($, e.agentId, r => ({ ...r, status: 'running', endedAt: null }))
+    const now = await $.clock.now()
+    // An agent's turn can start before its spawn resolves: its slice opens either way
+    await openSlice($, e.agentId ?? 'main', now)
+    if (e.agentId !== undefined) {
+      await updateRow($, e.agentId, r => ({ ...r, status: 'running', endedAt: null }))
+      const row = (await read($, agents)).find(r => r.id === e.agentId)
+      if (row !== undefined) await addMark($, markOf(row))
+    }
     if (e.agentId === undefined) {
-      const startedAt = await $.clock.now()
+      const startedAt = now
       // The turn answers the waiting prompt with its text; the prompts waiting before it never started a turn
       const key = fingerprint(e.text)
       const waiting = (await read($, meta)).waiting
@@ -571,6 +908,7 @@ export const register: Register = on => {
 
   on('turn.complete', async ($, e, next) => {
     const done = await next(e)
+    await closeLoops($, held, [e.agentId ?? 'main'], await $.clock.now(), false)
     if (e.agentId !== undefined && !(await read($, agents)).some(r => r.id === e.agentId)) return done
     if (e.agentId !== undefined) {
       const now = await $.clock.now()
@@ -595,6 +933,7 @@ export const register: Register = on => {
       await endTurn($, e.turnId, e.durationMs, e.reason, { tokensIn, tokensOut: u?.output_tokens ?? 0 })
       await readCacheConfig($, held)
       await armCacheClose($, held)
+      scheduleReload($, held)
     }
     return done
   }).catch(($, e, next) => next(e))
@@ -639,11 +978,21 @@ export const register: Register = on => {
     return done
   }).catch(($, e, next) => next(e))
 
-  // '/inspect [tab]': opens the pane, never on its own
+  // '/inspect [tab]': opens the pane, never on its own. '/inspect plan <name>' pins that plan; 'plan' alone clears it.
   on('command.run', { command: 'inspect' }, async ($, e) => {
-    const word = (e.args.trim().split(/\s+/)[0] ?? '').toLowerCase()
+    const words = e.args.trim().split(/\s+/)
+    const word = (words[0] ?? '').toLowerCase()
     const tab = TABS.find(t => t === (word === '' ? 'now' : word))
-    if (tab === undefined) return { text: 'Tabs: now, usage, agents, tools, cache, timeline.' }
+    if (tab === undefined) return { text: 'Tabs: now, usage, agents, tools, cache, timeline, plan.' }
+    if (tab === 'plan') {
+      const name = words[1] ?? null
+      const good = (await read($, plans)).plans.filter(w => w.value !== null).map(w => w.name).sort()
+      if (name !== null && !good.includes(name)) {
+        const asked = oneLine(printable(name), 40)
+        return { text: good.length === 0 ? `No plan named ${asked}. No plan file in ${PLANS_DIR}/.` : `No plan named ${asked}. Plans: ${good.join(', ')}.` }
+      }
+      await update($, view, v => (v.planSlug === name ? v : { ...v, planSlug: name }))
+    }
     const opened = await openInspect($, tab)
     return { text: opened.isPlaced ? 'Opened the inspect pane.' : `The inspect pane is open but not drawn: ${opened.reason}.` }
   })
@@ -652,11 +1001,13 @@ export const register: Register = on => {
     if (e.props.hasSurvey) return next(e)
     // Read so the running times redraw each second while a turn runs
     await read($, tick)
+    const now = await $.clock.now()
+    const d = await planDraw($, now)
     const lines = bandLines({
-      now: await $.clock.now(), columns: e.props.bodyColumns, isWorking: e.props.isWorking,
+      now, columns: e.props.bodyColumns, isWorking: e.props.isWorking,
       live: await read($, live), usage: await read($, usage), meta: await read($, meta), turns: await read($, turns),
       newFailures: (await read($, failures)).filter(f => f.isNew).length, pace: await read($, pace), agents: await read($, agents),
-      cache: await read($, cache),
+      cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score,
     })
     if (lines.length === 0) return next(e)
     const press = { inspect: () => inspectFromBand($), compact: () => compactNow($, held) }
@@ -678,11 +1029,12 @@ export const register: Register = on => {
     const counts = await read($, live)
     const shown = await read($, view)
     const rows = await read($, failures)
+    const d = await planDraw($, now)
     const input = {
       now, columns: e.props.bodyColumns, isWorking: counts.turnId !== null, live: counts, usage: await read($, usage),
       meta: await read($, meta), turns: await read($, turns), newFailures: rows.filter(f => f.isNew).length,
       pace: await read($, pace), failures: rows, stats: await read($, stats), totals: await read($, totals), view: shown,
-      agents: await read($, agents), cache: await read($, cache),
+      agents: await read($, agents), cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score,
     }
     const bar = tabBar(shown.tab, counts.turnId !== null, e.props.bodyColumns)
     const body = shown.tab === 'usage' ? usageLines(input)
@@ -690,6 +1042,7 @@ export const register: Register = on => {
       : shown.tab === 'cache' ? cacheLines(input)
       : shown.tab === 'tools' ? toolsLines(input)
       : shown.tab === 'timeline' ? timelineLines(input.turns, Math.max(3, e.props.scroll.bodyRows - 1 - bar.length))
+      : shown.tab === 'plan' ? planLines(d.shown, d.scores, { invalid: d.invalid, others: d.others, otherScores: d.otherScores, updatedAt: d.updatedAt, now, columns: e.props.bodyColumns })
       : nowLines(input)
     const press: Record<string, () => unknown> = {
       'tab-now': () => openInspect($, 'now'),
@@ -699,6 +1052,7 @@ export const register: Register = on => {
       'tab-cache': () => openInspect($, 'cache'),
       compact: () => compactNow($, held),
       'tab-timeline': () => openInspect($, 'timeline'),
+      'tab-plan': () => openInspect($, 'plan'),
     }
     for (const row of rows) {
       press[`show-${row.id}`] = () => toggleShown($, row.id)

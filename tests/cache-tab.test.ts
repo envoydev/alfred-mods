@@ -165,7 +165,8 @@ for (const surface of SURFACES) {
     expect(lines).not.toContain('Nothing needs a look.')
   })
 
-  test(`the Cache tab says when Claude Code should compact it itself, and the band waits for it (${surface})`, async ($, on) => {
+  // It walks an hour of the clock, 2 to 4 s of real time: a full run on a loaded machine needs more than the kit's 5 s
+  test(`the Cache tab says when Claude Code should compact it itself, and the band waits for it (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     const { clock } = stubAll(on, { usage: { ...PLAN, context: { window: 1_000_000, tokens: 210_000, percent: 21 } } })
     engine(on)
     stepEngine(on, () => MAIN)

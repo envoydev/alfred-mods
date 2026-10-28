@@ -14,11 +14,17 @@ type Options = {
   // `agents` is what `$.agent.list()` answers; `preSwitch` what the hooks beneath answer a PreModelSwitch with, such
   // as a deny; `settings` the merged settings object a read projects its key from
   agents?: AgentInfo[]; preSwitch?: ClassicResult; settings?: Record<string, unknown>
+  // The project's files by the path the mod passes, such as `.claude/session-inspector/plans/p.json`
+  files?: Record<string, FileStub>
 }
+
+// A file the mod lists and reads; `size` stands in for the text's length when given
+export type FileStub = { text: string; mtimeMs: number; size?: number }
 
 export function stubAll(on: On, o: Options = {}): {
   clock: MockClock; toasts: string[]; opened: string[]; copied: string[]; usage: { current: SessionUsage }; panes: UiPane[]
-  listed: { current: AgentInfo[]; calls: number }
+  listed: { current: AgentInfo[]; calls: number }; files: { current: Record<string, FileStub>; reads: string[] }
+  store: { get(key: string): unknown; keys(): string[] }
 } {
   const toasts: string[] = []
   const opened: string[] = []
@@ -45,6 +51,25 @@ export function stubAll(on: On, o: Options = {}): {
     return { value: listed.current }
   })
   on('settings.read', () => ({ value: (o.settings ?? {}) as Settings }))
+  // A test changes the files mid-test through `files.current`; a folder with no file in it is missing. The kit hands a
+  // hook the path resolved against the mod's folder, so a stub matches its end; `{ deny }` rejects the mod's call.
+  const files = { current: { ...(o.files ?? {}) }, reads: [] as string[] }
+  const at = (full: string, path: string): boolean => full === path || full.endsWith(`/${path}`)
+  on('fs.list', (_, e) => {
+    const dir = e.path.replace(/\/$/, '')
+    const inDir = Object.entries(files.current).filter(([path]) => at(dir, path.slice(0, path.lastIndexOf('/'))))
+    if (inDir.length === 0) return { deny: `ENOENT: no such directory, ${e.path}` }
+    return {
+      value: inDir.map(([path, f]) => ({
+        name: path.slice(path.lastIndexOf('/') + 1), kind: 'file' as const, size: f.size ?? f.text.length, mtimeMs: f.mtimeMs, isLink: false,
+      })),
+    }
+  })
+  on('fs.read', (_, e) => {
+    const found = Object.entries(files.current).find(([path]) => at(e.path, path))
+    if (found !== undefined) files.reads.push(found[0])
+    return found === undefined ? { deny: `ENOENT: no such file, ${e.path}` } : { value: found[1].text }
+  })
   on('ui.toast', (_, e) => {
     toasts.push(e.text)
     return { value: undefined }
@@ -55,14 +80,28 @@ export function stubAll(on: On, o: Options = {}): {
   })
   // The classic events the mod hooks have nothing beneath them in a test
   on('classic.PostToolUseFailure', () => ({}))
+  on('classic.PostToolUse', () => ({}))
   on('classic.PermissionDenied', () => ({}))
   on('classic.SessionStart', () => ({}))
   on('classic.PostModelSwitch', () => ({}))
   on('classic.PreModelSwitch', () => o.preSwitch ?? {})
   const clock = mock.clock(on, { now: o.now ?? 0 })
-  mock.store(on, o.store ?? {})
+  // The store, kept here rather than by the kit's mock so a test can read what the mod wrote: a test's `$` has no
+  // store of its own. Values go through JSON as the real store's do; keys keep their insertion order.
+  const stored = new Map<string, unknown>(Object.entries(o.store ?? {}))
+  on('store.get', (_, e) => ({ value: stored.get(e.key) }))
+  on('store.set', (_, e) => {
+    stored.set(e.key, JSON.parse(JSON.stringify(e.value)) as unknown)
+    return { value: undefined }
+  })
+  on('store.delete', (_, e) => {
+    stored.delete(e.key)
+    return { value: undefined }
+  })
+  on('store.keys', () => ({ value: [...stored.keys()] }))
+  const store = { get: (key: string): unknown => stored.get(key), keys: (): string[] => [...stored.keys()] }
   mock.env(on, o.env ?? {})
-  return { clock, toasts, opened, copied, usage, panes, listed }
+  return { clock, toasts, opened, copied, usage, panes, listed, files, store }
 }
 
 // Claude Code's own answers to the events a session raises, for a test that drives a whole turn. A test hooks an
@@ -149,4 +188,10 @@ export async function rows(ui: { drawn: () => Promise<RenderElement> }): Promise
   }
   walk(await ui.drawn())
   return out
+}
+
+// A call a test leaves held past its end: the kit rejects it once the test's stubs are gone, which is expected, so the
+// rejection is caught rather than left for the file's end
+export function held(call: Promise<unknown>): void {
+  void call.catch(() => undefined)
 }

@@ -11,7 +11,7 @@ const show = (text: string): string => mask(printable(text))
 
 const COLOR: Record<Exclude<Tone, 'dim'>, string> = {
   ok: '#22c55e', warn: '#f59e0b', fail: '#ef4444', usage: '#60a5fa', skill: '#65a30d', agents: '#f472b6', cache: '#22d3ee',
-  opus: '#ff8c1a', sonnet: '#3d9bff', haiku: '#19c3a6', fable: '#d16bff',
+  opus: '#ff8c1a', sonnet: '#3d9bff', haiku: '#19c3a6', fable: '#d16bff', plan: '#ca8a04',
 }
 
 // With NO_COLOR set, no colour at all: the glyphs carry the meaning

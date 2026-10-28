@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, RenderElement, RenderSurface, SessionUsage } from 'claude-code'
 
-import { SPAWN, SPINNER, START, engine, rows, spawns, step, stepEngine, stubAll } from './kit.ts'
+import { SPAWN, SPINNER, START, engine, held, rows, spawns, step, stepEngine, stubAll } from './kit.ts'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const AT_17: SessionUsage = { startedAt: 0, context: { window: 200_000, tokens: 34_000, percent: 17 }, rateLimits: [] }
@@ -34,7 +34,7 @@ for (const surface of SURFACES) {
     await $.session.start(START)
     await $.agent.spawn({ ...SPAWN, description: 'one' })
     await $.agent.spawn({ ...SPAWN, description: 'two' })
-    void $.tool.call(grep())
+    held($.tool.call(grep()))
     await clock.settle()
 
     expect(await rows(await spinner($, surface, 'main'))).toEqual(['Sauteing… Grep AuthService · 17% · 2 agents'])
@@ -55,7 +55,7 @@ for (const surface of SURFACES) {
     stepEngine(on, () => USAGE)
     await $.agent.spawn(SPAWN)
     await step($, { turnId: 'x', index: 0, model: 'claude-haiku-5-5', messageCount: 3, agentId: 'a1' })
-    void $.tool.call(grep({ agentId: 'a1' }))
+    held($.tool.call(grep({ agentId: 'a1' })))
     await clock.settle()
 
     expect(await rows(await spinner($, surface, 'a1'))).toEqual(['Sauteing… Grep AuthService · ctx 31k'])
@@ -66,7 +66,7 @@ for (const surface of SURFACES) {
     engineSpinner(on, clock)
     engine(on, ['tool.call'])
     await $.session.start(START)
-    void $.tool.call({ tool: 'Bash', command: 'npm test', description: 'Run \x1b[31mred\x1b[0m tests\nmore' })
+    held($.tool.call({ tool: 'Bash', command: 'npm test', description: 'Run \x1b[31mred\x1b[0m tests\nmore' }))
     await clock.settle()
 
     expect(await rows(await spinner($, surface, 'main'))).toEqual(['Sauteing… Bash Run red tests · 17%'])
@@ -76,7 +76,7 @@ for (const surface of SURFACES) {
     const { clock } = stubAll(on)
     engineSpinner(on, clock)
     engine(on, ['tool.call'])
-    void $.tool.call({ tool: 'Bash', command: 'npm test', description: 'x'.repeat(80) })
+    held($.tool.call({ tool: 'Bash', command: 'npm test', description: 'x'.repeat(80) }))
     await clock.settle()
 
     const [line] = await rows(await spinner($, surface, 'main'))

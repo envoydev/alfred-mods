@@ -27,6 +27,14 @@ export function duration(ms: number): string {
   return m === 0 ? `${Math.floor(s / 3600)}h` : `${Math.floor(s / 3600)}h ${m}m`
 }
 
+// A plan time in whole minutes: '<1m', '12m', '1h 37m', '2h'
+export function mins(ms: number): string {
+  const m = Math.round(ms / 60_000)
+  if (ms < 60_000 || m < 1) return '<1m'
+  if (m < 60) return `${m}m`
+  return m % 60 === 0 ? `${m / 60}h` : `${Math.floor(m / 60)}h ${m % 60}m`
+}
+
 export function elapsed(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000))
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
@@ -69,6 +77,11 @@ export function fingerprint(text: string): string {
 export function oneLine(text: string, max: number): string {
   const line = text.split(/\r?\n/).map(l => l.trim()).find(l => l !== '') ?? ''
   return line.length > max ? `${line.slice(0, max - 1)}…` : line
+}
+
+// A line's width in columns: its texts' lengths, as buttons, code and charts stand beside it
+export function widthOf(line: readonly object[]): number {
+  return line.reduce<number>((n, s) => n + ('text' in s && typeof s.text === 'string' ? s.text.length : 0), 0)
 }
 
 export type Family = 'opus' | 'sonnet' | 'haiku' | 'fable'

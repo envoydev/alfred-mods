@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { RenderSurface } from 'claude-code'
 
-import { PRESENTATION, SPAWN, engine, rows, spawns, step, stepEngine, stubAll } from './kit.ts'
+import { PRESENTATION, SPAWN, engine, held, rows, spawns, step, stepEngine, stubAll } from './kit.ts'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const PANE = { title: 'Inspect', isFocused: false, bodyColumns: 100, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 30 }, view: {} }
@@ -19,19 +19,19 @@ const grep = (more: object = {}) => ({ tool: 'Grep', pattern: 'AuthService', ...
 const isGrep = (tool: string): boolean => tool === 'Grep'
 
 for (const surface of SURFACES) {
-  test(`a docked pane too narrow for six tabs wraps the bar after the third, every name whole (${surface})`, async ($, on) => {
+  test(`a docked pane too narrow for seven tabs wraps by width, every name whole (${surface})`, async ($, on) => {
     stubAll(on)
     engine(on)
     await inspect($, 'agents')
 
-    // Fullscreen docks the pane at about 46 columns; one bar of six tabs needs 60
+    // Fullscreen docks the pane at about 46 columns; one bar of seven tabs needs 69
     const narrow = await $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: { ...PANE, bodyColumns: 46 } })
     const lines = await rows(narrow)
-    expect(lines[0]).toBe('Now Usage  Agents  ')
-    expect(lines[1]).toBe('Tools Cache Timeline ')
+    expect(lines[0]).toBe('Now Usage  Agents  Tools ')
+    expect(lines[1]).toBe('Cache Timeline Plan ')
     narrow.unmount()
 
-    expect((await rows(await pane($, surface)))[0]).toBe('Now Usage  Agents  Tools Cache Timeline ')
+    expect((await rows(await pane($, surface)))[0]).toBe('Now Usage  Agents  Tools Cache Timeline Plan ')
   })
 
   test(`the Agents tab draws the main loop as the root and each agent under the one that started it (${surface})`, async ($, on) => {
@@ -91,7 +91,7 @@ for (const surface of SURFACES) {
     await $.tool.call({ tool: 'Read', file_path: '/w/a.ts', agentId: 'a1' })
     await $.tool.call({ tool: 'Read', file_path: '/w/b.ts', agentId: 'a1' })
     await $.tool.call({ tool: 'Bash', command: 'false', agentId: 'a1' })
-    void $.tool.call(grep({ agentId: 'a1' }))
+    held($.tool.call(grep({ agentId: 'a1' })))
     await clock.settle()
     await inspect($, 'agents')
 
@@ -166,8 +166,8 @@ for (const surface of SURFACES) {
     await $.agent.spawn({ ...SPAWN, subagentType: 'Plan', description: 'two' })
     await $.agent.spawn({ ...SPAWN, description: 'three' })
     await step($, { turnId: 'x', index: 0, model: 'claude-haiku-5-5', effort: 'medium', messageCount: 3, agentId: 'a1' })
-    void $.tool.call(grep({ agentId: 'a1' }))
-    void $.tool.call({ tool: 'Read', file_path: '/w/src/auth/token.ts', agentId: 'a2' })
+    held($.tool.call(grep({ agentId: 'a1' })))
+    held($.tool.call({ tool: 'Read', file_path: '/w/src/auth/token.ts', agentId: 'a2' }))
     await $.turn.complete(complete('x3', { agentId: 'a3' }))
     await clock.settle()
     await inspect($, 'now')

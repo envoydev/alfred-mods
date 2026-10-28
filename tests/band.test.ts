@@ -5,7 +5,7 @@ import type { On, RenderElement, RenderSurface, SessionRateLimit, SessionUsage }
 import { drawLines } from '../hooks/draw.tsx'
 import { clock, when } from '../hooks/format.ts'
 import { mask } from '../hooks/mask.ts'
-import { SPAWN, START, engine, rows, spawns, stubAll } from './kit.ts'
+import { SPAWN, START, engine, held, rows, spawns, stubAll } from './kit.ts'
 
 const SURFACES = ['terminal', 'desktop'] as const
 // Three hours before the 5h window resets, three days before the 7d one: each reset as the band words it
@@ -242,8 +242,8 @@ for (const surface of SURFACES) {
     await $.turn.start({ text: 'q', turnId: 't1' })
     await $.agent.spawn({ ...SPAWN, subagentType: 'Explore', description: 'one' })
     await $.agent.spawn({ ...SPAWN, subagentType: 'Plan', description: 'two' })
-    void $.tool.call(grep({ agentId: 'a1' }))
-    void $.tool.call({ tool: 'Read', file_path: '/w/src/auth/token.ts', agentId: 'a2' })
+    held($.tool.call(grep({ agentId: 'a1' })))
+    held($.tool.call({ tool: 'Read', file_path: '/w/src/auth/token.ts', agentId: 'a2' }))
     await clock.settle()
 
     const lines = await rows(await mount($, surface, band(true)))
@@ -255,7 +255,7 @@ for (const surface of SURFACES) {
     slowCallsAndSpawns(on, clock)
     await oneTurn($)
     await $.agent.spawn({ ...SPAWN, subagentType: 'Explore', description: 'one' })
-    void $.tool.call(grep({ agentId: 'a1' }))
+    held($.tool.call(grep({ agentId: 'a1' })))
     await clock.settle()
 
     expect((await rows(await mount($, surface, band(false))))[0]).toBe('⟳ 1 agent │ Explore ▸ Grep AuthService')
@@ -268,7 +268,7 @@ for (const surface of SURFACES) {
     await $.turn.start({ text: 'q', turnId: 't1' })
     for (const [description, id, letter] of [['one', 'a1', 'a'], ['two', 'a2', 'b'], ['three', 'a3', 'c']]) {
       await $.agent.spawn({ ...SPAWN, subagentType: 'Explore', description: description as string })
-      void $.tool.call(grep({ agentId: id, pattern: (letter as string).repeat(40) }))
+      held($.tool.call(grep({ agentId: id, pattern: (letter as string).repeat(40) })))
     }
     await clock.settle()
 
