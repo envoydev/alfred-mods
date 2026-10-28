@@ -1,6 +1,6 @@
 // The Plan tab, the Now tab's PLAN section and the band's plan line, from the plan and scores views to lines of
 // styled segments. Every title, note and finding is file content: draw.tsx makes each printable and masks it.
-import { bar, mins, oneLine, widthOf } from './format.ts'
+import { bar, fitLine, mins, widthOf } from './format.ts'
 import type { Line, Seg } from './band.ts'
 import type { PlanView, ScoresView, StepRow } from './plan.ts'
 import type { Finding, Scores, StepStatus } from '../types'
@@ -17,7 +17,8 @@ const GLYPH: Record<StepStatus, Seg> = {
 const num = (n: number): string => String(Math.round(n * 10) / 10)
 // '×1.2'; under 0.1 its first significant digit, '×0.01', never '×0.0'
 const ratioText = (r: number): string => (r >= 0.1 ? r.toFixed(1) : r.toPrecision(1))
-const cut = (text: string, max: number): string => (text.length > max ? `${text.slice(0, Math.max(1, max - 1))}…` : text)
+// Cut on the masked text, never inside a REC token
+const cut = (text: string, max: number): string => fitLine(text, Math.max(2, max))
 const agentCount = (k: number): string => `${k} ${k === 1 ? 'agent' : 'agents'}`
 
 // Some open step has an estimate, or the task list has its 3 completed: the time left is known
@@ -33,7 +34,7 @@ function planBar(percent: number): Line {
 // 'Token refresh ▰▰▰▱▱ 3/5 · 60% · 1h 12m · ≈30m left │ ▶ Update interceptor', or 'Token refresh ▰▰▰▰▰ done ✓ in 1h 19m'
 // once every step is finished. Past `columns` the step part goes, then the title is cut.
 export function planLine(v: PlanView, columns: number): Line {
-  const title = oneLine(v.title, 80)
+  const title = fitLine(v.title, 80)
   const rest: Line = v.isFinished
     ? [...planBar(100), { text: ` done ✓ in ${mins(v.workedMs)}` }]
     : [
@@ -41,7 +42,7 @@ export function planLine(v: PlanView, columns: number): Line {
       { text: ` · ${mins(v.workedMs)}${hasLeft(v) ? ` · ≈${mins(v.leftMs)} left` : ''}` },
     ]
   const first = v.running[0]
-  const step: Line = first === undefined ? [] : [{ text: ` │ ▶ ${oneLine(first.step.title, 80)}` }]
+  const step: Line = first === undefined ? [] : [{ text: ` │ ▶ ${fitLine(first.step.title, 80)}` }]
   if (v.running.length > 1) step.push({ text: ` +${v.running.length - 1}`, tone: 'dim' })
   const full: Line = [{ text: `${title} ` }, ...rest, ...step]
   if (widthOf(full) <= columns) return full
@@ -52,7 +53,7 @@ export function planLine(v: PlanView, columns: number): Line {
 export function narrowPlan(v: PlanView, agents: number): Line {
   const first = v.running[0]
   const head: Seg = v.isFinished ? { text: `✓ done in ${mins(v.workedMs)}`, bold: true }
-    : first !== undefined ? { text: `⟳ ${oneLine(first.step.id, 12)} ${mins(first.actualMs)}`, bold: true }
+    : first !== undefined ? { text: `⟳ ${fitLine(first.step.id, 12)} ${mins(first.actualMs)}`, bold: true }
     : { text: `⟳ ${v.finished}/${v.total}`, bold: true }
   return agents > 0 ? [head, { text: ` · ${agentCount(agents)}` }] : [head]
 }
@@ -78,14 +79,14 @@ function stepRows(rows: StepRow[], indent: string, withEstimate: boolean, column
     return est === '' ? times[i] ?? '' : `${(times[i] ?? '').padEnd(timeWidth)}   ${est}`
   })
   const rightWidth = Math.max(0, ...rights.map(t => t.length))
-  const natural = rows.map(r => `${oneLine(r.step.id, 12)} ${oneLine(r.step.title, 60)}`.length + (r.notes.length > 0 ? NOTE.length + 3 : 0))
+  const natural = rows.map(r => `${fitLine(r.step.id, 12)} ${fitLine(r.step.title, 60)}`.length + (r.notes.length > 0 ? NOTE.length + 3 : 0))
   const room = Math.max(12, columns - indent.length - 2 - (rightWidth > 0 ? rightWidth + 3 : 0))
   const isTight = Math.max(0, ...natural) > room
   const mark = isTight ? '✎' : NOTE
   const lefts = rows.map(r => {
-    const id = oneLine(r.step.id, 12)
+    const id = fitLine(r.step.id, 12)
     const marked = r.notes.length > 0 ? mark.length + (isTight ? 1 : 3) : 0
-    return `${id} ${isTight ? cut(oneLine(r.step.title, 60), room - id.length - 1 - marked) : oneLine(r.step.title, 60)}`
+    return `${id} ${isTight ? cut(fitLine(r.step.title, 60), room - id.length - 1 - marked) : fitLine(r.step.title, 60)}`
   })
   const widths = rows.map((r, i) => (lefts[i] ?? '').length + (r.notes.length > 0 ? mark.length + (isTight ? 1 : 3) : 0))
   const leftWidth = Math.max(0, ...widths)
@@ -96,7 +97,7 @@ function stepRows(rows: StepRow[], indent: string, withEstimate: boolean, column
     const right = rights[i] ?? ''
     if (right !== '') line.push({ text: `${' '.repeat(leftWidth - (widths[i] ?? 0) + 3)}${right}` })
     out.push(line)
-    if (withEstimate) for (const note of r.notes) out.push([{ text: `${indent}     '${oneLine(note, 200)}'` }])
+    if (withEstimate) for (const note of r.notes) out.push([{ text: `${indent}     '${fitLine(note, 200)}'` }])
   })
   return out
 }
@@ -104,7 +105,7 @@ function stepRows(rows: StepRow[], indent: string, withEstimate: boolean, column
 // The Now tab's section, first: 'PLAN   Token refresh · 3/5 · ≈30m left of ≈1h 37m', then the last finished step,
 // each running step and the next one, without the estimates
 export function planSection(v: PlanView, columns: number): Line[] {
-  const head: Line = [{ text: 'PLAN', bold: true, tone: 'plan' }, { text: `   ${oneLine(v.title, 60)} · ${v.finished}/${v.total}` }]
+  const head: Line = [{ text: 'PLAN', bold: true, tone: 'plan' }, { text: `   ${fitLine(v.title, 60)} · ${v.finished}/${v.total}` }]
   if (v.isFinished) head.push({ text: ` · done in ${mins(v.workedMs)}` })
   else if (hasLeft(v)) head.push({ text: ` · ≈${mins(v.leftMs)} left of ≈${mins(v.totalMs)}` })
   const shown = [v.lastFinished, ...v.running, v.next].filter((r, i, all): r is StepRow => r !== null && all.indexOf(r) === i)
@@ -131,7 +132,7 @@ export function scoresLabel(name: string, s: Scores): string {
   return `${name} (${s.subject.kind})${last === undefined ? '' : ` R${last.round} ${num(last.total)}`}`
 }
 
-const findingText = (f: Finding): string => `${f.id === null ? '' : `${oneLine(f.id, 12)} `}${oneLine(f.text, 80)}${f.by === null ? '' : ` (${oneLine(f.by, 12)})`}`
+const findingText = (f: Finding): string => `${f.id === null ? '' : `${fitLine(f.id, 12)} `}${fitLine(f.text, 80)}${f.by === null ? '' : ` (${fitLine(f.by, 12)})`}`
 
 // '  fixed:  F1 No migration rollback (S3)', the label once and the rest beneath it
 function findingRows(label: string, texts: string[]): Line[] {
@@ -176,7 +177,7 @@ export function planLines(
   const out: Line[] = []
   if (v === null) out.push([{ text: 'No plan file in .claude/session-inspector/plans/, and no task list this session.', tone: 'dim' }])
   else {
-    const head: Line = [{ text: 'Plan', bold: true, tone: 'plan' }, { text: ` · ${oneLine(v.title, 60)}`, bold: true }, { text: `   ${v.finished}/${v.total}` }]
+    const head: Line = [{ text: 'Plan', bold: true, tone: 'plan' }, { text: ` · ${fitLine(v.title, 60)}`, bold: true }, { text: `   ${v.finished}/${v.total}` }]
     if (v.isFinished) head.push({ text: ` · done in ${mins(v.workedMs)}` })
     else if (hasLeft(v)) {
       head.push({ text: ` · ≈${mins(v.totalMs)} total · ≈${mins(v.leftMs)} left` })
@@ -186,7 +187,7 @@ export function planLines(
     out.push(head)
     if (o.invalid) out.push([{ text: 'plan file invalid: showing the last good read', tone: 'warn' }])
     out.push(...stepRows(v.rows, '', true, o.columns))
-    for (const note of v.planNotes) out.push([{ text: '✎ ', tone: 'plan' }, { text: `'${oneLine(note, 200)}'` }])
+    for (const note of v.planNotes) out.push([{ text: '✎ ', tone: 'plan' }, { text: `'${fitLine(note, 200)}'` }])
     if (v.overheadMs > 0) out.push([{ text: `Overhead  ${mins(v.overheadMs)}` }])
   }
   if (s !== null) out.push(...scoreLines(s))

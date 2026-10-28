@@ -1,19 +1,22 @@
 // Each /inspect tab, from the session's values to lines of styled segments.
 import { agentTree, isLive, toolSummary } from './agents.ts'
-import { barSegs, cacheWarning, pctSeg, windowsInOrder, working } from './band.ts'
+import { REC_MARK, barSegs, cacheWarning, pctSeg, windowsInOrder, working } from './band.ts'
 import { IDLE_COMPACT_MS, billingOf, cacheLine, cacheView, selfCompacts, toastAt } from './cache.ts'
 import type { BandInput, Line, Seg, Tone } from './band.ts'
-import { clock, duration, modelParts, modelText, oneLine, printable, tokens, usd, when } from './format.ts'
+import { clock, duration, fitLine, modelParts, modelText, printable, tokens, usd, when } from './format.ts'
 import { pace, turnsLeft } from './forecast.ts'
+import { handoffLines } from './handoff.ts'
+import type { HandoffView } from './handoff.ts'
 import { planSection } from './planlines.ts'
+import { recStatus } from './rec.ts'
 
 import type { AgentRow, Failure, Tab, ToolStat, Totals, Turn, View } from '../types'
 
-export type TabInput = BandInput & { failures: Failure[]; stats: Record<string, ToolStat>; totals: Totals; view: View }
+export type TabInput = BandInput & { failures: Failure[]; stats: Record<string, ToolStat>; totals: Totals; view: View; handoff?: HandoffView }
 
 const TABS: [Tab, string, string, Tone?][] = [
   ['now', 'Now', 'n'], ['usage', 'Usage', 'u', 'usage'], ['agents', 'Agents', 'a', 'agents'], ['tools', 'Tools', 't'],
-  ['cache', 'Cache', 'c', 'cache'], ['timeline', 'Timeline', 'l'], ['plan', 'Plan', 'p', 'plan'],
+  ['cache', 'Cache', 'k', 'cache'], ['timeline', 'Timeline', 'l'], ['plan', 'Plan', 'p', 'plan'],
 ]
 
 // The current tab is bold text in its feature's colour; the others are buttons. The bar wraps by width (a docked pane
@@ -112,7 +115,7 @@ export function agentsLines(b: TabInput): Line[] {
     if (!isLive(r.status) && r.report !== null) {
       const isShown = b.view.shown.includes(`report:${r.id}`)
       out.push([
-        { text: indent, tone: 'dim' }, { text: `result: ${oneLine(printable(r.report), 60)}` }, { text: ' ' },
+        { text: indent, tone: 'dim' }, { text: `result: ${fitLine(printable(r.report), 60)}` }, { text: ' ' },
         { button: { key: `report-${r.id}`, label: isShown ? 'Hide report' : 'Show report' } },
       ])
       if (isShown) out.push([{ code: r.report }])
@@ -208,9 +211,12 @@ function failureRows(f: Failure, shown: string[]): Line[] {
 
 export function nowLines(b: TabInput): Line[] {
   const out: Line[] = []
+  // REC's status first while it is on
+  if (b.rec !== undefined && b.rec.level !== 'off') out.push([REC_MARK, { text: recStatus(b.rec.level, b.rec.words).slice('● REC'.length) }])
   // The turn's line here; the plan has its own section
   if (b.isWorking) out.push(working({ ...b, plan: null }, false))
   if (b.plan !== null) out.push(...planSection(b.plan, b.columns))
+  if (b.handoff !== undefined) out.push(...handoffLines(b.handoff, b.columns))
   out.push(...agentsSection(b))
   const fresh = b.failures.filter(f => f.isNew).length
   out.push([{ text: 'NEEDS A LOOK', bold: true }, ...(fresh > 0 ? [{ text: `  ${fresh} new`, tone: 'fail' as const }] : [])])
@@ -240,8 +246,8 @@ export function usageLines(b: TabInput): Line[] {
     ctx.push(...barSegs(u.percent), pctSeg(u.percent))
     if (u.tokens !== null && u.window !== null) ctx.push({ text: `   ${tokens(u.tokens)} / ${tokens(u.window)}`, tone: 'dim' })
     const series = b.turns.flatMap(t => (t.contextPercent === null ? [] : [t.contextPercent]))
-    const left = turnsLeft(series)
-    if (left !== null) ctx.push({ text: `   ≈${left} turns to 80%`, tone: 'dim' })
+    const left = turnsLeft(series, b.forecast?.at)
+    if (left !== null) ctx.push({ text: `   ≈${left} turns to ${b.forecast?.label ?? 80}%`, tone: 'dim' })
   }
   out.push(ctx)
   const series = b.turns.flatMap(t => (t.contextPercent === null ? [] : [t.contextPercent]))

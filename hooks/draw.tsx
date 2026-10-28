@@ -11,7 +11,7 @@ const show = (text: string): string => mask(printable(text))
 
 const COLOR: Record<Exclude<Tone, 'dim'>, string> = {
   ok: '#22c55e', warn: '#f59e0b', fail: '#ef4444', usage: '#60a5fa', skill: '#65a30d', agents: '#f472b6', cache: '#22d3ee',
-  opus: '#ff8c1a', sonnet: '#3d9bff', haiku: '#19c3a6', fable: '#d16bff', plan: '#ca8a04',
+  opus: '#ff8c1a', sonnet: '#3d9bff', haiku: '#19c3a6', fable: '#d16bff', plan: '#ca8a04', handoff: '#a78bfa',
 }
 
 // With NO_COLOR set, no colour at all: the glyphs carry the meaning
@@ -54,7 +54,7 @@ export function drawLines($: EngineInterface, e: ResolveInput, lines: Line[], o:
   const segment = (seg: Exclude<Seg, TextSeg>) => {
     if ('code' in seg) return <Code source={show(seg.code)} />
     if ('chart' in seg) return chart($, e, seg.chart, o.noColor)
-    const { key, label, hotkey, tone } = seg.button
+    const { key, label, hotkey, tone, plain } = seg.button
     const press = () => {
       void o.press[key]?.()
     }
@@ -62,7 +62,7 @@ export function drawLines($: EngineInterface, e: ResolveInput, lines: Line[], o:
     // hides it; a letter answers only in the focused pane, and its button keeps the brackets
     const props = {
       key, label: show(label), onPress: press,
-      ...(hotkey === undefined ? {} : { hotkey }), ...(/^\d$/.test(hotkey ?? '') ? { plain: true as const } : {}),
+      ...(hotkey === undefined ? {} : { hotkey }), ...(plain === true || /^\d$/.test(hotkey ?? '') ? { plain: true as const } : {}),
     }
     if (tone === undefined) return <Button {...props} />
     return <Button {...props}><Text {...style({ tone, bold: true }, o.noColor)}>{show(label)}</Text></Button>
@@ -83,4 +83,22 @@ export function drawLines($: EngineInterface, e: ResolveInput, lines: Line[], o:
     return <Box flexDirection="row">{out}</Box>
   }
   return <Box flexDirection="column">{lines.map(row)}</Box>
+}
+
+// Lines above an Input and lines below it, as the rec pane draws them: the field takes the keys as the pane opens. A
+// surface with no Input (mobile) draws the lines alone.
+export function drawWithInput(
+  $: EngineInterface, e: ResolveInput, top: Line[], input: { key: string; label: string; submitLabel: string; onSubmit: (value: string) => void }, bottom: Line[],
+  o: { noColor: boolean; press: Record<string, () => unknown> },
+): RenderElement {
+  const els = $.ui.resolve(e)
+  if (!('Input' in els)) return drawLines($, e, [...top, ...bottom], o)
+  const { Box, Input } = els
+  return (
+    <Box flexDirection="column">
+      {drawLines($, e, top, o)}
+      <Input key={input.key} label={show(input.label)} submitLabel={show(input.submitLabel)} autoFocus onSubmit={(value: string) => input.onSubmit(value)} />
+      {drawLines($, e, bottom, o)}
+    </Box>
+  )
 }

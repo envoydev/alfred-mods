@@ -8,9 +8,10 @@ It works on Claude Code alone. With [Alfred Code](https://github.com/envoydev/al
 project, it shows more, read from the one status file the stack publishes for each session. It never needs Alfred
 Code, and nothing it draws breaks without it.
 
-**Status: Phase 3 (plan and scores) built:** the band with its plan line, and `/inspect` with Now, Usage, Agents,
-Tools, Cache, Timeline and Plan. Later phases add handoff, REC and compact rows; the design, the features and the
-build phases are in [the session-inspector brief](docs/session-inspector-brief.md).
+**Status: Phase 4 (handoff, REC and compact rows) built:** the band with its plan line and handoff ask, `/inspect`
+with Now, Usage, Agents, Tools, Cache, Timeline and Plan, and `/auto-handoff`, `/rec` and `/quiet`. Phase 5 adds the
+Alfred Code integration; the design, the features and the build phases are in
+[the session-inspector brief](docs/session-inspector-brief.md).
 
 ## What it shows
 
@@ -18,20 +19,114 @@ build phases are in [the session-inspector brief](docs/session-inspector-brief.m
   and daily cost, failed and denied tool calls with their reasons, running subagents, cache expiry, plan progress, a
   handoff prompt of its own, an on-screen mask for recordings (`/rec`) and compact tool rows (`/quiet`), in one calm
   band and an `/inspect` pane.
-- **With Alfred Code:** also the stack's mode banner, the context runway measured against the stack's resume trigger,
-  and `[Handoff]` filling the stack's ready handoff prompt instead of its own.
+- **With Alfred Code:** where the stack publishes its status file, the stack handles a full context and the mod's
+  handoff stands down ([Handoff](#handoff)). Phase 5 adds the stack's mode banner, the context runway measured against
+  the stack's resume trigger, and `[Handoff]` filling the stack's ready handoff prompt.
 
 ## Commands
 
 - `/inspect [now|usage|agents|tools|cache|timeline|plan [name]]` opens the pane on a tab, Now when none is named.
-  `/inspect plan <name>` pins the plan file `<name>.json`; `/inspect plan` alone returns to the newest.
+  `/inspect plan <name>` pins the plan file `<name>.json`; `/inspect plan` alone returns to the newest. In the pane,
+  `n`, `u`, `a`, `t`, `k`, `l` and `p` switch tabs.
+- `/auto-handoff [ask|auto|off|at <percent>|now]` sets how the mod saves a handoff before the context fills: `ask`
+  (the default) asks, `auto` saves by itself, `off` does neither, `at <n>` sets the threshold (a whole percent from 10
+  to 95, 80 by default) and `now` saves at once in any mode. With no argument it prints the state. See
+  [Handoff](#handoff).
+- `/rec [on|strict|off|test|words]` masks what is on screen for a recording: `on` or a bare `/rec` turns it on, `strict`
+  hides more, `off` turns it off, `test` checks the masker and `words` opens the private-words pane. See
+  [Recording mode](#recording-mode).
+- `/quiet [on|off]` draws one line per tool call in place of the command and its output preview. A failure keeps up to
+  3 error lines, runs of read-only calls fold into one line, and a blocked call shows the rule's first sentence.
+  `/quiet off`, Ctrl+O or `[Show]` in the Tools tab bring the full rows back.
+
+  ```text
+  ⏺ Bash · Show CI failure lines 1038-1042 · 30 lines ✓
+  ⏺ 4 reads · scorer-card.test.js, chain.js, layout.js ×2 · ✓
+  ⏺ Bash · npm test · ✗ exit 1
+      FAIL tests/auth.test.ts
+  ```
+
+Settings for all three apply to every session and project on the machine; other open sessions follow within 30
+seconds.
+
+## Handoff
+
+Before the context fills, the mod saves a handoff: a file the next session reads to carry on. Its percent is the
+context in use over the point where Claude Code compacts the conversation by itself, not over the model's window, so
+the ask comes before that compaction.
+
+- **Ask mode** (the default): past 80%, the band shows `⚠ ctx past 80% [4 Handoff]`, a toast names
+  `/auto-handoff now`, and the Now tab's HANDOFF row offers `h: save handoff`, `c: compact` (save, then compact) and
+  `r: remind at 85%`. Letter keys work while the pane has the focus (Ctrl+X Tab moves it to the band's buttons,
+  then to the pane; a click works in fullscreen); from the prompt, press 4 or run `/auto-handoff now`. It asks
+  again at each step 5 points higher, up to 95.
+- **Auto mode** saves at each step by itself, with a toast on the first save of the session.
+- **The file** is `.claude/session-inspector/HANDOFF.md`. It holds only what is already on disk or what the mod counts:
+  the plan file's path, title, steps, statuses and times, and a count of notes per step; the latest scores round's
+  totals and open findings; the git branch line and up to 50 changed paths; and the turn, duration, tool calls,
+  failures, agents and cost. It never holds a prompt, a note's text, a tool input (so no task-list items or commands),
+  a failure's reason or an agent's description. Keys, emails and phone numbers are masked when it is written; private
+  words are kept, as the file is for Claude and you, not a screen.
+- **Your own HANDOFF.md** at that path is never overwritten: the mod writes only over a file whose first line is its
+  marker, `<!-- session-inspector handoff v1 -->`, and otherwise says the save failed and why.
+- **`git`** is optional; without it, the file says `Git: not available` with the reason.
+- **The resume prompt:** after a save, a `/clear` within 2 hours fills `Read .claude/session-inspector/HANDOFF.md,
+  check that the branch it names is checked out, and continue from its Next section.` into an empty prompt, never
+  sending it. With something already typed, a toast names the file instead. A new session started elsewhere gets no
+  fill; ask Claude to read the file.
+- **With Alfred Code:** in a project whose stack publishes `.claude/session-inspector/status/<session id>.json` with
+  `fullContext` `fresh-session` or `compact`, the stack handles a full context and the mod stands down for that
+  session: no ask, no automatic save and no resume prompt, while `/auto-handoff now` still saves. With `fullContext`
+  `off`, or no file, the mod's handoff runs. A file that does not parse, has another schema or names another session
+  leaves the handoff running, and the HANDOFF row says why.
+
+`/auto-handoff off` turns it off in every project on the machine.
+
+## Recording mode
+
+`/rec` masks what the mod and Claude Code's message rows draw, for a screen recording or a shared screen.
+
+| Level    | Hides                                                                    |
+|----------|--------------------------------------------------------------------------|
+| `on`     | keys, emails, phone numbers and your private words                       |
+| `strict` | the same, plus your local user name, home folder paths and dollar amounts |
+
+- **It holds** across sessions and restarts until `/rec off`. A bare `/rec` never turns it off or down, so typing it
+  to start a recording never unmasks one. A red `● REC` leads the band while it is on.
+- **Where it masks:** the band, every pane tab, toasts, the spinner, the mod's own command output, Claude's messages,
+  command output, tool rows (each call drawn as its own row while REC is on) and Claude's question dialogs. Masked
+  values read `‹key›`, `‹email›`, `‹phone›` and `‹private›`. Only the drawing changes: the stored messages and what
+  Claude reads stay as they are.
+- **Claude is told:** while REC is on, your next prompt carries a short note asking Claude not to write secret values,
+  emails or phone numbers in replies; turning REC off sends a note that the limit is lifted.
+- **Private words** are added in the `/rec words` pane, never as command arguments, which the transcript echoes. Each
+  is 3 to 64 characters, up to 100 words, matched inside longer words regardless of case. They are stored as plain
+  JSON in the mod's store file on this machine, not encrypted, and never in session state, a log, a toast, a file the
+  mod writes or Claude's context. With REC on, the pane shows only how many there are.
+- **`/rec test`** runs the masker over fake samples of each kind and your private words, and prints what it hid.
+
+What REC cannot hide:
+
+- What you type in the prompt box.
+- Claude Code's own screens and dialogs: the permission dialog, `/context`, `/usage`, `/config`, the status line and the
+  welcome header.
+- Other plugins' bands and panes.
+- The option labels of a question Claude asks: Claude Code draws them as asked. The question, its header and the
+  option descriptions are masked.
+- A private key's middle lines in a diff that does not show its BEGIN line. A diff that shows it draws every line of
+  the key as `‹key›`.
+- Other open sessions, for up to 30 seconds after a change; run `/rec` in each session that will be on screen.
+- Rows drawn before REC went on: on the terminal's main screen they stay in scrollback, so turn REC on before
+  recording starts, then clear the terminal or start a new session.
+- Files on disk and the transcript. HANDOFF.md gets only its key, email and phone masking.
+- Anything Claude reads.
 
 ## Plan and score files
 
 The Plan tab and the band's plan line read JSON files from one fixed folder in the project:
 `.claude/session-inspector/plans/<slug>.json` for each plan and `.claude/session-inspector/scores/<slug>.json` for each
 scored output. Any skill or tool can write them; writers resolve their own paths and publish there. The mod only
-reads the folder and never writes it. Keep the folder gitignored.
+reads the folder, except HANDOFF.md, which it writes. Keep the folder gitignored.
 
 The mod reads both folders after each Write, Edit or NotebookEdit call completes, at the end of each turn, and every
 30 seconds. It shows the plan with a step in progress written this session, else the task list, else the newest plan;
@@ -125,7 +220,9 @@ prompts) and idle time between turns do not.
 
 ## Install
 
-Requires Claude Code 2.1.287 or later in the terminal, or 2.1.286 or later in the Desktop app (`claude --version`).
+Requires Claude Code 2.1.312 or later, in the terminal (`claude --version`) and in the Desktop app's Code tab
+(`/status`). Mods load from 2.1.287, but the handoff and the compact rows use fields this mod is checked against only
+from 2.1.312.
 
 ```bash
 claude plugin marketplace add envoydev/alfred-mods

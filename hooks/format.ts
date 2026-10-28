@@ -73,15 +73,44 @@ export function fingerprint(text: string): string {
   return `${h.toString(16)}:${text.length}`
 }
 
-// The first non-blank line, trimmed, cut to `max` characters with an ellipsis as the last one.
+// REC's masker, the identity until mask.ts sets it as it loads: this file imports nothing from mask.ts, so no import
+// cycle forms
+let masker: (text: string) => string = text => text
+
+export function setMasker(fn: (text: string) => string): void {
+  masker = fn
+}
+
+const firstLine = (text: string): string => text.split(/\r?\n/).map(l => l.trim()).find(l => l !== '') ?? ''
+
+// The first non-blank line, trimmed, cut to `max` characters with an ellipsis as the last one. Raw: its results are
+// stored and written to HANDOFF.md, which REC never touches.
 export function oneLine(text: string, max: number): string {
-  const line = text.split(/\r?\n/).map(l => l.trim()).find(l => l !== '') ?? ''
+  const line = firstLine(text)
   return line.length > max ? `${line.slice(0, max - 1)}…` : line
 }
 
-// A line's width in columns: its texts' lengths, as buttons, code and charts stand beside it
+// A drawn line's cut: the first non-blank line masked whole, then cut to `max` with an ellipsis, never inside a token,
+// so a secret that spans the cut shows no prefix
+export function fitLine(text: string, max: number): string {
+  return cutMasked(masker(firstLine(text)), max)
+}
+
+// A masked text cut to `max` with an ellipsis as the last character, backed up to a token's start where one spans the
+// cut
+export function cutMasked(line: string, max: number): string {
+  if (line.length <= max) return line
+  let at = max - 1
+  for (const m of line.matchAll(/‹[^›\n]*›/g)) {
+    if (m.index >= at) break
+    if (m.index + m[0].length > at) at = m.index
+  }
+  return `${line.slice(0, at).trimEnd()}…`
+}
+
+// A line's width in columns: its texts' lengths as drawn, masked, as buttons, code and charts stand beside it
 export function widthOf(line: readonly object[]): number {
-  return line.reduce<number>((n, s) => n + ('text' in s && typeof s.text === 'string' ? s.text.length : 0), 0)
+  return line.reduce<number>((n, s) => n + ('text' in s && typeof s.text === 'string' ? masker(s.text).length : 0), 0)
 }
 
 export type Family = 'opus' | 'sonnet' | 'haiku' | 'fable'

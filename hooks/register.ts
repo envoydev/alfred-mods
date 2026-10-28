@@ -12,9 +12,17 @@ import {
   addRequest, afterCompact, billingOf, cacheView, idleOf, minutes, needsTick, pinOf, takeRate, takeSwitch, toastAt,
 } from './cache.ts'
 import { baseCost, pruneCost, recordCost, todayUsd } from './cost.ts'
-import { drawLines } from './draw.tsx'
-import { fingerprint, mins, oneLine, printable, usd, when } from './format.ts'
-import { mask, toast } from './mask.ts'
+import { drawLines, drawWithInput } from './draw.tsx'
+import { clock, fingerprint, mins, oneLine, printable, usd, when } from './format.ts'
+import { mask, maskForFile, maskSpans, recLevel, setRec, toast } from './mask.ts'
+import { maskDeep, maskDialog, maskResult, resultLines } from './sites.ts'
+import { DROPS_RESULT, callLine, emptyPreview, groupLines } from './compact.ts'
+import type { CompactCall } from './compact.ts'
+import {
+  FOREIGN, HANDOFF_PATH, HANDOFF_USAGE, MARKER, RESUME_PROMPT, THRESHOLD_REFUSED, TOASTS, gitPart, handoffText, isThreshold, nextStep, parseSettings,
+  parseStatus, percentOf, statusPath, stepUnder, stepsOf, windowThreshold,
+} from './handoff.ts'
+import type { HandoffView, PlanPart, SaveInput, ScoresPart } from './handoff.ts'
 import { creditedPlan, isFinishedStep, parsePlan, parseScores, planView, runs, scoresView, shownPlan, taskView, tasksAfter } from './plan.ts'
 import type { PlanView, ScoresView } from './plan.ts'
 import { PLANS_DIR, SCORES_DIR, readFolder } from './planfiles.ts'
@@ -23,9 +31,10 @@ import { closeOf, closeSlices, closeWait, isAllWait, liveSpans, mineOf, openWait
 import type { Close } from './steptime.ts'
 import { agentsLines, cacheLines, nowLines, tabBar, timelineLines, toolsLines, usageLines } from './tabs.ts'
 import { classify, fold, targetOf, toolKey } from './outcome.ts'
+import { LEVELS, REC_HELP, addWord, parseLevel, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec.ts'
 import type { CallFacts } from './outcome.ts'
 import type {
-  AgentRow, Cache, CacheConfig, Credit, Failure, Live, Meta, Outcome, Pace, Plan, PlanChange, Plans, Scores, Tab, TaskItem, ToolStat, Totals, Turn, Usage, View,
+  AgentRow, Cache, CacheConfig, Credit, Failure, Handoff, Live, Meta, Outcome, Pace, Plan, PlanChange, Level, Plans, Quiet, RecState, SaveResult, Scores, Tab, TaskItem, ToolStat, Totals, Turn, Usage, View,
   Watched, Window,
 } from '../types'
 
@@ -70,6 +79,11 @@ const INITIAL = {
   plans: { plans: [], scores: [], times: {}, overhead: {}, finished: {}, toasted: [], since: null } as Plans,
   credit: { slices: {}, mine: {} } as Credit,
   tasks: [] as TaskItem[],
+  rec: { level: 'off', count: 0, note: null } as RecState,
+  quiet: { isOn: false } as Quiet,
+  handoff: {
+    mode: 'ask', threshold: 80, point: null, handled: null, isAskUp: false, lastSave: null, alfred: { state: 'none', reason: null },
+  } as Handoff,
 }
 
 // Change a tag when that value's fields change: it declines what an earlier version stored, which outlives a reload.
@@ -88,6 +102,9 @@ const tick = atom({ plugin: 'session-inspector', key: 'tick' } as const, 0)
 const plans = atom({ plugin: 'session-inspector', key: 'plans' } as const, INITIAL.plans, { shape: 'plans-1' })
 const credit = atom({ plugin: 'session-inspector', key: 'credit' } as const, INITIAL.credit, { shape: 'credit-1' })
 const tasks = atom({ plugin: 'session-inspector', key: 'tasks' } as const, INITIAL.tasks, { shape: 'tasks-1' })
+const rec = atom({ plugin: 'session-inspector', key: 'rec' } as const, INITIAL.rec, { shape: 'rec-1' })
+const quiet = atom({ plugin: 'session-inspector', key: 'quiet' } as const, INITIAL.quiet, { shape: 'quiet-1' })
+const handoff = atom({ plugin: 'session-inspector', key: 'handoff' } as const, INITIAL.handoff, { shape: 'handoff-1' })
 
 const NO_FACTS: Omit<CallFacts, 'tool'> = {
   checked: null, checkReason: null, asked: false, failedInTool: false, interrupted: false, classifierReason: null, hookDeny: null, result: null,
@@ -141,9 +158,38 @@ async function addRow($: EngineInterface, id: string, call: Call, outcome: Exclu
   })
 }
 
+// Compact rows' memory (Decisions 4 and 7): each settled call's outcome and reason, and the calls of a group the mod
+// unfolded, by call id, each the last 500. A reload empties both: a blocked call then draws ✗.
+const compactMem = { outcomes: new Map<string, { outcome: Outcome; reason: string }>(), marks: new Set<string>() }
+
+function keepLast<K>(items: Map<K, unknown> | Set<K>, limit = 500): void {
+  for (const k of items.keys()) {
+    if (items.size <= limit) return
+    items.delete(k)
+  }
+}
+
+function mark(ids: string[]): void {
+  for (const id of ids) {
+    compactMem.marks.delete(id)
+    compactMem.marks.add(id)
+  }
+  keepLast(compactMem.marks)
+}
+
+// A row's or a group call's facts as a compact row reads them; a refusal draws as a block
+function compactOf(id: string | undefined, c: { tool: string; input: unknown; output?: unknown; isErrored: boolean; isInterrupted: boolean }): CompactCall {
+  const o = id === undefined ? undefined : compactMem.outcomes.get(id)
+  const outcome = o?.outcome === 'denied' ? 'denied' : o?.outcome === 'blocked' || o?.outcome === 'refused' ? 'blocked' : null
+  return { tool: c.tool, input: c.input, output: c.output, isErrored: c.isErrored, isInterrupted: c.isInterrupted, outcome, reason: outcome === null ? null : o?.reason ?? null }
+}
+
 // Counts a settled call, or counts it again when a later event changed its outcome
 async function settle($: EngineInterface, id: string, call: Call): Promise<void> {
   const { outcome, reason, isNew } = classify(call.facts)
+  compactMem.outcomes.delete(id)
+  compactMem.outcomes.set(id, { outcome, reason })
+  keepLast(compactMem.outcomes)
   const before = call.outcome
   call.settled = true
   call.outcome = outcome
@@ -272,6 +318,9 @@ async function resetAll($: EngineInterface): Promise<void> {
   await update($, plans, () => INITIAL.plans)
   await update($, credit, () => INITIAL.credit)
   await update($, tasks, () => INITIAL.tasks)
+  await update($, rec, () => INITIAL.rec)
+  await update($, quiet, () => INITIAL.quiet)
+  await update($, handoff, () => INITIAL.handoff)
 }
 
 // Every session's step and overhead time in the store; this session's own totals are the credit atom's
@@ -594,9 +643,18 @@ async function toggleShown($: EngineInterface, id: string): Promise<void> {
 
 const TABS: Tab[] = ['now', 'usage', 'agents', 'tools', 'cache', 'timeline', 'plan']
 
-// A main-loop compaction that stands: counted, and the cache cold, as its cached prefix is gone
+// The REC level the model was last told of, in module memory: the person's next prompt carries the note while the
+// level differs (Decision 11)
+const noteMem = { told: 'off' as Level }
+
+// A main-loop compaction that stands: counted, and the cache cold, as its cached prefix is gone; a compaction can drop
+// REC's note from the history, so the next prompt carries it again
 async function countCompaction($: EngineInterface, held: Held): Promise<void> {
   held.counted++
+  if (recLevel() !== 'off') noteMem.told = 'off'
+  // F8's next reading sets the handled step to the highest at or under it, so a compaction under the threshold re-arms
+  handoffMem.rearm = true
+  await update($, handoff, h => (h.isAskUp ? { ...h, isAskUp: false } : h))
   const at = await $.clock.now()
   await update($, meta, m => ({ ...m, compactions: m.compactions + 1, lastCompactAt: at }))
   await update($, cache, afterCompact)
@@ -623,6 +681,309 @@ async function compactNow($: EngineInterface, held: Held): Promise<void> {
     held.compacting = false
   }
 }
+
+// REC's private words and the home folder, in module memory only: never in $.state, a log or a file
+// `compiled` names the level, words and home mask.ts holds, which a reload starts over at off
+const recMem = { words: [] as string[], home: null as string | null, compiled: JSON.stringify(['off', [], null]) }
+
+// Each errored call's error text, the one Claude Code draws under it, by call id, the last 500: from the call's result,
+// or from its row for a call the mod did not see run (a resumed transcript). Kept in memory only, for REC to mask.
+const errorMem = new Map<string, string>()
+// The errored calls whose row drew the masked error text itself, so their result block draws nothing, the last 500
+const errorRows = new Set<string>()
+
+function keepError(id: string, text: string): void {
+  errorMem.delete(id)
+  errorMem.set(id, text)
+  keepLast(errorMem)
+}
+
+// The stored level and words into the masker and the rec atom: at the start, on the poll, after a /clear and after
+// each change, so a word or a level set in one session reaches every session within 30 seconds
+async function loadRec($: EngineInterface, note: string | null = null): Promise<void> {
+  const level = parseLevel(await $.store.get('settings:rec'))
+  const words = parseWords(await $.store.get('rec:words'))
+  recMem.words = words
+  // Recompiled and every site redrawn only on a change: a word swapped for another keeps the atom's count, and rows a
+  // reload drew before this read were drawn at off
+  const compiled = JSON.stringify([level, words, recMem.home])
+  if (compiled !== recMem.compiled) {
+    recMem.compiled = compiled
+    setRec(level, words, recMem.home)
+    $.ui.invalidate('ui.render')
+  }
+  await update($, rec, r => (r.level === level && r.count === words.length && r.note === note ? r : { level, count: words.length, note }))
+}
+
+// Whether a site masks: mask.ts's level, which a /clear, a resume or a fork leaves as it was while the atom is reset;
+// the atom is read so the site redraws when REC changes
+async function isRecOn($: EngineInterface): Promise<boolean> {
+  await read($, rec)
+  return recLevel() !== 'off'
+}
+
+// An add or a remove reads the stored words again, applies its one change and writes, so no stale copy is written back
+async function addRecWord($: EngineInterface, raw: string): Promise<void> {
+  const added = addWord(parseWords(await $.store.get('rec:words')), raw)
+  if ('reason' in added) return loadRec($, added.reason)
+  await $.store.set('rec:words', added.words)
+  await loadRec($)
+}
+
+async function removeRecWord($: EngineInterface, word: string): Promise<void> {
+  const words = parseWords(await $.store.get('rec:words'))
+  await $.store.set('rec:words', words.filter(w => w.toLowerCase() !== word.toLowerCase()))
+  await loadRec($)
+}
+
+const recOf = (r: RecState): { level: RecState['level']; words: number } => ({ level: r.level, words: r.count })
+
+const OTHER_SESSIONS = 'Other open sessions follow within 30 s; run /rec in each one on screen.'
+
+// /quiet's stored setting into the quiet atom, at the same points as REC's: only `true` is on
+async function loadQuiet($: EngineInterface): Promise<boolean> {
+  const isOn = (await $.store.get('settings:quiet')) === true
+  await update($, quiet, q => (q.isOn === isOn ? q : { isOn }))
+  return isOn
+}
+
+// F8's memory outside $.state: whether the stack stood F8 down, which outlives a /clear until a read of the new id's
+// file says otherwise (the stack writes it in its own SessionStart hook, which may run after the mod's); whether a
+// compaction re-arms the steps; the model and window the compaction point was read for; the save running, which a
+// second request joins; the step the last save was made at, which c does not save again; and the last save's time,
+// which arms the resume prompt and which a /clear does not reset
+const handoffMem = {
+  stoodDown: false, rearm: false, pointKey: null as string | null, saving: null as Promise<SaveResult> | null,
+  savedStep: null as number | null, armedAt: null as number | null,
+}
+
+// Only ask mode keeps an ask up: a change to auto or off, here or polled from another session, takes it down
+async function loadHandoff($: EngineInterface): Promise<void> {
+  const s = parseSettings(await $.store.get('settings:handoff'))
+  await update($, handoff, h => (h.mode === s.mode && h.threshold === s.threshold ? h : { ...h, ...s, isAskUp: s.mode === 'ask' && h.isAskUp }))
+}
+
+// The stack's status file for this session (Decision 13): a missing file is no file, unless `keep` holds a stand-down
+// across a /clear until a later read
+async function readStatus($: EngineInterface, keep = false): Promise<void> {
+  const path = statusPath(await $.session.id())
+  let found: ReturnType<typeof parseStatus> | null = null
+  if (path !== null) {
+    try {
+      found = parseStatus(await $.fs.read(path), await $.session.id())
+    } catch {
+      found = null
+    }
+  }
+  if (found === null && keep && handoffMem.stoodDown) found = { state: 'stood-down', reason: null }
+  const wasStoodDown = handoffMem.stoodDown
+  handoffMem.stoodDown = found?.state === 'stood-down'
+  const alfred: Handoff['alfred'] = found === null || found.state === 'runs' ? { state: 'none', reason: null } : { state: found.state, reason: found.reason }
+  await update($, handoff, h => {
+    if (h.alfred.state === alfred.state && h.alfred.reason === alfred.reason) return h
+    return { ...h, alfred, isAskUp: alfred.state === 'stood-down' ? false : h.isAskUp }
+  })
+  // A stand-down lifted by this read steps at the last reading, so the ask returns without waiting for a turn; a
+  // compaction's re-arm waits for a fresh reading instead
+  if (!wasStoodDown || handoffMem.stoodDown || handoffMem.rearm) return
+  const u = await read($, usage)
+  if (u.tokens !== null && u.window !== null) await stepHandoff($, u.tokens, u.window)
+}
+
+// The tokens where Claude Code compacts by itself (Decision 12): the breakdown's `autoCompactThreshold`, else the
+// window; read at the first reading and again when the model or the window changes
+async function pointOf($: EngineInterface, window: number): Promise<number> {
+  const key = `${(await read($, meta)).model ?? ''}:${window}`
+  const known = (await read($, handoff)).point
+  if (handoffMem.pointKey === key && known !== null) return known
+  const b = (await $.session.usage({ breakdown: 'summary' })).context.breakdown
+  const point = b !== undefined && b.isAutoCompactEnabled && b.autoCompactThreshold !== undefined ? b.autoCompactThreshold : window
+  handoffMem.pointKey = key
+  await update($, handoff, h => (h.point === point ? h : { ...h, point }))
+  return point
+}
+
+// Who asked for a save: auto mode, a press of h or 4 or `/auto-handoff now`, or c, which compacts after it
+type SaveBy = 'auto' | 'press' | 'compact'
+
+// A save runs from a 0 ms timer, so no hook waits on git; a request while one runs joins it
+function startSave($: EngineInterface, by: SaveBy): Promise<SaveResult> {
+  if (handoffMem.saving !== null) return handoffMem.saving
+  const saving = new Promise<SaveResult>(resolve => {
+    $.clock.after(0, () => {
+      writeHandoff($, by).then(resolve, () => resolve({ at: 0, isOk: false, reason: 'unknown' })).finally(() => {
+        handoffMem.saving = null
+      })
+    })
+  })
+  handoffMem.saving = saving
+  return saving
+}
+
+// What a save writes (spec 'What a save writes'): never over a file without the marker; the one git call; the text
+// masked for keys, emails and phones whatever REC's level. A save arms the resume prompt unless the stack stood F8 down.
+async function writeHandoff($: EngineInterface, by: SaveBy): Promise<SaveResult> {
+  const at = await $.clock.now()
+  const before = await read($, handoff)
+  let result: SaveResult
+  let percent: number | null = null
+  try {
+    if (await isForeign($)) result = { at, isOk: false, reason: FOREIGN }
+    else {
+      const git = await $.process.run(['git', '--no-optional-locks', 'status', '--porcelain=v1', '--branch'], { timeoutMs: 2000 })
+        .then(gitPart, (err: unknown) => gitPart(err instanceof Error ? err : new Error(String(err))))
+      const input = await saveInput($, at, git)
+      percent = input.percent
+      await $.fs.write(HANDOFF_PATH, maskForFile(handoffText(input)))
+      result = { at, isOk: true, reason: null }
+    }
+  } catch (err) {
+    result = { at, isOk: false, reason: (err instanceof Error ? err.message : String(err)).split('\n')[0] || 'unknown' }
+  }
+  await update($, handoff, h => ({ ...h, lastSave: result }))
+  if (!result.isOk) {
+    toast($, TOASTS.failed(result.reason ?? 'unknown'))
+    return result
+  }
+  handoffMem.savedStep = (await read($, handoff)).handled
+  if (!handoffMem.stoodDown) handoffMem.armedAt = at
+  if (by === 'compact') toast($, TOASTS.compacting())
+  else if (by === 'press') toast($, TOASTS.saved())
+  else if (before.lastSave?.isOk !== true && percent !== null) toast($, TOASTS.autoFirst(percent))
+  return result
+}
+
+// A file at the path whose first line is not the marker is the person's own; no file is none
+// A file there that the mod cannot read (over 4 MiB, locked, no access) is foreign too: only a missing file is none
+async function isForeign($: EngineInterface): Promise<boolean> {
+  if (!(await $.fs.exists(HANDOFF_PATH))) return false
+  let text: string
+  try {
+    text = await $.fs.read(HANDOFF_PATH)
+  } catch {
+    return true
+  }
+  return text.split('\n')[0]?.trimEnd() !== MARKER
+}
+
+// What a save copies: the plan this session works on, its scores, git and the mod's counts. A plan file written
+// before this session began is none of this session's.
+async function saveInput($: EngineInterface, at: number, git: string[]): Promise<SaveInput> {
+  const h = await read($, handoff)
+  const u = await read($, usage)
+  const m = await read($, meta)
+  const p = await read($, plans)
+  const items = await read($, tasks)
+  const w = creditedPlan(p, (await read($, view)).planSlug, items.length > 0)
+  let plan: SaveInput['plan'] = w === 'tasks' ? 'tasks' : null
+  let scores: ScoresPart | null = null
+  if (w !== null && w !== 'tasks' && w.value !== null && p.since !== null && w.mtimeMs >= p.since) {
+    const v = (await drawnPlan($, p, items, w, at)).v
+    if (v !== null) {
+      const steps: PlanPart['steps'] = v.rows.map(r => ({
+        id: r.step.id, title: r.step.title, status: r.step.status, actualMs: r.actualMs, forecastMs: r.forecastMs, notes: r.notes.length,
+      }))
+      plan = { file: `${PLANS_DIR}/${w.name}.json`, title: v.title, finished: v.finished, total: v.total, steps }
+      const own = p.scores.find(s => s.value !== null && s.value.subject.kind === 'plan' && s.value.subject.ref === w.name)
+      const sv = own === undefined || own.value === null ? null : scoresView(own.value)
+      if (own !== undefined && sv !== null) {
+        scores = { name: own.name, totals: sv.totals, open: sv.open.map(f => ({ id: f.id, text: f.text, severity: f.severity })) }
+      }
+    }
+  }
+  const counted = Object.values(await read($, stats))
+  const isWorking = (await read($, live)).turnId !== null
+  const point = h.point ?? u.window
+  return {
+    at, percent: u.tokens === null || point === null ? null : percentOf(u.tokens, point), threshold: h.threshold,
+    session: await $.session.id(), model: m.model, git, plan, scores,
+    counts: {
+      turn: m.turnCount + (isWorking ? 1 : 0), durationMs: u.startedAt === null ? null : at - u.startedAt,
+      calls: counted.reduce((n, t) => n + t.calls, 0), failed: counted.reduce((n, t) => n + t.failed, 0),
+      agents: (await read($, agents)).length, costUsd: u.costUsd, isEstimate: u.windows.length > 0,
+    },
+  }
+}
+
+// h, 4 and `/auto-handoff now`: the ask comes down and a save starts
+async function saveNow($: EngineInterface): Promise<void> {
+  await update($, handoff, h => (h.isAskUp ? { ...h, isAskUp: false } : h))
+  void startSave($, 'press')
+}
+
+// r: the ask comes down until the next step
+async function dismissAsk($: EngineInterface): Promise<void> {
+  await update($, handoff, h => (h.isAskUp ? { ...h, isAskUp: false } : h))
+}
+
+// c: a save first, unless one was made at this step, then Phase 2's compaction; a failed save compacts nothing, so
+// the context is never lost without its handoff
+async function saveThenCompact($: EngineInterface, held: Held): Promise<void> {
+  const h = await read($, handoff)
+  await dismissAsk($)
+  if (!(h.lastSave?.isOk === true && handoffMem.savedStep === h.handled)) {
+    if (!(await startSave($, 'compact')).isOk) return
+  }
+  await compactNow($, held)
+}
+
+const RESUME_MS = 2 * 60 * 60_000
+
+// A /clear within 2 hours of the last save fills the resume prompt into an empty draft, once; a draft that is not
+// empty, or a fill a dialog refuses, gets the toast that names the file. A stood-down session fills nothing.
+async function fillResume($: EngineInterface): Promise<void> {
+  const at = handoffMem.armedAt
+  handoffMem.armedAt = null
+  if (at === null || handoffMem.stoodDown || (await $.clock.now()) - at > RESUME_MS) return
+  const draft = await $.prompt.read()
+  if (draft.text.trim() === '' && (await $.prompt.fill({ text: RESUME_PROMPT })).isFilled) toast($, TOASTS.filled(at))
+  else toast($, TOASTS.fallback(at))
+}
+
+// The Now tab's HANDOFF section reads the atom with F8's percent
+function handoffView(h: Handoff, u: Usage, isWorking: boolean): HandoffView {
+  const point = h.point ?? u.window
+  return { ...h, percent: u.tokens === null || point === null ? null : percentOf(u.tokens, point), window: u.window, isWorking }
+}
+
+// A main-loop reading against F8's steps: ask mode puts up the ask, auto mode saves, once per step
+async function stepHandoff($: EngineInterface, tokens: number | undefined, window: number): Promise<void> {
+  if (tokens === undefined) return
+  const percent = percentOf(tokens, await pointOf($, window))
+  const h = await read($, handoff)
+  const steps = stepsOf(h.threshold)
+  if (handoffMem.rearm) {
+    handoffMem.rearm = false
+    await update($, handoff, x => ({ ...x, handled: stepUnder(percent, steps) }))
+    return
+  }
+  if (h.mode === 'off' || h.alfred.state === 'stood-down') return
+  const step = nextStep(h.handled, percent, steps)
+  if (step === null) return
+  await update($, handoff, x => ({ ...x, handled: step, isAskUp: x.mode === 'ask' }))
+  if (h.mode === 'ask') toast($, TOASTS.ask(step))
+  else void startSave($, 'auto')
+}
+
+// The state line a bare /auto-handoff prints: the mode, the threshold, F8's context percent and the last save
+async function handoffState($: EngineInterface): Promise<string> {
+  const h = await read($, handoff)
+  const u = await read($, usage)
+  const point = h.point ?? u.window
+  const ctx = u.tokens === null || point === null ? 'ctx –' : `ctx ${percentOf(u.tokens, point)}%`
+  if (h.alfred.state === 'stood-down') return `${ctx} · handoff by Alfred Code`
+  if (h.mode === 'off') return `Handoff: off · ${ctx}`
+  const saved = h.lastSave?.isOk === true ? ` · last save ${clock(h.lastSave.at)} (${HANDOFF_PATH})` : ''
+  return `Handoff: ${h.mode} at ${h.threshold}% · ${ctx}${saved}`
+}
+
+// F8's threshold for the forecast: over the window, to the compaction point's moment
+function forecastOf(h: Handoff, u: Usage): { at: number; label: number } {
+  return { at: h.point !== null && u.window !== null ? windowThreshold(h.threshold, h.point, u.window) : h.threshold, label: h.threshold }
+}
+
+const QUIET_USAGE = 'Usage: /quiet [on|off]'
+const quietText = (isOn: boolean): string => `Compact tool rows: ${isOn ? 'on' : 'off'}`
 
 async function isNoColor($: EngineInterface): Promise<boolean> {
   return ((await $.env.get('NO_COLOR')) ?? '') !== ''
@@ -684,6 +1045,7 @@ export const register: Register = on => {
     if (isWait) await update($, credit, c => openWait(c, loop, e.tool_use_id, startedAt))
     const ran = await next(e)
     const text = ran.text ?? (typeof ran.result === 'string' ? ran.result : '')
+    if (ran.isError === true && text !== '') keepError(e.tool_use_id, text)
     call.facts = { ...call.facts, result: { isError: ran.isError === true || ran.deny !== undefined, deny: ran.deny ?? null, text } }
     await settle($, e.tool_use_id, call)
     const endedAt = await $.clock.now()
@@ -777,6 +1139,14 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
     await $.command.register({ name: 'inspect', description: 'Session metrics, agents, tool failures, cache, the timeline and the plan in a pane', argumentHint: '[now|usage|agents|tools|cache|timeline|plan [name]]' })
+    await $.command.register({ name: 'rec', description: 'Recording mode: hide keys, emails, phones and your private words on screen', argumentHint: '[on|strict|off|test|words]' })
+    await $.command.register({ name: 'quiet', description: 'Compact tool rows: one line per tool call', argumentHint: '[on|off]' })
+    await $.command.register({ name: 'auto-handoff', description: 'Save a handoff before the context fills: ask, save by itself, or off', argumentHint: '[ask|auto|off|at <percent>|now]' })
+    recMem.home = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE')) ?? null
+    await loadRec($)
+    await loadQuiet($)
+    await loadHandoff($)
+    await readStatus($)
     // Moves the agent rows and redraws the running times once a second
     $.clock.every(1000, () => {
       tickOnce($).catch(() => undefined)
@@ -795,6 +1165,9 @@ export const register: Register = on => {
     await update($, plans, p => (p.since === null ? { ...p, since: now } : p))
     $.clock.every(30_000, () => {
       queueReload($, held)
+      loadRec($).catch(() => undefined)
+      loadQuiet($).catch(() => undefined)
+      loadHandoff($).then(() => readStatus($)).catch(() => undefined)
     })
     scheduleReload($, held)
     return started
@@ -807,7 +1180,17 @@ export const register: Register = on => {
       held.close?.cancel()
       held.close = null
       calls.clear()
+      // A cleared or resumed conversation is told of REC again on its first prompt
+      noteMem.told = 'off'
+      // Its first reading steps afresh: a compaction's pending re-arm and the step saved at belong to the conversation before
+      handoffMem.rearm = false
+      handoffMem.savedStep = null
       await resetAll($)
+      await loadRec($)
+      await loadQuiet($)
+      await loadHandoff($)
+      await readStatus($, true)
+      if (e.source === 'clear') await fillResume($)
       const now = await $.clock.now()
       await update($, plans, p => ({ ...p, since: now }))
       await seedMine($)
@@ -832,7 +1215,10 @@ export const register: Register = on => {
     const at = await $.clock.now()
     const key = fingerprint(e.text)
     await update($, meta, m => ({ ...m, waiting: [...m.waiting, { at, key }].slice(-5) }))
-    const entered = await next(e)
+    const level = recLevel()
+    const note = level === noteMem.told ? null : recNote(level)
+    noteMem.told = level
+    const entered = await next(note === null ? e : { ...e, context: [...(e.context ?? []), note] })
     const settled = entered.drop === undefined ? fingerprint(entered.text) : null
     if (settled !== key) {
       await update($, meta, m => ({
@@ -946,6 +1332,7 @@ export const register: Register = on => {
       windows: windowsOf(e.rateLimits), costUsd: e.cost?.usd ?? u.costUsd, at,
     }))
     for (const text of await trackPace($, e.rateLimits, at)) toast($, text)
+    await stepHandoff($, e.context.tokens, e.context.window)
     return measured
   }).catch(($, e, next) => next(e))
 
@@ -997,20 +1384,84 @@ export const register: Register = on => {
     return { text: opened.isPlaced ? 'Opened the inspect pane.' : `The inspect pane is open but not drawn: ${opened.reason}.` }
   })
 
+  // '/rec [on|strict|off|test|words]': every form reads the stored level first, so a session that has not polled acts on
+  // it, never on its own copy. A bare /rec turns REC on over off and never turns it off or down.
+  on('command.run', { command: 'rec' }, async ($, e) => {
+    const word = e.args.trim().toLowerCase()
+    const stored = parseLevel(await $.store.get('settings:rec'))
+    if (word === 'test') {
+      await loadRec($)
+      return { text: mask(recTest(stored === 'off' ? 'on' : stored, recMem.words, recMem.home)) }
+    }
+    if (word === 'words') {
+      const opened = await $.ui.open({ id: 'rec', title: 'REC words', focus: true })
+      return { text: opened.isPlaced ? 'Opened the REC words pane.' : `The REC words pane is open but not drawn: ${opened.reason}.` }
+    }
+    const target = word === '' ? (stored === 'off' ? 'on' : stored) : LEVELS.find(l => l === word)
+    if (target === undefined) return { text: mask(REC_HELP) }
+    const before = recLevel()
+    if (target !== stored) await $.store.set('settings:rec', target)
+    await loadRec($)
+    const status = recStatus(target, recMem.words.length)
+    if (target !== before) toast($, status)
+    return { text: mask(target === stored ? status : `${status}\n${OTHER_SESSIONS}`) }
+  })
+
+  // '/auto-handoff [ask|auto|off|at <percent>|now]': each change reads `settings:handoff` first and changes only the
+  // field it names, so a session that has not polled never writes back an old mode or threshold
+  on('command.run', { command: 'auto-handoff' }, async ($, e) => {
+    const word = e.args.trim().toLowerCase()
+    const raw = await $.store.get('settings:handoff')
+    const stored = parseSettings(raw)
+    const write = async (s: ReturnType<typeof parseSettings>): Promise<string> => {
+      await $.store.set('settings:handoff', { ...(typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? raw : {}), ...s })
+      await loadHandoff($)
+      return mask(await handoffState($))
+    }
+    if (word === 'now') {
+      await saveNow($)
+      return { text: `Saving a handoff to ${HANDOFF_PATH}.` }
+    }
+    if (word === 'ask' || word === 'auto' || word === 'off') return { text: await write({ ...stored, mode: word }) }
+    const at = /^at(?:\s+(\S*))?$/.exec(word)
+    if (at !== null) {
+      const n = Number(at[1])
+      if (!/^\d+$/.test(at[1] ?? '') || !isThreshold(n)) return { text: THRESHOLD_REFUSED }
+      return { text: await write({ ...stored, threshold: n }) }
+    }
+    if (word !== '') return { text: HANDOFF_USAGE }
+    await loadHandoff($)
+    return { text: mask(`${await handoffState($)}\n${HANDOFF_USAGE}`) }
+  })
+
+  // '/quiet [on|off]': reads the stored setting first; on or off writes it only when it changes, any other form prints it
+  on('command.run', { command: 'quiet' }, async ($, e) => {
+    const word = e.args.trim().toLowerCase()
+    const stored = await loadQuiet($)
+    if (word !== 'on' && word !== 'off') return { text: `${quietText(stored)}\n${QUIET_USAGE}` }
+    const isOn = word === 'on'
+    if (isOn !== stored) await $.store.set('settings:quiet', isOn)
+    await loadQuiet($)
+    return { text: quietText(isOn) }
+  })
+
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
     // Read so the running times redraw each second while a turn runs
     await read($, tick)
     const now = await $.clock.now()
     const d = await planDraw($, now)
+    const u = await read($, usage)
+    const h = await read($, handoff)
     const lines = bandLines({
       now, columns: e.props.bodyColumns, isWorking: e.props.isWorking,
-      live: await read($, live), usage: await read($, usage), meta: await read($, meta), turns: await read($, turns),
+      live: await read($, live), usage: u, meta: await read($, meta), turns: await read($, turns),
       newFailures: (await read($, failures)).filter(f => f.isNew).length, pace: await read($, pace), agents: await read($, agents),
-      cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score,
+      cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score, rec: recOf(await read($, rec)),
+      forecast: forecastOf(h, u), handoffAsk: h.isAskUp ? h.handled : null,
     })
     if (lines.length === 0) return next(e)
-    const press = { inspect: () => inspectFromBand($), compact: () => compactNow($, held) }
+    const press = { inspect: () => inspectFromBand($), compact: () => compactNow($, held), handoff: () => saveNow($) }
     return drawLines($, e, lines, { noColor: await isNoColor($), press })
   })
 
@@ -1019,8 +1470,109 @@ export const register: Register = on => {
     const text = spinnerSuffix({
       requestId: e.requestId ?? '', live: await read($, live), percent: (await read($, usage)).percent, agents: await read($, agents),
     })
-    if (text === null) return next(e)
-    return next({ ...e, props: { ...e.props, suffix: `${e.props.suffix} ${mask(printable(text))}` } })
+    // REC masks the engine's word and message as well as the mod's own suffix
+    const word = mask(e.props.word)
+    const message = e.props.message === null ? null : mask(e.props.message)
+    const props = word === e.props.word && message === e.props.message ? e.props : { ...e.props, word, message }
+    if (text === null) return props === e.props ? next(e) : next({ ...e, props })
+    return next({ ...e, props: { ...props, suffix: `${e.props.suffix} ${mask(printable(text))}` } })
+  })
+
+  // REC on Claude Code's rows: each site rewrites its props only while REC is on and masking changes something, else
+  // passes next(e) as it came. The stored messages and what the model reads stay as they are.
+  on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
+    if (!(await isRecOn($))) return next(e)
+    const text = mask(e.props.text)
+    return text === e.props.text ? next(e) : next({ ...e, props: { ...e.props, text: printable(text) } })
+  })
+
+  on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
+    if (!(await isRecOn($))) return next(e)
+    const text = mask(e.props.text)
+    return text === e.props.text ? next(e) : next({ ...e, props: { ...e.props, text: printable(text) } })
+  })
+
+  on('ui.render', { component: 'CommandOutput' }, async ($, e, next) => {
+    if (!(await isRecOn($))) return next(e)
+    const text = mask(e.props.text)
+    return text === e.props.text ? next(e) : next({ ...e, props: { ...e.props, text: printable(text) } })
+  })
+
+  // The tool sites in two steps (Decision 14): /quiet's compact row or emptied result first, then REC over whatever
+  // the first hands on. A settled row that is not expanded, or that a group unfolded, draws its compact line.
+  // An unfolded group's rows draw `output` inline, so a row's input and output are both masked
+  on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
+    if (e.props.isErrored && typeof e.props.output === 'string' && !errorMem.has(e.props.tool_use_id)) keepError(e.props.tool_use_id, e.props.output)
+    if ((await read($, quiet)).isOn && !e.props.isRunning && (e.props.isExpanded !== true || compactMem.marks.has(e.props.tool_use_id))) {
+      const lines = callLine(compactOf(e.props.tool_use_id, e.props), e.viewport?.columns ?? 120)
+      return drawLines($, e, lines, { noColor: await isNoColor($), press: {} })
+    }
+    if (!(await isRecOn($))) return next(e)
+    // An unfolded group's errored row draws its error text inline, and Claude Code draws that text, not `output` (live,
+    // fullscreen, 2026-10-28): with a sample in it, the row draws its compact head and the masked text itself, once
+    if (e.props.isErrored && !e.props.isRunning) {
+      const failed = maskResult({ tool: e.props.tool, output: e.props.output, isErrored: true, error: errorMem.get(e.props.tool_use_id) ?? null }, mask)
+      if (failed.kind === 'tree') {
+        errorRows.delete(e.props.tool_use_id)
+        errorRows.add(e.props.tool_use_id)
+        keepLast(errorRows)
+        const head = callLine(compactOf(e.props.tool_use_id, e.props), e.viewport?.columns ?? 120).slice(0, 1)
+        const isExpanded = e.props.isExpanded === true
+        return drawLines($, e, [...head, ...resultLines(failed.text, { isExpanded, isErrored: true, gutter: e.surface === 'terminal' })], { noColor: await isNoColor($), press: {} })
+      }
+    }
+    const input = maskDeep(e.props.input, mask)
+    const output = maskDeep(e.props.output, mask)
+    if (input === e.props.input && output === e.props.output) return next(e)
+    return next({ ...e, props: { ...e.props, input, ...(output === e.props.output ? {} : { output }) } })
+  })
+
+  // Under /quiet an errored result draws an empty Box, as Claude Code would draw its whole error text and the compact
+  // row above carries ✗ and its error lines, and so does an Edit or Write result (DROPS_RESULT); any other keeps
+  // next(e)'s tree, the classifier line in it, its preview gone. Under REC, so does an errored result whose row drew
+  // its masked error text
+  on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {
+    let props = e.props
+    if ((await read($, quiet)).isOn && e.props.isExpanded !== true) {
+      if (e.props.isErrored || DROPS_RESULT.includes(e.props.tool)) return drawLines($, e, [], { noColor: false, press: {} })
+      const output = emptyPreview(e.props.tool, e.props.output)
+      if (output !== e.props.output) props = { ...e.props, output }
+    }
+    if (!(await isRecOn($))) return props === e.props ? next(e) : next({ ...e, props })
+    if (e.props.isErrored && errorRows.has(e.props.tool_use_id)) return drawLines($, e, [], { noColor: false, press: {} })
+    const masked = maskResult({ ...props, error: errorMem.get(e.props.tool_use_id) ?? null }, mask)
+    if (masked.kind === 'same') return props === e.props ? next(e) : next({ ...e, props })
+    if (masked.kind === 'output') return next({ ...e, props: { ...props, output: masked.output } })
+    const lines = resultLines(masked.text, { isExpanded: e.props.isExpanded === true, isErrored: e.props.isErrored, gutter: e.surface === 'terminal' })
+    return drawLines($, e, lines, { noColor: await isNoColor($), press: {} })
+  })
+
+  // Under /quiet a settled group of calls alone draws its compact lines. One holding another row, or an errored or
+  // interrupted call, is unfolded and its calls marked, so each draws its own compact line; a group drawn expanded (the
+  // main screen's ctrl+o) unmarks them, so ctrl+o shows all. A group's folded line shows its calls' paths, patterns and
+  // git results, and `isExpanded` is the one prop a rewrite changes, so REC unfolds it into ToolUse rows, which the
+  // hook above masks, live or settled.
+  on('ui.render', { component: 'ToolGroup' }, async ($, e, next) => {
+    const isQuiet = (await read($, quiet)).isOn
+    const isRec = await isRecOn($)
+    const ids = e.props.calls.flatMap(c => (c.tool_use_id === undefined ? [] : [c.tool_use_id]))
+    if (e.props.isExpanded) {
+      if (isQuiet) for (const id of ids) compactMem.marks.delete(id)
+      return next(e)
+    }
+    if (isQuiet && !e.props.isActive && e.props.isCallsOnly === true) {
+      const lines = groupLines(e.props.calls.map(c => compactOf(c.tool_use_id, c)), e.viewport?.columns ?? 120)
+      return drawLines($, e, lines, { noColor: await isNoColor($), press: {} })
+    }
+    if (isQuiet && (isRec || !e.props.isActive)) mark(ids)
+    else if (!isRec) return next(e)
+    return next({ ...e, props: { ...e.props, isExpanded: true } })
+  })
+
+  on('ui.render', { component: 'AskUserQuestion' }, async ($, e, next) => {
+    if (!(await isRecOn($))) return next(e)
+    const questions = maskDialog(e.props.questions, maskSpans)
+    return questions === e.props.questions ? next(e) : next({ ...e, props: { ...e.props, questions } })
   })
 
   on('ui.render', { component: 'Pane', requestId: 'inspect' }, async ($, e) => {
@@ -1030,11 +1582,14 @@ export const register: Register = on => {
     const shown = await read($, view)
     const rows = await read($, failures)
     const d = await planDraw($, now)
+    const u = await read($, usage)
+    const h = await read($, handoff)
     const input = {
-      now, columns: e.props.bodyColumns, isWorking: counts.turnId !== null, live: counts, usage: await read($, usage),
+      now, columns: e.props.bodyColumns, isWorking: counts.turnId !== null, live: counts, usage: u,
       meta: await read($, meta), turns: await read($, turns), newFailures: rows.filter(f => f.isNew).length,
       pace: await read($, pace), failures: rows, stats: await read($, stats), totals: await read($, totals), view: shown,
       agents: await read($, agents), cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score,
+      rec: recOf(await read($, rec)), forecast: forecastOf(h, u), handoff: handoffView(h, u, counts.turnId !== null),
     }
     const bar = tabBar(shown.tab, counts.turnId !== null, e.props.bodyColumns)
     const body = shown.tab === 'usage' ? usageLines(input)
@@ -1051,6 +1606,9 @@ export const register: Register = on => {
       'tab-tools': () => openInspect($, 'tools'),
       'tab-cache': () => openInspect($, 'cache'),
       compact: () => compactNow($, held),
+      'handoff-save': () => saveNow($),
+      'handoff-compact': () => saveThenCompact($, held),
+      'handoff-dismiss': () => dismissAsk($),
       'tab-timeline': () => openInspect($, 'timeline'),
       'tab-plan': () => openInspect($, 'plan'),
     }
@@ -1062,5 +1620,16 @@ export const register: Register = on => {
       if (agent.report !== null) press[`report-${agent.id}`] = () => toggleShown($, `report:${agent.id}`)
     }
     return drawLines($, e, [...bar, ...body], { noColor: await isNoColor($), press })
+  })
+
+  // The private-words pane: words are added only here, never through a command's arguments, which the transcript echoes
+  on('ui.render', { component: 'Pane', requestId: 'rec' }, async ($, e) => {
+    const r = await read($, rec)
+    const words = recMem.words
+    const press: Record<string, () => unknown> = {}
+    if (r.level === 'off') words.forEach((w, i) => { press[`remove-${i}`] = () => removeRecWord($, w) })
+    const note = r.note === null ? [] : [[{ text: r.note, tone: 'warn' as const }]]
+    const input = { key: 'word', label: 'Add a word', submitLabel: 'Add', onSubmit: (value: string) => { void addRecWord($, value) } }
+    return drawWithInput($, e, recPaneLines(r.level, words), input, note, { noColor: await isNoColor($), press })
   })
 }

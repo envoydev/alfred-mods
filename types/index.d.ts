@@ -94,6 +94,20 @@ export type Plans = {
 // A main-loop task list item, from TaskCreate, TaskUpdate or TodoWrite: its subject is a tool input, kept in $.state
 // only; `ms`, the working time credited to it while in progress
 export type TaskItem = { id: string; subject: string; status: 'pending' | 'in_progress' | 'completed'; ms: number }
+// REC's level: off, on (keys, emails, phones, private words) or strict (also the account, home paths and $ amounts)
+export type Level = 'off' | 'on' | 'strict'
+// What surfaces redraw on: the level, the word count and the pane's last refusal, never the words themselves
+export type RecState = { level: Level; count: number; note: string | null }
+// /quiet: compact tool rows on or off, every session's from `settings:quiet`
+export type Quiet = { isOn: boolean }
+// F8: the stored mode and threshold; `point`, the tokens where Claude Code compacts by itself; `handled`, the highest
+// step handled; `lastSave`, the last save's time and result; `alfred`, the stack's status file as last read
+export type HandoffMode = 'ask' | 'auto' | 'off'
+export type SaveResult = { at: number; isOk: boolean; reason: string | null }
+export type Handoff = {
+  mode: HandoffMode; threshold: number; point: number | null; handled: number | null; isAskUp: boolean
+  lastSave: SaveResult | null; alfred: { state: 'none' | 'stood-down' | 'ignored'; reason: string | null }
+}
 
 declare module 'claude-code' {
   interface PluginState {
@@ -101,7 +115,7 @@ declare module 'claude-code' {
       stats: Shaped<Record<string, ToolStat>>; failures: Shaped<Failure[]>; turns: Shaped<Turn[]>
       live: Shaped<Live>; usage: Shaped<Usage>; totals: Shaped<Totals>; meta: Shaped<Meta>
       view: Shaped<View>; pace: Shaped<Pace>; agents: Shaped<AgentRow[]>; cache: Shaped<Cache>; tick: number
-      plans: Shaped<Plans>; credit: Shaped<Credit>; tasks: Shaped<TaskItem[]>
+      plans: Shaped<Plans>; credit: Shaped<Credit>; tasks: Shaped<TaskItem[]>; rec: Shaped<RecState>; quiet: Shaped<Quiet>; handoff: Shaped<Handoff>
     }
   }
 }

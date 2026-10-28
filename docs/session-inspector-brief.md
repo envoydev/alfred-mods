@@ -47,14 +47,14 @@ A mod is a plugin whose JavaScript or TypeScript hooks run inside Claude Code, s
 | `session.measure` | Thresholds on context, the 5h and weekly windows and cost, without polling | Pushed after each main-loop turn and when a window moves a whole point; `e.changed` names what moved (agent) |
 | `classic.PostToolUse`, `classic.PostToolUseFailure` | A tool's own run time | `duration_ms` leaves out the permission prompt and hook time (agent) |
 | `classic.PreModelSwitch`, `classic.PostModelSwitch` | Cache TTL tier and re-cache cost, at a model switch only | Both carry `cache_ttl` (`5m` or `1h`), `prompt_cache_warm` and `estimated_cache_write_usd`; PostModelSwitch also fires on an automatic fallback and when `/resume` restores the model (`source` `auto`, `resume`); the probe hooked PreModelSwitch alone (agent) |
-| `prompt.compose`, `ui.render` | REC: model instruction and display masking |  |
+| `prompt.submit` (`context`), `ui.render` | REC: the model's note and display masking | The note rides the person's next own prompt after each change of level (agent) |
 
 **Mods API calls this mod uses**
 
 - `$.session.usage()`: `{ startedAt, context: { tokens?, window, percent? }, rateLimits: [{ kind, percentUsed, resetsAt? }], cost?: { usd } }`; `tokens` and `percent` are absent before the first response, and `rateLimits` is empty off a subscription. (agent)
 - `$.agent.list()`: subagents and teammates, each `{ id, type, description, status, parentId?, name? }`, status pending, running, waiting, idle (the last two from v2.1.289), completed, failed or killed. No model, start time or current action: those come from `agent.spawn` and `tool.call`. (agent)
-- `$.store`: this plugin's key-value store, one JSON file shared by every session on the machine, 4 MiB in total; a `get` then `set` is not atomic across sessions, so each session writes keys of its own. `$.state`: reactive per-session state, reset by `/clear`, `/resume` and `/branch`. (agent)
-- `$.clock.every`, `$.clock.now`, `$.fs.read`, `$.fs.stat`, `$.env.get` (literal names only), `$.session.id`, `$.session.model`, `$.session.compact` (rejects while a turn runs), `$.prompt.read`, `$.prompt.fill`, `$.ui.status`, `$.ui.toast`, `$.ui.log`, `$.ui.open`, `$.ui.invalidate`, `$.command.register`, `$.command.run`, `$.command.list`. (agent)
+- `$.store`: this plugin's key-value store, one JSON file shared by every session on the machine, 4 MiB in total; a `get` then `set` is not atomic across sessions, so each session writes keys of its own. The settings and word keys (`settings:handoff`, `settings:rec`, `rec:words`) are shared by every session, and each write reads the key again first (agent). `$.state`: reactive per-session state, reset by `/clear`, `/resume` and `/branch`. (agent)
+- `$.clock.every`, `$.clock.after`, `$.clock.now`, `$.fs.read`, `$.fs.stat`, `$.fs.write` (HANDOFF.md only), `$.process.run` (one `git status`, 2 s timeout), `$.env.get` (literal names only), `$.session.id`, `$.session.model`, `$.session.compact` (rejects while a turn runs), `$.prompt.read`, `$.prompt.fill`, `$.ui.status`, `$.ui.toast`, `$.ui.log`, `$.ui.open`, `$.ui.invalidate`, `$.command.register`, `$.command.run`, `$.command.list`. (agent)
 - `$.session.identity()` answers the account only to a mod the organization's managed settings install, and `{ deny }` to this one, so the account comes from the config file. (agent)
 
 **Where it draws**
@@ -72,7 +72,7 @@ The mod is one plugin named `session-inspector`, built without Claude HUD, that 
 - **One plugin, one hooks module.** Every feature shares one state, and REC must see everything the plugin draws. Split code into sibling files only if the probe confirms the hooks module can import them.
 - **Standalone plugin.** It is its own plugin in its own repo, with its own marketplace, so it installs and works in any project. The envoydev marketplace lists it as a second entry with a GitHub source pinned by both `ref` (the release tag) and `sha`, bumped together per release. The version lives only in `plugin.json`. The README tells users to install it through one marketplace only, because two ids with the same plugin name register hooks only once.
 - **Commands.** `/inspect [tab]`, `/auto-handoff ...`, `/rec ...`, `/quiet on|off`. The deck lists `/agents` and `/goal` as built in, so never use those.
-- **Core and Alfred Code integration.** The core works from the Claude Code mods API alone and is built first. The integration waits until the stack's workspace releases settle its paths. Besides the plugin's public contracts (the plan file and the plan: and task: prompt lines), its only input from the stack is one small versioned status file that the stack's own hooks publish (schema, session, model, auto-run, scorer, resume trigger, window, handoff prompt), one file per session in the plugin's fixed folder. The mod reads nothing else from the stack, ignores an unknown schema or another session's file, and shows nothing when unsure, with the reason in a dim diagnostics row under \[Inspect\]. With the file present, it adds the mode banner, measures the runway against the stack's resume trigger ahead of the engine's threshold, and makes \[Handoff\] fill the stack's ready handoff prompt verbatim, without sending it and only into an empty prompt. Without Alfred Code, \[Handoff\] uses the mod's own extractive resume prompt, so each environment has exactly one handoff home. In Alfred Code it can later replace `claude-hud`; it never replaces the `instrument-tool-usage` hook.
+- **Core and Alfred Code integration.** The core works from the Claude Code mods API alone and is built first. The integration waits until the stack's workspace releases settle its paths. Besides the plugin's public contracts (the plan file and the plan: and task: prompt lines), its only input from the stack is one small versioned status file that the stack's own hooks publish (schema, session, model, auto-run, scorer, resume trigger, window, handoff prompt), one file per session in the plugin's fixed folder. The mod reads nothing else from the stack, ignores an unknown schema or another session's file, and shows nothing when unsure, with the reason in a dim diagnostics row under \[Inspect\]. With the file present, it adds the mode banner, measures the runway against the stack's resume trigger ahead of the engine's threshold, and makes \[Handoff\] fill the stack's ready handoff prompt verbatim, without sending it and only into an empty prompt. Without Alfred Code, \[Handoff\] uses the mod's own extractive resume prompt (HANDOFF.md, then a resume prompt filled after `/clear`), so each environment has exactly one handoff home; from Phase 4, F8 stands down for a session with a valid status file whose `fullContext` is not `off` (agent). In Alfred Code it can later replace `claude-hud`; it never replaces the `instrument-tool-usage` hook.
 - **Parity.** Claude Code only: Cursor has no mods, so the Cursor half of the stack gets no twin. The plan and score file format is a public contract in the plugin's README, so any skill can write it; Alfred Code's plan and scorer skills are one writer.
 
 **Mods from the source deck (claude\_code\_mods.pptx)**
@@ -101,8 +101,8 @@ Ten features, F1 to F10. The probe must settle every Medium row before the verdi
 | F5 | Timeline | Per turn: your prompt time, Claude's reply time, duration, tokens in and out, tool calls, failures; in the band, the time of your last prompt and Claude's last reply | `prompt.submit`, `turn.start`, `turn.complete`, `$.clock.now()`; a turn's calls and failures are the `tool.call`s with no `agentId` inside it, as agents run in the background | High (agent) |
 | F6 | Plan progress | Steps with status, current stage, % done, time on the current step, estimated and actual time per step and for the whole plan, your integrated notes marked ✎ with their text, last update time | Plan file via `tool.call` on Write or Edit, plus a 30 s `$.fs.stat` poll; task list as fallback; a call's wait, `tool.call` `ms` minus `classic.PostToolUse` `duration_ms`, leaves step time only when a `classic.PermissionRequest` asked the person, as the classifier's and hooks' time is the machine's (Phase 0 question 11) | High, if the skills follow the contract (agent) |
 | F7 | Scores | Score rounds; total and per-criterion score with change from the last round; findings fixed, improved or still open, with the step that fixed them | One scores file per scored output | High, if the scorer follows the contract |
-| F8 | Handoff | Deck behaviour: 80% threshold, ask or auto mode, keys h, c, r, toasts, HANDOFF.md fallback | `$.session.usage()`, `session.compact`, `$.command.run` from a timer | High for the data; what keys h, c and r do, the toasts' text and when HANDOFF.md is written are the deck's and unverified, as the deck is not on this machine (agent) |
-| F9 | Recording mode | Deck behaviour: `/rec`, `/rec strict`, private words; plus masking of every surface this plugin draws | `ui.render` on message sites, `prompt.compose`, one internal `mask()` | High for this plugin's output; what `/rec` and `/rec strict` mask, `/rec test` and how private words are matched are the deck's and unverified (agent) |
+| F8 | Handoff | Ask or auto mode at a threshold (80% by default), keys h, c and r, the toasts, HANDOFF.md and a resume prompt after `/clear`, as 'F8 and F9 behaviour' says | `session.measure`, `$.session.usage({ breakdown: 'summary' })`, `session.compact`, `$.session.compact`, a 0 ms save timer, one `git status` through `$.process.run`, `$.fs.write`, `$.prompt.read`, `$.prompt.fill`, `classic.SessionStart` | High: the behaviour is the user's approved spec in 'F8 and F9 behaviour' (2026-10-28) (agent) |
+| F9 | Recording mode | `/rec`, `/rec strict`, `/rec test` and private words, plus masking of every surface this plugin draws, as 'F8 and F9 behaviour' says | `ui.render` on message sites, `prompt.submit` (`context`), one internal `mask()` | High for this plugin's output: the behaviour is the user's approved spec in 'F8 and F9 behaviour' (2026-10-28) (agent) |
 | F10 | Compact tool rows | With /quiet on: one line per tool call with its description, output line count and ✓ or ✗; up to 3 error lines on a failure; runs of read-only calls folded into one line; blocked calls as one ⊘ row, repeats folded into ×N. /quiet off restores the full rows | ui.render on ToolUse and ToolResult, which draw a Bash call on the main screen, and on ToolGroup, which folds it into one line in fullscreen's normal view; `isExpanded` marks the ctrl+o view, where a compact hook passes; a compact ToolResult keeps `next(e)`'s tree, which holds the classifier line | High; the row data is checked in both layouts, the compact ToolGroup row is drawn first in Phase 4, and a refusal raised before the check draws as ✗ (agent) |
 
 **Notes**
@@ -119,7 +119,7 @@ Ten features, F1 to F10. The probe must settle every Medium row before the verdi
 - **F4 warning floor** (the user, 2026-10-28): on either tier, no toast and no band item while the cache holds under 100,000 tokens (the last request's reads and writes): the rewrite is cheap, and a compaction would lose more than it saves. Claude Code's own idle compaction has the same floor. Raised by the Phase 2 final review.
 - **F4 and idle compaction:** on the 1h tier Claude Code compacts an idle conversation itself after about 54 minutes once its context reaches 200,000 tokens (`idleCompaction`, on by default; off with `autoCompactEnabled` false or `DISABLE_AUTO_COMPACT`; the threshold set by `CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS`, at least 100,000). A feature flag Claude Code fetches gates it too, which the mod cannot see, and in the Phase 2 terminal run Claude Code did not compact by minute 60. So where it should apply, the mod delays the warning to the cache's last 3 minutes and never withholds it: Claude Code's own compaction makes the cache cold first, and without it the toast and the band item still come. The Cache tab says when Claude Code should compact and when the warning comes. Evidence: https://code.claude.com/docs/en/settings-reference (`idleCompaction`) and https://code.claude.com/docs/en/env-vars (Features that need feature-flag fetching), read 2026-10-28; Phase 2 Task 8 (m). (agent)
 - **F3 doing line** (the user, 2026-10-28): `doing:` shows the agent's description, with `· task <id>` beside it when the dispatch carries a `task:` line, as the data contract defines `task:` as a step id. (agent)
-- **F8 from the deck's slides** (the user, 2026-10-28): the HANDOFF line reads `ctx ▰▰▰▱▱ 62% · asks at 80% · h: save now` in ask mode and `ctx 62% · saves at 80%` in auto mode, so `h` saves now. With Alfred Code the threshold is the stack's resume trigger from the status file. Still the deck's and unverified: what `c` and `r` do, the toasts' text, and when HANDOFF.md is written. Slides are evidence of the deck's behaviour, not its code. (agent)
+- **F8 from the deck's slides** (the user, 2026-10-28): the HANDOFF line reads `ctx ▰▰▰▱▱ 62% · asks at 80% · h: save now` in ask mode and `ctx 62% · saves at 80%` in auto mode, so `h` saves now. What `c` and `r` do, the toasts' text and when HANDOFF.md is written are settled in 'F8 and F9 behaviour' (the user, 2026-10-28); with a valid Alfred Code status file F8 stands down rather than take the stack's trigger. Slides are evidence of the deck's behaviour, not its code. (agent)
 - **F9 masking:** pass every string this plugin draws through `mask()`, so REC covers the band, panes, toasts and spinner suffixes, not only messages. REC is display-only: the model still sees secrets in context.
 - **F9 status** (the user, 2026-10-28, from the deck's slides): REC on reads `REC on · hiding keys · emails · phones · 3 private words`, so by default it hides keys, emails and phones, plus the person's private words, counted. What `/rec strict` adds stays as Phase 4's Done when says. (agent)
 - **F10 compact rows:** display only, so Claude still reads the full output and no tokens are saved. Show the Bash call's `description` instead of the command, falling back to its first 60 characters. Compact first, then pass the row through `mask()`, so REC also covers compact rows. Claude's own text (`AssistantMessage`) is never compacted.
@@ -323,7 +323,7 @@ last update 2m ago
 
 ## Data contracts for the plan and scorer skills
 
-F6 and F7 read JSON files from one fixed folder in the project, `.claude/session-inspector/`, so the mod never works out where a writer keeps its own data: `plans/<slug>.json` for each plan, `scores/<slug>.json` for each scored output and, in Alfred Code, `status/<session id>.json`. Writers resolve their own paths and publish there, and the mod only reads. The folder is gitignored.
+F6 and F7 read JSON files from one fixed folder in the project, `.claude/session-inspector/`, so the mod never works out where a writer keeps its own data: `plans/<slug>.json` for each plan, `scores/<slug>.json` for each scored output and, in Alfred Code, `status/<session id>.json`. Writers resolve their own paths and publish there, and the mod only reads, except HANDOFF.md, which F8 writes (agent). The folder is gitignored.
 
 ```json
 {
@@ -398,6 +398,560 @@ F6 and F7 read JSON files from one fixed folder in the project, `.claude/session
 - **Fallback:** with no plan file, it shows task list progress from the task-list tool, as the deck's GOAL mod did.
 - **Time per step:** the estimate, and the actual time, which is the working time of whoever builds the step while it is in progress. The mod records it from its own turn events in `$.store`, keyed by plan and step. Machine waits such as builds, tests and CI count. Waits for you are subtracted: AskUserQuestion calls, and permission prompts once Phase 0 confirms they can be timed. Idle time between turns never counts. A subagent's time goes to the step its prompt names, as set out under Crediting subagent time. When several steps are in progress and none is named, each turn's time is split equally among them and those steps are marked shared.
 - **Time for the plan:** actual time of finished steps plus the remaining estimates, multiplied by this plan's actual-to-estimate ratio once 2 steps are done. Before that, the raw estimates show, marked uncalibrated. Steps running in parallel count as work time, so the total can exceed the wall-clock time. The main loop's own work while the plan runs, such as dispatching and updating the plan, is a separate overhead figure: it counts in the plan's total, but not in any step or in the ratio, because estimates cover the building agent only. While the main loop waits inside an Agent call, that time is not counted twice.
+
+## F8 and F9 behaviour
+
+The user's approved spec of F8 Handoff and F9 Recording mode (2026-10-28), carried here as the tracked record of
+what Phase 4 builds. The F8 and F9 rows of the feature scope point here. (agent)
+
+### F8 Handoff
+
+#### Settings and the command
+
+| Setting   | Values                     | Default | Store key          |
+|-----------|----------------------------|---------|--------------------|
+| mode      | `ask`, `auto`, `off`       | `ask`   | `settings:handoff` |
+| threshold | a whole percent, 10 to 95  | 80      | `settings:handoff` |
+
+`/auto-handoff` takes one argument (argumentHint `[ask|auto|off|at <percent>|now]`):
+
+- `ask`, `auto` or `off` sets the mode.
+- `at <n>` sets the threshold. A value outside 10-95, or not a whole number, answers
+  `Threshold must be a whole percent from 10 to 95.` and changes nothing.
+- `now` saves a handoff at once, in any mode, `off` included.
+- With no argument, it prints the state, for example
+  `Handoff: ask at 80% · ctx 62% · last save 14:05 (.claude/session-inspector/HANDOFF.md)`, and the usage line.
+- Anything else answers with the usage line.
+
+Settings live in `$.store`, one JSON key per feature, and apply to every session and project on the machine. The
+session that ran the command applies the change at once; other running sessions pick it up on their next 30-second
+plan-file poll (Phase 3's timer). Each `/auto-handoff` change reads `settings:handoff` from `$.store` first and
+changes only the field it names, so a session that has not polled yet never writes back an old mode or threshold. Two
+writes in the same instant can still race, as a `$.store` get then set is not atomic, and the second wins; for a value
+the person types by hand that is acceptable. The context forecast on band line 2 (`≈6 turns`, `turnsLeft` in
+`hooks/forecast.ts`) counts the turns left to this threshold instead of a fixed 80, converted as the next section says.
+
+#### Steps, asks and saves
+
+The threshold sets steps 5 points apart, up to 95: at 80 the steps are 80, 85, 90 and 95. The mod reads the context
+from `session.measure`, which Claude Code pushes after each main-loop turn and which Phase 1 already hooks. Subagent
+context never counts.
+
+F8's percent is the tokens in use over the point where Claude Code compacts by itself, not over the model's window
+(`percent` in `session.measure` is over the window, types). On a 1M window Claude Code compacts near 390k tokens
+(Alfred Code's measurement in three projects, `stack/hooks/fresh-session.js` in alfred-code), so 80% of the window
+would come only after the compaction F8 exists to get ahead of.
+
+- **The point** is the breakdown's `autoCompactThreshold`, from `$.session.usage({ breakdown: 'summary' })`, which
+  estimates locally and sends no request (types, `SessionUsageArgs`). The mod reads it at the first reading and again
+  only when the model or the window changes.
+- **Auto-compaction off** (`isAutoCompactEnabled` false, no threshold): the point is the window.
+- **The row** adds the point when it is not the window: `ctx ▰▰▰▰▱ 79% of 390k · asks at 80% · h: save now`.
+- **The forecast** on band line 2 and in the Now tab (both call `turnsLeft`, `hooks/band.ts` and `hooks/tabs.ts`)
+  takes F8's threshold over the window, so its turns run to the same moment: 80% of a 390k point on a 1M window is 31%
+  of the window.
+
+- A reading at or past a step not yet handled handles the highest step reached, once. A jump from 70 to 88 handles 85
+  alone, and a session resumed at 86% handles 85 at its first reading.
+- **Ask mode** puts up the ask: band line 3 shows `⚠ ctx past 80% [4 Handoff]`, the toast below fires, and the Now
+  tab's HANDOFF row changes to its ask form. Nothing is saved until the person answers. Answering h, c or r, or
+  pressing 4, takes the ask down until the next step.
+- **Auto mode** saves at once at each step. The first save of a session raises the toast below, and later saves only
+  update the HANDOFF row.
+- **Off** draws no HANDOFF row, no band item and no toast. `/auto-handoff now` still saves.
+- A compaction in the main loop (`session.compact` with no `agentId`, any trigger but `precompute`, not skipped)
+  resets the handled step to the highest step at or under the next reading. So a compaction that drops context under
+  the threshold re-arms the first step.
+- Before the first response there is no context percent: the row reads `ctx – · asks at 80%`, and nothing is asked or
+  saved.
+- `/clear`, `/resume` and `/branch` reset the handled step with the rest of `$.state`; the settings stay.
+
+#### The HANDOFF row and the keys
+
+The Now tab draws a HANDOFF section, its heading violet, after PLAN and before AGENTS. Its one row, by state:
+
+| State                        | Row                                                                              |
+|------------------------------|----------------------------------------------------------------------------------|
+| ask, no ask up               | `ctx ▰▰▰▱▱ 62% · asks at 80% · h: save now`                                      |
+| ask, ask up                  | `⚠ ctx ▰▰▰▰▱ 82% · past 80% · h: save handoff · c: compact · r: remind at 85%`  |
+| auto, before its first save  | `ctx 62% · saves at 80%`                                                         |
+| auto, after a save           | `ctx 82% · saved at 80% (14:05) · next save at 85%`                              |
+| save failed                  | the state's row, then `✗ save failed 14:05: <reason>`, until a save succeeds    |
+
+- `h: save now`, `c: compact` and `r: remind at 85%` are `plain` Buttons with hotkeys `h`, `c` and `r`, drawn
+  `h: label` as the types say for `plain`. Letter hotkeys work only while the pane holds the focus: from the prompt a
+  letter types itself (types, `ButtonProps.hotkey`). From the prompt, digit 4 on the band's Handoff button and
+  `/auto-handoff now` do what h does.
+- After the last save, a second dim row reads `last save 14:05 · .claude/session-inspector/HANDOFF.md`.
+- The bar is the brief's one 5-cell bar, coloured by the context thresholds.
+- At 95, the ask's `r` row reads `r: dismiss`, as no step is left to remind at.
+- With no ask up, `asks at` names the next step not yet handled: `asks at 85%` after `r` at 82%, and no `asks at` once
+  95 is handled.
+- **h** hands off: it saves HANDOFF.md and arms the resume prompt (below).
+- **c** saves a handoff first, unless a save happened at this step already, then compacts through Phase 2's
+  `compactNow` (`hooks/register.ts`), which already reports a skip, a failure and a second press. `c` is drawn only
+  while no main-loop turn runs, since `$.session.compact` rejects while a turn runs.
+- **r** takes the ask down until the next step.
+- **Hotkey clash.** The pane's Cache tab uses hotkey `c` (`hooks/tabs.ts` TABS), and of two Buttons on one hotkey the
+  one drawn later wins. So the Cache tab moves to `k`. Phase 2 is not released, so no installed copy changes.
+
+#### What a save writes
+
+A save writes `.claude/session-inspector/HANDOFF.md`, relative to the session's working directory, with
+`$.fs.write`, which creates the missing folders. The file is UTF-8 with LF line ends. Each save overwrites it, so the
+last save in a project wins, and its header names the session. The mod writes no other file.
+
+- **Overwrite guard.** The mod overwrites the file only when its first line is the marker
+  `<!-- session-inspector handoff v1 -->`. A file at that path without the marker is left untouched, and the save
+  fails with the reason `HANDOFF.md exists and is not the mod's`.
+- **Off the hook path.** A save runs from a 0 ms timer started by the press, the command or the measure hook, so no
+  hook waits on git. If a save is already running, another request joins it instead of starting a second one.
+- **Git.** The one process call is
+  `$.process.run(['git', '--no-optional-locks', 'status', '--porcelain=v1', '--branch'], { timeoutMs: 2000 })`.
+  `--no-optional-locks` keeps git from taking `index.lock` while the person's own git commands run. A missing
+  `git`, a folder that is not a repository, a non-zero exit or the timeout writes `Git: not available (<reason>)`.
+- **Content, extractive only.** The file copies only what is already on disk in the project, or what the mod counts:
+  - From the plan file: its path, the plan's title, steps, statuses and times as Phase 3 parsed them, and a count of
+    integrated notes per step (`✎ 1 note`), never a note's text.
+  - The latest scores round: totals and open findings.
+  - The git branch line, and up to 50 changed paths, then `+N more`.
+  - Counts: turn number, duration, tool calls, failures, agents run, and the cost, marked `est.` when the session is on
+    a subscription (the band's rule).
+- **Masked at write.** Every copied string passes the key, email and phone classes before it is written, whatever
+  REC's level. Private words are kept: the file is for Claude and the person, not a screen.
+- **Never in the file:** a prompt or a note's text (a note is the user's words), a tool input (the task list exists only
+  in tool calls, so its items stay out, as do Bash commands and tool-call paths), a failure's reason, an agent's
+  description or report, or an unmasked key, email or phone.
+
+The file, with illustrative values:
+
+```markdown
+<!-- session-inspector handoff v1 -->
+# Handoff - 2026-10-28 14:05
+
+Saved at 82% context (asks at 80%) by session-inspector · session 3f2a9c1e · Opus 5.5 · branch feature/token-refresh.
+To continue in a new session, ask Claude to read .claude/session-inspector/HANDOFF.md and resume from Next.
+
+## Next
+
+S4 Update interceptor - in progress, 12m of ≈24m.
+
+## Plan - Token refresh, 3/5
+
+From .claude/session-inspector/plans/token-refresh.json.
+
+- [x] S1 Add refresh endpoint - done in 20m
+- [x] S2 Rotate tokens - done in 24m - ✎ 1 note
+- [x] S3 Migration with rollback - done in 12m
+- [ ] S4 Update interceptor - in progress
+- [ ] S5 E2E tests - pending
+
+Scores (token-refresh): R1 68 → R2 81 · open: F2 No load test for refresh storm (MATERIAL)
+
+## Git
+
+    ## feature/token-refresh...origin/feature/token-refresh [ahead 2]
+     M src/auth/interceptor.ts
+    ?? src/auth/refresh.test.ts
+
+## Session
+
+Turn 23 · 1h 12m · 140 tool calls, 3 failed · 2 agents · $3.12 est.
+```
+
+- Git's output is copied verbatim as an indented block, so its `##` branch line never reads as a heading.
+- The header names the branch from that same `git status` call; with no git, the branch part is left out.
+- With no plan, `Next` reads `No plan file this session; see Git below.` and the Plan and Scores parts are left out.
+- With the task list as the plan, `Next` reads `Task list in use; its items are not written to this file.`
+
+#### The resume prompt
+
+This is the brief's 'extractive resume prompt' ('Decisions already made', Core and Alfred Code integration), the core's one handoff home. It is filled, never sent, and
+only into an empty prompt.
+
+- Each save, by h, 4, c, `now` or auto mode, arms it. The mod keeps the save's time in its module memory (`held` in
+  `hooks/register.ts`), which `/clear` does not reset, unlike `$.state`.
+- On `classic.SessionStart` with `source` `clear` within 2 hours of the last save, the mod reads the prompt with
+  `$.prompt.read()`. If the draft is empty, it fills `Read .claude/session-inspector/HANDOFF.md, check that the branch
+  it names is checked out, and continue from its Next section.` with `$.prompt.fill`, once, then disarms. Claude does
+  the branch check with the git it already runs, so the mod adds no process call at `/clear`. Its toast reads
+  `Resume prompt filled from the handoff saved 14:05 - press Enter to send`.
+- **Fallback.** A draft that is not empty, or a fill answering `isFilled: false` (a dialog is up), gets no fill.
+  Instead the toast reads `Handoff saved 14:05: ask Claude to read .claude/session-inspector/HANDOFF.md`. HANDOFF.md
+  is the copy that outlives the session either way.
+- A new session started in another terminal gets no fill, as the mod cannot tell a continuation from new work. Every
+  save toast names the path for that reason, and each one but c's names `/clear` too; c compacts in place of a clear.
+
+#### F8 toasts
+
+| When                                        | Toast                                                                     |
+|---------------------------------------------|---------------------------------------------------------------------------|
+| Ask mode, an ask goes up                    | `Context past 80%: press 4 or run /auto-handoff now to save a handoff`   |
+| Auto mode, first save of the session        | `Handoff saved at 82% to .claude/session-inspector/HANDOFF.md - /clear fills a resume prompt` |
+| A save by h, 4 or `now`                     | `Handoff saved to .claude/session-inspector/HANDOFF.md - /clear fills a resume prompt` |
+| A save by c                                 | `Handoff saved to .claude/session-inspector/HANDOFF.md - compacting`      |
+| After `/clear`, the resume prompt filled    | `Resume prompt filled from the handoff saved 14:05 - press Enter to send` |
+| After `/clear`, the draft not empty         | `Handoff saved 14:05: ask Claude to read .claude/session-inspector/HANDOFF.md` |
+| A save fails                                | `Handoff not saved: <reason>`                                             |
+
+The ask's toast names `/auto-handoff now` because band digits do not fire while the band is collapsed (brief, design
+rules). Every toast goes through `toast()` in `hooks/mask.ts`, so REC masks it.
+
+#### With Alfred Code installed
+
+Without Alfred Code, F8 handles a full context. With Alfred Code, the stack's own feature does, never both (the user,
+2026-10-28). That feature is two hooks in alfred-code's `stack/hooks/`:
+
+- `guard-fresh-session-start.js` offers a fresh session past its token trigger, or compacts instead with
+  `ALFRED_CODE_AUTO_COMPACT=1`.
+- `history-session.js` puts the last sessions on the branch, with their plan's state, into each new session's context.
+
+The mod learns that the stack is there only from the stack's per-session status file,
+`.claude/session-inspector/status/<session id>.json`, the one input the brief allows from the stack ('Decisions already made', Core and Alfred Code integration). The
+user's ruling brings this one read into Phase 4 (F8 and F9 choice 14); the rest of the reader stays Phase 5's.
+
+- **When it reads.** At the session's start, on each 30-second poll, and on `classic.SessionStart` with `source`
+  `clear`, `resume` or `fork`, under the new session id, with `$.fs.read`. A session that stood down keeps standing
+  down across that start, in module memory, until a read of the new id's file says otherwise: the stack writes the
+  new id's file in its own SessionStart hook, which may run after the mod's. A stood-down session makes no save, so
+  no resume prompt is armed.
+- **A valid file** parses, has `schema` 1 and has this session's id in `session`. Its `fullContext` says what the
+  stack does at a full context: `fresh-session`, `compact` or `off`. The mod ignores fields it does not know, so Phase
+  5 adds fields under the same schema.
+- **Valid, `fullContext` `fresh-session` or `compact`:** F8 stands down for the session. There is no ask, no auto
+  save, no band item 4 and no resume fill. The HANDOFF row reads `ctx 62% · handoff by Alfred Code`, and a bare
+  `/auto-handoff` says the same. `/auto-handoff now` still saves when typed, as an explicit act.
+- **Valid, `fullContext` `off`:** the person turned the stack's offer off, so F8 runs, and a full context always has
+  one home.
+- **No file:** F8 runs as without Alfred Code, and nothing is drawn about it, so a project without Alfred Code
+  shows no trace of the check.
+- **A file that does not parse, has another schema or names another session:** F8 runs, and the HANDOFF section adds
+  a dim row, `Alfred Code status file not used: not JSON`, `...: schema 2` or `...: another session`. The general
+  diagnostics row under [Inspect] stays Phase 5's, with the rest of the reader.
+- **A file that appears or goes mid-session** changes the mode at the next read. An ask already up is taken down when
+  the stack takes over.
+- **The stack side** publishes the file, which is alfred-code's work, requested by the user (2026-10-28). Phase 4 builds and releases
+  without it: in a project whose stack does not publish it yet, F8 runs, in ask mode by default, which writes nothing
+  until a press, and F8 stands down by itself once the stack's release brings the file, with no mod update.
+- **No per-project switch.** `settings:handoff` stays one setting for the machine. F8 stands down by the file wherever
+  the stack runs, so nobody has to turn it off by hand, and `/auto-handoff off` turning it off in every project is
+  what the README says it does.
+
+### F9 Recording mode
+
+#### Levels and the command
+
+| Level    | Hides                                                                         |
+|----------|-------------------------------------------------------------------------------|
+| `off`    | nothing; `mask()` returns its input, as now                                   |
+| `on`     | keys, emails, phones, private words                                           |
+| `strict` | the same, plus the account (the local user name), home paths and $ amounts    |
+
+`/rec` takes one argument (argumentHint `[on|strict|off|test|words]`):
+
+- Every `/rec` reads `settings:rec` from `$.store` first, so a session that has not polled yet acts on the stored
+  level, never on its own stale copy.
+- No argument turns REC on over a stored `off`. Over a stored `on` or `strict`, it takes that level in this session at
+  once and prints the status, writing nothing. A bare `/rec` never turns REC off, nor strict down to on, as the level
+  persists: a person typing `/rec` to start a recording must never unmask it (F8 and F9 choice 15).
+- `on`, `strict` and `off` set the level. Only `/rec off` turns it off.
+- `test` runs the self-test below.
+- `words` opens the `rec` pane.
+
+The level is kept in `$.store` (`settings:rec`), so it holds across sessions and restarts until `/rec off`. It reaches
+other running sessions within 30 seconds, as F8's settings do. Each change updates a `rec` atom in `$.state` that
+holds the level, never the words, so every surface that reads it redraws. The words stay in module memory, loaded from
+`$.store` at the session's start, on every 30-second poll and on every level change, so a word added in one session
+masks in every running session within 30 seconds.
+
+`mask()` takes the level and the words from module memory, which `/clear` does not reset, and the `rec` atom only
+makes surfaces redraw. On `classic.SessionStart` with `source` `clear`, `resume` or `fork`, after Phase 1's
+`resetAll($)` and before the hook returns, the mod re-reads `settings:rec` and `rec:words` and writes the level back
+into the fresh `rec` atom, so the first redraw after a `/clear` masks at the level that held before it.
+
+#### What each class hides
+
+The rules below are the contract. The samples in [F8 and F9 acceptance](#f8-and-f9-acceptance) pin them as tests.
+
+- **Keys**, drawn `‹key›`:
+  - `sk-ant-`, `sk-` and `sk-proj-` keys of 20 characters or more.
+  - GitHub tokens: `gh[pousr]_` and `github_pat_`.
+  - Slack `xox[abposr]-` tokens, AWS `AKIA` and `ASIA` key ids, Google `AIza` keys, and Stripe `sk_live_`, `sk_test_`,
+    `rk_live_` and `rk_test_` keys.
+  - JWTs: three base64url parts, the first starting `eyJ`.
+  - PEM private-key blocks, from `-----BEGIN` to `-----END ... PRIVATE KEY-----`.
+  - The value after `Bearer `.
+  - The value of 8 or more non-space characters after a name containing `key`, `token`, `secret`, `password`, `passwd`
+    or `pwd` and then `=` or `:`, optionally quoted. Only the value is hidden: `API_KEY=‹key›`.
+- **Emails**, drawn `‹email›`: `local@domain.tld`.
+- **Phones**, drawn `‹phone›`:
+  - A `+` and 8 to 15 digits, which may be separated by spaces, dots, dashes or parentheses.
+  - A 10- or 11-digit number in two to four groups, each separated by one space, `-` or `.`, or with the area code in
+    parentheses, its last group 4 digits: `(415) 555-0132`, `415-555-0132`, `415.555.0132`, `020 7946 0958`. An IPv4
+    address, whose groups have at most 3 digits, never matches.
+  - Never a bare run of digits, a date, a time, a version, an amount or a token count.
+- **Private words**, drawn `‹private›`: each word matched case-insensitively wherever it appears, inside longer words
+  too, so `Acme` hides in `AcmeCorp`.
+- **Strict adds:**
+  - **Home paths:** the home folder prefix becomes `~`, with `/` or `\` separators. The home folder is
+    `$.env.get('HOME')`, else `$.env.get('USERPROFILE')`, as the brief's Platforms row says. It matches case-insensitively on Windows.
+  - **The account**, drawn `‹user›`: the local user name, the home folder's last segment, as a whole word,
+    case-insensitively. A name
+    under 3 characters is skipped, and `/rec test` says so. The mod does not read the Claude account (F1's account
+    field was dropped as PARTIAL); its email is hidden by the email class anyway.
+  - **$ amounts:** the digits of each amount become `•`, so `$3.12` reads `$•.••` and keeps its width. `est.` and `≈`
+    stay.
+
+One pass finds every match in the original text, and a match is never re-scanned. Overlapping matches go to the
+earliest start, then to the longest. So a private word `key` never breaks a `‹key›` token. The patterns compile once
+per change of level or words, as one regex per class with no nested quantifiers. A key name is at most 64 characters
+before its `=` or `:`, and a value is one run of non-space characters, so no part of a pattern backtracks over more
+than 64 characters and each class scans in time linear in the text. Masked text is cached in module memory by the
+original string, up to 256 entries and 4 MiB of text, and the cache empties on each change of level or words, so a row
+drawn again is not masked again. Every surface's width rules (the
+band's fit-or-drop, the pane's step rows) measure the masked text, not the raw text.
+
+#### Private words
+
+- **Adding.** Words are added only in the `rec` pane (`$.ui.open({ id: 'rec', title: 'REC words', focus: true })`),
+  through an `Input` with `autoFocus`. They are never added through command arguments: a slash command's arguments
+  show in the transcript's echo, and a plugin command cannot mark them sensitive (`CommandSpec` has no such field). The
+  field shows what is typed, so add words before recording starts.
+- **Rules.** Each word is trimmed and must be 3 to 64 characters, with at most 100 words. A word already in the list,
+  ignoring case, is refused, and the pane says why under the field.
+- **Edits from two sessions.** Each add or remove reads `rec:words` from `$.store` again, applies its one change to what
+  it read, and writes the result, so an edit never writes back a stale copy. Two edits in the same instant can still
+  race, as a `$.store` get then set is not atomic; the pane redraws the list from the store after each write, so a lost
+  word shows there, with REC off.
+- **Storage.** The words are kept in `$.store` (`rec:words`) as a JSON list, in plain text in the plugin's store file.
+  The stored list is never put in `$.state`, a log, a toast, a file the mod writes, or the model's context. A word
+  that already sits in text the mod copies, such as a plan step's title, stays in that copy: HANDOFF.md keeps it
+  (F8 and F9 choice 13), and the person's own plan file is where it came from.
+- **The pane's list.** With REC off, the pane lists the words, each with a `remove` Button. With REC on, it shows only
+  the count (`3 private words · turn REC off to see or remove them`) and the Input.
+
+#### Where REC masks
+
+1. **The mod's own surfaces**, through `mask()`: the band, every pane tab, the `rec` pane's own text, toasts, the
+   spinner suffix, the output of its own commands, and F10's compact rows (compacted first, then masked).
+2. **Claude Code's message rows**, through `ui.render` rewrites made only while REC is on:
+   - `UserMessage.text`, `AssistantMessage.text` and `CommandOutput.text`, for every command's output.
+   - Every string inside `ToolUse.input` and `ToolResult.output`, with the object's shape and non-string values kept.
+   - An errored `ToolResult` draws its error text, not `output` (types), and live its `output` was no string (a Bash
+     run that exited 3, read 2026-10-28). So the mod keeps each errored call's error text in memory, from the call's
+     result or from its `ToolUse` row, and draws it masked as its own lines; a call whose text it never saw draws
+     `Error · text hidden while REC is on` in its place.
+   - `ToolGroup`: the folded line ('Read 3 files, ran 2 shell commands') shows the calls' paths, patterns and git
+     results, and `isExpanded` is the only prop a rewrite changes (types). So while REC is on, a hook sets
+     `isExpanded: true`, and each call draws as its own `ToolUse` row, which the rule above masks. With /quiet on,
+     F10's compact row takes the group's place, masked.
+   - Every string inside `AskUserQuestion.questions` but the option labels, kept inside the tool's schema, since a
+     rewrite that misfits draws the original unmasked (types, the `AskUserQuestion` render site). Claude Code 2.1.312
+     also draws the original when a rewrite changes any option label (its debug log: 'a rewrite may relabel the
+     questions but not change question 1's options', read live 2026-10-28), so labels are handed on exactly as asked
+     and listed under What REC cannot hide. The tool's input types cap a `header` at 12 characters, and plain masking
+     can break that: `Acme API` becomes `‹private› API`, 13 characters. So in the dialog alone:
+     - Each masked value gets a numbered token, the same value the same number across the dialog: `‹email 1›`,
+       `‹email 2›`.
+     - A masked header over 12 characters is cut to 11 and `…`.
+   - The engine's `Spinner` `word` and `message`, as well as the mod's own suffix.
+   - A hook rewrites only when masking changes something; otherwise it passes `next(e)` through untouched.
+   - These rewrites change the drawing only. The stored messages, and what the model reads, stay as they are. The mod
+     never rewrites the tool call itself.
+
+#### What REC cannot hide
+
+The `/rec` help text and the README say this plainly:
+
+- What you type in the prompt box.
+- Claude Code's own screens and dialogs: the permission dialog, which shows the command and which the engine alone
+  draws (types, `RenderComponent`), `/context`, `/usage`, `/config`, the status line and the welcome header.
+- Other plugins' bands and panes.
+- The option labels of a question Claude asks (`AskUserQuestion`): Claude Code draws them as asked. The model's note
+  asks Claude to keep values out of them, and the header, question and descriptions are masked.
+- A private key's middle lines in a diff that does not show its BEGIN line. An Edit diff holds one string per line,
+  and the key class needs the BEGIN and END lines in one string, so in a list of lines the mod hides every line from
+  a BEGIN line it hides through the END line, or the list's end, as `‹key›` after any diff mark; a hunk that starts
+  inside a key shows its body.
+- Other open sessions, for up to 30 seconds after a change: the level and the words reach them on their next poll.
+  Run `/rec` in each session that will be on screen; a bare `/rec` there takes the stored level at once, strict
+  included.
+- Rows drawn before REC went on. On the terminal's main screen they sit in scrollback and do not redraw, so turn REC
+  on before recording starts, then clear the terminal or start a new session.
+- Files on disk and the transcript. HANDOFF.md gets only its write-time key, email and phone masking.
+- Anything the model reads.
+
+#### The model's note
+
+While REC is on, the model gets one short note, so that its own replies avoid writing secrets out. The note goes in
+`context` on `prompt.submit`: it rides the person's next own prompt (`origin` the composer's) after REC goes on. The
+note is added again after a main-loop compaction while REC is on, and an 'off' note is added after REC goes off. It is
+not a `prompt.compose` section (F8 and F9 choice 6). The note is invisible to the person and adds no tokens to later
+requests beyond its place in the history.
+
+- On, 44 words: 'Screen recording is on (session-inspector REC). Until told it is off, do not write secret values, API
+  keys, tokens, passwords, email addresses or phone numbers in replies; refer to them by name, such as "the token in
+  .env". Work on the task as usual.'
+- Strict adds: 'Also leave out account names, home folder paths and dollar amounts.'
+- Off: 'Screen recording is off (session-inspector REC); the earlier limit on secret values no longer applies.'
+
+#### /rec test
+
+`/rec test` checks the level that applies: the current one, or `on` when REC is off. It runs the masker over fake
+built-in samples, one set per class, plus the person's private words, and prints a table that REC also masks:
+
+```text
+/rec test · level on
+✓ keys            13/13 hidden
+✓ emails           3/3 hidden
+✓ phones           6/6 hidden
+✓ private words    3/3 hidden (not shown)
+✓ left alone      12/12 shown (SHA, time, date, version, token count, port, path, URL, UUID, digits, IP, $ off strict)
+strict: ✓ home path 2/2 · ✓ account 1/1 · ✓ $ amounts 3/3
+```
+
+- The fake samples are assembled at runtime from parts (`'gh' + 'p_' + ...`), so no file of the public repo holds a
+  provider-shaped literal for secret scanners to flag. A vendor's own documented example, such as AWS's example key
+  id, is assembled the same way.
+- A failed sample prints its class and the fake sample.
+- A failed private word prints its position only: `✗ private word 2 shown`.
+
+#### Status, band and toasts
+
+- **Band.** A red `● REC` leads the band's first line in every state, the calm line and the narrow form included. It
+  is never dropped for width.
+- **Now tab.** The first row is the status, `● REC on · hiding keys · emails · phones · 3 private words`. With no
+  words, the private-words part is left out. Strict reads
+  `● REC strict · hiding keys · emails · phones · 3 private words · account · home paths · $ amounts`.
+- **Toasts.** The status text when REC goes on or changes level, and `REC off` when it goes off.
+- **The `/rec` reply.** When the level changes, the reply adds `Other open sessions follow within 30 s; run /rec in each
+  one on screen.`
+
+### F8 and F9 acceptance
+
+Unit and hook tests (`claude plugin test`):
+
+- **Keys hidden** (each assembled at runtime): `sk-ant-api03-` with 40 characters, `sk-proj-` with 40, `ghp_` with
+  36, `github_pat_11` with 60, `xoxb-` with three groups, AWS's documented example key id (`AKIA` and 16 characters
+  ending `EXAMPLE`), `AIza` with 35, `sk_live_` with 24, a three-part JWT, a PEM `OPENSSH PRIVATE KEY` block,
+  `Authorization: Bearer abcdefghijklmnop1234`, `API_KEY=hunter2hunter2` and `"password": "correct-horse"`.
+- **Emails hidden:** `jane.doe@example.com`, `a+b@sub.example.co.uk` and `ops@example.io`.
+- **Phones hidden:** `+1 415 555 0132`, `+44 20 7946 0958`, `(415) 555-0132`, `415-555-0132`, `+380 44 123 4567`
+  and `+4915123456789`.
+- **Left alone:**
+  - `c50c7aa` and a 40-character hex SHA.
+  - `14:05`, `2026-10-28`, `(28.10 16:15)`, `2.1.312`, `180k cached` and `1,234,567 tokens`.
+  - `localhost:8080`, `src/auth/refresh.ts` and `https://example.com/a?b=1`.
+  - A UUID, `12345678901`, `10.100.200.150`, and `$3.12` below strict.
+- **Strict hides:**
+  - `/Users/jane/src` as `~/src` and `C:\Users\jane\src` as `~\src`.
+  - `jane` as a whole word, but not inside `janet`.
+  - `$3.12` as `$•.••`, plus `≈ $1.44` and `$1,204.50`.
+- **Private words:**
+  - `Acme` hides in `AcmeCorp` and `acme-api`.
+  - A word `key` leaves `‹key›` whole.
+  - A word under 3 characters, the 101st word and a duplicate are refused.
+- **Message sites:** with REC on, a `ToolGroup` is drawn expanded, and `AskUserQuestion` questions and the `Spinner`
+  word are masked; with REC off, each site passes `next(e)` untouched. A masked `ToolResult` output for Bash and Read
+  keeps every key and type of the original, and its lines without a sample unchanged. An errored `ToolResult` whose
+  `output` holds no text draws the error text the call returned, or its row carried, masked, and one whose text the
+  mod never saw draws `Error · text hidden while REC is on`.
+- **Dialog limits:** with REC on, two options `Use` and a fake email keep their labels as asked while their
+  descriptions and the question draw `‹email 1›` and `‹email 2›`; a header `Acme API` with the private word `Acme`
+  draws `‹private› A…`, 12 characters; a dialog whose only samples sit in labels is passed unchanged; every masked
+  dialog keeps headers of 12 characters or fewer and its labels exactly as asked.
+- **Compact rows:** with /quiet on and REC on, an F10 compact row whose call holds a fake key draws `‹key›`. With
+  /quiet on, an Edit or Write result draws nothing under its compact row: live, Write's emptied result drew 'Wrote 1
+  line' for three lines written, and Edit's a lone `⎿` (2026-10-28).
+- **Masking cost:** with REC on and 100 words, a 1 MB single line of base64 masks in under 10 times the time of a
+  100 kB one, and masking the same string again returns the cached result.
+- **Bare `/rec`:** over a stored off it writes on; over a stored on or strict it prints the status and writes nothing.
+  A session whose copy says off while the store says strict leaves the store at strict and draws strict at once.
+- **Stale settings:** `/auto-handoff at 70` in a session whose copy says ask, while the store says auto, stores auto at
+  70.
+- **Words across sessions:** an add made in a session whose memory lacks a word another session stored keeps both words;
+  a session reloads the words on its 30-second poll.
+- **Surfaces:** with REC on, the band, each pane tab, a toast and the spinner suffix draw no sample in clear. With REC
+  off, every surface draws exactly what Phase 3 draws, and every existing test passes unchanged (375 at the Phase 3 commit) (none pins the Cache
+  tab's `c`).
+- **F8 compaction point:** on a 1M window with `autoCompactThreshold` 390,000, a reading of 312k tokens asks and the
+  row reads `of 390k`; with auto-compaction off, a 200k window asks at 160k; the forecast's threshold on the 1M window
+  is 31.
+- **F8 with Alfred Code:** a valid status file with `fullContext` `fresh-session` stands F8 down (no ask at 88, the row
+  reads `handoff by Alfred Code`, `/auto-handoff now` still saves); `fullContext` `off`, another session's id, schema 2
+  and a file that does not parse each leave F8 running, the last three with their dim `not used` row; no file draws
+  no such row; a file removed mid-session brings the ask back on the next poll, at the last reading.
+- **Across `/clear`:** REC strict, then `/clear`: the first redraw is strict. A stood-down session, then `/clear`
+  before the new id's file exists: no ask until a read finds no file for the new id.
+- **F8 steps:**
+  - Readings of 70 then 88 ask once, at 85.
+  - Auto mode saves at 80, 85, 90 and 95.
+  - A compaction to 40% re-arms 80.
+  - `off` asks and saves nothing.
+  - `at 9`, `at 96` and `at 8.5` are refused.
+- **F8 file:**
+  - The written text starts with the marker.
+  - It holds no failure reason, task subject, agent description or note text; a fake key in a plan title is written as
+    `‹key›`, and a private word in it is kept.
+  - A foreign file at the path is left alone, and the save fails with its reason.
+  - A git timeout writes `Git: not available (timed out)`.
+  - Two saves at once make one write.
+- **Resume prompt:** a `/clear` within 2 hours of a save fills the prompt once, and only an empty draft; a draft that is
+  not empty gets the fallback toast; a `/clear` with no save, or past 2 hours, fills nothing.
+
+Live, in a scratch project under an isolated `CLAUDE_CONFIG_DIR` and `HOME`, without and with Alfred Code, at 120
+and 90 columns, main screen and fullscreen:
+
+- **Handoff.** With `/auto-handoff at 10` in ask mode, reading a large file passes 10%. Then:
+  - The toast, band item 4 and the ask row draw.
+  - 4 writes HANDOFF.md with the branch in its header, and a `/clear` then fills the resume prompt.
+  - c saves and then compacts.
+  - In auto mode the file is saved without a press.
+  - With Alfred Code publishing its status file, the same reading asks nothing and the row reads
+    `handoff by Alfred Code`; with the file removed, the ask returns within 30 seconds.
+- **REC on.** With `/rec` on and a scratch `.env` holding fake samples, Claude's `cat .env` shows only `‹key›`,
+  `‹email›` and `‹phone›` in the Bash row and in Claude's reply, and the result row draws its other lines. A run of
+  reads and greps that would fold draws expanded, each row masked. With /quiet on, the compact rows draw masked, on the
+  main screen and in fullscreen. A `cat` of a 1 MB single-line file draws with no visible stall.
+- **REC strict.** `/rec strict` hides home paths and $ amounts in the band, the pane, the toasts and the spinner.
+- **Rest of REC.** `/rec test` passes. Private words added in the `rec` pane never appear in the transcript. A
+  rewrite refused for any tool is reported by name.
+- **REC dialog.** Asked to choose between two fake emails under a header holding a private word, Claude's
+  AskUserQuestion dialog draws the masked header, question and descriptions with its labels as asked, and the pick
+  reaches Claude as the original option.
+- **REC across sessions.** With two sessions open, `/rec` in one shows `● REC` in the other within 30 seconds. After
+  `/rec strict` in one, a bare `/rec` in the other within those 30 seconds draws strict there at once, and the first
+  stays strict.
+- **Not run here.** Desktop runs only on the user's word; Windows and Linux run only on a machine that has them.
+
+After rollout there is no telemetry, since the mod makes no network call. In the field, `/rec test` and the HANDOFF
+row's last-save line are the checks a person can run.
+
+### F8 and F9 choices
+
+Each choice is applied in this section, as the user approved it (2026-10-28). Choice 0 departs from the brief's
+literal wording of \[Handoff\].
+
+| # | Choice made                                                                    | Alternative                                                    | Cost if wrong                                                     |
+|---|--------------------------------------------------------------------------------|----------------------------------------------------------------|-------------------------------------------------------------------|
+| 0 | [Handoff] saves HANDOFF.md and arms a resume prompt that fills after `/clear` | The press fills the whole extractive handoff into the current prompt box, the brief's literal wording | A long draft in a full session's box helps only once copied to a fresh one |
+| 1 | `r` = remind at the next step                                                  | `r` = resume: fill a 'read HANDOFF.md' prompt in a new session | One key's action and its row text                                 |
+| 2 | `c` saves a handoff, then compacts                                             | `c` compacts only                                              | One extra file write per c                                        |
+| 3 | The Cache tab's hotkey moves from `c` to `k`                                   | Handoff's compact key becomes another letter                   | A hotkey and one test                                             |
+| 4 | HANDOFF.md at `.claude/session-inspector/HANDOFF.md`, guarded by a marker      | `HANDOFF.md` at the project root, as the deck's name suggests  | Root: risk of a commit, and of overwriting a person's own file   |
+| 5 | Extractive only: no model writes the handoff                                   | h fills a prompt asking Claude to write it, never sent         | A thinner handoff; a fill costs tokens when sent                  |
+| 6 | The model's note via `prompt.submit` `context`                                 | A `prompt.compose` section, as the brief's F9 data source says | A section rewrites the whole prompt cache at each toggle (`≈ $1.44` at 180k cached on Opus, the brief's F4 example) |
+| 7 | Private words added in the `rec` pane                                          | `/rec add <word>`                                              | Command arguments are echoed into the transcript, which is a file |
+| 8 | The REC level holds across sessions until off                                  | Per session                                                    | A new session during a recording would start unmasked             |
+| 9 | Private words match inside longer words, case-insensitively, 3 characters or more | Whole words only                                            | `AcmeCorp` would show                                             |
+| 10 | Strict's 'account' is the local user name                                     | The Claude account email and organization                      | F1 does not read the account, so there is nothing to hide; emails hide anyway |
+| 11 | Threshold range 10-95, so a live check reaches it cheaply                      | 50-95                                                          | A person may set a low threshold and get asks early              |
+| 12 | From the prompt, handoff is one digit (band item 4) or `/auto-handoff now`; h, c and r work in the focused pane only, as letter hotkeys never fire from the prompt | Band line 3 carries all three answers as digit Buttons (4 Handoff, 5 Compact, 6 Later) | Two more band digits, and a longer line 3 |
+| 13 | HANDOFF.md masks keys, emails and phones at write and keeps private words      | Mask private words too, or mask nothing                        | Masking private words can blank the plan's own names for the next session |
+| 14 | F8 stands down for a session with a valid Alfred Code status file whose `fullContext` is not `off`; the stack publishes the file (alfred-code), and this one read moves into Phase 4 | Detect Alfred Code through `enabledPlugins` (`$.settings.read`), with no stack change | Reads the stack's presence from outside its one file, against the 2026-10-28 ruling, and misses a project whose stack hooks were copied in |
+| 15 | A bare `/rec` turns REC on, or prints the status; only `/rec off` turns it off | A bare `/rec` toggles                                          | With the level persisting, a toggle unmasks a recording when typed to start one |
+| 16 | F8 measures context to the compaction point (`autoCompactThreshold`)          | To the model's window, as band line 2 does                     | On a 1M window the ask comes after Claude Code has compacted      |
+| 17 | The file names the branch, and the resume prompt asks Claude to check it       | The mod runs git at `/clear` and skips the fill on another branch | One more process call per `/clear`                              |
 
 ## Phase 0: probe mod
 
@@ -631,8 +1185,8 @@ Six phases after an approved verdict, core first. Skip any feature the verdict m
 | 1. Core | F1, F2, F5; the band in all its states; `/inspect` tabs Now, Usage, Tools, Timeline; a `mask()` that passes text through | Context and usage match `/context` and `/usage` within 1 point; a failing Bash call shows in Tools with its reason; a denied call shows as denied; a guard hook's block shows as blocked; a foreground sleep, an Edit whose `old_string` is missing and a Read of a missing file show as errors with their reasons; a call the auto mode classifier blocks is recorded with its events, and shows as blocked once that shape is confirmed: the trigger is `git reset --hard` over an uncommitted change in the scratch repo, which the auto mode docs list as blocked by default, as Phase 0's tries were allowed (a force push with no remote, deleting a scratch folder and a project file) or refused by the model before any call (screen `cls-1`); if no try blocks, that case is reported NOT RUN, such a call shows as 'refused', and the phase passes on its other checks; today's cost survives a second session (agent) |
 | 2. Agents and cache | F3, F4; Agents and Cache tabs; spinner suffix | Two parallel Explore agents each show their own current action in their Agents rows; the main loop's spinner shows its current action and the running-agent count; a foreground agent is tried once, and its own spinner gets its suffix only if a second spinner instance draws, else that case is reported as not drawn; an agent resumed by SendMessage keeps its one row; cache expiry matches the TTL tier once a model switch reports it; the 5 min toast fires once (agent) |
 | 3. Plan and scores | F6, F7; the Plan tab in `/inspect`; the rule changes to the plan and scorer skills | A note given to Claude shows ✎ within 2 s; an outside edit shows within 30 s; a second score round shows changes and the fixed list; invalid JSON keeps the last good view |
-| 4. Handoff, REC and compact rows | F8, F9, F10; starts once the deck, or the user's spec of F8 and F9's behaviour, is in hand (the verdict's Also report) | At the threshold, ask mode waits and auto mode saves; `/rec strict` hides account, home paths and $ amounts in the band, the pane, toasts and spinners; `/rec test` passes for keys, emails and phones; /quiet on shows one line per tool call and keeps up to 3 error lines on a failure, on the main screen and in fullscreen; /quiet off restores the full rows; REC masks compact rows too (agent) |
-| 5. Alfred Code integration | Starts only on the user's word (the user, 2026-10-28: 'nothing from the Alfred Code integration until I say so'). The status file reader; the mode banner; the runway against the stack's resume trigger; \[Handoff\] from the stack's ready prompt. The stack side, its hooks publishing `status/<session id>.json`, lands in alfred-code first | With a valid status file for this session, the band shows the mode banner, the runway is measured against the resume trigger, and \[Handoff\] fills the stack's prompt verbatim, only into an empty prompt and never sending it; with no file, an unknown schema or another session's file, every surface draws what the core draws and the diagnostics row under \[Inspect\] names the reason (agent) |
+| 4. Handoff, REC and compact rows | F8, F9, F10; starts once the deck, or the user's spec of F8 and F9's behaviour, is in hand (the verdict's Also report) | At the threshold, ask mode waits and auto mode saves; `/rec strict` hides account, home paths and $ amounts in the band, the pane, toasts and spinners; `/rec test` passes for keys, emails and phones; /quiet on shows one line per tool call and keeps up to 3 error lines on a failure, on the main screen and in fullscreen; /quiet off restores the full rows; REC masks compact rows too; and the acceptance in 'F8 and F9 behaviour' (agent) |
+| 5. Alfred Code integration | Starts only on the user's word (the user, 2026-10-28: 'nothing from the Alfred Code integration until I say so'). The status file's presence check for F8's stand-down came in Phase 4 (the user, 2026-10-28). The rest of the status file reader; the mode banner; the runway against the stack's resume trigger; \[Handoff\] from the stack's ready prompt. The stack side, its hooks publishing `status/<session id>.json`, lands in alfred-code first | With a valid status file for this session, the band shows the mode banner, the runway is measured against the resume trigger, and \[Handoff\] fills the stack's prompt verbatim, only into an empty prompt and never sending it; with no file, an unknown schema or another session's file, every surface draws what the core draws and the diagnostics row under \[Inspect\] names the reason (agent) |
 | 6. Ship | Marketplace entry | `claude plugin validate --strict` passes; `tsc` and `claude plugin test` pass; installing from the marketplace in a clean session loads `1 mod active · session-inspector`; `claude plugin test` and one terminal session pass on Windows and on Linux, or the user waives that platform in writing for this release, as the mod must work on all three (where they run is the user's call, the verdict's Also report) (agent) |
 
 **Every phase**
@@ -654,7 +1208,7 @@ The Claude Code limits below are from the mods reference; the right column is ho
 
 | Limit | Value | What the mod does |
 | --- | --- | --- |
-| Minimum Claude Code | v2.1.287 terminal, v2.1.286 Desktop, VS Code extension v2.1.299 (v2.1.304 without feature flags); some fields need v2.1.289, v2.1.290 or v2.1.299 | States the minimum in the README and hides fields the running version lacks (agent) |
+| Minimum Claude Code | v2.1.287 terminal, v2.1.286 Desktop, VS Code extension v2.1.299 (v2.1.304 without feature flags); some fields need v2.1.289, v2.1.290 or v2.1.299 | States the minimum in the README and hides fields the running version lacks. From Phase 4 the README asks for v2.1.312: neither the changelog nor the reference shows `ToolGroupCall.tool_use_id` or `$.session.usage({ breakdown: 'summary' })` at v2.1.287 (read 2026-10-28) (agent) |
 | A hook's own execution time | 10 s, then the hook is skipped; a `.catch` handler 1 s | Keeps each hook under 50 ms; reads files and computes on timers (agent) |
 | Redraws | 10 a second, 30 in the terminal; extra calls are coalesced | Calls `$.ui.invalidate` at most once per event |
 | `$.store` | 4 MiB of JSON in total, shared by every session; a get then set is not atomic | Keeps only settings, private words, a 7-day cost ledger and per-plan step times, each session writing keys of its own (agent) |
@@ -670,7 +1224,8 @@ The Claude Code limits below are from the mods reference; the right column is ho
 **Security**
 
 - **Network and processes:** no `$.http.fetch` and no `$.model` calls. The only `$.process` call allowed is one fixed, read-only `git status` for the extractive handoff, with a timeout.
-- **Approvals:** the mod never approves, denies or rewrites a tool call. It only observes, except the HANDOFF and REC behaviour described in the deck.
+- **Approvals:** the mod never approves, denies or rewrites a tool call; F8 writes HANDOFF.md and fills an empty prompt, and F9 rewrites only what rows draw, as the 'F8 and F9 behaviour' section says. (agent)
+- **Files written:** one `$.fs.write`, of `.claude/session-inspector/HANDOFF.md`, and never over a file without its marker. (agent)
 - **Private data:** private words live only in `$.store`, never in code, logs or `$.state`.
 - **What it reads:** the global config file (`$CLAUDE_CONFIG_DIR/.claude.json` when set, else `~/.claude.json`) for `oauthAccount`, the files under `.claude/session-inspector/` in the project, and nothing else. (agent)
 
@@ -686,7 +1241,7 @@ No known blocker: the core features rest on documented events. The material risk
 | MATERIAL | The mods API still changes between versions; fields changed from v2.1.287 to v2.1.312, the build checked here | A Claude Code update | Tests against the types for the installed build; minimum version in the README (agent) |
 | MATERIAL | The person can collapse the band, and the mod cannot tell | ctrl+x ctrl+a or `[-]` | Every item that needs you also raises a toast or shows in the Now tab (agent) |
 | MATERIAL | The Desktop and VS Code checks of every phase need the real account | A phase's Desktop check | Run only on the user's word, else reported NOT RUN; the terminal checks run under an isolated config (agent) |
-| MATERIAL | Two homes for a full context: F8 Handoff and the stack's guard-fresh-session-start hook, which offers a fresh session before a heavy run on a full context | Both act as context nears its limit | With Alfred Code present, the stack owns handoff and F8 only shows the state and the button; without it, F8's own handoff is the only one |
+| MATERIAL | Two homes for a full context: F8 Handoff and the stack's guard-fresh-session-start hook, which offers a fresh session before a heavy run on a full context | Both act as context nears its limit | With a valid status file, the stack owns handoff and F8 only shows the state (Phase 5 adds the button filling the stack's prompt); without one, F8's own handoff is the only one (agent) |
 | MATERIAL | Calls come from agents no `agent.spawn` announced, such as the engine-internal one auto mode ran a failing ToolSearch under (probe I 266) | Auto mode, background engine work | F2 and F3 count only the main loop and agents seen at `agent.spawn` (agent) |
 | MATERIAL | The cache tier and write rate are known only after a model switch (probe I 240) | A session with no `/model` switch | F4 hides the expiry clock, its toast and the rewrite cost until then; hit rate and cached tokens always show (agent) |
 | MATERIAL | Only macOS is checked here, and the mod must work on Windows and Linux too | A path, line ending or `$.process` difference | The Platforms limit; each phase reports Windows and Linux NOT RUN until a machine runs them (agent) |
@@ -698,7 +1253,7 @@ No known blocker: the core features rest on documented events. The material risk
 | MINOR | The account comes from an undocumented file, which moves with `CLAUDE_CONFIG_DIR` | The file changes shape or place | Read it from `CLAUDE_CONFIG_DIR` first; hide the field on any parse failure (agent) |
 | MINOR | Two sessions writing one `$.store` key race, and the second write wins | Today's cost or step times from two sessions | One key per session and day, or per plan, step and session (agent) |
 | MINOR | REC hides text on screen only; the model still sees secrets in context | Always | State it in `/rec` help text |
-| MINOR | REC's prompt.compose instruction adds tokens to every request while REC is on; everything else in the mod costs no tokens | REC on | Keep the instruction under 60 words; measure turn.step input tokens with REC on and off |
+| MINOR | REC's note adds tokens once per change of level, on the person's next prompt (`prompt.submit` `context`): one note per change, not every request; everything else in the mod costs no tokens | REC turned on or off | Keep the note under 60 words (agent) |
 | MINOR | An in-row button is pressed only by a click in the fullscreen terminal; on the main screen it draws, but no key or click reaches it (probe question 13) | F10's in-row expand | Ctrl+O and /quiet off expand rows; no feature needs an in-row button (agent) |
 | MINOR | `!` commands typed at the prompt raise no `tool.call` (probe, screen `noauth-4`) | You run a command with `!` | F2 counts the model's calls only, and the Tools tab says so (agent) |
 
@@ -796,3 +1351,8 @@ Steps 2 and 3, the probe and the verdict, 2026-10-28. S, I, F, M and X are the P
 - Phase 6 and Also report: the release waits on Windows and Linux runs or a written waiver. Evidence: the user's message, 2026-10-28; the Platforms row.
 - Also seen: the band button pressed by typing 1. Evidence: S 6, I 190.
 - Graded with the refining-plans loop by independent reviewers, 2026-10-28: 78, 89, 88, 91; the three round 3 findings above fixed after the last grade, and the fourth, the prototype's evidence, waits on its path.
+
+Phase 4, 2026-10-28, against Claude Code 2.1.312.
+
+- F8 and F9 behaviour: a new section carrying the user's approved spec of F8 and F9, its acceptance and its choices. Evidence: the user's approval of the spec, 2026-10-28.
+- Feature scope, F8 and F9 rows and the F8 slides note; events table REC row; `$.store` and calls lines; Core and Alfred Code integration; the folder paragraph; Phase 4 and Phase 5 rows; Security; the two-homes and REC token risk rows: brought in line with that section. Evidence: the spec's 'Changes to the brief and README on approval'.

@@ -2,7 +2,7 @@
 import { mock } from 'claude-code/testing'
 import type { Engine, MockClock } from 'claude-code/testing'
 import type {
-  AgentInfo, ClassicResult, On, RenderElement, SessionUsage, Settings, TurnStepInput, TurnStepResult, TurnUsage, UiPane,
+  AgentInfo, ClassicResult, On, ProcessRunResult, RenderElement, SessionUsage, Settings, TurnStepInput, TurnStepResult, TurnUsage, UiPane,
 } from 'claude-code'
 
 export const NO_READING: SessionUsage = { startedAt: 0, context: { window: 200_000 }, rateLimits: [] }
@@ -16,15 +16,27 @@ type Options = {
   agents?: AgentInfo[]; preSwitch?: ClassicResult; settings?: Record<string, unknown>
   // The project's files by the path the mod passes, such as `.claude/session-inspector/plans/p.json`
   files?: Record<string, FileStub>
+  // What `git status` answers, or a reason that rejects the call; the prompt box's draft
+  git?: ProcessRunResult | string; draft?: string
 }
+
+export const gitResult = (stdout: string, exitCode = 0, stderr = ''): ProcessRunResult =>
+  ({ exitCode, stdout, stderr, isStdoutTruncated: false, isStderrTruncated: false })
 
 // A file the mod lists and reads; `size` stands in for the text's length when given
 export type FileStub = { text: string; mtimeMs: number; size?: number }
 
 export function stubAll(on: On, o: Options = {}): {
   clock: MockClock; toasts: string[]; opened: string[]; copied: string[]; usage: { current: SessionUsage }; panes: UiPane[]
-  listed: { current: AgentInfo[]; calls: number }; files: { current: Record<string, FileStub>; reads: string[] }
-  store: { get(key: string): unknown; keys(): string[] }
+  listed: { current: AgentInfo[]; calls: number }; files: { current: Record<string, FileStub>; reads: string[]; writes: string[] }
+  // `git.current` and `git.calls`; the draft a test types and the texts the mod filled
+  git: { current: ProcessRunResult | string; calls: number; argv: readonly string[] | null; timeoutMs: number | null }; prompt: { draft: string; fills: string[] }
+  // Each `$.ui.invalidate` event the mod raised, in order
+  invalidates: string[]
+  // `set` writes as another session would, beneath the mod
+  store: { get(key: string): unknown; keys(): string[]; set(key: string, value: unknown): void }
+  // A test changes the session id mid-test, as a /clear does, through `session.id`
+  session: { id: string }
 } {
   const toasts: string[] = []
   const opened: string[] = []
@@ -34,7 +46,8 @@ export function stubAll(on: On, o: Options = {}): {
   // A test changes the reading mid-test through `usage.current`
   const usage = { current: o.usage ?? NO_READING }
   on('session.usage', () => ({ value: usage.current }))
-  on('session.id', () => ({ value: o.sessionId ?? 's1' }))
+  const session = { id: o.sessionId ?? 's1' }
+  on('session.id', () => ({ value: session.id }))
   on('session.cwd', () => ({ value: o.cwd ?? '/w' }))
   on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('ui.open', (_, e) => {
@@ -53,7 +66,7 @@ export function stubAll(on: On, o: Options = {}): {
   on('settings.read', () => ({ value: (o.settings ?? {}) as Settings }))
   // A test changes the files mid-test through `files.current`; a folder with no file in it is missing. The kit hands a
   // hook the path resolved against the mod's folder, so a stub matches its end; `{ deny }` rejects the mod's call.
-  const files = { current: { ...(o.files ?? {}) }, reads: [] as string[] }
+  const files = { current: { ...(o.files ?? {}) }, reads: [] as string[], writes: [] as string[] }
   const at = (full: string, path: string): boolean => full === path || full.endsWith(`/${path}`)
   on('fs.list', (_, e) => {
     const dir = e.path.replace(/\/$/, '')
@@ -65,13 +78,42 @@ export function stubAll(on: On, o: Options = {}): {
       })),
     }
   })
+  // A read rejects over 4 MiB, as Claude Code's does (types, `$.fs.read`)
   on('fs.read', (_, e) => {
     const found = Object.entries(files.current).find(([path]) => at(e.path, path))
     if (found !== undefined) files.reads.push(found[0])
-    return found === undefined ? { deny: `ENOENT: no such file, ${e.path}` } : { value: found[1].text }
+    if (found === undefined) return { deny: `ENOENT: no such file, ${e.path}` }
+    return (found[1].size ?? 0) > 4 * 1024 * 1024 ? { deny: `EFBIG: over 4 MiB, ${e.path}` } : { value: found[1].text }
+  })
+  on('fs.exists', (_, e) => ({ value: Object.keys(files.current).some(path => at(e.path, path)) }))
+  // A write lands at the path of a file the test gave, else at the path the mod passed
+  on('fs.write', (_, e) => {
+    const key = Object.keys(files.current).find(path => at(e.path, path)) ?? e.path
+    files.current[key] = { text: e.text, mtimeMs: o.now ?? 0 }
+    files.writes.push(key)
+    return { value: undefined }
+  })
+  const git = { current: o.git ?? gitResult('## main\n'), calls: 0, argv: null as readonly string[] | null, timeoutMs: null as number | null }
+  on('process.run', (_, e) => {
+    git.calls++
+    git.argv = e.argv
+    git.timeoutMs = e.init?.timeoutMs ?? null
+    return typeof git.current === 'string' ? { deny: git.current } : { value: git.current }
+  })
+  const prompt = { draft: o.draft ?? '', fills: [] as string[] }
+  on('prompt.read', () => ({ value: { text: prompt.draft, cursor: prompt.draft.length } }))
+  on('prompt.fill', (_, e) => {
+    prompt.fills.push(e.text)
+    prompt.draft = e.text
+    return { isFilled: true }
   })
   on('ui.toast', (_, e) => {
     toasts.push(e.text)
+    return { value: undefined }
+  })
+  const invalidates: string[] = []
+  on('ui.invalidate', (_, e) => {
+    invalidates.push(e.event)
     return { value: undefined }
   })
   on('ui.copy', (_, e) => {
@@ -99,9 +141,12 @@ export function stubAll(on: On, o: Options = {}): {
     return { value: undefined }
   })
   on('store.keys', () => ({ value: [...stored.keys()] }))
-  const store = { get: (key: string): unknown => stored.get(key), keys: (): string[] => [...stored.keys()] }
+  const store = {
+    get: (key: string): unknown => stored.get(key), keys: (): string[] => [...stored.keys()],
+    set: (key: string, value: unknown): void => void stored.set(key, JSON.parse(JSON.stringify(value)) as unknown),
+  }
   mock.env(on, o.env ?? {})
-  return { clock, toasts, opened, copied, usage, panes, listed, files, store }
+  return { clock, toasts, opened, copied, usage, panes, listed, files, store, session, git, prompt, invalidates }
 }
 
 // Claude Code's own answers to the events a session raises, for a test that drives a whole turn. A test hooks an

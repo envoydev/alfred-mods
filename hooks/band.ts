@@ -2,27 +2,32 @@
 // appears only when a threshold is crossed, something failed or a turn runs.
 import { actionOf, isLive } from './agents.ts'
 import { billingOf, cacheView, minutes } from './cache.ts'
-import { bar, clock, duration, elapsed, oneLine, toneOf, tokens, usd, when, widthOf } from './format.ts'
+import { bar, clock, duration, elapsed, fitLine, toneOf, tokens, usd, when, widthOf } from './format.ts'
 import { pace, turnsLeft } from './forecast.ts'
 import { narrowPlan, planLine, scoreSeg } from './planlines.ts'
 import type { PlanView, ScoresView } from './plan.ts'
 
-import type { AgentRow, Cache, Live, Meta, Pace, Turn, Usage, Window } from '../types'
+import type { AgentRow, Cache, Level, Live, Meta, Pace, Turn, Usage, Window } from '../types'
 
-export type Tone = 'ok' | 'warn' | 'fail' | 'dim' | 'usage' | 'skill' | 'agents' | 'cache' | 'plan' | 'opus' | 'sonnet' | 'haiku' | 'fable'
+export type Tone = 'ok' | 'warn' | 'fail' | 'dim' | 'usage' | 'skill' | 'agents' | 'cache' | 'plan' | 'handoff' | 'opus' | 'sonnet' | 'haiku' | 'fable'
 export type Seg =
   | { text: string; tone?: Tone; bold?: boolean }
-  // A toned button draws its label bold in the colour of the feature it acts on
-  | { button: { key: string; label: string; hotkey?: string; tone?: Tone } }
+  // A toned button draws its label bold in the colour of the feature it acts on; a plain one draws `<hotkey>: <label>`
+  | { button: { key: string; label: string; hotkey?: string; tone?: Tone; plain?: boolean } }
   | { code: string }
   | { chart: number[] }
 export type Line = Seg[]
 // `plan`: the shown plan or task list while it runs, or for 10 minutes after it finished; `planInvalid`: the shown
-// plan's file failed its last read; `score`: the shown plan's scores, else the newest scores file's
+// plan's file failed its last read; `score`: the shown plan's scores, else the newest scores file's; `rec`: REC's level
+// and how many private words it hides
 export type BandInput = {
   now: number; columns: number; isWorking: boolean; live: Live; usage: Usage; meta: Meta; turns: Turn[]
   newFailures: number; pace: Pace; agents: AgentRow[]; cache: Cache
-  plan: PlanView | null; planInvalid: boolean; score: ScoresView | null
+  plan: PlanView | null; planInvalid: boolean; score: ScoresView | null; rec?: { level: Level; words: number }
+  // F8's threshold: `at` over the window, which the forecast counts to, and `label` over the compaction point
+  forecast?: { at: number; label: number }
+  // The step F8's ask is up for, or null
+  handoffAsk?: number | null
 }
 
 const ORDER = ['five_hour', 'seven_day']
@@ -66,7 +71,7 @@ function gauges(b: BandInput): Line {
   if (u.percent === null) out.push({ text: 'ctx —', tone: 'usage' })
   else {
     out.push({ text: 'ctx ', tone: 'usage' }, ...barSegs(u.percent), pctSeg(u.percent))
-    const left = turnsLeft(b.turns.flatMap(t => (t.contextPercent === null ? [] : [t.contextPercent])))
+    const left = turnsLeft(b.turns.flatMap(t => (t.contextPercent === null ? [] : [t.contextPercent])), b.forecast?.at)
     if (left !== null) out.push({ text: ` ≈${left} turns`, tone: 'dim' })
   }
   for (const w of windowsInOrder(u.windows)) {
@@ -179,11 +184,11 @@ export function spinnerSuffix(s: { requestId: string; live: Live; percent: numbe
   const parts: string[] = []
   const row = s.agents.find(r => r.id === s.requestId)
   if (row !== undefined) {
-    if (row.action !== null) parts.push(oneLine(row.action, 40))
+    if (row.action !== null) parts.push(fitLine(row.action, 40))
     if (row.contextTokens !== null) parts.push(`ctx ${tokens(row.contextTokens)}`)
   } else {
     const newest = s.live.running[s.live.running.length - 1]
-    if (newest !== undefined) parts.push(oneLine(actionOf(newest.tool, newest.label), 40))
+    if (newest !== undefined) parts.push(fitLine(actionOf(newest.tool, newest.label), 40))
     if (s.percent !== null) parts.push(pct(s.percent))
     const k = s.agents.filter(r => isLive(r.status)).length
     if (k > 0) parts.push(agentCount(k))
@@ -203,16 +208,32 @@ export function cacheWarning(b: BandInput, hasHotkey: boolean): Line | null {
   return [{ text: `⚠ cache cold in ${v.tier.isEstimate ? '≈' : ''}${minutes(v.leftMs ?? 0)} `, tone: 'warn' }, { button }]
 }
 
+// F8's ask on line 3: the step the context passed, its violet button on hotkey 4
+function handoffAsk(b: BandInput): Line | null {
+  if (b.handoffAsk === undefined || b.handoffAsk === null) return null
+  return [{ text: `⚠ ctx past ${b.handoffAsk}% `, tone: 'warn' }, { button: { key: 'handoff', label: 'Handoff', hotkey: '4', tone: 'handoff' } }]
+}
+
 // The idle line 1 with ' │ PLAN 3/5 · score 81 ▲13' while it fits
 function withPlanTail(b: BandInput, line: Line): Line {
   const full = [...line, ...planTail(b)]
   return line.length > 0 && widthOf(full) <= b.columns ? full : line
 }
 
+export const REC_MARK: Seg = { text: '● REC', tone: 'fail', bold: true }
+
+// A red '● REC' leads line 1 in every state while REC is on, never dropped for width: the rest fits what is left
 export function bandLines(b: BandInput): Line[] {
+  const isNarrow = b.columns < 100
+  if (b.rec === undefined || b.rec.level === 'off') return bandBody(b, isNarrow)
+  const lead: Line = [REC_MARK, { text: ' │ ', tone: 'dim' }]
+  const [first, ...rest] = bandBody({ ...b, columns: b.columns - widthOf(lead) }, isNarrow)
+  return first === undefined ? [[REC_MARK]] : [[...lead, ...first], ...rest]
+}
+
+function bandBody(b: BandInput, isNarrow: boolean): Line[] {
   const u = b.usage
   if (b.turns.length === 0 && u.percent === null) return []
-  const isNarrow = b.columns < 100
   const invalid: Line = b.planInvalid ? [{ text: ' │ ', tone: 'dim' }, { text: 'plan file invalid', tone: 'warn' }] : []
   const gaugeLine = isNarrow ? narrowGauges(u) : gauges(b)
   const line2 = [...gaugeLine, ...invalid]
@@ -220,7 +241,8 @@ export function bandLines(b: BandInput): Line[] {
   const isHot = (u.percent ?? 0) >= 60 || u.windows.some(w => w.percentUsed >= 60) || (p !== null && p !== 'on-pace')
   const agentsRun = b.agents.some(r => isLive(r.status))
   const warning = cacheWarning(b, true)
-  if (!isHot && b.newFailures === 0 && !b.isWorking && !agentsRun && warning === null) {
+  const ask = handoffAsk(b)
+  if (!isHot && b.newFailures === 0 && !b.isWorking && !agentsRun && warning === null && ask === null) {
     const calm = isNarrow ? gaugeLine : withTimes(b, gaugeLine)
     return [[...calm.map(s => ('text' in s ? { text: s.text, tone: 'dim' as const } : s)), ...invalid]]
   }
@@ -229,7 +251,7 @@ export function bandLines(b: BandInput): Line[] {
   const failed: Line = b.newFailures > 0
     ? [{ text: `✗ ${b.newFailures} new `, tone: 'fail' }, { button: { key: 'inspect', label: 'Inspect', hotkey: '1' } }]
     : []
-  if (warning !== null) out.push(failed.length > 0 ? [...warning, { text: '    ' }, ...failed] : warning)
-  else if (failed.length > 0) out.push(failed)
+  const items = [warning, ask, failed].filter((l): l is Line => l !== null && l.length > 0)
+  if (items.length > 0) out.push(items.flatMap((l, i) => (i === 0 ? l : [{ text: '    ' }, ...l])))
   return out
 }
