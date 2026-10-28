@@ -3,10 +3,15 @@ import type { Engine } from 'claude-code/testing'
 import type { On, RenderElement, RenderSurface, SessionRateLimit, SessionUsage } from 'claude-code'
 
 import { drawLines } from '../hooks/draw.tsx'
+import { clock, when } from '../hooks/format.ts'
 import { mask } from '../hooks/mask.ts'
 import { START, engine, rows, stubAll } from './kit.ts'
 
 const SURFACES = ['terminal', 'desktop'] as const
+// Three hours before the 5h window resets, three days before the 7d one: each reset as the band words it
+const NOW = Date.parse('2026-10-28T14:00:00Z')
+const R5 = clock(Date.parse('2026-10-28T17:00:00Z'))
+const R7 = when(Date.parse('2026-10-31T09:00:00Z'), NOW)
 
 const band = (isWorking: boolean, bodyColumns = 120, hasSurvey = false) =>
   ({ hasSurvey, isWorking, maxRows: 6, bodyColumns, scroll: { offset: 0, bodyRows: 6 }, view: {} })
@@ -53,7 +58,7 @@ for (const surface of SURFACES) {
   })
 
   test(`healthy idle is one dim line (${surface})`, async ($, on) => {
-    stubAll(on, { usage: reading(30, 15, 40) })
+    stubAll(on, { usage: reading(30, 15, 40), now: NOW })
     engine(on)
     await oneTurn($)
 
@@ -61,7 +66,7 @@ for (const surface of SURFACES) {
     const lines = await rows(ui)
 
     expect(lines).toHaveLength(1)
-    expect(lines[0]).toMatch(/ctx ■■■ ■□□ □□□ □□□ □□□ 30% │ 5h ■■□ □□□ □□□ □□□ □□□ 15% │ wk 40%/)
+    expect(lines[0]).toMatch(new RegExp(`^ctx ▰▰▰▱▱▱▱▱▱▱ 30% │ 5h ▰▱▱▱▱▱▱▱▱▱ 15% ↻${R5} │ 7d 40% ↻${R7} │ you `))
     // The runs inside the line's one truncating Text carry the style; the Text around them carries none
     const texts = (await ui.findAll({ type: 'Text' })).filter(t => t.props.wrap === undefined)
     expect(texts.length).toBeGreaterThan(0)
@@ -128,25 +133,60 @@ for (const surface of SURFACES) {
     const runs = (await ui.findAll({ type: 'Text' })).filter(t => t.props.wrap === 'truncate-end')
 
     expect(runs.some(t => /^✓ Turn 1 · 3s · 1 tool · 1 ✗ │ you /.test(t.text ?? ''))).toBe(true)
-    expect(runs.some(t => /^ctx .* │ 5h .* │ wk 30%$/.test(t.text ?? ''))).toBe(true)
+    expect(runs.some(t => /^ctx .* │ 5h .* │ 7d 30% ↻\S+ \d\d:\d\d$/.test(t.text ?? ''))).toBe(true)
   })
 
   // At 120 columns '≈N turns', 'on pace' and the cost pushed the times past the width (Task 8, live)
-  test(`a calm line too long for the width keeps every figure on 5-cell bars (${surface})`, async ($, on) => {
-    const { usage } = stubAll(on, { usage: reading(10, 15, 40, 3.12) })
+  test(`the longest calm line keeps every figure at 120 columns (${surface})`, async ($, on) => {
+    const { usage, clock: time } = stubAll(on, { usage: reading(10, 15, 40, 3.12), now: NOW })
     engine(on)
     for (const [i, ctx] of [10, 15, 20].entries()) {
       usage.current = reading(ctx, 15, 40, 3.12)
       await $.prompt.submit({ text: 'q', wait: false, origin: { kind: 'composer' } })
       await $.turn.start({ text: 'q', turnId: `t${i}` })
+      await $.session.measure({ context: usage.current.context, rateLimits: usage.current.rateLimits, changed: ['rateLimits'] })
       await $.turn.complete({ answer: '', durationMs: 3000, isAborted: false, turnId: `t${i}`, reason: 'answer' })
+      await time.advance(60_000)
     }
 
-    const lines = await rows(await mount($, surface, band(false, 100)))
+    const lines = await rows(await mount($, surface, band(false, 120)))
 
     expect(lines).toHaveLength(1)
-    expect(lines[0]?.length ?? 0).toBeLessThanOrEqual(100)
-    expect(lines[0]).toMatch(/^ctx ■□□□□ 20% ≈\d+ turns │ 5h □□□□□ 15% │ wk 40% │ \$3\.12 │ you \d\d:\d\d · Claude \d\d:\d\d$/)
+    expect(lines[0]?.length ?? 0).toBeLessThanOrEqual(120)
+    expect(lines[0]).toMatch(new RegExp(`^ctx ▰▰▱▱▱▱▱▱▱▱ 20% ≈\\d+ turns │ 5h ▰▱▱▱▱▱▱▱▱▱ 15% ↻${R5} on pace │ 7d 40% ↻${R7} │ \\$3\\.12 │ you \\d\\d:\\d\\d · Claude \\d\\d:\\d\\d$`))
+  })
+
+  // A 5h window that runs out before it resets: its reset, then when it runs out
+  test(`an off-pace 5h shows its reset before the forecast (${surface})`, async ($, on) => {
+    const { clock: time } = stubAll(on, { usage: reading(10, 40, 30), now: NOW })
+    engine(on)
+    await oneTurn($)
+    for (const percentUsed of [40, 50, 60]) {
+      await $.session.measure({
+        context: { window: 200_000, tokens: 20_000, percent: 10 }, changed: ['rateLimits'],
+        rateLimits: [{ kind: 'five_hour', percentUsed, resetsAt: '2026-10-28T17:00:00Z' }, { kind: 'seven_day', percentUsed: 30, resetsAt: '2026-10-31T09:00:00Z' }],
+      })
+      await time.advance(600_000)
+    }
+
+    const lines = await rows(await mount($, surface, band(false)))
+
+    // 1% a minute from 60% at 14:20 runs out at 15:00, before the 17:00 reset
+    const out = clock(Date.parse('2026-10-28T15:00:00Z'))
+    expect(lines.some(l => new RegExp(`5h ▰▰▰▰▰▰▱▱▱▱ 60% ↻${R5} limit ≈${out} │ 7d 30% ↻${R7}`).test(l))).toBe(true)
+  })
+
+  // The number reads at a glance as the bar does (the deck's slides, 2026-10-28)
+  test(`a gauge's percent takes its threshold colour (${surface})`, async ($, on) => {
+    stubAll(on, { usage: reading(82, 20, 30), now: NOW })
+    failingCalls(on)
+    engine(on, ['tool.call'])
+    await oneTurn($, 1)
+
+    const texts = await (await mount($, surface, band(false))).findAll({ type: 'Text' })
+
+    expect(texts.find(t => t.text === ' 82%')?.props.color).toBe('#f59e0b')
+    expect(texts.find(t => t.text === ' 20%')?.props.color).toBe('#22c55e')
   })
 
   test(`working shows the running Bash and its time (${surface})`, async ($, on) => {
@@ -174,13 +214,13 @@ for (const surface of SURFACES) {
   })
 
   test(`the band narrows under 100 columns (${surface})`, async ($, on) => {
-    stubAll(on, { usage: reading(45, 25, 62) })
+    stubAll(on, { usage: reading(45, 25, 62), now: NOW })
     engine(on)
     await oneTurn($)
 
     const lines = await rows(await mount($, surface, band(false, 90)))
 
-    expect(lines.some(l => /ctx ■■□□□ 45% · 5h ■□□□□ 25% · wk ■■■□□ 62%/.test(l))).toBe(true)
+    expect(lines.some(l => l.startsWith(`ctx ▰▰▰▰▱▱▱▱▱▱ 45% · 5h ▰▰▱▱▱▱▱▱▱▱ 25% ↻${R5} · 7d ▰▰▰▰▰▰▱▱▱▱ 62% ↻${R7}`))).toBe(true)
   })
 
   test(`NO_COLOR drops every colour (${surface})`, async ($, on) => {

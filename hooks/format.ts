@@ -2,17 +2,11 @@
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-// A bar of 15 cells in groups of three (19 characters) or 5 cells; a cell fills only when its share is reached.
-// The two parts joined are the whole bar, so the filled part can take its own colour.
-export function bar(percent: number, cells: 15 | 5): [filled: string, empty: string] {
-  const filled = Math.max(0, Math.min(cells, Math.floor(percent * cells / 100)))
-  let whole = ''
-  for (let i = 0; i < cells; i++) {
-    if (cells === 15 && i > 0 && i % 3 === 0) whole += ' '
-    whole += i < filled ? '■' : '□'
-  }
-  const at = filled === 0 || cells === 5 ? filled : filled + Math.floor((filled - 1) / 3)
-  return [whole.slice(0, at), whole.slice(at)]
+// The one bar, in the band and the pane: 10 cells of 10%, ▰ filled and ▱ empty; a cell fills only when its share is
+// reached. The two parts joined are the whole bar, so the filled part can take its own colour.
+export function bar(percent: number): [filled: string, empty: string] {
+  const filled = Math.max(0, Math.min(10, Math.floor(percent / 10)))
+  return ['▰'.repeat(filled), '▱'.repeat(10 - filled)]
 }
 
 export function tokens(n: number): string {
@@ -42,6 +36,13 @@ export function clock(ms: number): string {
 
 export function weekday(ms: number): string {
   return `${DAYS[new Date(ms).getDay()]} ${clock(ms)}`
+}
+
+// A reset as the clock within 24 hours, else the day, month and clock: '31.10 11:00'
+export function when(resetsAt: number, now: number): string {
+  if (resetsAt - now < 86_400_000) return clock(resetsAt)
+  const d = new Date(resetsAt)
+  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')} ${clock(resetsAt)}`
 }
 
 export function usd(n: number): string {

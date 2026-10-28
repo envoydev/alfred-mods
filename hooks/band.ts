@@ -1,6 +1,6 @@
 // The band above the prompt, from the session's values to lines of styled segments. Calm by default: colour
 // appears only when a threshold is crossed, something failed or a turn runs.
-import { bar, clock, duration, elapsed, usd } from './format.ts'
+import { bar, clock, duration, elapsed, usd, when } from './format.ts'
 import { pace, turnsLeft } from './forecast.ts'
 
 import type { Live, Meta, Pace, Turn, Usage, Window } from '../types'
@@ -18,6 +18,7 @@ export type BandInput = {
 }
 
 const ORDER = ['five_hour', 'seven_day']
+const LABEL: Record<string, string> = { five_hour: '5h', seven_day: '7d' }
 
 export function toneOf(percent: number): Tone {
   return percent < 60 ? 'ok' : percent <= 85 ? 'warn' : 'fail'
@@ -25,8 +26,11 @@ export function toneOf(percent: number): Tone {
 
 export const pct = (n: number): string => `${Math.round(n)}%`
 
-export function barSegs(percent: number, cells: 15 | 5): Seg[] {
-  const [filled, empty] = bar(percent, cells)
+// ' 45%' in its bar's threshold colour
+export const pctSeg = (n: number): Seg => ({ text: ` ${pct(n)}`, tone: toneOf(n) })
+
+export function barSegs(percent: number): Seg[] {
+  const [filled, empty] = bar(percent)
   return [{ text: filled, tone: toneOf(percent) }, { text: empty, tone: 'dim' }]
 }
 
@@ -43,7 +47,13 @@ export function fiveHourPace(b: Pick<BandInput, 'usage' | 'pace' | 'now'>): Retu
   return pace(b.pace.five_hour?.points ?? [], Number.isNaN(reset) ? null : reset, b.now)
 }
 
-function gauges(b: BandInput, cells: 15 | 5): Line {
+// ' ↻16:15': when the window resets, or nothing while it reports none
+function resetSegs(w: Window, now: number): Line {
+  const reset = w.resetsAt === null ? NaN : Date.parse(w.resetsAt)
+  return Number.isNaN(reset) ? [] : [{ text: ` ↻${when(reset, now)}`, tone: 'dim' }]
+}
+
+function gauges(b: BandInput): Line {
   const u = b.usage
   const out: Line = []
   const sep = (): void => {
@@ -51,20 +61,19 @@ function gauges(b: BandInput, cells: 15 | 5): Line {
   }
   if (u.percent === null) out.push({ text: 'ctx —', tone: 'usage' })
   else {
-    out.push({ text: 'ctx ', tone: 'usage' }, ...barSegs(u.percent, cells), { text: ` ${pct(u.percent)}` })
+    out.push({ text: 'ctx ', tone: 'usage' }, ...barSegs(u.percent), pctSeg(u.percent))
     const left = turnsLeft(b.turns.flatMap(t => (t.contextPercent === null ? [] : [t.contextPercent])))
     if (left !== null) out.push({ text: ` ≈${left} turns`, tone: 'dim' })
   }
   for (const w of windowsInOrder(u.windows)) {
     sep()
+    const label = LABEL[w.kind] ?? w.kind
     if (w.kind === 'five_hour') {
-      out.push({ text: '5h ', tone: 'usage' }, ...barSegs(w.percentUsed, cells), { text: ` ${pct(w.percentUsed)}` })
+      out.push({ text: `${label} `, tone: 'usage' }, ...barSegs(w.percentUsed), pctSeg(w.percentUsed), ...resetSegs(w, b.now))
       const p = fiveHourPace(b)
-      const reset = w.resetsAt === null ? NaN : Date.parse(w.resetsAt)
       if (p === 'on-pace') out.push({ text: ' on pace', tone: 'ok' })
-      else if (p !== null) out.push({ text: ` limit ≈${clock(p.limitAt)}${Number.isNaN(reset) ? '' : `, resets ${clock(reset)}`}`, tone: 'warn' })
-    } else if (w.kind === 'seven_day') out.push({ text: 'wk ', tone: 'usage' }, { text: pct(w.percentUsed), tone: toneOf(w.percentUsed) })
-    else out.push({ text: `${w.kind} `, tone: 'usage' }, { text: pct(w.percentUsed), tone: toneOf(w.percentUsed) })
+      else if (p !== null) out.push({ text: ` limit ≈${clock(p.limitAt)}`, tone: 'warn' })
+    } else out.push({ text: `${label} `, tone: 'usage' }, { text: pct(w.percentUsed), tone: toneOf(w.percentUsed) }, ...resetSegs(w, b.now))
   }
   if (u.costUsd !== null) {
     sep()
@@ -73,25 +82,16 @@ function gauges(b: BandInput, cells: 15 | 5): Line {
   return out
 }
 
-const widthOf = (line: Line): number => line.reduce((n, s) => n + ('text' in s ? s.text.length : 0), 0)
-
-// The wide gauges and what follows them, on 5-cell bars where 15 would pass the width: every figure stays
-function fitted(b: BandInput, tail: Line): Line {
-  const wide = [...gauges(b, 15), ...tail]
-  return widthOf(wide) <= b.columns ? wide : [...gauges(b, 5), ...tail]
-}
-
-function narrowGauges(u: Usage): Line {
+function narrowGauges(u: Usage, now: number): Line {
   const out: Line = []
   const sep = (): void => {
     if (out.length > 0) out.push({ text: ' · ', tone: 'dim' })
   }
   if (u.percent === null) out.push({ text: 'ctx —', tone: 'usage' })
-  else out.push({ text: 'ctx ', tone: 'usage' }, ...barSegs(u.percent, 5), { text: ` ${pct(u.percent)}` })
+  else out.push({ text: 'ctx ', tone: 'usage' }, ...barSegs(u.percent), pctSeg(u.percent))
   for (const w of windowsInOrder(u.windows)) {
     sep()
-    const label = w.kind === 'five_hour' ? '5h' : w.kind === 'seven_day' ? 'wk' : w.kind
-    out.push({ text: `${label} `, tone: 'usage' }, ...barSegs(w.percentUsed, 5), { text: ` ${pct(w.percentUsed)}` })
+    out.push({ text: `${LABEL[w.kind] ?? w.kind} `, tone: 'usage' }, ...barSegs(w.percentUsed), pctSeg(w.percentUsed), ...resetSegs(w, now))
   }
   return out
 }
@@ -132,11 +132,11 @@ export function bandLines(b: BandInput): Line[] {
   const u = b.usage
   if (b.turns.length === 0 && u.percent === null) return []
   const isNarrow = b.columns < 100
-  const line2 = isNarrow ? narrowGauges(u) : fitted(b, [])
+  const line2 = isNarrow ? narrowGauges(u, b.now) : gauges(b)
   const p = fiveHourPace(b)
   const isHot = (u.percent ?? 0) >= 60 || u.windows.some(w => w.percentUsed >= 60) || (p !== null && p !== 'on-pace')
   if (!isHot && b.newFailures === 0 && !b.isWorking) {
-    const calm = isNarrow ? line2 : fitted(b, times(b))
+    const calm = isNarrow ? line2 : [...line2, ...times(b)]
     return [calm.map(s => ('text' in s ? { text: s.text, tone: 'dim' as const } : s))]
   }
   if (b.isWorking) return [working(b, isNarrow), line2]

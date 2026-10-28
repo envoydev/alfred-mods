@@ -1,15 +1,22 @@
 import { expect, test } from 'claude-code/testing'
 
-import { bar, duration, elapsed, oneLine, printable, tokens, usd } from '../hooks/format.ts'
+import { bar, duration, elapsed, oneLine, printable, tokens, usd, when } from '../hooks/format.ts'
 
-test('a bar fills a cell only when its share is reached', () => {
-  expect(bar(45, 15).join('')).toBe('■■■ ■■■ □□□ □□□ □□□')
-  expect(bar(30, 15)).toEqual(['■■■ ■', '□□ □□□ □□□ □□□'])
-  expect(bar(82, 15).join('')).toBe('■■■ ■■■ ■■■ ■■■ □□□')
-  expect(bar(100, 15).join('').length).toBe(19)
-  expect(bar(45, 5)).toEqual(['■■', '□□□'])
-  expect(bar(62, 5).join('')).toBe('■■■□□')
-  expect(bar(-3, 5).join('')).toBe('□□□□□')
+test('a bar is 10 cells of 10%, a cell filled only when its share is reached', () => {
+  expect(bar(45)).toEqual(['▰▰▰▰', '▱▱▱▱▱▱'])
+  expect(bar(7).join('')).toBe('▱▱▱▱▱▱▱▱▱▱')
+  expect(bar(10).join('')).toBe('▰▱▱▱▱▱▱▱▱▱')
+  expect(bar(100).join('')).toBe('▰▰▰▰▰▰▰▰▰▰')
+  expect(bar(-3).join('')).toBe('▱▱▱▱▱▱▱▱▱▱')
+  expect(bar(130).join('')).toBe('▰▰▰▰▰▰▰▰▰▰')
+})
+
+// Local times: within 24 hours the clock, else the day and month
+test('a reset reads as its clock, or its date and clock past 24 hours', () => {
+  const now = new Date(2026, 9, 28, 14, 0).getTime()
+  expect(when(new Date(2026, 9, 28, 17, 0).getTime(), now)).toBe('17:00')
+  expect(when(new Date(2026, 9, 31, 11, 0).getTime(), now)).toBe('31.10 11:00')
+  expect(when(new Date(2026, 10, 5, 9, 30).getTime(), now)).toBe('05.11 09:30')
 })
 
 test('token counts read as the mockups do', () => {

@@ -1,7 +1,7 @@
 // Each /inspect tab, from the session's values to lines of styled segments.
-import { barSegs, pct, windowsInOrder, working } from './band.ts'
+import { barSegs, pctSeg, windowsInOrder, working } from './band.ts'
 import type { BandInput, Line, Seg, Tone } from './band.ts'
-import { clock, duration, tokens, usd, weekday } from './format.ts'
+import { clock, duration, tokens, usd, when } from './format.ts'
 import { pace, turnsLeft } from './forecast.ts'
 
 import type { Failure, Tab, ToolStat, Totals, Turn, View } from '../types'
@@ -21,7 +21,6 @@ export function tabBar(tab: Tab, isLive: boolean): Line {
   return line
 }
 
-const when = (resetsAt: number, now: number): string => (resetsAt - now < 86_400_000 ? clock(resetsAt) : weekday(resetsAt))
 const parse = (iso: string | null): number | null => {
   const ms = iso === null ? NaN : Date.parse(iso)
   return Number.isNaN(ms) ? null : ms
@@ -72,7 +71,7 @@ export function usageLines(b: TabInput): Line[] {
   const ctx: Line = [{ text: 'Context   ' }]
   if (u.percent === null) ctx.push({ text: '—', tone: 'dim' })
   else {
-    ctx.push(...barSegs(u.percent, 15), { text: ` ${pct(u.percent)}` })
+    ctx.push(...barSegs(u.percent), pctSeg(u.percent))
     if (u.tokens !== null && u.window !== null) ctx.push({ text: `   ${tokens(u.tokens)} / ${tokens(u.window)}`, tone: 'dim' })
     const series = b.turns.flatMap(t => (t.contextPercent === null ? [] : [t.contextPercent]))
     const left = turnsLeft(series)
@@ -84,7 +83,7 @@ export function usageLines(b: TabInput): Line[] {
 
   for (const w of windowsInOrder(u.windows)) {
     const name = w.kind === 'five_hour' ? '5h' : w.kind === 'seven_day' ? 'Weekly' : w.kind
-    const line: Line = [{ text: `${name.padEnd(9)} ` }, ...barSegs(w.percentUsed, 15), { text: ` ${pct(w.percentUsed)}` }]
+    const line: Line = [{ text: `${name.padEnd(9)} ` }, ...barSegs(w.percentUsed), pctSeg(w.percentUsed)]
     const reset = parse(w.resetsAt)
     if (reset !== null) line.push({ text: `   resets ${when(reset, b.now)}`, tone: 'dim' })
     const p = pace(b.pace[w.kind]?.points ?? [], reset, b.now)

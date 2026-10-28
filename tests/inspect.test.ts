@@ -142,6 +142,32 @@ for (const surface of SURFACES) {
     expect(lines.some(l => /\$3\.12 session · \$3\.12 today, est\./.test(l))).toBe(true)
   })
 
+  // One bar everywhere, the band's (the user, 2026-10-28)
+  test(`the Usage tab draws the band's 10-cell bar (${surface})`, async ($, on) => {
+    stubAll(on, { usage: SUBSCRIPTION })
+    engine(on)
+    await turn($, 't1')
+    await inspect($, 'usage')
+
+    const lines = await rows(await pane($, surface))
+
+    expect(lines.some(l => /^Context\s+▰▰▰▱▱▱▱▱▱▱ 30%/.test(l))).toBe(true)
+    expect(lines.some(l => /^5h\s+▰▰▱▱▱▱▱▱▱▱ 20%/.test(l))).toBe(true)
+    expect(lines.some(l => /^Weekly\s+▰▰▰▰▱▱▱▱▱▱ 40%/.test(l))).toBe(true)
+  })
+
+  test(`a Usage tab percent takes its threshold colour (${surface})`, async ($, on) => {
+    stubAll(on, { usage: { ...SUBSCRIPTION, context: { window: 200_000, tokens: 180_000, percent: 90 } } })
+    engine(on)
+    await turn($, 't1')
+    await inspect($, 'usage')
+
+    const texts = await (await pane($, surface)).findAll({ type: 'Text' })
+
+    expect(texts.find(t => t.text === ' 90%')?.props.color).toBe('#ef4444')
+    expect(texts.find(t => t.text === ' 40%')?.props.color).toBe('#22c55e')
+  })
+
   test(`the Timeline lists turns newest first (${surface})`, async ($, on) => {
     const { clock } = stubAll(on, { usage: SUBSCRIPTION })
     engine(on)
