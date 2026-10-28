@@ -7,6 +7,7 @@
   "engines": { "node": ">=22" },
   "scripts": {
     "test": "claude plugin test .",
-    "validate": "node scripts/validate.js"
+    "validate": "node scripts/validate.js",
+    "typecheck": "tsc -p ."
   }
 }

@@ -8,8 +8,9 @@ It works on Claude Code alone. With [Alfred Code](https://github.com/envoydev/al
 project, it shows more, read from the one status file the stack publishes for each session. It never needs Alfred
 Code, and nothing it draws breaks without it.
 
-**Status: in design.** The hooks module is empty until the Phase 0 probe's verdict is approved; the design, the
-features and the build phases are in [the session-inspector brief](docs/session-inspector-brief.md).
+**Status: Phase 1 (core) built:** the band, and `/inspect` with Now, Usage, Tools and Timeline. Later phases add
+agents, cache, plan, handoff, REC and compact rows; the design, the features and the build phases are in
+[the session-inspector brief](docs/session-inspector-brief.md).
 
 ## What it shows
 
@@ -19,6 +20,10 @@ features and the build phases are in [the session-inspector brief](docs/session-
   band and an `/inspect` pane.
 - **With Alfred Code:** also the stack's mode banner, the context runway measured against the stack's resume trigger,
   and `[Handoff]` filling the stack's ready handoff prompt instead of its own.
+
+## Commands
+
+- `/inspect [now|usage|tools|timeline]` opens the pane on a tab, Now when none is named.
 
 ## Install
 

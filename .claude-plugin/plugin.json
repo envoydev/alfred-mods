@@ -6,5 +6,6 @@
   "homepage": "https://github.com/envoydev/alfred-mods",
   "repository": "https://github.com/envoydev/alfred-mods",
   "license": "MIT",
-  "keywords": ["mod", "session", "context", "usage", "cost", "agents", "statusline"]
+  "keywords": ["mod", "session", "context", "usage", "cost", "agents", "statusline"],
+  "types": "./types/index.d.ts"
 }
