@@ -147,8 +147,9 @@ export function cacheLines(b: TabInput): Line[] {
   const priced = c.ratePerToken !== null && c.rateModel !== null ? ` · rewrite priced on ${modelText(c.rateModel, true)}` : ''
   out.push([{ text: `Tier      ${source}${priced}` }])
   const warnAt = toastAt(c, billing, b.usage.tokens)
-  if (c.lastAt !== null && warnAt !== null && selfCompacts(c, billing, b.usage.tokens)) {
-    out.push([{ text: `Idle      Claude Code should compact it itself at ≈${clock(c.lastAt + IDLE_COMPACT_MS)}, else a warning at ≈${clock(warnAt)}` }])
+  if (c.lastAt !== null && selfCompacts(c, billing, b.usage.tokens)) {
+    const warn = warnAt === null ? '' : `, else a warning at ≈${clock(warnAt)}`
+    out.push([{ text: `Idle      Claude Code should compact it itself at ≈${clock(c.lastAt + IDLE_COMPACT_MS)}${warn}` }])
   }
   return out
 }

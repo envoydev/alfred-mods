@@ -181,6 +181,17 @@ for (const surface of SURFACES) {
     expect((await rows(await bandOf($, surface))).some(l => /⚠ cache cold in ≈3m Compact/.test(l))).toBe(true)
   })
 
+  test(`under the floor, the Idle row names Claude Code's own compaction and no warning (${surface})`, async ($, on) => {
+    stubAll(on, { usage: { ...PLAN, context: { window: 1_000_000, tokens: 210_000, percent: 21 } } })
+    engine(on)
+    stepEngine(on, () => ({ ...MAIN, input_tokens: 150_000, cache_read_input_tokens: 50_000, cache_creation_input_tokens: 9_000 }))
+    await $.session.start({ ...START, surface: 'terminal', isInteractive: true })
+    await mainStep($)
+    await inspect($, 'cache')
+
+    expect(await rows(await pane($, surface))).toContain(`Idle      Claude Code should compact it itself at ≈${clockText(3_240_000)}`)
+  })
+
   test(`a Compact press compacts once and counts it (${surface})`, async ($, on) => {
     const { clock } = stubAll(on, { usage: PLAN })
     const state = watchState(on)

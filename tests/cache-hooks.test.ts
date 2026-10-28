@@ -174,6 +174,19 @@ test('crossing into usage credits withholds the 1h toast', async ($, on) => {
   expect(cacheToasts(toasts)).toEqual([])
 })
 
+// The user's ruling (2026-10-28): no warning under 100k cached
+test('a 1h cache under 100k gets no toast', async ($, on) => {
+  const { clock, toasts } = stubAll(on, { usage: PLAN })
+  engine(on)
+  stepEngine(on, () => ({ ...MAIN, cache_read_input_tokens: 30_000, cache_creation_input_tokens: 3_000 }))
+  await measure($, PLAN)
+
+  await mainStep($)
+  await clock.advance(3_400_000)
+
+  expect(cacheToasts(toasts)).toEqual([])
+})
+
 test('no toast while a turn runs', async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: PLAN })
   engine(on)

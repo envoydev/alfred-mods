@@ -14,6 +14,9 @@ export const CLOSE_MS: Record<CacheTier, number> = { '5m': 60_000, '1h': 300_000
 export const IDLE_COMPACT_MS = 3_240_000
 // Where it should, the warning waits for a 1h cache's last 3 minutes: its compaction makes the cache cold first
 export const SELF_CLOSE_MS = 180_000
+// No warning under 100k cached on either tier: the rewrite is cheap, and a compaction would lose more than it saves
+// (the user's ruling, 2026-10-28; Claude Code's own idle compaction has the same floor)
+export const WARN_MIN_TOKENS = 100_000
 
 // Within the plan's usage while a 5h or 7d window reads under 100; on usage credits once one reads 100 or more
 export function billingOf(windows: Window[]): Billing {
@@ -85,6 +88,8 @@ export type CacheView = {
   cached: number; rewriteUsd: number | null; isClosing: boolean
 }
 
+const cachedOf = (c: Cache): number => (c.last === null ? 0 : c.last.read + c.last.write)
+
 const reuseOf = (n: { read: number; write: number; input: number } | null): number | null => {
   const all = n === null ? 0 : n.read + n.write + n.input
   return n === null || all === 0 ? null : (n.read / all) * 100
@@ -95,11 +100,11 @@ export function cacheView(c: Cache, billing: Billing, now: number, contextTokens
   const tier = tierOf(c, billing)
   const endsAt = c.lastAt === null ? null : c.lastAt + TTL_MS[tier.tier]
   const leftMs = endsAt === null || now >= endsAt ? null : endsAt - now
-  const cached = c.last === null ? 0 : c.last.read + c.last.write
+  const cached = cachedOf(c)
   return {
     tier, state: leftMs === null ? 'cold' : 'warm', leftMs, reuseLast: reuseOf(c.last), reuseSession: reuseOf(c.session), cached,
     rewriteUsd: c.ratePerToken !== null && cached > 0 ? cached * c.ratePerToken : null,
-    isClosing: leftMs !== null && leftMs <= closeMs(c, billing, contextTokens),
+    isClosing: leftMs !== null && cached >= WARN_MIN_TOKENS && leftMs <= closeMs(c, billing, contextTokens),
   }
 }
 
@@ -118,9 +123,9 @@ export function closeMs(c: Cache, billing: Billing, contextTokens: number | null
   return tier === '1h' && selfCompacts(c, billing, contextTokens) ? SELF_CLOSE_MS : CLOSE_MS[tier]
 }
 
-// When a 1h cache's toast is due; a 5m cache gets none
+// When a 1h cache's toast is due; a 5m cache, or one under the floor, gets none
 export function toastAt(c: Cache, billing: Billing, contextTokens: number | null): number | null {
-  return c.lastAt !== null && tierOf(c, billing).tier === '1h' ? c.lastAt + TTL_MS['1h'] - closeMs(c, billing, contextTokens) : null
+  return c.lastAt !== null && tierOf(c, billing).tier === '1h' && cachedOf(c) >= WARN_MIN_TOKENS ? c.lastAt + TTL_MS['1h'] - closeMs(c, billing, contextTokens) : null
 }
 
 // The clocks on screen redraw once a minute while warm, every second in the warning's window, and once as it goes cold

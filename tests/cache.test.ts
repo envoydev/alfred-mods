@@ -133,6 +133,17 @@ test("the warning's window is per tier", () => {
   expect(minutes(last.leftMs ?? 0)).toBe('1m')
 })
 
+// The user's ruling (2026-10-28): under 100k cached a rewrite is cheap, and a compaction would lose more than it saves
+test('a cache under 100k gets no warning on either tier', () => {
+  const small: Cache = { ...SLIDE, last: { read: 90_000, write: 9_999, input: 0 } }
+  expect(cacheView(small, 'plan', 3_400_000).isClosing).toBe(false)
+  expect(toastAt(small, 'plan', null)).toBe(null)
+  expect(cacheView({ ...small, tier: '5m' }, 'plan', 250_000).isClosing).toBe(false)
+  const floor: Cache = { ...SLIDE, last: { read: 90_000, write: 10_000, input: 0 } }
+  expect(cacheView({ ...floor, tier: '5m' }, 'plan', 250_000).isClosing).toBe(true)
+  expect(toastAt(floor, 'plan', null)).toBe(3_300_000)
+})
+
 // Seen live: Claude Code did not compact at minute 54 (a feature flag gates it), and a withheld warning left none
 test('where Claude Code should compact it itself, the warning waits until 3 minutes are left', () => {
   expect(toastAt(SLIDE, 'plan', 210_000)).toBe(3_420_000)
