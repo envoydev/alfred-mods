@@ -1,7 +1,9 @@
 // Test helpers: stubs for every $ call the mod makes, a reader of the $.state it writes, and the drawn rows as text.
 import { mock } from 'claude-code/testing'
-import type { MockClock } from 'claude-code/testing'
-import type { On, RenderElement, SessionUsage, UiPane } from 'claude-code'
+import type { Engine, MockClock } from 'claude-code/testing'
+import type {
+  AgentInfo, ClassicResult, On, RenderElement, SessionUsage, Settings, TurnStepInput, TurnStepResult, TurnUsage, UiPane,
+} from 'claude-code'
 
 export const NO_READING: SessionUsage = { startedAt: 0, context: { window: 200_000 }, rateLimits: [] }
 
@@ -9,10 +11,14 @@ export const NO_READING: SessionUsage = { startedAt: 0, context: { window: 200_0
 type Options = {
   usage?: SessionUsage; sessionId?: string; cwd?: string; env?: Record<string, string>; now?: number; unplaced?: string
   store?: Record<string, unknown>
+  // `agents` is what `$.agent.list()` answers; `preSwitch` what the hooks beneath answer a PreModelSwitch with, such
+  // as a deny; `settings` the merged settings object a read projects its key from
+  agents?: AgentInfo[]; preSwitch?: ClassicResult; settings?: Record<string, unknown>
 }
 
 export function stubAll(on: On, o: Options = {}): {
   clock: MockClock; toasts: string[]; opened: string[]; copied: string[]; usage: { current: SessionUsage }; panes: UiPane[]
+  listed: { current: AgentInfo[]; calls: number }
 } {
   const toasts: string[] = []
   const opened: string[] = []
@@ -32,6 +38,13 @@ export function stubAll(on: On, o: Options = {}): {
     return { value: isPlaced ? { isPlaced: true as const } : { isPlaced: false as const, reason: o.unplaced ?? '' } }
   })
   on('ui.panes', () => ({ value: panes }))
+  // A test changes the agents listed mid-test through `listed.current`
+  const listed = { current: o.agents ?? [], calls: 0 }
+  on('agent.list', () => {
+    listed.calls++
+    return { value: listed.current }
+  })
+  on('settings.read', () => ({ value: (o.settings ?? {}) as Settings }))
   on('ui.toast', (_, e) => {
     toasts.push(e.text)
     return { value: undefined }
@@ -44,10 +57,12 @@ export function stubAll(on: On, o: Options = {}): {
   on('classic.PostToolUseFailure', () => ({}))
   on('classic.PermissionDenied', () => ({}))
   on('classic.SessionStart', () => ({}))
+  on('classic.PostModelSwitch', () => ({}))
+  on('classic.PreModelSwitch', () => o.preSwitch ?? {})
   const clock = mock.clock(on, { now: o.now ?? 0 })
   mock.store(on, o.store ?? {})
   mock.env(on, o.env ?? {})
-  return { clock, toasts, opened, copied, usage, panes }
+  return { clock, toasts, opened, copied, usage, panes, listed }
 }
 
 // Claude Code's own answers to the events a session raises, for a test that drives a whole turn. A test hooks an
@@ -70,6 +85,33 @@ export const SPAWN = {
   provider: { plugin: 'claude-code', tier: 'core' }, parentModel: 'claude-sonnet-5-5', background: false, fork: false,
 } as const
 export const PRESENTATION = { isFullscreen: false, columns: 120 } as const
+export const SWITCH = {
+  from_model: 'claude-haiku-5-5', to_model: 'claude-opus-5-5', requested_model: 'opus', source: 'command',
+  context_tokens: 100_000, prompt_cache_warm: true, cache_ttl: '1h', estimated_cache_write_usd: 0.8, pricing: 'catalog',
+} as const
+export const SPINNER = { word: 'Sauteing', message: null, suffix: '…', mode: 'tool-use' } as const
+
+// Claude Code's answer to each step at once, with the usage a test gives it
+export function stepEngine(on: On, usageOf: (e: TurnStepInput) => TurnUsage | null): void {
+  on('turn.step', async function* (_, e) {
+    return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn' as const, usage: usageOf(e) }
+  })
+}
+
+// One step through every hook, its stream drained
+export async function step($: Engine, e: TurnStepInput): Promise<TurnStepResult> {
+  const stream = $.turn.step(e)
+  for await (const _ of stream) { /* drain the stream */ }
+  return stream.result
+}
+
+// Claude Code's answer to each spawn, by its description; one not in the table is `a1`
+export function spawns(on: On, table: Record<string, { agentId: string; model?: string }>): void {
+  on('agent.spawn', (_, e) => {
+    const t = table[e.description]
+    return { model: t?.model ?? 'claude-haiku-5-5', agentId: e.resume?.agentId ?? t?.agentId ?? 'a1' }
+  })
+}
 
 // The latest value the mod wrote under each key, read beneath the plugin as the write lands
 export function watchState(on: On): { get(key: string): unknown } {

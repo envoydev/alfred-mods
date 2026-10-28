@@ -52,7 +52,7 @@ for (const surface of SURFACES) {
     const { opened } = stubAll(on, { usage: SUBSCRIPTION })
     engine(on)
 
-    expect((await inspect($, 'bogus')).text).toBe('Tabs: now, usage, tools, timeline.')
+    expect((await inspect($, 'bogus')).text).toBe('Tabs: now, usage, agents, tools, cache, timeline.')
     expect(opened).toEqual([])
   })
 
@@ -204,6 +204,8 @@ for (const surface of SURFACES) {
     await turn($, 't1')
     await inspect($, 'now')
     const ui = await pane($, surface)
+    // A letter hotkey answers only in the focused pane: the tab keeps its brackets
+    expect((await ui.find({ key: 'tab-timeline' }))?.props.plain).toBe(undefined)
 
     await ui.press({ key: 'tab-timeline' })
 

@@ -1,28 +1,27 @@
 // The band above the prompt, from the session's values to lines of styled segments. Calm by default: colour
 // appears only when a threshold is crossed, something failed or a turn runs.
-import { bar, clock, duration, elapsed, usd, when } from './format.ts'
+import { actionOf, isLive } from './agents.ts'
+import { billingOf, cacheView, minutes } from './cache.ts'
+import { bar, clock, duration, elapsed, oneLine, toneOf, tokens, usd, when } from './format.ts'
 import { pace, turnsLeft } from './forecast.ts'
 
-import type { Live, Meta, Pace, Turn, Usage, Window } from '../types'
+import type { AgentRow, Cache, Live, Meta, Pace, Turn, Usage, Window } from '../types'
 
-export type Tone = 'ok' | 'warn' | 'fail' | 'dim' | 'usage' | 'skill' | 'opus' | 'sonnet' | 'haiku' | 'fable'
+export type Tone = 'ok' | 'warn' | 'fail' | 'dim' | 'usage' | 'skill' | 'agents' | 'cache' | 'opus' | 'sonnet' | 'haiku' | 'fable'
 export type Seg =
   | { text: string; tone?: Tone; bold?: boolean }
-  | { button: { key: string; label: string; hotkey?: string } }
+  // A toned button draws its label bold in the colour of the feature it acts on
+  | { button: { key: string; label: string; hotkey?: string; tone?: Tone } }
   | { code: string }
   | { chart: number[] }
 export type Line = Seg[]
 export type BandInput = {
   now: number; columns: number; isWorking: boolean; live: Live; usage: Usage; meta: Meta; turns: Turn[]
-  newFailures: number; pace: Pace
+  newFailures: number; pace: Pace; agents: AgentRow[]; cache: Cache
 }
 
 const ORDER = ['five_hour', 'seven_day']
 const LABEL: Record<string, string> = { five_hour: '5h', seven_day: '7d' }
-
-export function toneOf(percent: number): Tone {
-  return percent < 60 ? 'ok' : percent <= 85 ? 'warn' : 'fail'
-}
 
 export const pct = (n: number): string => `${Math.round(n)}%`
 
@@ -127,17 +126,61 @@ function lastTurn(b: BandInput, isNarrow: boolean): Line {
   return [...line, ...times(b)]
 }
 
+const agentCount = (k: number): string => `${k} ${k === 1 ? 'agent' : 'agents'}`
+
+// The turn, or the agents while only they run; then each live agent's action and the running Bash. Agent parts past
+// the width fold into ' +N agents'.
 export function working(b: BandInput, isNarrow: boolean): Line {
+  const running = b.agents.filter(r => isLive(r.status))
   const n = b.meta.turnCount + 1
   const took = elapsed(b.now - (b.live.startedAt ?? b.now))
-  if (isNarrow) return [{ text: `⟳ Turn ${n} ${took}`, bold: true }]
-  const line: Line = [{ text: `⟳ Turn ${n} · ${took}`, bold: true }]
-  const newest = b.live.running[b.live.running.length - 1]
+  const head: Seg = b.isWorking
+    ? { text: isNarrow ? `⟳ Turn ${n} ${took}` : `⟳ Turn ${n} · ${took}`, bold: true }
+    : { text: `⟳ ${agentCount(running.length)}`, bold: true }
+  if (isNarrow) return b.isWorking && running.length > 0 ? [head, { text: ` · ${agentCount(running.length)}` }] : [head]
+  const bash: Line = []
+  const calls = b.live.running.filter(r => r.tool === 'Bash')
+  const newest = calls[calls.length - 1]
   if (newest !== undefined) {
-    line.push({ text: ` │ Bash ▸ ${newest.label} ${elapsed(b.now - newest.startedAt)}` })
-    if (b.live.running.length > 1) line.push({ text: ` +${b.live.running.length - 1}`, tone: 'dim' })
+    bash.push({ text: ` │ Bash ▸ ${newest.label} ${elapsed(b.now - newest.startedAt)}` })
+    if (calls.length > 1) bash.push({ text: ` +${calls.length - 1}`, tone: 'dim' })
   }
-  return line
+  const parts: Line = running.map(r => ({ text: r.action === null ? ` │ ${r.type}` : ` │ ${r.type} ▸ ${r.action}` }))
+  for (let kept = parts.length; ; kept--) {
+    const rest = parts.length - kept
+    const line: Line = [head, ...parts.slice(0, kept), ...(rest > 0 ? [{ text: ` +${agentCount(rest)}`, tone: 'dim' as const }] : []), ...bash]
+    if (kept === 0 || widthOf(line) <= b.columns) return line
+  }
+}
+
+// What the spinner adds after the engine's suffix: an agent's action and context on that agent's spinner; on the main
+// loop's, its newest call in flight, its context percent and the agents running. Null with nothing to add.
+export function spinnerSuffix(s: { requestId: string; live: Live; percent: number | null; agents: AgentRow[] }): string | null {
+  const parts: string[] = []
+  const row = s.agents.find(r => r.id === s.requestId)
+  if (row !== undefined) {
+    if (row.action !== null) parts.push(oneLine(row.action, 40))
+    if (row.contextTokens !== null) parts.push(`ctx ${tokens(row.contextTokens)}`)
+  } else {
+    const newest = s.live.running[s.live.running.length - 1]
+    if (newest !== undefined) parts.push(oneLine(actionOf(newest.tool, newest.label), 40))
+    if (s.percent !== null) parts.push(pct(s.percent))
+    const k = s.agents.filter(r => isLive(r.status)).length
+    if (k > 0) parts.push(agentCount(k))
+  }
+  return parts.length === 0 ? null : parts.join(' · ')
+}
+
+// The cache's warning while the main loop is idle: a 1h cache's last 5 minutes, or its last 3 where Claude Code should
+// compact the conversation first, and a 5m cache's last minute. The band's button takes hotkey 3.
+export function cacheWarning(b: BandInput, hasHotkey: boolean): Line | null {
+  if (b.isWorking) return null
+  const v = cacheView(b.cache, billingOf(b.usage.windows), b.now, b.usage.tokens)
+  if (!v.isClosing) return null
+  const button = hasHotkey
+    ? { key: 'compact', label: 'Compact', hotkey: '3', tone: 'cache' as const }
+    : { key: 'compact', label: 'Compact', tone: 'cache' as const }
+  return [{ text: `⚠ cache cold in ${v.tier.isEstimate ? '≈' : ''}${minutes(v.leftMs ?? 0)} `, tone: 'warn' }, { button }]
 }
 
 export function bandLines(b: BandInput): Line[] {
@@ -147,12 +190,18 @@ export function bandLines(b: BandInput): Line[] {
   const line2 = isNarrow ? narrowGauges(u) : gauges(b)
   const p = fiveHourPace(b)
   const isHot = (u.percent ?? 0) >= 60 || u.windows.some(w => w.percentUsed >= 60) || (p !== null && p !== 'on-pace')
-  if (!isHot && b.newFailures === 0 && !b.isWorking) {
+  const agentsRun = b.agents.some(r => isLive(r.status))
+  const warning = cacheWarning(b, true)
+  if (!isHot && b.newFailures === 0 && !b.isWorking && !agentsRun && warning === null) {
     const calm = isNarrow ? line2 : withTimes(b, line2)
     return [calm.map(s => ('text' in s ? { text: s.text, tone: 'dim' as const } : s))]
   }
   if (b.isWorking) return [working(b, isNarrow), line2]
-  const out = [lastTurn(b, isNarrow), line2].filter(l => l.length > 0)
-  if (b.newFailures > 0) out.push([{ text: `✗ ${b.newFailures} new `, tone: 'fail' }, { button: { key: 'inspect', label: 'Inspect', hotkey: '1' } }])
+  const out = [agentsRun ? working(b, isNarrow) : lastTurn(b, isNarrow), line2].filter(l => l.length > 0)
+  const failed: Line = b.newFailures > 0
+    ? [{ text: `✗ ${b.newFailures} new `, tone: 'fail' }, { button: { key: 'inspect', label: 'Inspect', hotkey: '1' } }]
+    : []
+  if (warning !== null) out.push(failed.length > 0 ? [...warning, { text: '    ' }, ...failed] : warning)
+  else if (failed.length > 0) out.push(failed)
   return out
 }

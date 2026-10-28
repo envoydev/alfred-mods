@@ -2,23 +2,34 @@
 // Every $.state atom is made, read and updated here alone: `claude plugin validate` refuses an atom or a ref
 // imported from another module.
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register, SessionRateLimit, SessionUsage, UiOpenResult } from 'claude-code'
+import type {
+  EngineInterface, Register, SessionRateLimit, SessionUsage, Timer, TurnStepInput, TurnStepResult, UiOpenResult,
+} from 'claude-code'
 
-import { bandLines } from './band.ts'
+import { actionOf, isLive, newRow, refreshAgents, statusAt, upsertSpawn } from './agents.ts'
+import { bandLines, spinnerSuffix } from './band.ts'
+import {
+  addRequest, afterCompact, billingOf, cacheView, idleOf, minutes, needsTick, pinOf, takeRate, takeSwitch, toastAt,
+} from './cache.ts'
 import { baseCost, pruneCost, recordCost, todayUsd } from './cost.ts'
 import { drawLines } from './draw.tsx'
-import { fingerprint, when } from './format.ts'
-import { toast } from './mask.ts'
-import { nowLines, tabBar, timelineLines, toolsLines, usageLines } from './tabs.ts'
+import { fingerprint, printable, usd, when } from './format.ts'
+import { mask, toast } from './mask.ts'
+import { agentsLines, cacheLines, nowLines, tabBar, timelineLines, toolsLines, usageLines } from './tabs.ts'
 import { classify, fold, targetOf, toolKey } from './outcome.ts'
 import type { CallFacts } from './outcome.ts'
-import type { Failure, Live, Meta, Outcome, Pace, Tab, ToolStat, Totals, Turn, Usage, View, Window } from '../types'
+import type { AgentRow, Cache, CacheConfig, Failure, Live, Meta, Outcome, Pace, Tab, ToolStat, Totals, Turn, Usage, View, Window } from '../types'
 
 // What the events said about one call. Never drawn, so a reload losing the calls in flight costs only those.
 type Call = {
   facts: CallFacts; key: string; tool: string; target: string; agentId: string | null
   settled: boolean; outcome: Outcome | null; rowId: string | null
 }
+
+// What outlives one hook but is no $.state value: the cache's toast timer, a [Compact] in flight, the compactions the
+// mod's own hook counted, and whether the session started in the terminal's REPL, which only session.start says and
+// /clear does not repeat
+type Held = { close: Timer | null; compacting: boolean; counted: number; isTerminal: boolean }
 
 const INITIAL = {
   stats: {} as Record<string, ToolStat>,
@@ -31,24 +42,30 @@ const INITIAL = {
   totals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, stepOutput: 0, stepMs: 0 } as Totals,
   meta: {
     model: null, effort: null, compactions: 0, lastCompactAt: null, lastPromptAt: null, lastReplyAt: null, turnCount: 0,
-    waiting: [],
+    waiting: [], mainCalls: 0,
   } as Meta,
   view: { tab: 'now', shown: [] } as View,
   pace: {} as Pace,
-  agents: [] as string[],
+  agents: [] as AgentRow[],
+  cache: {
+    tier: null, tierAt: null, tierBilling: null,
+    config: { pin: null, idleOff: false, idleMinTokens: 200_000, isTerminal: false },
+    ratePerToken: null, rateModel: null, lastAt: null, last: null, session: { read: 0, write: 0, input: 0 }, toastedFor: null,
+  } as Cache,
 }
 
 // Change a tag when that value's fields change: it declines what an earlier version stored, which outlives a reload.
 const stats = atom({ plugin: 'session-inspector', key: 'stats' } as const, INITIAL.stats, { shape: 'stats-1' })
 const failures = atom({ plugin: 'session-inspector', key: 'failures' } as const, INITIAL.failures, { shape: 'failures-1' })
 const turns = atom({ plugin: 'session-inspector', key: 'turns' } as const, INITIAL.turns, { shape: 'turns-1' })
-const live = atom({ plugin: 'session-inspector', key: 'live' } as const, INITIAL.live, { shape: 'live-2' })
+const live = atom({ plugin: 'session-inspector', key: 'live' } as const, INITIAL.live, { shape: 'live-3' })
 const usage = atom({ plugin: 'session-inspector', key: 'usage' } as const, INITIAL.usage, { shape: 'usage-1' })
 const totals = atom({ plugin: 'session-inspector', key: 'totals' } as const, INITIAL.totals, { shape: 'totals-1' })
-const meta = atom({ plugin: 'session-inspector', key: 'meta' } as const, INITIAL.meta, { shape: 'meta-2' })
+const meta = atom({ plugin: 'session-inspector', key: 'meta' } as const, INITIAL.meta, { shape: 'meta-3' })
 const view = atom({ plugin: 'session-inspector', key: 'view' } as const, INITIAL.view, { shape: 'view-2' })
 const pace = atom({ plugin: 'session-inspector', key: 'pace' } as const, INITIAL.pace, { shape: 'pace-1' })
-const agents = atom({ plugin: 'session-inspector', key: 'agents' } as const, INITIAL.agents, { shape: 'agents-1' })
+const agents = atom({ plugin: 'session-inspector', key: 'agents' } as const, INITIAL.agents, { shape: 'agents-2' })
+const cache = atom({ plugin: 'session-inspector', key: 'cache' } as const, INITIAL.cache, { shape: 'cache-1' })
 const tick = atom({ plugin: 'session-inspector', key: 'tick' } as const, 0)
 
 const NO_FACTS: Omit<CallFacts, 'tool'> = {
@@ -67,7 +84,13 @@ function tally(stat: ToolStat | undefined, outcome: Outcome, by: 1 | -1): ToolSt
 
 // Calls of the main loop, and of agents whose spawn was seen; anything else is not counted
 async function isCounted($: EngineInterface, agentId: string | undefined): Promise<boolean> {
-  return agentId === undefined || (await read($, agents)).includes(agentId)
+  return agentId === undefined || (await read($, agents)).some(r => r.id === agentId)
+}
+
+// Changes the row of an agent whose spawn was seen; an unknown id writes nothing
+async function updateRow($: EngineInterface, id: string, fn: (r: AgentRow) => AgentRow): Promise<void> {
+  if (!(await read($, agents)).some(r => r.id === id)) return
+  await update($, agents, rows => rows.map(r => (r.id === id ? fn(r) : r)))
 }
 
 // Whether the person sees the pane now, from the engine's record: it outlives a /clear and a reload, and knows a
@@ -103,7 +126,10 @@ async function settle($: EngineInterface, id: string, call: Call): Promise<void>
   const before = call.outcome
   call.settled = true
   call.outcome = outcome
-  await update($, stats, s => ({ ...s, [call.key]: before === null ? tally(s[call.key], outcome, 1) : tally(tally(s[call.key], before, -1), outcome, 1) }))
+  const retally = (s: Record<string, ToolStat>): Record<string, ToolStat> =>
+    ({ ...s, [call.key]: before === null ? tally(s[call.key], outcome, 1) : tally(tally(s[call.key], before, -1), outcome, 1) })
+  await update($, stats, retally)
+  if (call.agentId !== null) await updateRow($, call.agentId, r => ({ ...r, tools: retally(r.tools) }))
   if (outcome !== 'ok') await addRow($, id, call, outcome, reason, isNew, before !== null && before !== 'ok' ? call.rowId : null)
   const isMain = call.agentId === null
   const failed = (o: Outcome | null): number => (o !== null && o !== 'ok' ? 1 : 0)
@@ -113,6 +139,7 @@ async function settle($: EngineInterface, id: string, call: Call): Promise<void>
     failures: isMain && l.turnId !== null ? l.failures + failed(outcome) - failed(before) : l.failures,
     running: l.running.filter(r => r.id !== id),
   }))
+  if (isMain && before === null) await update($, meta, m => ({ ...m, mainCalls: m.mainCalls + 1 }))
 }
 
 const windowsOf = (limits: readonly SessionRateLimit[]): Window[] =>
@@ -135,8 +162,77 @@ async function baseline($: EngineInterface, reading: SessionUsage): Promise<void
   if (reading.cost !== undefined) await baseCost($, await $.session.id(), reading.cost.usd, await $.clock.now())
 }
 
+// Once a second: the engine's list moves the live agent rows, and the clocks on screen redraw while anything runs
 async function tickOnce($: EngineInterface): Promise<void> {
-  if ((await read($, live)).turnId !== null) await update($, tick, n => n + 1)
+  const rows = await read($, agents)
+  const anyLive = rows.some(r => isLive(r.status))
+  const now = await $.clock.now()
+  if (anyLive) {
+    const listed = await $.agent.list()
+    if (JSON.stringify(refreshAgents(rows, listed, now)) !== JSON.stringify(rows)) {
+      await update($, agents, current => refreshAgents(current, listed, now))
+    }
+  }
+  const isWarm = needsTick(await read($, cache), billingOf((await read($, usage)).windows), now)
+  if (anyLive || isWarm || (await read($, live)).turnId !== null) await update($, tick, n => n + 1)
+}
+
+// The variables and settings that pin the cache's tier or turn idle compaction off, written only on a change
+async function readCacheConfig($: EngineInterface, held: Held): Promise<void> {
+  const config: CacheConfig = {
+    pin: pinOf({
+      force5m: await $.env.get('FORCE_PROMPT_CACHING_5M'),
+      ttl: await $.env.get('CLAUDE_CODE_PROMPT_CACHE_TTL'),
+      setting: await $.settings.read({ key: 'promptCacheTtl' }),
+      enable1h: await $.env.get('ENABLE_PROMPT_CACHING_1H'),
+    }),
+    ...idleOf({
+      idleCompaction: await $.settings.read({ key: 'idleCompaction' }),
+      autoCompactEnabled: await $.settings.read({ key: 'autoCompactEnabled' }),
+      disableAutoCompact: await $.env.get('DISABLE_AUTO_COMPACT'),
+      minTokens: await $.env.get('CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS'),
+    }),
+    isTerminal: held.isTerminal,
+  }
+  if (JSON.stringify((await read($, cache)).config) !== JSON.stringify(config)) await update($, cache, c => ({ ...c, config }))
+}
+
+// Sets the toast's timer afresh: due 5 minutes before a 1h cache goes cold, or 3 where Claude Code should compact it
+// itself first
+async function armCacheClose($: EngineInterface, held: Held): Promise<void> {
+  held.close?.cancel()
+  held.close = null
+  const c = await read($, cache)
+  const u = await read($, usage)
+  const at = toastAt(c, billingOf(u.windows), u.tokens)
+  if (at === null) return
+  const now = await $.clock.now()
+  held.close = $.clock.after(Math.max(0, at - now), () => {
+    cacheClose($).catch(() => undefined)
+  })
+}
+
+// The toast, once per warm stretch, while the main loop is idle and the cache is still 1h and warm by then; a
+// compaction of Claude Code's own has made it cold
+async function cacheClose($: EngineInterface): Promise<void> {
+  const c = await read($, cache)
+  const u = await read($, usage)
+  const v = cacheView(c, billingOf(u.windows), await $.clock.now(), u.tokens)
+  if (v.tier.tier !== '1h' || !v.isClosing || c.toastedFor === c.lastAt) return
+  if ((await read($, live)).turnId !== null) return
+  const rewrite = v.rewriteUsd === null ? '' : ` (rewrite ≈ ${usd(v.rewriteUsd)})`
+  toast($, `Cache cold in ${v.tier.isEstimate ? '≈' : ''}${minutes(v.leftMs ?? 0)}${rewrite}: press 3 to compact, or /inspect cache`)
+  const lastAt = c.lastAt
+  await update($, cache, x => ({ ...x, toastedFor: lastAt }))
+}
+
+// An agent's step: its model and effort, and its context as the sum the engine's own `context_tokens` uses
+async function agentStep($: EngineInterface, e: TurnStepInput, step: TurnStepResult): Promise<void> {
+  const u = step.usage
+  await updateRow($, e.agentId ?? '', r => ({
+    ...r, model: e.model, effort: e.effort === undefined ? r.effort : String(e.effort),
+    contextTokens: u === null ? r.contextTokens : u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens + u.output_tokens,
+  }))
 }
 
 async function resetAll($: EngineInterface): Promise<void> {
@@ -150,6 +246,7 @@ async function resetAll($: EngineInterface): Promise<void> {
   await update($, view, () => INITIAL.view)
   await update($, pace, () => INITIAL.pace)
   await update($, agents, () => INITIAL.agents)
+  await update($, cache, () => INITIAL.cache)
   await update($, tick, () => 0)
 }
 
@@ -226,7 +323,37 @@ async function toggleShown($: EngineInterface, id: string): Promise<void> {
   await update($, view, v => ({ ...v, shown: v.shown.includes(id) ? v.shown.filter(x => x !== id) : [...v.shown, id] }))
 }
 
-const TABS: Tab[] = ['now', 'usage', 'tools', 'timeline']
+const TABS: Tab[] = ['now', 'usage', 'agents', 'tools', 'cache', 'timeline']
+
+// A main-loop compaction that stands: counted, and the cache cold, as its cached prefix is gone
+async function countCompaction($: EngineInterface, held: Held): Promise<void> {
+  held.counted++
+  const at = await $.clock.now()
+  await update($, meta, m => ({ ...m, compactions: m.compactions + 1, lastCompactAt: at }))
+  await update($, cache, afterCompact)
+  await armCacheClose($, held)
+}
+
+// [Compact]: the call comes first, so the press counts as the person's. The compaction is counted once: by the mod's
+// own session.compact hook when the call passes through it, else here, as a host may skip the calling plugin whole.
+// A skip or a failure is said, and a second press while one runs starts none.
+async function compactNow($: EngineInterface, held: Held): Promise<void> {
+  if (held.compacting) {
+    toast($, 'Compact is already running.')
+    return
+  }
+  held.compacting = true
+  const seen = held.counted
+  try {
+    const done = await $.session.compact()
+    if (done.skip !== undefined) toast($, `Compact skipped: ${done.skip}`)
+    else if (held.counted === seen) await countCompaction($, held)
+  } catch (err) {
+    toast($, `Compact did not run: ${err instanceof Error ? err.message : String(err)}`)
+  } finally {
+    held.compacting = false
+  }
+}
 
 async function isNoColor($: EngineInterface): Promise<boolean> {
   return ((await $.env.get('NO_COLOR')) ?? '') !== ''
@@ -235,6 +362,7 @@ async function isNoColor($: EngineInterface): Promise<boolean> {
 export const register: Register = on => {
   // Keyed by call id, at most 100, the oldest dropped first
   const calls = new Map<string, Call>()
+  const held: Held = { close: null, compacting: false, counted: 0, isTerminal: false }
 
   const remember = (id: string, tool: string): Call => {
     let call = calls.get(id)
@@ -248,8 +376,16 @@ export const register: Register = on => {
 
   on('agent.spawn', async ($, e, next) => {
     const spawned = await next(e)
+    if (spawned.deny !== undefined) return spawned
     const id = e.resume?.agentId ?? spawned.agentId
-    if (id !== undefined) await update($, agents, list => (list.includes(id) ? list : [...list, id]))
+    if (id !== undefined) {
+      const now = await $.clock.now()
+      const row = newRow({
+        id, parentId: e.parentAgentId ?? null, type: e.subagentType, description: e.description, prompt: e.prompt,
+        isTeammate: e.isTeammate === true, model: spawned.model,
+      }, now)
+      await update($, agents, rows => upsertSpawn(rows, row, e.resume !== undefined))
+    }
     return spawned
   }).catch(($, e, next) => next(e))
 
@@ -260,9 +396,12 @@ export const register: Register = on => {
     call.key = toolKey(e.tool, input)
     call.target = targetOf(e.tool, input, await $.session.cwd())
     call.agentId = e.agentId ?? null
-    if (call.agentId === null && e.tool === 'Bash') {
+    if (call.agentId === null) {
       const startedAt = await $.clock.now()
-      await update($, live, l => ({ ...l, running: [...l.running, { id: e.tool_use_id, label: call.target, startedAt }] }))
+      await update($, live, l => ({ ...l, running: [...l.running, { id: e.tool_use_id, tool: e.tool, label: call.target, startedAt }] }))
+    } else {
+      const action = actionOf(e.tool, call.target)
+      await updateRow($, call.agentId, r => ({ ...r, action }))
     }
     const ran = await next(e)
     const text = ran.text ?? (typeof ran.result === 'string' ? ran.result : '')
@@ -319,15 +458,19 @@ export const register: Register = on => {
 
   on('session.start', async ($, e, next) => {
     const started = await next(e)
-    await $.command.register({ name: 'inspect', description: 'Session metrics, tool failures and the timeline in a pane', argumentHint: '[now|usage|tools|timeline]' })
-    // Redraws the running times once a second, and only while a turn runs
+    await $.command.register({ name: 'inspect', description: 'Session metrics, agents, tool failures, cache and the timeline in a pane', argumentHint: '[now|usage|agents|tools|cache|timeline]' })
+    // Moves the agent rows and redraws the running times once a second
     $.clock.every(1000, () => {
-      void tickOnce($)
+      tickOnce($).catch(() => undefined)
     })
     const now = await $.clock.now()
     await pruneCost($, now)
     const reading = await takeUsage($, await todayUsd($, now))
     await baseline($, reading)
+    held.isTerminal = e.surface === 'terminal' && e.isInteractive
+    await readCacheConfig($, held)
+    // A reload keeps $.state but not the module's timer: a cache still warm gets its toast armed again
+    await armCacheClose($, held)
     return started
   }).catch(($, e, next) => next(e))
 
@@ -335,10 +478,19 @@ export const register: Register = on => {
   // mod writes its own start values too, so the reset is the mod's and testable
   on('classic.SessionStart', async ($, e, next) => {
     if (e.source === 'clear' || e.source === 'resume' || e.source === 'fork') {
+      held.close?.cancel()
+      held.close = null
       calls.clear()
       await resetAll($)
       await baseline($, await takeUsage($, await todayUsd($, await $.clock.now())))
+      const cost = e.estimated_cache_write_usd
+      const tokens = e.context_tokens ?? 0
+      if (e.source !== 'clear' && cost !== undefined && tokens > 0) {
+        const model = e.model ?? null
+        await update($, cache, c => takeRate(c, cost, tokens, model))
+      }
     }
+    await readCacheConfig($, held)
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -363,6 +515,7 @@ export const register: Register = on => {
   }).catch(($, e, next) => next(e))
 
   on('turn.start', async ($, e, next) => {
+    if (e.agentId !== undefined) await updateRow($, e.agentId, r => ({ ...r, status: 'running', endedAt: null }))
     if (e.agentId === undefined) {
       const startedAt = await $.clock.now()
       // The turn answers the waiting prompt with its text; the prompts waiting before it never started a turn
@@ -381,14 +534,35 @@ export const register: Register = on => {
   }).catch(($, e, next) => next(e))
 
   on('turn.step', async function* ($, e, next) {
-    if (e.agentId !== undefined) return yield* next(e)
-    const startedAt = await $.clock.now()
+    if (e.agentId !== undefined) {
+      const step = yield* next(e)
+      try {
+        await agentStep($, e, step)
+      } catch {
+        // The row's figures are lost; the step itself stands
+      }
+      return step
+    }
+    let startedAt: number | null = null
+    try {
+      startedAt = await $.clock.now()
+    } catch {
+      // A step with no start time streams with no timing
+    }
     const step = yield* next(e)
     try {
-      const ms = (await $.clock.now()) - startedAt
       await update($, meta, m => ({ ...m, model: e.model, effort: e.effort === undefined ? m.effort : String(e.effort) }))
       const output = step.usage?.output_tokens
-      if (output !== undefined) await update($, totals, t => ({ ...t, stepOutput: t.stepOutput + output, stepMs: t.stepMs + ms }))
+      if (output !== undefined && startedAt !== null) {
+        const ms = (await $.clock.now()) - startedAt
+        await update($, totals, t => ({ ...t, stepOutput: t.stepOutput + output, stepMs: t.stepMs + ms }))
+      }
+      const u = step.usage
+      const at = startedAt
+      if (u !== null && at !== null && u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens > 0) {
+        await update($, cache, c => addRequest(c, u, at))
+        await armCacheClose($, held)
+      }
     } catch {
       // The step's figures are lost; the step itself stands
     }
@@ -397,7 +571,15 @@ export const register: Register = on => {
 
   on('turn.complete', async ($, e, next) => {
     const done = await next(e)
-    if (e.agentId !== undefined && !(await read($, agents)).includes(e.agentId)) return done
+    if (e.agentId !== undefined && !(await read($, agents)).some(r => r.id === e.agentId)) return done
+    if (e.agentId !== undefined) {
+      const now = await $.clock.now()
+      const reason = e.reason
+      const answer = e.answer
+      await updateRow($, e.agentId, r => ({
+        ...r, status: statusAt(reason, r.isTeammate), endedAt: now, report: answer === '' ? r.report : answer.slice(0, 4000),
+      }))
+    }
     const u = e.usage
     if (u !== undefined) {
       await update($, totals, t => ({
@@ -411,6 +593,8 @@ export const register: Register = on => {
     if (e.agentId === undefined) {
       const tokensIn = u === undefined ? 0 : u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens
       await endTurn($, e.turnId, e.durationMs, e.reason, { tokensIn, tokensOut: u?.output_tokens ?? 0 })
+      await readCacheConfig($, held)
+      await armCacheClose($, held)
     }
     return done
   }).catch(($, e, next) => next(e))
@@ -428,18 +612,38 @@ export const register: Register = on => {
 
   on('session.compact', async ($, e, next) => {
     const compacted = await next(e)
-    if (e.agentId === undefined && e.trigger !== 'precompute' && compacted.skip === undefined) {
-      const at = await $.clock.now()
-      await update($, meta, m => ({ ...m, compactions: m.compactions + 1, lastCompactAt: at }))
-    }
+    if (e.agentId === undefined && e.trigger !== 'precompute' && compacted.skip === undefined) await countCompaction($, held)
     return compacted
+  }).catch(($, e, next) => next(e))
+
+  // A switch forfeits the cache; its report gives the tier under the billing now and prices the rewrite
+  on('classic.PostModelSwitch', async ($, e, next) => {
+    const done = await next(e)
+    const billing = billingOf((await read($, usage)).windows)
+    const now = await $.clock.now()
+    const s = { ttl: e.cache_ttl, contextTokens: e.context_tokens, usd: e.estimated_cache_write_usd, model: e.to_model, billing }
+    await update($, cache, c => takeSwitch(c, s, now, true))
+    await armCacheClose($, held)
+    return done
+  }).catch(($, e, next) => next(e))
+
+  // Claude Code may still ask to confirm the switch, so the cache stays warm; a switch a hook stops reports nothing
+  on('classic.PreModelSwitch', async ($, e, next) => {
+    const done = await next(e)
+    if (done.block !== undefined || done.permissionDecision === 'deny' || done.permissionDecision === 'ask') return done
+    const billing = billingOf((await read($, usage)).windows)
+    const now = await $.clock.now()
+    const s = { ttl: e.cache_ttl, contextTokens: e.context_tokens, usd: e.estimated_cache_write_usd, model: e.to_model, billing }
+    await update($, cache, c => takeSwitch(c, s, now, false))
+    await armCacheClose($, held)
+    return done
   }).catch(($, e, next) => next(e))
 
   // '/inspect [tab]': opens the pane, never on its own
   on('command.run', { command: 'inspect' }, async ($, e) => {
     const word = (e.args.trim().split(/\s+/)[0] ?? '').toLowerCase()
     const tab = TABS.find(t => t === (word === '' ? 'now' : word))
-    if (tab === undefined) return { text: 'Tabs: now, usage, tools, timeline.' }
+    if (tab === undefined) return { text: 'Tabs: now, usage, agents, tools, cache, timeline.' }
     const opened = await openInspect($, tab)
     return { text: opened.isPlaced ? 'Opened the inspect pane.' : `The inspect pane is open but not drawn: ${opened.reason}.` }
   })
@@ -451,10 +655,21 @@ export const register: Register = on => {
     const lines = bandLines({
       now: await $.clock.now(), columns: e.props.bodyColumns, isWorking: e.props.isWorking,
       live: await read($, live), usage: await read($, usage), meta: await read($, meta), turns: await read($, turns),
-      newFailures: (await read($, failures)).filter(f => f.isNew).length, pace: await read($, pace),
+      newFailures: (await read($, failures)).filter(f => f.isNew).length, pace: await read($, pace), agents: await read($, agents),
+      cache: await read($, cache),
     })
     if (lines.length === 0) return next(e)
-    return drawLines($, e, lines, { noColor: await isNoColor($), press: { inspect: () => inspectFromBand($) } })
+    const press = { inspect: () => inspectFromBand($), compact: () => compactNow($, held) }
+    return drawLines($, e, lines, { noColor: await isNoColor($), press })
+  })
+
+  // The main loop's spinner adds its action, context and the agents running; an agent's spinner, that agent's
+  on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
+    const text = spinnerSuffix({
+      requestId: e.requestId ?? '', live: await read($, live), percent: (await read($, usage)).percent, agents: await read($, agents),
+    })
+    if (text === null) return next(e)
+    return next({ ...e, props: { ...e.props, suffix: `${e.props.suffix} ${mask(printable(text))}` } })
   })
 
   on('ui.render', { component: 'Pane', requestId: 'inspect' }, async ($, e) => {
@@ -467,21 +682,31 @@ export const register: Register = on => {
       now, columns: e.props.bodyColumns, isWorking: counts.turnId !== null, live: counts, usage: await read($, usage),
       meta: await read($, meta), turns: await read($, turns), newFailures: rows.filter(f => f.isNew).length,
       pace: await read($, pace), failures: rows, stats: await read($, stats), totals: await read($, totals), view: shown,
+      agents: await read($, agents), cache: await read($, cache),
     }
+    const bar = tabBar(shown.tab, counts.turnId !== null, e.props.bodyColumns)
     const body = shown.tab === 'usage' ? usageLines(input)
+      : shown.tab === 'agents' ? agentsLines(input)
+      : shown.tab === 'cache' ? cacheLines(input)
       : shown.tab === 'tools' ? toolsLines(input)
-      : shown.tab === 'timeline' ? timelineLines(input.turns, Math.max(3, e.props.scroll.bodyRows - 2))
+      : shown.tab === 'timeline' ? timelineLines(input.turns, Math.max(3, e.props.scroll.bodyRows - 1 - bar.length))
       : nowLines(input)
     const press: Record<string, () => unknown> = {
       'tab-now': () => openInspect($, 'now'),
       'tab-usage': () => openInspect($, 'usage'),
+      'tab-agents': () => openInspect($, 'agents'),
       'tab-tools': () => openInspect($, 'tools'),
+      'tab-cache': () => openInspect($, 'cache'),
+      compact: () => compactNow($, held),
       'tab-timeline': () => openInspect($, 'timeline'),
     }
     for (const row of rows) {
       press[`show-${row.id}`] = () => toggleShown($, row.id)
       press[`copy-${row.id}`] = () => $.ui.copy({ text: row.detail, surface: e.surface })
     }
-    return drawLines($, e, [tabBar(shown.tab, counts.turnId !== null), ...body], { noColor: await isNoColor($), press })
+    for (const agent of input.agents) {
+      if (agent.report !== null) press[`report-${agent.id}`] = () => toggleShown($, `report:${agent.id}`)
+    }
+    return drawLines($, e, [...bar, ...body], { noColor: await isNoColor($), press })
   })
 }

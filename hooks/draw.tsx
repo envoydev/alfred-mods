@@ -10,7 +10,7 @@ import type { Line, Seg, Tone } from './band.ts'
 const show = (text: string): string => mask(printable(text))
 
 const COLOR: Record<Exclude<Tone, 'dim'>, string> = {
-  ok: '#22c55e', warn: '#f59e0b', fail: '#ef4444', usage: '#60a5fa', skill: '#65a30d',
+  ok: '#22c55e', warn: '#f59e0b', fail: '#ef4444', usage: '#60a5fa', skill: '#65a30d', agents: '#f472b6', cache: '#22d3ee',
   opus: '#ff8c1a', sonnet: '#3d9bff', haiku: '#19c3a6', fable: '#d16bff',
 }
 
@@ -54,13 +54,18 @@ export function drawLines($: EngineInterface, e: ResolveInput, lines: Line[], o:
   const segment = (seg: Exclude<Seg, TextSeg>) => {
     if ('code' in seg) return <Code source={show(seg.code)} />
     if ('chart' in seg) return chart($, e, seg.chart, o.noColor)
-    const { key, label, hotkey } = seg.button
+    const { key, label, hotkey, tone } = seg.button
     const press = () => {
       void o.press[key]?.()
     }
-    return hotkey === undefined
-      ? <Button key={key} label={show(label)} onPress={press} />
-      : <Button key={key} label={show(label)} hotkey={hotkey} onPress={press} />
+    // A digit also answers from the empty prompt, so the terminal shows it plain, '3: Compact', where '[ Compact ]'
+    // hides it; a letter answers only in the focused pane, and its button keeps the brackets
+    const props = {
+      key, label: show(label), onPress: press,
+      ...(hotkey === undefined ? {} : { hotkey }), ...(/^\d$/.test(hotkey ?? '') ? { plain: true as const } : {}),
+    }
+    if (tone === undefined) return <Button {...props} />
+    return <Button {...props}><Text {...style({ tone, bold: true }, o.noColor)}>{show(label)}</Text></Button>
   }
   const row = (line: Line) => {
     const out: RenderElement[] = []

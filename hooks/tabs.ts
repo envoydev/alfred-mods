@@ -1,24 +1,177 @@
 // Each /inspect tab, from the session's values to lines of styled segments.
-import { barSegs, pctSeg, windowsInOrder, working } from './band.ts'
+import { agentTree, isLive, toolSummary } from './agents.ts'
+import { barSegs, cacheWarning, pctSeg, windowsInOrder, working } from './band.ts'
+import { IDLE_COMPACT_MS, billingOf, cacheLine, cacheView, selfCompacts, toastAt } from './cache.ts'
 import type { BandInput, Line, Seg, Tone } from './band.ts'
-import { clock, duration, tokens, usd, when } from './format.ts'
+import { clock, duration, modelParts, modelText, oneLine, printable, tokens, usd, when } from './format.ts'
 import { pace, turnsLeft } from './forecast.ts'
 
-import type { Failure, Tab, ToolStat, Totals, Turn, View } from '../types'
+import type { AgentRow, Failure, Tab, ToolStat, Totals, Turn, View } from '../types'
 
 export type TabInput = BandInput & { failures: Failure[]; stats: Record<string, ToolStat>; totals: Totals; view: View }
 
-const TABS: [Tab, string, string][] = [['now', 'Now', 'n'], ['usage', 'Usage', 'u'], ['tools', 'Tools', 't'], ['timeline', 'Timeline', 'l']]
-const FAMILIES: Tone[] = ['opus', 'sonnet', 'haiku', 'fable']
+const TABS: [Tab, string, string, Tone?][] = [
+  ['now', 'Now', 'n'], ['usage', 'Usage', 'u', 'usage'], ['agents', 'Agents', 'a', 'agents'], ['tools', 'Tools', 't'],
+  ['cache', 'Cache', 'c', 'cache'], ['timeline', 'Timeline', 'l'],
+]
 
-// The current tab is bold text; the others are buttons
-export function tabBar(tab: Tab, isLive: boolean): Line {
-  const line: Line = []
-  for (const [t, label, hotkey] of TABS) {
-    line.push(t === tab ? { text: ` ${label} `, bold: true } : { button: { key: `tab-${t}`, label, hotkey } }, { text: ' ' })
-  }
-  if (isLive) line.push({ text: '● live', tone: 'ok' })
+// The current tab is bold text in its feature's colour; the others are buttons. Wider than the pane (a docked one is
+// about 46 columns), the bar wraps after its third tab: on one line the buttons keep their width and the current
+// tab's name is squeezed to '…'.
+export function tabBar(tab: Tab, isLive: boolean, columns: number): Line[] {
+  const tabs = TABS.map(([t, label, hotkey, tone]): Line => {
+    const current: Seg = tone === undefined ? { text: ` ${label} `, bold: true } : { text: ` ${label} `, bold: true, tone }
+    const button: Seg = { button: tone === undefined ? { key: `tab-${t}`, label, hotkey } : { key: `tab-${t}`, label, hotkey, tone } }
+    return [t === tab ? current : button, { text: ' ' }]
+  })
+  const live: Line = isLive ? [{ text: '● live', tone: 'ok' }] : []
+  // A button draws as '[ label ]', the current tab as ' label ', each with a space after
+  const width = TABS.reduce((n, [t, label]) => n + label.length + (t === tab ? 3 : 5), 0) + (isLive ? 6 : 0)
+  if (width <= columns) return [[...tabs.flat(), ...live]]
+  return [tabs.slice(0, 3).flat(), [...tabs.slice(3).flat(), ...live]]
+}
+
+// 'skills fired: watch ×1 · plugin-authoring ×4', first fired first; null with no skill
+export function skillsLine(stats: Record<string, ToolStat>): Line | null {
+  const skills = Object.entries(stats).filter(([key]) => key.startsWith('Skill: '))
+  if (skills.length === 0) return null
+  const line: Line = [{ text: 'skills fired: ', tone: 'dim' }]
+  skills.forEach(([key, t], i) => {
+    if (i > 0) line.push({ text: ' · ', tone: 'dim' })
+    line.push({ text: `${key.slice(7)} ×${t.calls}`, tone: 'skill' })
+  })
   return line
+}
+
+const FAMILIES = ['opus', 'sonnet', 'haiku', 'fable'] as const
+
+// An agent's model as its family, in the family's colour; the model text when it has none
+function familySeg(model: string): Seg {
+  const parts = modelParts(model)
+  return parts === null ? { text: modelText(model) } : { text: parts.family, tone: parts.family }
+}
+
+// How long the agent has run, or how it ended and after how long
+function agentTime(r: AgentRow, now: number): string {
+  const took = duration((r.endedAt ?? now) - r.startedAt)
+  switch (r.status) {
+    case 'running': return took
+    case 'waiting': return `waiting · ${took}`
+    case 'pending': return 'pending'
+    case 'completed': return `done in ${took}`
+    case 'failed': return `failed after ${took}`
+    case 'killed': return `stopped after ${took}`
+    case 'idle': return 'idle'
+  }
+}
+
+function agentGlyph(r: AgentRow): Seg {
+  if (isLive(r.status)) return { text: '⟳', bold: true }
+  if (r.status === 'completed') return { text: '✓', tone: 'ok' }
+  return r.status === 'idle' ? { text: '·', tone: 'dim' } : { text: '✗', tone: 'fail' }
+}
+
+// The main loop as the root, then each agent under the one that started it, its task, action or result, and tools
+export function agentsLines(b: TabInput): Line[] {
+  const counts = new Map<string, number>()
+  for (const r of b.agents) {
+    const name = modelParts(r.model)?.family ?? modelText(r.model)
+    counts.set(name, (counts.get(name) ?? 0) + 1)
+  }
+  const order = [...FAMILIES.filter(f => counts.has(f)), ...[...counts.keys()].filter(k => !(FAMILIES as readonly string[]).includes(k))]
+  const head: Line = [{ text: `Agents (${b.agents.length})`, bold: true, tone: 'agents' }]
+  if (order.length > 0) head.push({ text: `   ${order.map(k => `${k} ${counts.get(k)}`).join(' · ')}`, tone: 'dim' })
+  const root: Line = [b.isWorking ? { text: '⟳ main chat', bold: true } : { text: '✓', tone: 'ok' }]
+  if (!b.isWorking) root.push({ text: ' main chat' })
+  if (b.meta.model !== null) {
+    const parts = modelParts(b.meta.model)
+    root.push({ text: ' · ' }, parts === null ? { text: b.meta.model } : { text: modelText(b.meta.model), tone: parts.family })
+  }
+  root.push({ text: ` · ${b.meta.mainCalls} ${b.meta.mainCalls === 1 ? 'tool' : 'tools'}` })
+  const out: Line[] = [head, root]
+  for (const t of agentTree(b.agents)) {
+    const r = t.row
+    const line: Line = [{ text: t.prefix, tone: 'dim' }, agentGlyph(r), { text: ` ${r.type} · ` }, familySeg(r.model)]
+    if (r.effort !== null) line.push({ text: ` ◑ ${r.effort}`, tone: 'dim' })
+    line.push({ text: `   ${agentTime(r, b.now)}`, tone: 'dim' })
+    out.push(line)
+    const indent = `${t.prefix.slice(0, -2)}${t.isLast ? '  ' : '│ '}    `
+    const doing: Line = [{ text: indent, tone: 'dim' }, { text: 'doing: ', tone: 'dim' }, { text: `"${r.description}"` }]
+    if (r.task !== null) doing.push({ text: ` · task ${r.task}` })
+    out.push(doing)
+    if (isLive(r.status) && r.action !== null) out.push([{ text: indent, tone: 'dim' }, { text: `▸ ${r.action}` }])
+    if (!isLive(r.status) && r.report !== null) {
+      const isShown = b.view.shown.includes(`report:${r.id}`)
+      out.push([
+        { text: indent, tone: 'dim' }, { text: `result: ${oneLine(printable(r.report), 60)}` }, { text: ' ' },
+        { button: { key: `report-${r.id}`, label: isShown ? 'Hide report' : 'Show report' } },
+      ])
+      if (isShown) out.push([{ code: r.report }])
+    }
+    const used = toolSummary(r.tools)
+    const parts: Line[] = []
+    if (r.contextTokens !== null) parts.push([{ text: `ctx ${tokens(r.contextTokens)}` }])
+    if (used.tools.length > 0) parts.push([{ text: `tools ${used.tools.join(' · ')}` }])
+    if (used.skills.length > 0) parts.push([{ text: 'skills ' }, { text: used.skills.join(' · '), tone: 'skill' }])
+    if (parts.length > 0) out.push([{ text: indent, tone: 'dim' }, ...parts.flatMap((p, i) => (i === 0 ? p : [{ text: '   ' }, ...p]))])
+  }
+  if (b.agents.length === 0) out.push([{ text: 'No agents yet.', tone: 'dim' }])
+  const skills = skillsLine(b.stats)
+  if (skills !== null) out.push(skills)
+  return out
+}
+
+const BILLED: Record<string, string> = { plan: 'within plan usage', credits: 'on usage credits', other: 'off a subscription' }
+
+// The F4 line with [Compact], the reuse of the last request and the session, the tier and where it comes from, and
+// when Claude Code compacts the idle conversation itself
+export function cacheLines(b: TabInput): Line[] {
+  const c = b.cache
+  const billing = billingOf(b.usage.windows)
+  const v = cacheView(c, billing, b.now)
+  const s = c.session
+  const head: Line = s.read + s.write + s.input === 0
+    ? [{ text: 'Cache     no main-loop request yet', tone: 'dim' }]
+    : [{ text: 'Cache     ' }, ...cacheLine(v)]
+  if (!b.isWorking && v.cached > 0) head.push({ text: '   ' }, { button: { key: 'compact', label: 'Compact', tone: 'cache' } })
+  const out: Line[] = [head]
+  const reused = [
+    v.reuseLast === null ? null : `last request ${Math.round(v.reuseLast)}%`,
+    v.reuseSession === null ? null : `session ${Math.round(v.reuseSession)}%`,
+  ].filter((p): p is string => p !== null)
+  if (reused.length > 0) out.push([{ text: `Reused    ${reused.join(' · ')}` }])
+  const t = v.tier
+  const source = t.from === 'pin' ? `${t.tier}, set by ${c.config.pin?.from ?? ''}`
+    : t.from === 'switch' ? `${t.tier}, from the model switch at ${clock(c.tierAt ?? 0)}`
+    : `≈${t.tier}, Claude Code's default ${BILLED[billing] ?? ''}`
+  const priced = c.ratePerToken !== null && c.rateModel !== null ? ` · rewrite priced on ${modelText(c.rateModel, true)}` : ''
+  out.push([{ text: `Tier      ${source}${priced}` }])
+  const warnAt = toastAt(c, billing, b.usage.tokens)
+  if (c.lastAt !== null && warnAt !== null && selfCompacts(c, billing, b.usage.tokens)) {
+    out.push([{ text: `Idle      Claude Code should compact it itself at ≈${clock(c.lastAt + IDLE_COMPACT_MS)}, else a warning at ≈${clock(warnAt)}` }])
+  }
+  return out
+}
+
+// The Now tab's AGENTS section: each running agent with its action and context, then the skills fired
+function agentsSection(b: TabInput): Line[] {
+  const skills = skillsLine(b.stats)
+  if (b.agents.length === 0 && skills === null) return []
+  const running = b.agents.filter(r => isLive(r.status))
+  const head: Line = [{ text: 'AGENTS', bold: true, tone: 'agents' }]
+  if (running.length > 0) head.push({ text: ` ${running.length} running` })
+  else if (b.agents.length > 0) head.push({ text: ` none running · ${b.agents.length} done` })
+  const out: Line[] = [head]
+  for (const r of running) {
+    const line: Line = [{ text: '⟳', bold: true }, { text: ` ${r.type} [` }, familySeg(r.model)]
+    if (r.effort !== null) line.push({ text: ` ◑ ${r.effort}` })
+    line.push({ text: ']' })
+    if (r.action !== null) line.push({ text: ` ▸ ${r.action}` })
+    if (r.contextTokens !== null) line.push({ text: `   ctx ${tokens(r.contextTokens)}`, tone: 'dim' })
+    out.push(line)
+  }
+  if (skills !== null) out.push(skills)
+  return out
 }
 
 const parse = (iso: string | null): number | null => {
@@ -46,19 +199,20 @@ function failureRows(f: Failure, shown: string[]): Line[] {
 export function nowLines(b: TabInput): Line[] {
   const out: Line[] = []
   if (b.isWorking) out.push(working(b, false))
+  out.push(...agentsSection(b))
   const fresh = b.failures.filter(f => f.isNew).length
   out.push([{ text: 'NEEDS A LOOK', bold: true }, ...(fresh > 0 ? [{ text: `  ${fresh} new`, tone: 'fail' as const }] : [])])
-  if (b.failures.length === 0) out.push([{ text: 'Nothing needs a look.', tone: 'dim' }])
+  const warning = cacheWarning(b, false)
+  if (warning !== null) out.push(warning)
+  if (b.failures.length === 0 && warning === null) out.push([{ text: 'Nothing needs a look.', tone: 'dim' }])
   for (const f of [...b.failures].reverse()) out.push(...failureRows(f, b.view.shown))
   return out
 }
 
 function badge(model: string | null): Seg {
   if (model === null) return { text: 'model —', tone: 'dim' }
-  const m = /(opus|sonnet|haiku|fable)-(\d+)(?:-(\d+))?/.exec(model)
-  const family = m?.[1] as Tone | undefined
-  if (m === null || family === undefined || !FAMILIES.includes(family)) return { text: model }
-  return { text: `${family[0]?.toUpperCase()}${family.slice(1)} ${m[2]}${m[3] === undefined ? '' : `.${m[3]}`}`, tone: family }
+  const parts = modelParts(model)
+  return parts === null ? { text: model } : { text: modelText(model, true), tone: parts.family }
 }
 
 export function usageLines(b: TabInput): Line[] {

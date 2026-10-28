@@ -5,7 +5,7 @@ import type { On, RenderElement, RenderSurface, SessionRateLimit, SessionUsage }
 import { drawLines } from '../hooks/draw.tsx'
 import { clock, when } from '../hooks/format.ts'
 import { mask } from '../hooks/mask.ts'
-import { START, engine, rows, stubAll } from './kit.ts'
+import { SPAWN, START, engine, rows, spawns, stubAll } from './kit.ts'
 
 const SURFACES = ['terminal', 'desktop'] as const
 // Three hours before the 5h window resets, three days before the 7d one: each reset as the band words it
@@ -36,6 +36,19 @@ function reading(ctx?: number, fiveHour?: number, week?: number, usd?: number): 
 function failingCalls(on: On): void {
   on('tool.call', (_, e) =>
     e.tool === 'Bash' && e.command.startsWith('false') ? { isError: true as const, result: 'Exit code 1', text: 'Exit code 1' } : { result: 'ok', text: 'ok' })
+}
+
+// Grep is not among this build's typed tools (its search runs through Bash), but other builds call it
+const grep = (more: object = {}) => ({ tool: 'Grep', pattern: 'AuthService', ...more }) as never
+
+// Claude Code holds every call for a minute and answers each spawn by its description
+function slowCallsAndSpawns(on: On, clock: { sleep: (ms: number) => Promise<void> }): void {
+  on('tool.call', async () => {
+    await clock.sleep(60_000)
+    return { result: 'ok', text: 'ok' }
+  })
+  spawns(on, { one: { agentId: 'a1' }, two: { agentId: 'a2' }, three: { agentId: 'a3' } })
+  engine(on, ['tool.call', 'agent.spawn'])
 }
 
 async function oneTurn($: Engine, failing = 0): Promise<void> {
@@ -84,7 +97,8 @@ for (const surface of SURFACES) {
 
     expect(lines.some(l => /✓ Turn 1/.test(l))).toBe(true)
     expect(lines.some(l => /✗ 2 new/.test(l))).toBe(true)
-    expect(await ui.find({ key: 'inspect' })).toBeDefined()
+    // Plain, so the terminal draws its digit: '1: Inspect'
+    expect((await ui.find({ key: 'inspect' }))?.props.plain).toBe(true)
     await ui.press({ key: 'inspect' })
     expect(opened).toEqual(['inspect'])
     expect((await rows(ui)).some(l => /✗ 2 new/.test(l))).toBe(false)
@@ -219,6 +233,69 @@ for (const surface of SURFACES) {
     await clock.advance(60_000)
     await Promise.all([first, second])
     await ui.unmount()
+  })
+
+  test(`working shows each agent's current action beside the turn (${surface})`, async ($, on) => {
+    const { clock } = stubAll(on, { usage: reading(30, 15, 40) })
+    slowCallsAndSpawns(on, clock)
+    await $.session.start(START)
+    await $.turn.start({ text: 'q', turnId: 't1' })
+    await $.agent.spawn({ ...SPAWN, subagentType: 'Explore', description: 'one' })
+    await $.agent.spawn({ ...SPAWN, subagentType: 'Plan', description: 'two' })
+    void $.tool.call(grep({ agentId: 'a1' }))
+    void $.tool.call({ tool: 'Read', file_path: '/w/src/auth/token.ts', agentId: 'a2' })
+    await clock.settle()
+
+    const lines = await rows(await mount($, surface, band(true)))
+    expect(lines.some(l => /^⟳ Turn 1 · \d:\d\d │ Explore ▸ Grep AuthService │ Plan ▸ Read src\/auth\/token\.ts$/.test(l))).toBe(true)
+  })
+
+  test(`agents running while the main loop is idle keep line 1 working (${surface})`, async ($, on) => {
+    const { clock } = stubAll(on, { usage: reading(30, 15, 40) })
+    slowCallsAndSpawns(on, clock)
+    await oneTurn($)
+    await $.agent.spawn({ ...SPAWN, subagentType: 'Explore', description: 'one' })
+    void $.tool.call(grep({ agentId: 'a1' }))
+    await clock.settle()
+
+    expect((await rows(await mount($, surface, band(false))))[0]).toBe('⟳ 1 agent │ Explore ▸ Grep AuthService')
+  })
+
+  test(`agent parts past the width fold into +N agents (${surface})`, async ($, on) => {
+    const { clock } = stubAll(on, { usage: reading(30, 15, 40) })
+    slowCallsAndSpawns(on, clock)
+    await $.session.start(START)
+    await $.turn.start({ text: 'q', turnId: 't1' })
+    for (const [description, id, letter] of [['one', 'a1', 'a'], ['two', 'a2', 'b'], ['three', 'a3', 'c']]) {
+      await $.agent.spawn({ ...SPAWN, subagentType: 'Explore', description: description as string })
+      void $.tool.call(grep({ agentId: id, pattern: (letter as string).repeat(40) }))
+    }
+    await clock.settle()
+
+    const first = (await rows(await mount($, surface, band(true, 100))))[0] ?? ''
+    expect(first.length).toBeLessThanOrEqual(100)
+    expect(first.endsWith(' +2 agents')).toBe(true)
+  })
+
+  test(`the narrow band counts agents (${surface})`, async ($, on) => {
+    const { clock } = stubAll(on, { usage: reading(30, 15, 40) })
+    slowCallsAndSpawns(on, clock)
+    await $.session.start(START)
+    await $.turn.start({ text: 'q', turnId: 't1' })
+    await $.agent.spawn({ ...SPAWN, description: 'one' })
+    await $.agent.spawn({ ...SPAWN, description: 'two' })
+
+    expect((await rows(await mount($, surface, band(true, 90)))).some(l => /^⟳ Turn 1 0:\d\d · 2 agents$/.test(l))).toBe(true)
+  })
+
+  test(`a finished agent leaves line 1 (${surface})`, async ($, on) => {
+    stubAll(on, { usage: reading(30, 15, 40) })
+    engine(on)
+    await oneTurn($)
+    await $.agent.spawn(SPAWN)
+    await $.turn.complete({ answer: 'done', durationMs: 3000, isAborted: false, turnId: 'x1', reason: 'answer', agentId: 'a1' })
+
+    expect(await rows(await mount($, surface, band(false)))).toHaveLength(1)
   })
 
   test(`the band narrows under 100 columns (${surface})`, async ($, on) => {

@@ -7,6 +7,11 @@ export function bar(percent: number): [filled: string, empty: string] {
   return ['▰'.repeat(filled), '▱'.repeat(5 - filled)]
 }
 
+// A percent's threshold: under 60 ok, to 85 a warning, past it a failure
+export function toneOf(percent: number): 'ok' | 'warn' | 'fail' {
+  return percent < 60 ? 'ok' : percent <= 85 ? 'warn' : 'fail'
+}
+
 export function tokens(n: number): string {
   if (n < 100) return String(n)
   if (n < 10_000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`
@@ -64,4 +69,22 @@ export function fingerprint(text: string): string {
 export function oneLine(text: string, max: number): string {
   const line = text.split(/\r?\n/).map(l => l.trim()).find(l => l !== '') ?? ''
   return line.length > max ? `${line.slice(0, max - 1)}…` : line
+}
+
+export type Family = 'opus' | 'sonnet' | 'haiku' | 'fable'
+
+// A model id's family and version: 'claude-opus-5-5' is opus 5.5; an id with no known family has none
+export function modelParts(model: string): { family: Family; version: string | null } | null {
+  const m = /(opus|sonnet|haiku|fable)(?:-(\d+)(?:-(\d+))?)?/.exec(model)
+  if (m === null) return null
+  const version = m[2] === undefined ? null : m[3] === undefined ? m[2] : `${m[2]}.${m[3]}`
+  return { family: m[1] as Family, version }
+}
+
+// 'opus 5.5', or 'Opus 5.5' as a title; the id as given when no family matches
+export function modelText(model: string, title = false): string {
+  const parts = modelParts(model)
+  if (parts === null) return model
+  const name = title ? `${parts.family[0]?.toUpperCase()}${parts.family.slice(1)}` : parts.family
+  return parts.version === null ? name : `${name} ${parts.version}`
 }
