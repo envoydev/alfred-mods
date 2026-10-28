@@ -1,0 +1,21 @@
+# macOS
+.DS_Store
+
+# Node, for the repo's own scripts (they have no dependencies)
+node_modules/
+*.log
+*.tgz
+*.tsbuildinfo
+
+# Claude Code writes the mod types for the running build here when a mod loads from --plugin-dir; regenerated, never edited
+.claude-plugin/types/
+
+# machine-local Claude Code settings, and Alfred Code's per-project data root
+.claude/settings.local.json
+.alfred/
+
+# superpowers specs, plans and run ledgers are local-only (.claude/rules/superpowers-location.md)
+**/docs/superpowers/
+
+# the Phase 0 probe mod, kept machine-local (the brief cites it; Phase 1 reuses it for the classifier check)
+probe/

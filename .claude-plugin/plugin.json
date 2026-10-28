@@ -1,0 +1,10 @@
+{
+  "name": "session-inspector",
+  "version": "0.1.0",
+  "description": "A Claude Code mod: context, usage, cost, tool failures, agents, cache and plan progress in one calm band and an /inspect pane. Works on Claude Code alone; with Alfred Code installed it also shows the stack's mode, runway and handoff.",
+  "author": { "name": "envoydev" },
+  "homepage": "https://github.com/envoydev/alfred-mods",
+  "repository": "https://github.com/envoydev/alfred-mods",
+  "license": "MIT",
+  "keywords": ["mod", "session", "context", "usage", "cost", "agents", "statusline"]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "alfred-mods",
+  "owner": { "name": "envoydev", "url": "https://github.com/envoydev" },
+  "metadata": {
+    "description": "Claude Code mods by envoydev. Each works on Claude Code alone; with Alfred Code installed it shows more."
+  },
+  "plugins": [
+    {
+      "name": "session-inspector",
+      "source": "./",
+      "description": "Context, usage, cost, tool failures, agents, cache and plan progress in one calm band and an /inspect pane.",
+      "category": "productivity"
+    }
+  ]
+}

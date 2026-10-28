@@ -1,0 +1,12 @@
+{
+  "name": "session-inspector",
+  "private": true,
+  "description": "Test and validate scripts for the session-inspector Claude Code mod. The mod has no runtime dependencies.",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "claude plugin test .",
+    "validate": "node scripts/validate.js"
+  }
+}

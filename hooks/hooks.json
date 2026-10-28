@@ -1,0 +1,4 @@
+{
+  "description": "The session-inspector hooks module",
+  "modules": ["./register.ts"]
+}
