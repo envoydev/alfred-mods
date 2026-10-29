@@ -638,6 +638,37 @@ user's ruling brings this one read into Phase 4 (F8 and F9 choice 14); the rest 
   the stack runs, so nobody has to turn it off by hand, and `/auto-handoff off` turning it off in every project is
   what the README says it does.
 
+#### The status file contract, schema 1
+
+The fields alfred-code publishes for Phase 5, the user's pick of 2026-10-29 ('Contract and prompt first'). Schema 1 is
+public once released: a field is never renamed or dropped and never changes type; fields may be added, and a reader
+ignores the ones it does not know. A file with `schema` 1 from an older stack may lack any field past `fullContext`,
+which then reads as unknown. Phase 5's reader and what it draws are its spec's
+(`docs/superpowers/specs/2026-10-29-phase-5-alfred-code-design.md`, machine-local).
+
+| Field           | Type                                                           | Meaning                                                                                                   |
+|-----------------|----------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------|
+| `schema`        | `1`                                                            | The contract's version                                                                                    |
+| `session`       | string                                                         | The session id the file speaks for                                                                        |
+| `fullContext`   | `"fresh-session"`, `"compact"` or `"off"`                      | What the stack does when this session's context fills (Phase 4)                                           |
+| `updatedAt`     | ISO 8601 string                                                | When the stack last wrote the file                                                                        |
+| `model`         | string, or `null`                                              | The model id the stack judges this session by                                                             |
+| `window`        | whole tokens over 0, or `null`                                 | The context the stack measures against: the model's table window, or the auto-compact window when lower    |
+| `resumeAt`      | whole tokens over 0, or `null`                                 | The stack's fresh-session trigger after its clamps, a trigger and not a promise; `null` with no offer at this window tier |
+| `autoRun`       | boolean                                                        | The stack's auto-run is on for the session's current prompt, by `guard-answer.js` `autoRunNow()`          |
+| `scorer`        | `{ "on": boolean, "level": 1-100, "rounds": 1-10 }`, or `null` | The stack's output scorer for the current prompt, by `scorerNow()`; `null` when not usable                |
+| `handoffPrompt` | string of 1 to 1000 characters, or `null`                      | A prompt for a fresh session, ready to send as it is, composed by the stack; `null` with no plan in progress |
+
+- **The prompt's text:** `Read <plan path>, check that branch <branch> is checked out, and continue from its Resume:
+  line (<Resume text>).`, from the newest plan the branch's sessions worked on that has no `Completed:` line; the
+  plan path relative to the project root with `/` separators; the Resume text scrubbed and cut to 80 characters as
+  the stack's history block does. No other prompt text, tool input or secret is in the file.
+- **Writes:** at SessionStart for every source; at UserPromptSubmit when `autoRun` or `scorer` changed; at Stop when
+  any other value changed; each atomic (a temp file, then a rename), failing open.
+- **Housekeeping:** status files older than 7 days are removed at SessionStart, never another live session's.
+- **Out of git:** the stack appends `/.claude/session-inspector/status/` to `info/exclude` in the repository's git
+  common dir, once, as alfred-code writes one .gitignore only, at its data root.
+
 ### F9 Recording mode
 
 #### Levels and the command
