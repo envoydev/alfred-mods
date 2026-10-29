@@ -188,6 +188,18 @@ for (const surface of SURFACES) {
     }
   })
 
+  test(`with 5h and 7d windows at 90 columns the banner takes line 1 alone and every row fits (${surface})`, async ($, on) => {
+    const windowed: SessionUsage = {
+      ...reading(93_000),
+      rateLimits: [{ kind: 'five_hour', percentUsed: 45, resetsAt: '2026-10-28T17:00:00Z' }, { kind: 'seven_day', percentUsed: 20, resetsAt: '2026-10-31T09:00:00Z' }],
+    }
+    await start($, on, { files: { [STATUS]: status() }, usage: windowed })
+    const lines = await rows(await band($, surface, 90))
+    expect(lines[0]).toBe('auto-run · scorer 80')
+    expect(lines[1]).toMatch(/^ctx ▰▰▰▱▱ 62% of 150k · 5h .* · 7d ▰▱▱▱▱ 20% \(\d\d\.\d\d \d\d:\d\d\)$/)
+    for (const l of lines) expect(l.length).toBeLessThanOrEqual(90)
+  })
+
   test(`an ignored file draws no runway and no banner (${surface})`, async ($, on) => {
     await start($, on, { files: { [STATUS]: status({ schema: 2 }) }, usage: reading(93_000) })
     const lines = await rows(await band($, surface))
@@ -217,9 +229,15 @@ for (const surface of SURFACES) {
   })
 }
 
+test('a bare /auto-handoff names the runway as the HANDOFF row does', async ($, on) => {
+  await start($, on, { files: { [STATUS]: status() }, usage: reading(93_000) })
+  const r = await $.command.run({ command: 'auto-handoff', args: '', origin: { kind: 'composer' }, presentation: PRESENTATION })
+  expect((r.text ?? '').split('\n')[0]).toBe('ctx 62% of 150k · handoff by Alfred Code')
+})
+
 // Task 6: the fill
 const TOAST = {
-  filled: "Alfred Code's resume prompt filled - press Esc, then Enter to send",
+  filled: "Alfred Code's resume prompt filled - Enter in the prompt box sends it",
   notEmpty: "Prompt not empty: clear it, then press f to fill Alfred Code's resume prompt",
   dialog: 'A dialog holds the keys: close it, then press f again',
   noBox: 'No prompt box here to fill',

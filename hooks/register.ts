@@ -1025,13 +1025,17 @@ async function stepHandoff($: EngineInterface, tokens: number | undefined, windo
   else void startSave($, 'auto')
 }
 
-// The state line a bare /auto-handoff prints: the mode, the threshold, F8's context percent and the last save
+// The state line a bare /auto-handoff prints: the mode, the threshold, F8's context percent and the last save; stood
+// down, the runway while it applies, as the HANDOFF row
 async function handoffState($: EngineInterface): Promise<string> {
   const h = await read($, handoff)
   const u = await read($, usage)
   const point = h.point ?? u.window
   const ctx = u.tokens === null || point === null ? 'ctx –' : `ctx ${percentOf(u.tokens, point)}%`
-  if (h.alfred.state === 'stood-down') return `${ctx} · handoff by Alfred Code`
+  if (h.alfred.state === 'stood-down') {
+    const runway = runwayOf(await read($, stack), u, (await read($, meta)).model)
+    return `${runway === null ? ctx : `ctx ${runway.percent}% of ${tokens(runway.resumeAt)}`} · handoff by Alfred Code`
+  }
   if (h.mode === 'off') return `Handoff: off · ${ctx}`
   const saved = h.lastSave?.isOk === true ? ` · last save ${clock(h.lastSave.at)} (${HANDOFF_PATH})` : ''
   return `Handoff: ${h.mode} at ${h.threshold}% · ${ctx}${saved}`

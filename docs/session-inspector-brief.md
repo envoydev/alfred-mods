@@ -689,13 +689,17 @@ which then reads as unknown. Phase 5's reader and what it draws follow the table
   by it, and the Usage tab counts turns to `150k`. Otherwise the core item: `compact` already measures against Claude
   Code's own compaction point, which the stack's installer seeds.
 - **The mode banner:** `auto-run` (warn tone) and `scorer 80`, joined by ` · ` and followed by ` │ `, lead band line
-  1 after `● REC` while the file is used and a mode is on, never dropped for width.
+  1 after `● REC` while the file is used and a mode is on, never dropped for width. Where the band's first line does
+  not fit beside the marks, they take line 1 alone and the body keeps the full width, so no gauge, reset or the cost
+  drops for them (agent).
 - **The ALFRED CODE section,** after HANDOFF in the Now tab, drawn in every session whatever `/auto-handoff`'s mode:
   the reason a file was not used, else what the stack does at a full context, its modes, the model it judges the
   session by (with a warning, and no runway, while the session runs another), `resume: ` with the prompt's first line
   and the button `f: fill prompt` while the stack owns the full context, and the read and written times.
 - **The fill:** `f` while the pane holds the focus, or a press of the button, fills the prompt verbatim, only into an
-  empty draft, and never sends; Esc returns the focus to the prompt, then Enter sends. With `fullContext` `off`, F8 is
+  empty draft, and never sends; Enter in the prompt box sends it. In the terminal the focus is back at the prompt
+  after the fill, on the main screen and in fullscreen (live, 2026-10-29), so the toast names no Esc: Esc over a
+  running turn interrupts it. With `fullContext` `off`, F8 is
   the one handoff home and line 5 is not drawn. The fill lives on `f`, not on \[Handoff\] (F8 and F9 choice 18).
 
 ### F9 Recording mode

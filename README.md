@@ -90,15 +90,15 @@ In a project where [Alfred Code](https://github.com/envoydev/alfred-code) publis
 start, every 30 seconds and after `/clear`, and shows more:
 
 - **The mode banner:** `auto-run · scorer 80 │` leads the band while the stack's auto-run or its scorer is on, after
-  `● REC` while recording.
+  `● REC` while recording. Where the band's first line does not fit beside it, the banner takes that line alone.
 - **The runway:** while the stack offers a fresh session at a full context, the band's context gauge measures against
   the stack's trigger instead of the window, `ctx ▰▰▰▱▱ 62% of 150k`, and the turns forecast counts to it.
 - **The ALFRED CODE section** in `/inspect`'s Now tab: what the stack does at a full context, its auto-run and scorer,
   the model it judges the session by, its resume prompt's first line and when it last wrote the file. A field the mod
   cannot use is named as ignored, and the rest still shows.
 - **The resume prompt:** while the pane has the focus (Ctrl+X Tab, or a click in fullscreen), `f` fills the stack's
-  prompt into an empty prompt box, never sending it. Press Esc to go back to the prompt, then Enter to send. With
-  something already typed, a toast says to clear it first.
+  prompt into an empty prompt box, never sending it. Enter in the prompt box sends it; in the terminal the focus is
+  back there after the fill. With something already typed, a toast says to clear it first.
 
 Without Alfred Code, or when the file is missing, has another schema or names another session, the band shows none of
 this, and the ALFRED CODE section shows one dim line with the reason, such as `Alfred Code: no status file for this

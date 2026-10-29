@@ -142,7 +142,7 @@ export function stackLines(s: Stack, o: { prompt: string | null; runway: Runway 
 
 // The fill's toasts (spec 'The fill'), none carrying the prompt's text
 export const STACK_TOASTS = {
-  filled: "Alfred Code's resume prompt filled - press Esc, then Enter to send",
+  filled: "Alfred Code's resume prompt filled - Enter in the prompt box sends it",
   notEmpty: "Prompt not empty: clear it, then press f to fill Alfred Code's resume prompt",
   dialog: 'A dialog holds the keys: close it, then press f again',
   noBox: 'No prompt box here to fill',

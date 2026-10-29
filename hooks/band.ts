@@ -234,7 +234,8 @@ function withPlanTail(b: BandInput, line: Line): Line {
 export const REC_MARK: Seg = { text: '● REC', tone: 'fail', bold: true }
 
 // A red '● REC' while REC is on, then Alfred Code's mode banner, lead line 1 in every state, never dropped for width:
-// the rest fits what is left
+// the body's first line follows them while it fits what is left, else they take line 1 alone and the body keeps the
+// full width, so no gauge, reset or the cost drops for them
 export function bandLines(b: BandInput): Line[] {
   const isNarrow = b.columns < 100
   const marks: Line[] = [b.rec !== undefined && b.rec.level !== 'off' ? [REC_MARK] : [], b.banner ?? []].filter(m => m.length > 0)
@@ -243,7 +244,8 @@ export function bandLines(b: BandInput): Line[] {
   const alone: Line = marks.flatMap((m, i) => (i === 0 ? m : [sep, ...m]))
   const lead: Line = [...alone, sep]
   const [first, ...rest] = bandBody({ ...b, columns: b.columns - widthOf(lead) }, isNarrow)
-  return first === undefined ? [alone] : [[...lead, ...first], ...rest]
+  if (first === undefined) return [alone]
+  return widthOf(lead) + widthOf(first) <= b.columns ? [[...lead, ...first], ...rest] : [alone, ...bandBody(b, isNarrow)]
 }
 
 function bandBody(b: BandInput, isNarrow: boolean): Line[] {

@@ -2,6 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { bandLines } from '../hooks/band.ts'
 import type { BandInput, Line } from '../hooks/band.ts'
+import { widthOf } from '../hooks/format.ts'
 import { handoffLines } from '../hooks/handoff.ts'
 import type { HandoffView } from '../hooks/handoff.ts'
 import { STACK_TOASTS, bannerSegs, fillReady, fillToast, modelsAgree, parseStack, runwayOf } from '../hooks/stack.ts'
@@ -246,6 +247,18 @@ test('REC and the banner at 60 columns keep both marks', () => {
   expect(text(lines[0]!).startsWith('● REC │ auto-run · scorer 80 │ ')).toBe(true)
 })
 
+test('the marks take line 1 alone when the calm line does not fit beside them, and every gauge, reset and the cost stay', () => {
+  const windows = [{ kind: 'five_hour', percentUsed: 45, resetsAt: '2026-10-28T17:00:00Z' }, { kind: 'seven_day', percentUsed: 20, resetsAt: '2026-10-31T09:00:00Z' }]
+  const usage = { ...USAGE, windows, costUsd: 1.23 }
+  for (const columns of [90, 100]) {
+    const lines = bandLines({ ...BASE, columns, usage, banner: bannerSegs(STACK), rec: { level: 'on', words: 0 }, runway: RUNWAY })
+    expect(text(lines[0]!)).toBe('● REC │ auto-run · scorer 80')
+    expect(text(lines[1]!)).toMatch(/^ctx ▰▰▰▱▱ 62% of 150k.* 5h .*\(\d\d\.\d\d \d\d:\d\d\).* 7d .*\(\d\d\.\d\d \d\d:\d\d\)/)
+    if (columns >= 100) expect(text(lines[1]!)).toContain('$1.23')
+    for (const l of lines) expect(widthOf(l)).toBeLessThanOrEqual(columns)
+  }
+})
+
 // Task 6: the press-time check and the toast by outcome
 test('fillReady: a used file owning the full context, with a prompt', () => {
   expect(fillReady(STACK, 'Read a.md')).toBe(true)
@@ -258,7 +271,7 @@ test('fillReady: a used file owning the full context, with a prompt', () => {
 })
 
 test('fillToast by outcome', () => {
-  expect(fillToast({ isFilled: true })).toBe("Alfred Code's resume prompt filled - press Esc, then Enter to send")
+  expect(fillToast({ isFilled: true })).toBe("Alfred Code's resume prompt filled - Enter in the prompt box sends it")
   expect(fillToast({ isFilled: false, refusal: 'dialog' })).toBe('A dialog holds the keys: close it, then press f again')
   expect(fillToast({ isFilled: false, refusal: 'no_composer' })).toBe('No prompt box here to fill')
   expect(fillToast({ isFilled: false })).toBe("Alfred Code's resume prompt was not filled")
