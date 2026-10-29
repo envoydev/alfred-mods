@@ -11,6 +11,8 @@ export const NO_READING: SessionUsage = { startedAt: 0, context: { window: 200_0
 type Options = {
   usage?: SessionUsage; sessionId?: string; cwd?: string; env?: Record<string, string>; now?: number; unplaced?: string
   store?: Record<string, unknown>
+  // A read of `key` waits for `until` while it is set, as a slow store would
+  holdStore?: { key: string; until: Promise<void> | null }
   // `agents` is what `$.agent.list()` answers; `preSwitch` what the hooks beneath answer a PreModelSwitch with, such
   // as a deny; `settings` the merged settings object a read projects its key from
   agents?: AgentInfo[]; preSwitch?: ClassicResult; settings?: Record<string, unknown>
@@ -137,7 +139,10 @@ export function stubAll(on: On, o: Options = {}): {
   // The store, kept here rather than by the kit's mock so a test can read what the mod wrote: a test's `$` has no
   // store of its own. Values go through JSON as the real store's do; keys keep their insertion order.
   const stored = new Map<string, unknown>(Object.entries(o.store ?? {}))
-  on('store.get', (_, e) => ({ value: stored.get(e.key) }))
+  on('store.get', async (_, e) => {
+    if (o.holdStore?.until && e.key === o.holdStore.key) await o.holdStore.until
+    return { value: stored.get(e.key) }
+  })
   on('store.set', (_, e) => {
     stored.set(e.key, JSON.parse(JSON.stringify(e.value)) as unknown)
     return { value: undefined }

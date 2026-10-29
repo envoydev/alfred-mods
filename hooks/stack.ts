@@ -51,7 +51,7 @@ export function parseStack(text: string, session: string): StackRead {
   const model = field('model', modelRule)
   const window = field('window', windowRule)
   // Under the file's own valid window, else under 10,000,000; a file's own null means no offer at this window
-  const resumeAt = field<number | null>('resumeAt', r => r === null || isWhole(r, 1000, (window ?? 10_000_001) - 1) ? r : 'bad')
+  const resumeAt = field<number | null>('resumeAt', r => r === null || isWhole(r, 1000, (window ?? 10_000_000) - 1) ? r : 'bad')
   const noOffer = v.resumeAt === null
   const autoRun = field('autoRun', autoRunRule)
   const scorer = field('scorer', scorerRule)

@@ -148,6 +148,11 @@ const turn = (n: number, contextPercent: number): Turn => ({
 const text = (l: Line): string => l.map(s => ('text' in s ? s.text : '')).join('')
 const RUNWAY = { percent: 62, resumeAt: 150000, at: 15 }
 
+test('resumeAt with no window reads under 10,000,000', () => {
+  expect(parseStack(file({ window: null, resumeAt: 10_000_000 }), 's1')).toMatchObject({ state: 'used', fields: { resumeAt: null, ignored: ['resumeAt'] } })
+  expect(parseStack(file({ window: null, resumeAt: 9_999_999 }), 's1')).toMatchObject({ state: 'used', fields: { resumeAt: 9_999_999, ignored: [] } })
+})
+
 test('modelsAgree', () => {
   expect(modelsAgree('claude-opus-5-5[1m]', 'claude-opus-5-5')).toBe(true)
   expect(modelsAgree('Claude-Opus-5-5', 'claude-opus-5-5')).toBe(true)

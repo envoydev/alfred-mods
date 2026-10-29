@@ -1243,6 +1243,12 @@ export const register: Register = on => {
   // mod writes its own start values too, so the reset is the mod's and testable
   on('classic.SessionStart', async ($, e, next) => {
     if (e.source === 'clear' || e.source === 'resume' || e.source === 'fork') {
+      // The new id's file may land after this handler's read, from the stack's own SessionStart hook: for 10 s a read
+      // that finds no file keeps the last values (Phase 5 spec Choice 12). The window opens first, so a poll tick while
+      // the stores load is inside it
+      stackMem.keepUntil = (await $.clock.now()) + 10_000
+      stackMem.reread?.cancel()
+      stackMem.reread = null
       held.close?.cancel()
       held.close = null
       calls.clear()
@@ -1255,11 +1261,7 @@ export const register: Register = on => {
       await loadRec($)
       await loadQuiet($)
       await loadHandoff($)
-      // The new id's file may land after this read, from the stack's own SessionStart hook: for 10 s a read that finds
-      // no file keeps the last values, and this read, finding none, reads once more at 2 s (Phase 5 spec Choice 12)
-      stackMem.keepUntil = (await $.clock.now()) + 10_000
-      stackMem.reread?.cancel()
-      stackMem.reread = null
+      // This read, finding no file, reads once more at 2 s
       if (!(await readStatus($, true))) {
         stackMem.reread = $.clock.after(2000, () => {
           stackMem.reread = null

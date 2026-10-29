@@ -95,6 +95,23 @@ test('a /clear with no new file keeps the values, rereads once at 2 seconds and 
   expect(s()).toMatchObject({ state: 'none', reason: 'no status file for this session', hasPrompt: false })
 })
 
+test('a poll tick while the /clear handler loads its stores keeps the values', async ($, on) => {
+  const holdStore: { key: string; until: Promise<void> | null } = { key: 'settings:rec', until: null }
+  const { s, clock, session } = await start($, on, { files: { [STATUS]: status() }, holdStore })
+  const before = s()
+  await clock.advance(29_999)
+  session.id = 's2'
+  let release = (): void => undefined
+  holdStore.until = new Promise<void>(r => { release = r })
+  const clear = $.classic.SessionStart({ source: 'clear' })
+  // The 30-second poll reads the new id while the handler waits on the store
+  await clock.advance(1)
+  holdStore.until = null
+  release()
+  await clear
+  expect(s()).toEqual(before)
+})
+
 test('a new file at 1 second is drawn at the 2-second reread', async ($, on) => {
   const { s, files, clock, session } = await start($, on, { files: { [STATUS]: status() } })
   session.id = 's2'

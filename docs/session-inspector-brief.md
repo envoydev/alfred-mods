@@ -667,6 +667,9 @@ which then reads as unknown. Phase 5's reader and what it draws follow the table
   line (<Resume text>).`, from the newest plan the branch's sessions worked on that has no `Completed:` line; the
   plan path relative to the project root with `/` separators; the Resume text scrubbed and cut to 80 characters as
   the stack's history block does. No other prompt text, tool input or secret is in the file.
+- **`fullContext` is what the stack does now:** a session in auto-run compacts and offers no fresh session, so
+  while `autoRun` is `true` the file says `compact`, whatever the trigger; `fresh-session` only where the offer can
+  come. The live check of 2026-10-29 found alfred-code 3.3.0 writing `fresh-session` in auto-run (agent).
 - **Writes:** at SessionStart for every source; at UserPromptSubmit when `autoRun` or `scorer` changed; at Stop when
   any other value changed; each atomic (a temp file, then a rename), failing open.
 - **Housekeeping:** status files older than 7 days are removed at SessionStart, never another live session's.
