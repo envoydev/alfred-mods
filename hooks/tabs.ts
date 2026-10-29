@@ -9,10 +9,16 @@ import { handoffLines } from './handoff.ts'
 import type { HandoffView } from './handoff.ts'
 import { planSection } from './planlines.ts'
 import { recStatus } from './rec.ts'
+import { stackLines } from './stack.ts'
+import type { Runway } from './stack.ts'
 
-import type { AgentRow, Failure, Tab, ToolStat, Totals, Turn, View } from '../types'
+import type { AgentRow, Failure, Stack, Tab, ToolStat, Totals, Turn, View } from '../types'
 
-export type TabInput = BandInput & { failures: Failure[]; stats: Record<string, ToolStat>; totals: Totals; view: View; handoff?: HandoffView }
+// `stack`: Alfred Code's status as last read, its resume prompt from module memory, the runway and the session's model
+export type TabInput = BandInput & {
+  failures: Failure[]; stats: Record<string, ToolStat>; totals: Totals; view: View; handoff?: HandoffView
+  stack?: { view: Stack; prompt: string | null; runway: Runway | null; sessionModel: string | null }
+}
 
 const TABS: [Tab, string, string, Tone?][] = [
   ['now', 'Now', 'n'], ['usage', 'Usage', 'u', 'usage'], ['agents', 'Agents', 'a', 'agents'], ['tools', 'Tools', 't'],
@@ -217,6 +223,7 @@ export function nowLines(b: TabInput): Line[] {
   if (b.isWorking) out.push(working({ ...b, plan: null }, false))
   if (b.plan !== null) out.push(...planSection(b.plan, b.columns))
   if (b.handoff !== undefined) out.push(...handoffLines(b.handoff, b.columns))
+  if (b.stack !== undefined) out.push(...stackLines(b.stack.view, { ...b.stack, columns: b.columns }))
   out.push(...agentsSection(b))
   const fresh = b.failures.filter(f => f.isNew).length
   out.push([{ text: 'NEEDS A LOOK', bold: true }, ...(fresh > 0 ? [{ text: `  ${fresh} new`, tone: 'fail' as const }] : [])])
@@ -247,7 +254,7 @@ export function usageLines(b: TabInput): Line[] {
     if (u.tokens !== null && u.window !== null) ctx.push({ text: `   ${tokens(u.tokens)} / ${tokens(u.window)}`, tone: 'dim' })
     const series = b.turns.flatMap(t => (t.contextPercent === null ? [] : [t.contextPercent]))
     const left = turnsLeft(series, b.forecast?.at)
-    if (left !== null) ctx.push({ text: `   ≈${left} turns to ${b.forecast?.label ?? 80}%`, tone: 'dim' })
+    if (left !== null) ctx.push({ text: `   ≈${left} turns to ${b.forecast?.label ?? '80%'}`, tone: 'dim' })
   }
   out.push(ctx)
   const series = b.turns.flatMap(t => (t.contextPercent === null ? [] : [t.contextPercent]))

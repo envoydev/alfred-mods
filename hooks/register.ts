@@ -13,7 +13,7 @@ import {
 } from './cache.ts'
 import { baseCost, pruneCost, recordCost, todayUsd } from './cost.ts'
 import { drawLines, drawWithInput } from './draw.tsx'
-import { clock, fingerprint, mins, oneLine, printable, usd, when } from './format.ts'
+import { clock, fingerprint, mins, oneLine, printable, tokens, usd, when } from './format.ts'
 import { mask, maskForFile, maskSpans, recLevel, setRec, toast } from './mask.ts'
 import { maskDeep, maskDialog, maskResult, resultLines } from './sites.ts'
 import { DROPS_RESULT, callLine, emptyPreview, groupLines } from './compact.ts'
@@ -23,6 +23,8 @@ import {
   parseStatus, percentOf, statusPath, stepUnder, stepsOf, windowThreshold,
 } from './handoff.ts'
 import type { HandoffView, PlanPart, SaveInput, ScoresPart } from './handoff.ts'
+import { NO_FILE, STACK_TOASTS, UNREADABLE, bannerSegs, fillReady, fillToast, parseStack, runwayOf } from './stack.ts'
+import type { Runway } from './stack.ts'
 import { creditedPlan, isFinishedStep, parsePlan, parseScores, planView, runs, scoresView, shownPlan, taskView, tasksAfter } from './plan.ts'
 import type { PlanView, ScoresView } from './plan.ts'
 import { PLANS_DIR, SCORES_DIR, readFolder } from './planfiles.ts'
@@ -34,7 +36,7 @@ import { classify, fold, targetOf, toolKey } from './outcome.ts'
 import { LEVELS, REC_HELP, addWord, parseLevel, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec.ts'
 import type { CallFacts } from './outcome.ts'
 import type {
-  AgentRow, Cache, CacheConfig, Credit, Failure, Handoff, Live, Meta, Outcome, Pace, Plan, PlanChange, Level, Plans, Quiet, RecState, SaveResult, Scores, Tab, TaskItem, ToolStat, Totals, Turn, Usage, View,
+  AgentRow, Cache, CacheConfig, Credit, Failure, Handoff, Live, Meta, Outcome, Pace, Plan, PlanChange, Level, Plans, Quiet, RecState, SaveResult, Scores, Stack, Tab, TaskItem, ToolStat, Totals, Turn, Usage, View,
   Watched, Window,
 } from '../types'
 
@@ -84,6 +86,10 @@ const INITIAL = {
   handoff: {
     mode: 'ask', threshold: 80, point: null, handled: null, isAskUp: false, lastSave: null, alfred: { state: 'none', reason: null },
   } as Handoff,
+  stack: {
+    state: 'none', reason: null, fullContext: null, model: null, window: null, resumeAt: null, noOffer: false, autoRun: null, scorer: null,
+    hasPrompt: false, updatedAt: null, readAt: null, ignored: [],
+  } as Stack,
 }
 
 // Change a tag when that value's fields change: it declines what an earlier version stored, which outlives a reload.
@@ -105,6 +111,7 @@ const tasks = atom({ plugin: 'session-inspector', key: 'tasks' } as const, INITI
 const rec = atom({ plugin: 'session-inspector', key: 'rec' } as const, INITIAL.rec, { shape: 'rec-1' })
 const quiet = atom({ plugin: 'session-inspector', key: 'quiet' } as const, INITIAL.quiet, { shape: 'quiet-1' })
 const handoff = atom({ plugin: 'session-inspector', key: 'handoff' } as const, INITIAL.handoff, { shape: 'handoff-1' })
+const stack = atom({ plugin: 'session-inspector', key: 'stack' } as const, INITIAL.stack, { shape: 'stack-1' })
 
 const NO_FACTS: Omit<CallFacts, 'tool'> = {
   checked: null, checkReason: null, asked: false, failedInTool: false, interrupted: false, classifierReason: null, hookDeny: null, result: null,
@@ -321,6 +328,7 @@ async function resetAll($: EngineInterface): Promise<void> {
   await update($, rec, () => INITIAL.rec)
   await update($, quiet, () => INITIAL.quiet)
   await update($, handoff, () => INITIAL.handoff)
+  await update($, stack, () => INITIAL.stack)
 }
 
 // Every session's step and overhead time in the store; this session's own totals are the credit atom's
@@ -763,19 +771,42 @@ async function loadHandoff($: EngineInterface): Promise<void> {
   await update($, handoff, h => (h.mode === s.mode && h.threshold === s.threshold ? h : { ...h, ...s, isAskUp: s.mode === 'ask' && h.isAskUp }))
 }
 
-// The stack's status file for this session (Decision 13): a missing file is no file, unless `keep` holds a stand-down
-// across a /clear until a later read
-async function readStatus($: EngineInterface, keep = false): Promise<void> {
-  const path = statusPath(await $.session.id())
-  let found: ReturnType<typeof parseStatus> | null = null
+// The stack's resume prompt, in module memory only (Phase 5 spec 'Where values live'); `last`, the `stack` value the
+// last read wrote, which a read inside `keepUntil` (10 s after a /clear, a resume or a fork) writes back when the new
+// id has no file yet; `reading`, the read running, so reads never interleave; `reread`, the handler's one reread
+const stackMem = {
+  prompt: null as string | null, last: null as Stack | null, keepUntil: 0, reading: Promise.resolve(false) as Promise<boolean>,
+  reread: null as Timer | null,
+}
+
+// Reads run one at a time; each resolves to whether the session's status file exists
+function readStatus($: EngineInterface, keep = false): Promise<boolean> {
+  const next = stackMem.reading.then(() => readStatusNow($, keep))
+  stackMem.reading = next.catch(() => false)
+  return next
+}
+
+// The stack's status file for this session, one read for both atoms. F8's stand-down (Decision 13): a missing or
+// unreadable file is no file, unless `keep` or the window holds a stand-down across a /clear until a later read. The
+// `stack` atom (Phase 5): no file, unreadable, ignored with Phase 4's reason, or used field by field.
+async function readStatusNow($: EngineInterface, keep: boolean): Promise<boolean> {
+  const id = await $.session.id()
+  const path = statusPath(id)
+  const now = await $.clock.now()
+  const inWindow = keep || now < stackMem.keepUntil
+  let exists = false
+  let text: string | null = null
   if (path !== null) {
     try {
-      found = parseStatus(await $.fs.read(path), await $.session.id())
+      exists = await $.fs.exists(path)
+      if (exists) text = await $.fs.read(path)
     } catch {
-      found = null
+      text = null
     }
   }
-  if (found === null && keep && handoffMem.stoodDown) found = { state: 'stood-down', reason: null }
+  await readStack($, { exists, text, id, now, inWindow })
+  let found: ReturnType<typeof parseStatus> | null = text === null ? null : parseStatus(text, id)
+  if (found === null && inWindow && handoffMem.stoodDown) found = { state: 'stood-down', reason: null }
   const wasStoodDown = handoffMem.stoodDown
   handoffMem.stoodDown = found?.state === 'stood-down'
   const alfred: Handoff['alfred'] = found === null || found.state === 'runs' ? { state: 'none', reason: null } : { state: found.state, reason: found.reason }
@@ -785,9 +816,29 @@ async function readStatus($: EngineInterface, keep = false): Promise<void> {
   })
   // A stand-down lifted by this read steps at the last reading, so the ask returns without waiting for a turn; a
   // compaction's re-arm waits for a fresh reading instead
-  if (!wasStoodDown || handoffMem.stoodDown || handoffMem.rearm) return
+  if (!wasStoodDown || handoffMem.stoodDown || handoffMem.rearm) return exists
   const u = await read($, usage)
   if (u.tokens !== null && u.window !== null) await stepHandoff($, u.tokens, u.window)
+  return exists
+}
+
+// The `stack` atom from one read: inside the window a missing file writes back the last value and keeps the prompt;
+// every other read writes its own value, and `last` with it
+async function readStack($: EngineInterface, r: { exists: boolean; text: string | null; id: string; now: number; inWindow: boolean }): Promise<void> {
+  if (!r.exists && r.inWindow) {
+    const last = stackMem.last
+    if (last !== null) await update($, stack, s => (JSON.stringify(s) === JSON.stringify(last) ? s : last))
+    return
+  }
+  const parsed = r.text === null ? null : parseStack(r.text, r.id)
+  const base: Stack = { ...INITIAL.stack, readAt: r.now }
+  const next: Stack = !r.exists ? { ...base, reason: NO_FILE }
+    : parsed === null ? { ...base, state: 'ignored', reason: UNREADABLE }
+    : parsed.state === 'ignored' ? { ...base, state: 'ignored', reason: parsed.reason }
+    : { ...base, ...parsed.fields, state: 'used', hasPrompt: parsed.prompt !== null }
+  stackMem.prompt = parsed?.state === 'used' ? parsed.prompt : null
+  stackMem.last = next
+  await update($, stack, s => (JSON.stringify(s) === JSON.stringify(next) ? s : next))
 }
 
 // The tokens where Claude Code compacts by itself (Decision 12): the breakdown's `autoCompactThreshold`, else the
@@ -940,10 +991,19 @@ async function fillResume($: EngineInterface): Promise<void> {
   else toast($, TOASTS.fallback(at))
 }
 
-// The Now tab's HANDOFF section reads the atom with F8's percent
-function handoffView(h: Handoff, u: Usage, isWorking: boolean): HandoffView {
+// `f` in the ALFRED CODE section: the stack's resume prompt into an empty draft, never sent. A press from a frame drawn
+// before the prompt went away or the file stopped owning the full context fills nothing (Decision 7).
+async function fillStack($: EngineInterface): Promise<void> {
+  const text = stackMem.prompt
+  if (!fillReady(await read($, stack), text)) toast($, STACK_TOASTS.gone)
+  else if ((await $.prompt.read()).text.trim() !== '') toast($, STACK_TOASTS.notEmpty)
+  else toast($, fillToast(await $.prompt.fill({ text })))
+}
+
+// The Now tab's HANDOFF section reads the atom with F8's percent and the runway
+function handoffView(h: Handoff, u: Usage, isWorking: boolean, runway: Runway | null): HandoffView {
   const point = h.point ?? u.window
-  return { ...h, percent: u.tokens === null || point === null ? null : percentOf(u.tokens, point), window: u.window, isWorking }
+  return { ...h, percent: u.tokens === null || point === null ? null : percentOf(u.tokens, point), window: u.window, isWorking, runway }
 }
 
 // A main-loop reading against F8's steps: ask mode puts up the ask, auto mode saves, once per step
@@ -977,9 +1037,11 @@ async function handoffState($: EngineInterface): Promise<string> {
   return `Handoff: ${h.mode} at ${h.threshold}% · ${ctx}${saved}`
 }
 
-// F8's threshold for the forecast: over the window, to the compaction point's moment
-function forecastOf(h: Handoff, u: Usage): { at: number; label: number } {
-  return { at: h.point !== null && u.window !== null ? windowThreshold(h.threshold, h.point, u.window) : h.threshold, label: h.threshold }
+// What the forecast counts to: the stack's resume trigger over the window while the runway applies and the window is
+// known, else F8's threshold over the window, to the compaction point's moment
+function forecastOf(h: Handoff, u: Usage, runway: Runway | null): { at: number; label: string } {
+  if (runway !== null && runway.at !== null) return { at: runway.at, label: tokens(runway.resumeAt) }
+  return { at: h.point !== null && u.window !== null ? windowThreshold(h.threshold, h.point, u.window) : h.threshold, label: `${h.threshold}%` }
 }
 
 const QUIET_USAGE = 'Usage: /quiet [on|off]'
@@ -1189,7 +1251,17 @@ export const register: Register = on => {
       await loadRec($)
       await loadQuiet($)
       await loadHandoff($)
-      await readStatus($, true)
+      // The new id's file may land after this read, from the stack's own SessionStart hook: for 10 s a read that finds
+      // no file keeps the last values, and this read, finding none, reads once more at 2 s (Phase 5 spec Choice 12)
+      stackMem.keepUntil = (await $.clock.now()) + 10_000
+      stackMem.reread?.cancel()
+      stackMem.reread = null
+      if (!(await readStatus($, true))) {
+        stackMem.reread = $.clock.after(2000, () => {
+          stackMem.reread = null
+          readStatus($).catch(() => undefined)
+        })
+      }
       if (e.source === 'clear') await fillResume($)
       const now = await $.clock.now()
       await update($, plans, p => ({ ...p, since: now }))
@@ -1453,12 +1525,15 @@ export const register: Register = on => {
     const d = await planDraw($, now)
     const u = await read($, usage)
     const h = await read($, handoff)
+    const st = await read($, stack)
+    const m = await read($, meta)
+    const runway = runwayOf(st, u, m.model)
     const lines = bandLines({
       now, columns: e.props.bodyColumns, isWorking: e.props.isWorking,
-      live: await read($, live), usage: u, meta: await read($, meta), turns: await read($, turns),
+      live: await read($, live), usage: u, meta: m, turns: await read($, turns),
       newFailures: (await read($, failures)).filter(f => f.isNew).length, pace: await read($, pace), agents: await read($, agents),
       cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score, rec: recOf(await read($, rec)),
-      forecast: forecastOf(h, u), handoffAsk: h.isAskUp ? h.handled : null,
+      forecast: forecastOf(h, u, runway), handoffAsk: h.isAskUp ? h.handled : null, runway, banner: bannerSegs(st),
     })
     if (lines.length === 0) return next(e)
     const press = { inspect: () => inspectFromBand($), compact: () => compactNow($, held), handoff: () => saveNow($) }
@@ -1587,12 +1662,16 @@ export const register: Register = on => {
     const d = await planDraw($, now)
     const u = await read($, usage)
     const h = await read($, handoff)
+    const m = await read($, meta)
+    const st = await read($, stack)
+    const runway = runwayOf(st, u, m.model)
     const input = {
       now, columns: e.props.bodyColumns, isWorking: counts.turnId !== null, live: counts, usage: u,
-      meta: await read($, meta), turns: await read($, turns), newFailures: rows.filter(f => f.isNew).length,
+      meta: m, turns: await read($, turns), newFailures: rows.filter(f => f.isNew).length,
       pace: await read($, pace), failures: rows, stats: await read($, stats), totals: await read($, totals), view: shown,
       agents: await read($, agents), cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score,
-      rec: recOf(await read($, rec)), forecast: forecastOf(h, u), handoff: handoffView(h, u, counts.turnId !== null),
+      rec: recOf(await read($, rec)), forecast: forecastOf(h, u, runway), handoff: handoffView(h, u, counts.turnId !== null, runway),
+      stack: { view: st, prompt: stackMem.prompt, runway, sessionModel: m.model },
     }
     const bar = tabBar(shown.tab, counts.turnId !== null, e.props.bodyColumns)
     const body = shown.tab === 'usage' ? usageLines(input)
@@ -1610,6 +1689,7 @@ export const register: Register = on => {
       'tab-cache': () => openInspect($, 'cache'),
       compact: () => compactNow($, held),
       'handoff-save': () => saveNow($),
+      'stack-fill': () => fillStack($),
       'handoff-compact': () => saveThenCompact($, held),
       'handoff-dismiss': () => dismissAsk($),
       'tab-timeline': () => openInspect($, 'timeline'),

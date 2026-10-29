@@ -6,6 +6,7 @@ import { bar, clock, duration, elapsed, fitLine, toneOf, tokens, usd, when, widt
 import { pace, turnsLeft } from './forecast.ts'
 import { narrowPlan, planLine, scoreSeg } from './planlines.ts'
 import type { PlanView, ScoresView } from './plan.ts'
+import type { Runway } from './stack.ts'
 
 import type { AgentRow, Cache, Level, Live, Meta, Pace, Turn, Usage, Window } from '../types'
 
@@ -24,10 +25,14 @@ export type BandInput = {
   now: number; columns: number; isWorking: boolean; live: Live; usage: Usage; meta: Meta; turns: Turn[]
   newFailures: number; pace: Pace; agents: AgentRow[]; cache: Cache
   plan: PlanView | null; planInvalid: boolean; score: ScoresView | null; rec?: { level: Level; words: number }
-  // F8's threshold: `at` over the window, which the forecast counts to, and `label` over the compaction point
-  forecast?: { at: number; label: number }
+  // What the forecast counts turns to: `at` over the window, and `label` as the Usage tab names it, F8's threshold
+  // (`80%`) or the stack's resume trigger (`150k`)
+  forecast?: { at: number; label: string }
   // The step F8's ask is up for, or null
   handoffAsk?: number | null
+  // Alfred Code's runway, which the ctx item measures against while it applies, and the mode banner that leads line 1
+  runway?: Runway | null
+  banner?: Seg[]
 }
 
 const ORDER = ['five_hour', 'seven_day']
@@ -68,9 +73,8 @@ function gauges(b: BandInput): Line {
   const sep = (): void => {
     if (out.length > 0) out.push({ text: ' │ ', tone: 'dim' })
   }
-  if (u.percent === null) out.push({ text: 'ctx —', tone: 'usage' })
-  else {
-    out.push({ text: 'ctx ', tone: 'usage' }, ...barSegs(u.percent), pctSeg(u.percent))
+  out.push(...ctxSegs(u, b.runway))
+  if (u.percent !== null || (b.runway ?? null) !== null) {
     const left = turnsLeft(b.turns.flatMap(t => (t.contextPercent === null ? [] : [t.contextPercent])), b.forecast?.at)
     if (left !== null) out.push({ text: ` ≈${left} turns`, tone: 'dim' })
   }
@@ -91,13 +95,20 @@ function gauges(b: BandInput): Line {
   return out
 }
 
-function narrowGauges(u: Usage): Line {
+// The ctx item: against the stack's resume trigger while the runway applies (`ctx ▰▰▰▱▱ 62% of 150k`), else the window
+function ctxSegs(u: Usage, runway: Runway | null | undefined): Line {
+  if (runway !== undefined && runway !== null) {
+    return [{ text: 'ctx ', tone: 'usage' }, ...barSegs(runway.percent), pctSeg(runway.percent), { text: ` of ${tokens(runway.resumeAt)}`, tone: 'usage' }]
+  }
+  return u.percent === null ? [{ text: 'ctx —', tone: 'usage' }] : [{ text: 'ctx ', tone: 'usage' }, ...barSegs(u.percent), pctSeg(u.percent)]
+}
+
+function narrowGauges(u: Usage, runway: Runway | null | undefined): Line {
   const out: Line = []
   const sep = (): void => {
     if (out.length > 0) out.push({ text: ' · ', tone: 'dim' })
   }
-  if (u.percent === null) out.push({ text: 'ctx —', tone: 'usage' })
-  else out.push({ text: 'ctx ', tone: 'usage' }, ...barSegs(u.percent), pctSeg(u.percent))
+  out.push(...ctxSegs(u, runway))
   for (const w of windowsInOrder(u.windows)) {
     sep()
     out.push({ text: `${LABEL[w.kind] ?? w.kind} `, tone: 'usage' }, ...barSegs(w.percentUsed), pctSeg(w.percentUsed), ...resetSegs(w))
@@ -222,23 +233,27 @@ function withPlanTail(b: BandInput, line: Line): Line {
 
 export const REC_MARK: Seg = { text: '● REC', tone: 'fail', bold: true }
 
-// A red '● REC' leads line 1 in every state while REC is on, never dropped for width: the rest fits what is left
+// A red '● REC' while REC is on, then Alfred Code's mode banner, lead line 1 in every state, never dropped for width:
+// the rest fits what is left
 export function bandLines(b: BandInput): Line[] {
   const isNarrow = b.columns < 100
-  if (b.rec === undefined || b.rec.level === 'off') return bandBody(b, isNarrow)
-  const lead: Line = [REC_MARK, { text: ' │ ', tone: 'dim' }]
+  const marks: Line[] = [b.rec !== undefined && b.rec.level !== 'off' ? [REC_MARK] : [], b.banner ?? []].filter(m => m.length > 0)
+  if (marks.length === 0) return bandBody(b, isNarrow)
+  const sep: Seg = { text: ' │ ', tone: 'dim' }
+  const alone: Line = marks.flatMap((m, i) => (i === 0 ? m : [sep, ...m]))
+  const lead: Line = [...alone, sep]
   const [first, ...rest] = bandBody({ ...b, columns: b.columns - widthOf(lead) }, isNarrow)
-  return first === undefined ? [[REC_MARK]] : [[...lead, ...first], ...rest]
+  return first === undefined ? [alone] : [[...lead, ...first], ...rest]
 }
 
 function bandBody(b: BandInput, isNarrow: boolean): Line[] {
   const u = b.usage
   if (b.turns.length === 0 && u.percent === null) return []
   const invalid: Line = b.planInvalid ? [{ text: ' │ ', tone: 'dim' }, { text: 'plan file invalid', tone: 'warn' }] : []
-  const gaugeLine = isNarrow ? narrowGauges(u) : gauges(b)
+  const gaugeLine = isNarrow ? narrowGauges(u, b.runway) : gauges(b)
   const line2 = [...gaugeLine, ...invalid]
   const p = fiveHourPace(b)
-  const isHot = (u.percent ?? 0) >= 60 || u.windows.some(w => w.percentUsed >= 60) || (p !== null && p !== 'on-pace')
+  const isHot = (b.runway?.percent ?? u.percent ?? 0) >= 60 || u.windows.some(w => w.percentUsed >= 60) || (p !== null && p !== 'on-pace')
   const agentsRun = b.agents.some(r => isLive(r.status))
   const warning = cacheWarning(b, true)
   const ask = handoffAsk(b)

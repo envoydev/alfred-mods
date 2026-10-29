@@ -609,26 +609,31 @@ Without Alfred Code, F8 handles a full context. With Alfred Code, the stack's ow
 
 The mod learns that the stack is there only from the stack's per-session status file,
 `.claude/session-inspector/status/<session id>.json`, the one input the brief allows from the stack ('Decisions already made', Core and Alfred Code integration). The
-user's ruling brings this one read into Phase 4 (F8 and F9 choice 14); the rest of the reader stays Phase 5's.
+user's ruling brought this one read into Phase 4 (F8 and F9 choice 14); Phase 5 reads the rest ('The reader, Phase
+5', below).
 
 - **When it reads.** At the session's start, on each 30-second poll, and on `classic.SessionStart` with `source`
-  `clear`, `resume` or `fork`, under the new session id, with `$.fs.read`. A session that stood down keeps standing
-  down across that start, in module memory, until a read of the new id's file says otherwise: the stack writes the
-  new id's file in its own SessionStart hook, which may run after the mod's. A stood-down session makes no save, so
-  no resume prompt is armed.
+  `clear`, `resume` or `fork`, under the new session id, with `$.fs.exists` and then `$.fs.read`. The stack writes
+  the new id's file in its own SessionStart hook, which may run after the mod's, so for 10 seconds after that start
+  a read that finds no file, the 30-second poll's included, keeps the stand-down and Phase 5's values as they were,
+  in module memory; the start's read, finding none, reads once more 2 seconds later, and the first read after the 10
+  seconds decides. A stood-down session makes no save, so no resume prompt is armed.
 - **A valid file** parses, has `schema` 1 and has this session's id in `session`. Its `fullContext` says what the
   stack does at a full context: `fresh-session`, `compact` or `off`. The mod ignores fields it does not know, so Phase
   5 adds fields under the same schema.
 - **Valid, `fullContext` `fresh-session` or `compact`:** F8 stands down for the session. There is no ask, no auto
-  save, no band item 4 and no resume fill. The HANDOFF row reads `ctx 62% · handoff by Alfred Code`, and a bare
-  `/auto-handoff` says the same. `/auto-handoff now` still saves when typed, as an explicit act.
+  save, no band item 4 and no resume fill. The HANDOFF row reads `ctx 62% · handoff by Alfred Code`, or with Phase
+  5's runway `ctx 62% of 150k · handoff by Alfred Code`, and a bare `/auto-handoff` says the same. `/auto-handoff
+  now` still saves when typed, as an explicit act.
 - **Valid, `fullContext` `off`:** the person turned the stack's offer off, so F8 runs, and a full context always has
   one home.
-- **No file:** F8 runs as without Alfred Code, and nothing is drawn about it, so a project without Alfred Code
-  shows no trace of the check.
-- **A file that does not parse, has another schema or names another session:** F8 runs, and the HANDOFF section adds
-  a dim row, `Alfred Code status file not used: not JSON`, `...: schema 2` or `...: another session`. The general
-  diagnostics row under [Inspect] stays Phase 5's, with the rest of the reader.
+- **No file:** F8 runs as without Alfred Code. The band draws nothing about it; the Inspect pane's ALFRED CODE
+  section, the diagnostics row under \[Inspect\] (Phase 5), draws one dim line, `Alfred Code: no status file for
+  this session`.
+- **A file that does not parse, has another schema, names another session or cannot be read:** F8 runs, and the
+  ALFRED CODE section draws one dim line, `Alfred Code status file not used: not JSON`, `...: no schema`, `...:
+  schema 2`, `...: another session` or `...: unreadable`. Phase 4 drew it in the HANDOFF section; since Phase 5 the
+  reason is drawn once, there.
 - **A file that appears or goes mid-session** changes the mode at the next read. An ask already up is taken down when
   the stack takes over.
 - **The stack side** publishes the file, which is alfred-code's work, requested by the user (2026-10-28). Phase 4 builds and releases
@@ -643,8 +648,7 @@ user's ruling brings this one read into Phase 4 (F8 and F9 choice 14); the rest 
 The fields alfred-code publishes for Phase 5, the user's pick of 2026-10-29 ('Contract and prompt first'). Schema 1 is
 public once released: a field is never renamed or dropped and never changes type; fields may be added, and a reader
 ignores the ones it does not know. A file with `schema` 1 from an older stack may lack any field past `fullContext`,
-which then reads as unknown. Phase 5's reader and what it draws are its spec's
-(`docs/superpowers/specs/2026-10-29-phase-5-alfred-code-design.md`, machine-local).
+which then reads as unknown. Phase 5's reader and what it draws follow the table.
 
 | Field           | Type                                                           | Meaning                                                                                                   |
 |-----------------|----------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------|
@@ -668,6 +672,31 @@ which then reads as unknown. Phase 5's reader and what it draws are its spec's
 - **Housekeeping:** status files older than 7 days are removed at SessionStart, never another live session's.
 - **Out of git:** the stack appends `/.claude/session-inspector/status/` to `info/exclude` in the repository's git
   common dir, once, as alfred-code writes one .gitignore only, at its data root.
+
+#### The reader, Phase 5
+
+- **Each field past `fullContext` is checked alone.** One that fails its rule reads as unknown and is named in the
+  ALFRED CODE section's `ignored:` list; the rest of the file still counts. `model`: 1 to 100 characters, no control
+  characters. `window`: a whole number from 1,000 to 10,000,000. `resumeAt`: a whole number from 1,000 up to and not
+  including the file's own valid `window` (10,000,000 when `window` is unknown). `autoRun`: a boolean. `scorer`: `on`
+  a boolean, `level` a whole number from 1 to 100, `rounds` from 1 to 10. `handoffPrompt`: 1 to 1000 characters whose
+  only control characters are line feeds and tabs. Each but `autoRun` may be `null`; a missing field is unknown and
+  not listed; a number sent as a string fails its rule; an `updatedAt` that does not parse shows no written time.
+- **The prompt's text** stays in module memory: never in `$.state`, `$.store`, a toast, a log or a file.
+- **The runway:** with `fullContext` `fresh-session`, `resumeAt` known and the models agreeing (either unknown, or the
+  same id once lowercased and stripped of a trailing `[...]`), band line 2's ctx item measures against `resumeAt`,
+  `ctx ▰▰▰▱▱ 62% of 150k`, past 100% past the trigger. Its tone, the band's hot state and the `≈N turns` forecast go
+  by it, and the Usage tab counts turns to `150k`. Otherwise the core item: `compact` already measures against Claude
+  Code's own compaction point, which the stack's installer seeds.
+- **The mode banner:** `auto-run` (warn tone) and `scorer 80`, joined by ` · ` and followed by ` │ `, lead band line
+  1 after `● REC` while the file is used and a mode is on, never dropped for width.
+- **The ALFRED CODE section,** after HANDOFF in the Now tab, drawn in every session whatever `/auto-handoff`'s mode:
+  the reason a file was not used, else what the stack does at a full context, its modes, the model it judges the
+  session by (with a warning, and no runway, while the session runs another), `resume: ` with the prompt's first line
+  and the button `f: fill prompt` while the stack owns the full context, and the read and written times.
+- **The fill:** `f` while the pane holds the focus, or a press of the button, fills the prompt verbatim, only into an
+  empty draft, and never sends; Esc returns the focus to the prompt, then Enter sends. With `fullContext` `off`, F8 is
+  the one handoff home and line 5 is not drawn. The fill lives on `f`, not on \[Handoff\] (F8 and F9 choice 18).
 
 ### F9 Recording mode
 
@@ -798,6 +827,7 @@ band's fit-or-drop, the pane's step rows) measure the masked text, not the raw t
 The `/rec` help text and the README say this plainly:
 
 - What you type in the prompt box.
+- A prompt the mod fills into the prompt box (Phase 5's `f`).
 - Claude Code's own screens and dialogs: the permission dialog, which shows the command and which the engine alone
   draws (types, `RenderComponent`), `/context`, `/usage`, `/config`, the status line and the welcome header.
 - Other plugins' bands and panes.
@@ -963,8 +993,8 @@ row's last-save line are the checks a person can run.
 
 ### F8 and F9 choices
 
-Each choice is applied in this section, as the user approved it (2026-10-28). Choice 0 departs from the brief's
-literal wording of \[Handoff\].
+Each choice is applied in this section, as the user approved it (2026-10-28). Choices 0 and 18 depart from the
+brief's literal wording of \[Handoff\].
 
 | # | Choice made                                                                    | Alternative                                                    | Cost if wrong                                                     |
 |---|--------------------------------------------------------------------------------|----------------------------------------------------------------|-------------------------------------------------------------------|
@@ -986,6 +1016,7 @@ literal wording of \[Handoff\].
 | 15 | A bare `/rec` turns REC on, or prints the status; only `/rec off` turns it off | A bare `/rec` toggles                                          | With the level persisting, a toggle unmasks a recording when typed to start one |
 | 16 | F8 measures context to the compaction point (`autoCompactThreshold`)          | To the model's window, as band line 2 does                     | On a 1M window the ask comes after Claude Code has compacted      |
 | 17 | The file names the branch, and the resume prompt asks Claude to check it       | The mod runs git at `/clear` and skips the fill on another branch | One more process call per `/clear`                              |
+| 18 | Phase 5 fills the stack's prompt on `f` in the ALFRED CODE section, which works with `/auto-handoff off` | On F8's `h`, or band item 4 while F8 stands down | One key and one row moved; band item 4 is the fallback |
 
 ## Phase 0: probe mod
 
@@ -1220,7 +1251,7 @@ Six phases after an approved verdict, core first. Skip any feature the verdict m
 | 2. Agents and cache | F3, F4; Agents and Cache tabs; spinner suffix | Two parallel Explore agents each show their own current action in their Agents rows; the main loop's spinner shows its current action and the running-agent count; a foreground agent is tried once, and its own spinner gets its suffix only if a second spinner instance draws, else that case is reported as not drawn; an agent resumed by SendMessage keeps its one row; cache expiry matches the TTL tier once a model switch reports it; the 5 min toast fires once (agent) |
 | 3. Plan and scores | F6, F7; the Plan tab in `/inspect`; the rule changes to the plan and scorer skills | A note given to Claude shows ✎ within 2 s; an outside edit shows within 30 s; a second score round shows changes and the fixed list; invalid JSON keeps the last good view |
 | 4. Handoff, REC and compact rows | F8, F9, F10; starts once the deck, or the user's spec of F8 and F9's behaviour, is in hand (the verdict's Also report) | At the threshold, ask mode waits and auto mode saves; `/rec strict` hides account, home paths and $ amounts in the band, the pane, toasts and spinners; `/rec test` passes for keys, emails and phones; /quiet on shows one line per tool call and keeps up to 3 error lines on a failure, on the main screen and in fullscreen; /quiet off restores the full rows; REC masks compact rows too; and the acceptance in 'F8 and F9 behaviour' (agent) |
-| 5. Alfred Code integration | Starts only on the user's word (the user, 2026-10-28: 'nothing from the Alfred Code integration until I say so'). The status file's presence check for F8's stand-down came in Phase 4 (the user, 2026-10-28). The rest of the status file reader; the mode banner; the runway against the stack's resume trigger; \[Handoff\] from the stack's ready prompt. The stack side, its hooks publishing `status/<session id>.json`, lands in alfred-code first | With a valid status file for this session, the band shows the mode banner, the runway is measured against the resume trigger, and \[Handoff\] fills the stack's prompt verbatim, only into an empty prompt and never sending it; with no file, an unknown schema or another session's file, every surface draws what the core draws and the diagnostics row under \[Inspect\] names the reason (agent) |
+| 5. Alfred Code integration | Starts only on the user's word (the user, 2026-10-28: 'nothing from the Alfred Code integration until I say so'; the word, 2026-10-29: 'Contract and prompt first'). The status file's presence check for F8's stand-down came in Phase 4 (the user, 2026-10-28). The rest of the status file reader; the mode banner; the runway against the stack's resume trigger; the stack's ready prompt, filled by `f` in the ALFRED CODE section (F8 and F9 choice 18). The stack side, its hooks publishing `status/<session id>.json`, lands in alfred-code first | With a valid status file for this session, the band shows the mode banner, the runway is measured against the resume trigger, and \[Handoff\] fills the stack's prompt verbatim, only into an empty prompt and never sending it; with no file, an unknown schema or another session's file, every surface draws what the core draws and the diagnostics row under \[Inspect\] names the reason (agent). Checked as 'The reader, Phase 5' says, each draw on the terminal and the Desktop surface in tests, then live without Alfred Code and with the stack's own file |
 | 6. Ship | Marketplace entry | `claude plugin validate --strict` passes; `tsc` and `claude plugin test` pass; installing from the marketplace in a clean session loads `1 mod active · session-inspector`; `claude plugin test` and one terminal session pass on Windows and on Linux, or the user waives that platform in writing for this release, as the mod must work on all three (where they run is the user's call, the verdict's Also report) (agent) |
 
 **Every phase**
@@ -1275,7 +1306,7 @@ No known blocker: the core features rest on documented events. The material risk
 | MATERIAL | The mods API still changes between versions; fields changed from v2.1.287 to v2.1.312, the build checked here | A Claude Code update | Tests against the types for the installed build; minimum version in the README (agent) |
 | MATERIAL | The person can collapse the band, and the mod cannot tell | ctrl+x ctrl+a or `[-]` | Every item that needs you also raises a toast or shows in the Now tab (agent) |
 | MATERIAL | The Desktop and VS Code checks of every phase need the real account | A phase's Desktop check | Run only on the user's word, else reported NOT RUN; the terminal checks run under an isolated config (agent) |
-| MATERIAL | Two homes for a full context: F8 Handoff and the stack's guard-fresh-session-start hook, which offers a fresh session before a heavy run on a full context | Both act as context nears its limit | With a valid status file, the stack owns handoff and F8 only shows the state (Phase 5 adds the button filling the stack's prompt); without one, F8's own handoff is the only one (agent) |
+| MATERIAL | Two homes for a full context: F8 Handoff and the stack's guard-fresh-session-start hook, which offers a fresh session before a heavy run on a full context | Both act as context nears its limit | With a valid status file, the stack owns handoff and F8 only shows the state (Phase 5's `f` in the ALFRED CODE section fills the stack's prompt); without one, F8's own handoff is the only one (agent) |
 | MATERIAL | Calls come from agents no `agent.spawn` announced, such as the engine-internal one auto mode ran a failing ToolSearch under (probe I 266) | Auto mode, background engine work | F2 and F3 count only the main loop and agents seen at `agent.spawn` (agent) |
 | MATERIAL | The cache tier and write rate are known only after a model switch (probe I 240) | A session with no `/model` switch | F4 hides the expiry clock, its toast and the rewrite cost until then; hit rate and cached tokens always show (agent) |
 | MATERIAL | Only macOS is checked here, and the mod must work on Windows and Linux too | A path, line ending or `$.process` difference | The Platforms limit; each phase reports Windows and Linux NOT RUN until a machine runs them (agent) |

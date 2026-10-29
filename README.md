@@ -8,10 +8,10 @@ It works on Claude Code alone. With [Alfred Code](https://github.com/envoydev/al
 project, it shows more, read from the one status file the stack publishes for each session. It never needs Alfred
 Code, and nothing it draws breaks without it.
 
-**Status: Phase 4 (handoff, REC and compact rows) built:** the band with its plan line and handoff ask, `/inspect`
-with Now, Usage, Agents, Tools, Cache, Timeline and Plan, and `/auto-handoff`, `/rec` and `/quiet`. Phase 5 adds the
-Alfred Code integration; the design, the features and the build phases are in
-[the session-inspector brief](docs/session-inspector-brief.md).
+**Status: Phase 5 (Alfred Code integration) built:** the band with its plan line and handoff ask, `/inspect`
+with Now, Usage, Agents, Tools, Cache, Timeline and Plan, `/auto-handoff`, `/rec` and `/quiet`, and with Alfred Code
+the mode banner, the runway and the resume prompt. Phase 6 ships it; the design, the features and the build phases are
+in [the session-inspector brief](docs/session-inspector-brief.md).
 
 ## What it shows
 
@@ -20,8 +20,9 @@ Alfred Code integration; the design, the features and the build phases are in
   handoff prompt of its own, an on-screen mask for recordings (`/rec`) and compact tool rows (`/quiet`), in one calm
   band and an `/inspect` pane.
 - **With Alfred Code:** where the stack publishes its status file, the stack handles a full context and the mod's
-  handoff stands down ([Handoff](#handoff)). Phase 5 adds the stack's mode banner, the context runway measured against
-  the stack's resume trigger, and `[Handoff]` filling the stack's ready handoff prompt.
+  handoff stands down ([Handoff](#handoff)), and the mod shows the stack's mode banner, the context runway measured
+  against the stack's resume trigger, and an ALFRED CODE section whose `f` fills the stack's ready resume prompt
+  ([With Alfred Code](#with-alfred-code)).
 
 ## Commands
 
@@ -78,9 +79,30 @@ the ask comes before that compaction.
   `fullContext` `fresh-session` or `compact`, the stack handles a full context and the mod stands down for that
   session: no ask, no automatic save and no resume prompt, while `/auto-handoff now` still saves. With `fullContext`
   `off`, or no file, the mod's handoff runs. A file that does not parse, has another schema or names another session
-  leaves the handoff running, and the HANDOFF row says why.
+  leaves the handoff running, and the ALFRED CODE section in `/inspect` says why.
 
 `/auto-handoff off` turns it off in every project on the machine.
+
+## With Alfred Code
+
+In a project where [Alfred Code](https://github.com/envoydev/alfred-code) publishes
+`.claude/session-inspector/status/<session id>.json` for the session, the mod reads that one file at the session's
+start, every 30 seconds and after `/clear`, and shows more:
+
+- **The mode banner:** `auto-run · scorer 80 │` leads the band while the stack's auto-run or its scorer is on, after
+  `● REC` while recording.
+- **The runway:** while the stack offers a fresh session at a full context, the band's context gauge measures against
+  the stack's trigger instead of the window, `ctx ▰▰▰▱▱ 62% of 150k`, and the turns forecast counts to it.
+- **The ALFRED CODE section** in `/inspect`'s Now tab: what the stack does at a full context, its auto-run and scorer,
+  the model it judges the session by, its resume prompt's first line and when it last wrote the file. A field the mod
+  cannot use is named as ignored, and the rest still shows.
+- **The resume prompt:** while the pane has the focus (Ctrl+X Tab, or a click in fullscreen), `f` fills the stack's
+  prompt into an empty prompt box, never sending it. Press Esc to go back to the prompt, then Enter to send. With
+  something already typed, a toast says to clear it first.
+
+Without Alfred Code, or when the file is missing, has another schema or names another session, the band shows none of
+this, and the ALFRED CODE section shows one dim line with the reason, such as `Alfred Code: no status file for this
+session`. The file is the stack's: the mod never writes it and reads nothing else of the stack.
 
 ## Recording mode
 
@@ -110,6 +132,7 @@ the ask comes before that compaction.
 What REC cannot hide:
 
 - What you type in the prompt box.
+- A prompt the mod fills into the prompt box (`f` in the ALFRED CODE section).
 - Claude Code's own screens and dialogs: the permission dialog, `/context`, `/usage`, `/config`, the status line and the
   welcome header.
 - Other plugins' bands and panes.

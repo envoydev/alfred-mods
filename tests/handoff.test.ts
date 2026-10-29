@@ -134,7 +134,7 @@ test('50 paths then +N more', () => {
 
 const VIEW: HandoffView = {
   mode: 'ask', threshold: 80, isAskUp: false, percent: 62, point: 200_000, window: 200_000, handled: null, lastSave: null,
-  alfred: { state: 'none', reason: null }, isWorking: false,
+  alfred: { state: 'none', reason: null }, isWorking: false, runway: null,
 }
 // Each line as drawn: a button as `<hotkey>: <label>`, as the types draw a `plain` one
 const drawn = (lines: Line[]): string[] => lines.map(l => l.map(s => ('text' in s ? s.text : 'button' in s ? `${s.button.hotkey}: ${s.button.label}` : '')).join(''))
@@ -153,8 +153,9 @@ test("the HANDOFF row in each state, the ask's r: dismiss at 95, the last-save r
   expect(drawn(handoffLines({ ...VIEW, lastSave: { at: AT, isOk: false, reason: "HANDOFF.md exists and is not the mod's" } }, 100)))
     .toEqual(['HANDOFF', 'ctx ▰▰▰▱▱ 62% · asks at 80% · h: save now', "✗ save failed 14:05: HANDOFF.md exists and is not the mod's"])
   expect(drawn(handoffLines({ ...VIEW, alfred: { state: 'stood-down', reason: null } }, 100))).toEqual(['HANDOFF', 'ctx 62% · handoff by Alfred Code'])
+  // The reason moved to the ALFRED CODE section (Phase 5)
   expect(drawn(handoffLines({ ...VIEW, alfred: { state: 'ignored', reason: 'schema 2' } }, 100)))
-    .toEqual(['HANDOFF', 'ctx ▰▰▰▱▱ 62% · asks at 80% · h: save now', 'Alfred Code status file not used: schema 2'])
+    .toEqual(['HANDOFF', 'ctx ▰▰▰▱▱ 62% · asks at 80% · h: save now'])
   expect(handoffLines({ ...VIEW, mode: 'off' }, 100)).toEqual([])
 })
 

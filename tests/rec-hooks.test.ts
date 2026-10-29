@@ -253,7 +253,7 @@ test('/rec help and an unknown argument print the usage and what REC cannot hide
     const text = await rec($, arg)
     expect(text.startsWith('Usage: /rec [on|strict|off|test|words]')).toBe(true)
     expect(text).toContain('REC cannot hide:')
-    expect(text).toContain('what you type in the prompt box')
+    expect(text).toContain('what you type in the prompt box\n- a prompt the mod fills into the prompt box\n')
     expect(text).toContain('the option labels of a question Claude asks')
     expect(text).toContain("a private key's middle lines in a diff that does not show its BEGIN line")
     expect(text).toContain('anything the model reads')

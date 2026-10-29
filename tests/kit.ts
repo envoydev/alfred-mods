@@ -16,8 +16,9 @@ type Options = {
   agents?: AgentInfo[]; preSwitch?: ClassicResult; settings?: Record<string, unknown>
   // The project's files by the path the mod passes, such as `.claude/session-inspector/plans/p.json`
   files?: Record<string, FileStub>
-  // What `git status` answers, or a reason that rejects the call; the prompt box's draft
-  git?: ProcessRunResult | string; draft?: string
+  // What `git status` answers, or a reason that rejects the call; the prompt box's draft; what `prompt.fill` answers,
+  // filled by default. A refusal's cause cannot be staged: the site strips one a hook writes (types, PromptFillResult)
+  git?: ProcessRunResult | string; draft?: string; fill?: { isFilled: boolean }
 }
 
 export const gitResult = (stdout: string, exitCode = 0, stderr = ''): ProcessRunResult =>
@@ -28,7 +29,7 @@ export type FileStub = { text: string; mtimeMs: number; size?: number }
 
 export function stubAll(on: On, o: Options = {}): {
   clock: MockClock; toasts: string[]; opened: string[]; copied: string[]; usage: { current: SessionUsage }; panes: UiPane[]
-  listed: { current: AgentInfo[]; calls: number }; files: { current: Record<string, FileStub>; reads: string[]; writes: string[] }
+  listed: { current: AgentInfo[]; calls: number }; files: { current: Record<string, FileStub>; reads: string[]; writes: string[]; exists: string[] }
   // `git.current` and `git.calls`; the draft a test types and the texts the mod filled
   git: { current: ProcessRunResult | string; calls: number; argv: readonly string[] | null; timeoutMs: number | null }; prompt: { draft: string; fills: string[] }
   // Each `$.ui.invalidate` event the mod raised, in order
@@ -66,7 +67,7 @@ export function stubAll(on: On, o: Options = {}): {
   on('settings.read', () => ({ value: (o.settings ?? {}) as Settings }))
   // A test changes the files mid-test through `files.current`; a folder with no file in it is missing. The kit hands a
   // hook the path resolved against the mod's folder, so a stub matches its end; `{ deny }` rejects the mod's call.
-  const files = { current: { ...(o.files ?? {}) }, reads: [] as string[], writes: [] as string[] }
+  const files = { current: { ...(o.files ?? {}) }, reads: [] as string[], writes: [] as string[], exists: [] as string[] }
   const at = (full: string, path: string): boolean => full === path || full.endsWith(`/${path}`)
   on('fs.list', (_, e) => {
     const dir = e.path.replace(/\/$/, '')
@@ -85,7 +86,11 @@ export function stubAll(on: On, o: Options = {}): {
     if (found === undefined) return { deny: `ENOENT: no such file, ${e.path}` }
     return (found[1].size ?? 0) > 4 * 1024 * 1024 ? { deny: `EFBIG: over 4 MiB, ${e.path}` } : { value: found[1].text }
   })
-  on('fs.exists', (_, e) => ({ value: Object.keys(files.current).some(path => at(e.path, path)) }))
+  // Each path asked, so a test counts the reads of a missing file
+  on('fs.exists', (_, e) => {
+    files.exists.push(e.path)
+    return { value: Object.keys(files.current).some(path => at(e.path, path)) }
+  })
   // A write lands at the path of a file the test gave, else at the path the mod passed
   on('fs.write', (_, e) => {
     const key = Object.keys(files.current).find(path => at(e.path, path)) ?? e.path
@@ -103,6 +108,7 @@ export function stubAll(on: On, o: Options = {}): {
   const prompt = { draft: o.draft ?? '', fills: [] as string[] }
   on('prompt.read', () => ({ value: { text: prompt.draft, cursor: prompt.draft.length } }))
   on('prompt.fill', (_, e) => {
+    if (o.fill !== undefined && !o.fill.isFilled) return o.fill
     prompt.fills.push(e.text)
     prompt.draft = e.text
     return { isFilled: true }
@@ -197,10 +203,13 @@ export function spawns(on: On, table: Record<string, { agentId: string; model?: 
   })
 }
 
-// The latest value the mod wrote under each key, read beneath the plugin as the write lands
-export function watchState(on: On): { get(key: string): unknown } {
+// The latest value the mod wrote under each key, read beneath the plugin as the write lands, and every write in order
+// as JSON, so a test can look for text in any value the mod ever wrote
+export function watchState(on: On): { get(key: string): unknown; writes: string[] } {
   const latest = new Map<string, unknown>()
+  const writes: string[] = []
   on('state.set', async ($, e, next) => {
+    writes.push(JSON.stringify(e.value))
     const r = await next(e)
     if (r.value?.isSet === true) {
       const v = e.value as { shape?: string; value?: unknown } | number
@@ -208,7 +217,7 @@ export function watchState(on: On): { get(key: string): unknown } {
     }
     return r
   })
-  return { get: key => latest.get(key) }
+  return { get: key => latest.get(key), writes }
 }
 
 function textOf(n: unknown): string {

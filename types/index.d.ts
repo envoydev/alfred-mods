@@ -109,6 +109,18 @@ export type Handoff = {
   lastSave: SaveResult | null; alfred: { state: 'none' | 'stood-down' | 'ignored'; reason: string | null }
 }
 
+// The stack's status file past Phase 4's fields (Phase 5): `state` none (no file), used, or ignored with `reason`;
+// `null` is unknown, but a file's own `resumeAt: null` sets `noOffer`; `ignored`, the fields that failed their rule.
+// The resume prompt's text is never here: module memory only, `hasPrompt` says whether it is known.
+export type FullContext = 'fresh-session' | 'compact' | 'off'
+export type StackScorer = { on: boolean; level: number; rounds: number }
+export type Stack = {
+  state: 'none' | 'used' | 'ignored'; reason: string | null
+  fullContext: FullContext | null; model: string | null; window: number | null; resumeAt: number | null; noOffer: boolean
+  autoRun: boolean | null; scorer: StackScorer | null; hasPrompt: boolean
+  updatedAt: number | null; readAt: number | null; ignored: string[]
+}
+
 declare module 'claude-code' {
   interface PluginState {
     'session-inspector': {
@@ -116,6 +128,7 @@ declare module 'claude-code' {
       live: Shaped<Live>; usage: Shaped<Usage>; totals: Shaped<Totals>; meta: Shaped<Meta>
       view: Shaped<View>; pace: Shaped<Pace>; agents: Shaped<AgentRow[]>; cache: Shaped<Cache>; tick: number
       plans: Shaped<Plans>; credit: Shaped<Credit>; tasks: Shaped<TaskItem[]>; rec: Shaped<RecState>; quiet: Shaped<Quiet>; handoff: Shaped<Handoff>
+      stack: Shaped<Stack>
     }
   }
 }

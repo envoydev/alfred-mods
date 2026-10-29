@@ -173,6 +173,7 @@ export const REC_HELP = [
   '/rec turns masking on, /rec strict adds the account, home paths and $ amounts, /rec off turns it off, /rec test checks it, /rec words opens the private-words pane.',
   'REC cannot hide:',
   "- what you type in the prompt box",
+  '- a prompt the mod fills into the prompt box',
   "- Claude Code's own screens and dialogs: the permission dialog, /context, /usage, /config, the status line and the welcome header",
   "- other plugins' bands and panes",
   '- the option labels of a question Claude asks: Claude Code draws them as asked',

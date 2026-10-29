@@ -6,6 +6,7 @@ import type { ProcessRunResult } from 'claude-code'
 import type { Handoff, HandoffMode, SaveResult, Severity, StepStatus } from '../types'
 import { barSegs, pctSeg } from './band.ts'
 import type { Line, Seg } from './band.ts'
+import type { Runway } from './stack.ts'
 import { clock, duration, mins, modelText, tokens, usd } from './format.ts'
 
 const MODES: HandoffMode[] = ['ask', 'auto', 'off']
@@ -194,16 +195,18 @@ export function handoffText(s: SaveInput): string {
   return out.join('\n')
 }
 
-// What the Now tab's HANDOFF section reads: the atom with F8's context percent and whether a main-loop turn runs
+// What the Now tab's HANDOFF section reads: the atom with F8's context percent, whether a main-loop turn runs and
+// Alfred Code's runway, which the stood-down row measures against
 export type HandoffView = Pick<Handoff, 'mode' | 'threshold' | 'isAskUp' | 'point' | 'handled' | 'lastSave' | 'alfred'> & {
-  percent: number | null; window: number | null; isWorking: boolean
+  percent: number | null; window: number | null; isWorking: boolean; runway: Runway | null
 }
 
 const button = (key: string, hotkey: string, label: string): Seg => ({ button: { key, label, hotkey, tone: 'handoff', plain: true } })
 const SEP: Seg = { text: ' · ' }
 
 // The HANDOFF section (spec 'The HANDOFF row and the keys'): its violet heading and one row by state, then a failed
-// save's reason or the last save's path, and why a stack status file was not used; nothing while F8 is off
+// save's reason or the last save's path; nothing while F8 is off. Why a stack status file was not used is the ALFRED
+// CODE section's (Phase 5).
 export function handoffLines(h: HandoffView, _columns: number): Line[] {
   if (h.mode === 'off') return []
   const of = h.point !== null && h.window !== null && h.point !== h.window ? ` of ${tokens(h.point)}` : ''
@@ -212,7 +215,10 @@ export function handoffLines(h: HandoffView, _columns: number): Line[] {
   const steps = stepsOf(h.threshold)
   const after = (step: number | null): number | null => steps.find(s => step === null || s > step) ?? null
   let row: Line
-  if (h.alfred.state === 'stood-down') row = [{ text: `${plain} · handoff by Alfred Code` }]
+  if (h.alfred.state === 'stood-down') {
+    const ctx = h.runway === null ? plain : `ctx ${h.runway.percent}% of ${tokens(h.runway.resumeAt)}`
+    row = [{ text: `${ctx} · handoff by Alfred Code` }]
+  }
   else if (h.mode === 'auto') {
     const next = after(h.handled)
     const saved = h.lastSave?.isOk === true
@@ -235,6 +241,5 @@ export function handoffLines(h: HandoffView, _columns: number): Line[] {
   const last: SaveResult | null = h.lastSave
   if (last !== null && !last.isOk) out.push([{ text: `✗ save failed ${clock(last.at)}: ${last.reason ?? 'unknown'}`, tone: 'fail' }])
   else if (last !== null) out.push([{ text: `last save ${clock(last.at)} · ${HANDOFF_PATH}`, tone: 'dim' }])
-  if (h.alfred.state === 'ignored') out.push([{ text: `Alfred Code status file not used: ${h.alfred.reason ?? 'unknown'}`, tone: 'dim' }])
   return out
 }
