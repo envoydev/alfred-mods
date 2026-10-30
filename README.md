@@ -256,6 +256,9 @@ claude plugin install session-inspector@alfred-mods
 
 Then run `/reload-plugins`, or start a new session: `/plugin` shows `1 mod active · session-inspector`.
 
+It adds nothing to every session's context: `claude plugin details session-inspector@alfred-mods` reads `Always-on:
+~0 tok` (measured 2026-10-30). The one thing it ever tells Claude is Recording mode's short note.
+
 Install it through one marketplace only. The `envoydev` marketplace may list it too; if you added both, keep one of the
 two installs: two plugin ids with the same name register its hooks only once.
 
