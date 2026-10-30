@@ -1282,7 +1282,13 @@ export const register: Register = on => {
       }
     }
     await readCacheConfig($, held)
-    return next(e)
+    if (e.source !== 'startup') return next(e)
+    // A start: the stack's own SessionStart hook, beneath, writes this session's file, so it is read once those hooks
+    // have run, not at the next poll. A compaction's rewrite waits for the poll: read here, it would step the handoff on
+    // the context from before the compaction
+    const result = await next(e)
+    await readStatus($).catch(() => undefined)
+    return result
   }).catch(($, e, next) => next(e))
 
   // Your prompt, typed at the terminal or sent through Remote Control, waits for the turn that answers it: the engine

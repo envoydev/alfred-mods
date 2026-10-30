@@ -18,6 +18,8 @@ type Options = {
   agents?: AgentInfo[]; preSwitch?: ClassicResult; settings?: Record<string, unknown>
   // The project's files by the path the mod passes, such as `.claude/session-inspector/plans/p.json`
   files?: Record<string, FileStub>
+  // The files the SessionStart hooks beneath the mod write, as the stack's own hook writes its status file
+  writtenBeneath?: Record<string, FileStub>
   // What `git status` answers, or a reason that rejects the call; the prompt box's draft; what `prompt.fill` answers,
   // filled by default. A refusal's cause cannot be staged: the site strips one a hook writes (types, PromptFillResult)
   git?: ProcessRunResult | string; draft?: string; fill?: { isFilled: boolean }
@@ -132,7 +134,10 @@ export function stubAll(on: On, o: Options = {}): {
   on('classic.PostToolUseFailure', () => ({}))
   on('classic.PostToolUse', () => ({}))
   on('classic.PermissionDenied', () => ({}))
-  on('classic.SessionStart', () => ({}))
+  on('classic.SessionStart', () => {
+    Object.assign(files.current, o.writtenBeneath ?? {})
+    return {}
+  })
   on('classic.PostModelSwitch', () => ({}))
   on('classic.PreModelSwitch', () => o.preSwitch ?? {})
   const clock = mock.clock(on, { now: o.now ?? 0 })

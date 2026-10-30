@@ -63,6 +63,13 @@ test('a file that appears is read on the 30-second poll', async ($, on) => {
   expect(s()).toMatchObject({ state: 'used', hasPrompt: true })
 })
 
+test('at startup the file the SessionStart hooks beneath write is drawn as they finish, not at the poll', async ($, on) => {
+  const { s } = await start($, on, { writtenBeneath: { [STATUS]: status() } })
+  expect(s().state).toBe('none')
+  await $.classic.SessionStart({ source: 'startup' })
+  expect(s()).toMatchObject({ state: 'used', resumeAt: 150000, hasPrompt: true })
+})
+
 test('a file removed goes back to none at the next poll', async ($, on) => {
   const { s, files, clock } = await start($, on, { files: { [STATUS]: status() } })
   delete files.current[STATUS]

@@ -612,8 +612,11 @@ The mod learns that the stack is there only from the stack's per-session status 
 user's ruling brought this one read into Phase 4 (F8 and F9 choice 14); Phase 5 reads the rest ('The reader, Phase
 5', below).
 
-- **When it reads.** At the session's start, on each 30-second poll, and on `classic.SessionStart` with `source`
-  `clear`, `resume` or `fork`, under the new session id, with `$.fs.exists` and then `$.fs.read`. The stack writes
+- **When it reads.** At the session's start, on each 30-second poll, on `classic.SessionStart` with `source`
+  `startup` once the hooks beneath it have run (the stack's own hook writes the file there, so a fresh session draws it
+  at once, not at the poll; a `compact` rewrite waits for the poll, as a read there would step the handoff on the
+  context from before the compaction), and on `classic.SessionStart` with `source` `clear`, `resume` or `fork`, under
+  the new session id, with `$.fs.exists` and then `$.fs.read`. The stack writes
   the new id's file in its own SessionStart hook, which may run after the mod's, so for 10 seconds after that start
   a read that finds no file, the 30-second poll's included, keeps the stand-down and Phase 5's values as they were,
   in module memory; the start's read, finding none, reads once more 2 seconds later, and the first read after the 10
