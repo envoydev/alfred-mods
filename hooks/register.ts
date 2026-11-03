@@ -1567,7 +1567,7 @@ export const register: Register = on => {
     })
     if (lines.length === 0) return next(e)
     const press = { inspect: () => inspectFromBand($), compact: () => compactNow($, held), handoff: () => saveNow($) }
-    return drawLines($, e, lines, { noColor: await isNoColor($), press })
+    return drawLines($, e, lines, { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
   }).catch(($, e, next) => drawNote($, e, bandFailed(next.error.kind)))
 
   // The main loop's spinner adds its action, context and the agents running; an agent's spinner, that agent's
@@ -1609,8 +1609,9 @@ export const register: Register = on => {
   on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
     if (e.props.isErrored && typeof e.props.output === 'string' && !errorMem.has(e.props.tool_use_id)) keepError(e.props.tool_use_id, e.props.output)
     if ((await read($, quiet)).isOn && !e.props.isRunning && (e.props.isExpanded !== true || compactMem.marks.has(e.props.tool_use_id))) {
-      const lines = callLine(compactOf(e.props.tool_use_id, e.props), e.viewport?.columns ?? 120)
-      return drawLines($, e, lines, { noColor: await isNoColor($), press: {} })
+      const columns = e.viewport?.columns ?? 120
+      const lines = callLine(compactOf(e.props.tool_use_id, e.props), columns)
+      return drawLines($, e, lines, { noColor: await isNoColor($), press: {}, columns })
     }
     if (!(await isRecOn($))) return next(e)
     // An unfolded group's errored row draws its error text inline, and Claude Code draws that text, not `output` (live,
@@ -1621,9 +1622,10 @@ export const register: Register = on => {
         errorRows.delete(e.props.tool_use_id)
         errorRows.add(e.props.tool_use_id)
         keepLast(errorRows)
-        const head = callLine(compactOf(e.props.tool_use_id, e.props), e.viewport?.columns ?? 120).slice(0, 1)
+        const columns = e.viewport?.columns ?? 120
+        const head = callLine(compactOf(e.props.tool_use_id, e.props), columns).slice(0, 1)
         const isExpanded = e.props.isExpanded === true
-        return drawLines($, e, [...head, ...resultLines(failed.text, { isExpanded, isErrored: true, gutter: e.surface === 'terminal' })], { noColor: await isNoColor($), press: {} })
+        return drawLines($, e, [...head, ...resultLines(failed.text, { isExpanded, isErrored: true, gutter: e.surface === 'terminal' })], { noColor: await isNoColor($), press: {}, columns })
       }
     }
     const input = maskDeep(e.props.input, mask)
@@ -1642,17 +1644,17 @@ export const register: Register = on => {
     if (e.props.isExpanded === true && compactMem.marks.delete(e.props.tool_use_id)) $.ui.invalidate('ui.render')
     let props = e.props
     if ((await read($, quiet)).isOn && e.props.isExpanded !== true) {
-      if (e.props.isErrored || DROPS_RESULT.includes(e.props.tool)) return drawLines($, e, [], { noColor: false, press: {} })
+      if (e.props.isErrored || DROPS_RESULT.includes(e.props.tool)) return drawLines($, e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? 120 })
       const output = emptyPreview(e.props.tool, e.props.output)
       if (output !== e.props.output) props = { ...e.props, output }
     }
     if (!(await isRecOn($))) return props === e.props ? next(e) : next({ ...e, props })
-    if (e.props.isErrored && errorRows.has(e.props.tool_use_id)) return drawLines($, e, [], { noColor: false, press: {} })
+    if (e.props.isErrored && errorRows.has(e.props.tool_use_id)) return drawLines($, e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? 120 })
     const masked = maskResult({ ...props, error: errorMem.get(e.props.tool_use_id) ?? null }, mask)
     if (masked.kind === 'same') return props === e.props ? next(e) : next({ ...e, props })
     if (masked.kind === 'output') return next({ ...e, props: { ...props, output: masked.output } })
     const lines = resultLines(masked.text, { isExpanded: e.props.isExpanded === true, isErrored: e.props.isErrored, gutter: e.surface === 'terminal' })
-    return drawLines($, e, lines, { noColor: await isNoColor($), press: {} })
+    return drawLines($, e, lines, { noColor: await isNoColor($), press: {}, columns: e.viewport?.columns ?? 120 })
   }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
 
   // Under /quiet a settled group of calls alone draws its compact lines. One holding another row, or an errored or
@@ -1669,8 +1671,9 @@ export const register: Register = on => {
       return next(e)
     }
     if (isQuiet && !e.props.isActive && e.props.isCallsOnly === true) {
-      const lines = groupLines(e.props.calls.map(c => compactOf(c.tool_use_id, c)), e.viewport?.columns ?? 120)
-      return drawLines($, e, lines, { noColor: await isNoColor($), press: {} })
+      const columns = e.viewport?.columns ?? 120
+      const lines = groupLines(e.props.calls.map(c => compactOf(c.tool_use_id, c)), columns)
+      return drawLines($, e, lines, { noColor: await isNoColor($), press: {}, columns })
     }
     if (isQuiet && (isRec || !e.props.isActive)) mark(ids)
     else if (!isRec) return next(e)
@@ -1732,7 +1735,7 @@ export const register: Register = on => {
     for (const agent of input.agents) {
       if (agent.report !== null) press[`report-${agent.id}`] = () => toggleShown($, `report:${agent.id}`)
     }
-    return drawLines($, e, [...bar, ...body], { noColor: await isNoColor($), press })
+    return drawLines($, e, [...bar, ...body], { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
   }).catch(($, e, next) => drawNote($, e, paneFailed(next.error.kind, next.error.message, recLevel() !== 'off')))
 
   // The private-words pane: words are added only here, never through a command's arguments, which the transcript echoes
@@ -1743,6 +1746,6 @@ export const register: Register = on => {
     if (r.level === 'off') words.forEach((w, i) => { press[`remove-${i}`] = () => removeRecWord($, w) })
     const note = r.note === null ? [] : [[{ text: r.note, tone: 'warn' as const }]]
     const input = { key: 'word', label: 'Add a word', submitLabel: 'Add', onSubmit: (value: string) => { void addRecWord($, value) } }
-    return drawWithInput($, e, recPaneLines(r.level, words), input, note, { noColor: await isNoColor($), press })
+    return drawWithInput($, e, recPaneLines(r.level, words), input, note, { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
   }).catch(($, e, next) => drawNote($, e, paneFailed(next.error.kind, next.error.message, recLevel() !== 'off')))
 }

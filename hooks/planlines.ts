@@ -74,10 +74,8 @@ function timeOf(r: StepRow): string {
 function stepRows(rows: StepRow[], indent: string, withEstimate: boolean, columns: number): Line[] {
   const times = rows.map(timeOf)
   const timeWidth = Math.max(0, ...times.map(t => t.length))
-  const rights = rows.map((r, i) => {
-    const est = withEstimate && r.step.estimateMin !== null ? `est ${mins(r.step.estimateMin * MIN)}` : ''
-    return est === '' ? times[i] ?? '' : `${(times[i] ?? '').padEnd(timeWidth)}   ${est}`
-  })
+  const ests = rows.map(r => (withEstimate && r.step.estimateMin !== null ? `est ${mins(r.step.estimateMin * MIN)}` : ''))
+  const rights = rows.map((_, i) => (ests[i] === '' ? times[i] ?? '' : `${(times[i] ?? '').padEnd(timeWidth)}   ${ests[i] ?? ''}`))
   const rightWidth = Math.max(0, ...rights.map(t => t.length))
   const natural = rows.map(r => `${fitLine(r.step.id, 12)} ${fitLine(r.step.title, 60)}`.length + (r.notes.length > 0 ? NOTE.length + 3 : 0))
   const room = Math.max(12, columns - indent.length - 2 - (rightWidth > 0 ? rightWidth + 3 : 0))
@@ -94,8 +92,15 @@ function stepRows(rows: StepRow[], indent: string, withEstimate: boolean, column
   rows.forEach((r, i) => {
     const line: Line = [{ text: indent }, GLYPH[r.step.status], { text: ` ${lefts[i] ?? ''}` }]
     if (r.notes.length > 0) line.push({ text: isTight ? ' ' : '   ' }, { text: mark, tone: 'plan' })
-    const right = rights[i] ?? ''
-    if (right !== '') line.push({ text: `${' '.repeat(leftWidth - (widths[i] ?? 0) + 3)}${right}` })
+    // The time and estimate start at one column: the gap a margin, the time a cell as wide as the longest
+    const gap = leftWidth - (widths[i] ?? 0) + 3
+    const time = times[i] ?? ''
+    const est = ests[i] ?? ''
+    if (est !== '') {
+      line.push({ text: ' '.repeat(gap) })
+      if (timeWidth > 0) line.push({ text: time, width: timeWidth })
+      line.push({ text: `   ${est}` })
+    } else if (time !== '') line.push({ text: `${' '.repeat(gap)}${time}` })
     out.push(line)
     if (withEstimate) for (const note of r.notes) out.push([{ text: `${indent}     '${fitLine(note, 200)}'` }])
   })

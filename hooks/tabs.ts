@@ -25,6 +25,9 @@ const TABS: [Tab, string, string, Tone?][] = [
   ['cache', 'Cache', 'k', 'cache'], ['timeline', 'Timeline', 'l'], ['plan', 'Plan', 'p', 'plan'],
 ]
 
+// The Usage and Cache tabs' label column
+const LABEL = 10
+
 // The current tab is bold text in its feature's colour; the others are buttons. The bar wraps by width (a docked pane
 // is about 46 columns): each tab joins the line while it fits, else starts the next, as on one line the buttons keep
 // their width and the current tab's name is squeezed to '…'.
@@ -149,25 +152,25 @@ export function cacheLines(b: TabInput): Line[] {
   const v = cacheView(c, billing, b.now)
   const s = c.session
   const head: Line = s.read + s.write + s.input === 0
-    ? [{ text: 'Cache     no main-loop request yet', tone: 'dim' }]
-    : [{ text: 'Cache     ' }, ...cacheLine(v)]
+    ? [{ text: 'Cache', tone: 'dim', width: LABEL }, { text: 'no main-loop request yet', tone: 'dim' }]
+    : [{ text: 'Cache', width: LABEL }, ...cacheLine(v)]
   if (!b.isWorking && v.cached > 0) head.push({ text: '   ' }, { button: { key: 'compact', label: 'Compact', tone: 'cache' } })
   const out: Line[] = [head]
   const reused = [
     v.reuseLast === null ? null : `last request ${Math.round(v.reuseLast)}%`,
     v.reuseSession === null ? null : `session ${Math.round(v.reuseSession)}%`,
   ].filter((p): p is string => p !== null)
-  if (reused.length > 0) out.push([{ text: `Reused    ${reused.join(' · ')}` }])
+  if (reused.length > 0) out.push([{ text: 'Reused', width: LABEL }, { text: reused.join(' · ') }])
   const t = v.tier
   const source = t.from === 'pin' ? `${t.tier}, set by ${c.config.pin?.from ?? ''}`
     : t.from === 'switch' ? `${t.tier}, from the model switch at ${clock(c.tierAt ?? 0)}`
     : `≈${t.tier}, Claude Code's default ${BILLED[billing] ?? ''}`
   const priced = c.ratePerToken !== null && c.rateModel !== null ? ` · rewrite priced on ${modelText(c.rateModel, true)}` : ''
-  out.push([{ text: `Tier      ${source}${priced}` }])
+  out.push([{ text: 'Tier', width: LABEL }, { text: `${source}${priced}` }])
   const warnAt = toastAt(c, billing, b.usage.tokens)
   if (c.lastAt !== null && selfCompacts(c, billing, b.usage.tokens)) {
     const warn = warnAt === null ? '' : `, else a warning at ≈${clock(warnAt)}`
-    out.push([{ text: `Idle      Claude Code should compact it itself at ≈${clock(c.lastAt + IDLE_COMPACT_MS)}${warn}` }])
+    out.push([{ text: 'Idle', width: LABEL }, { text: `Claude Code should compact it itself at ≈${clock(c.lastAt + IDLE_COMPACT_MS)}${warn}` }])
   }
   return out
 }
@@ -247,7 +250,7 @@ export function usageLines(b: TabInput): Line[] {
   if (u.startedAt !== null) head.push({ text: `   session ${duration(b.now - u.startedAt)}`, tone: 'dim' })
   const out: Line[] = [head]
 
-  const ctx: Line = [{ text: 'Context   ' }]
+  const ctx: Line = [{ text: 'Context', width: LABEL }]
   if (u.percent === null) ctx.push({ text: '—', tone: 'dim' })
   else {
     ctx.push(...barSegs(u.percent), pctSeg(u.percent))
@@ -258,11 +261,11 @@ export function usageLines(b: TabInput): Line[] {
   }
   out.push(ctx)
   const series = b.turns.flatMap(t => (t.contextPercent === null ? [] : [t.contextPercent]))
-  if (series.length > 0) out.push([{ text: 'per turn  ', tone: 'dim' }, { chart: series.slice(-20) }])
+  if (series.length > 0) out.push([{ text: 'per turn', tone: 'dim', width: LABEL }, { chart: series.slice(-20) }])
 
   for (const w of windowsInOrder(u.windows)) {
     const name = w.kind === 'five_hour' ? '5h' : w.kind === 'seven_day' ? '7d' : w.kind
-    const line: Line = [{ text: `${name.padEnd(9)} ` }, ...barSegs(w.percentUsed), pctSeg(w.percentUsed)]
+    const line: Line = [{ text: name, width: LABEL }, ...barSegs(w.percentUsed), pctSeg(w.percentUsed)]
     const reset = parse(w.resetsAt)
     if (reset !== null) line.push({ text: `   resets ${when(reset)}`, tone: 'dim' })
     const p = pace(w.kind, b.pace[w.kind]?.points ?? [], reset, b.now)
@@ -273,24 +276,28 @@ export function usageLines(b: TabInput): Line[] {
 
   const cost = [u.costUsd === null ? null : `${usd(u.costUsd)} session`, u.todayUsd === null ? null : `${usd(u.todayUsd)} today`]
     .filter((part): part is string => part !== null)
-  if (cost.length > 0) out.push([{ text: 'Cost      ' }, { text: `${cost.join(' · ')}${u.windows.length > 0 ? ', est.' : ''}` }])
+  if (cost.length > 0) out.push([{ text: 'Cost', width: LABEL }, { text: `${cost.join(' · ')}${u.windows.length > 0 ? ', est.' : ''}` }])
 
   const t = b.totals
   // Output over the main loop's request time, first token and the hooks beneath included: a throughput, not a decode speed
   const rate = t.stepMs > 0 ? ` · ≈${Math.round(t.stepOutput / (t.stepMs / 1000))} tok/s avg` : ''
-  out.push([{ text: 'Tokens    ' }, { text: `in ${tokens(t.input)} · out ${tokens(t.output)} · cache read ${tokens(t.cacheRead)} · cache write ${tokens(t.cacheWrite)}${rate}` }])
+  out.push([{ text: 'Tokens', width: LABEL }, { text: `in ${tokens(t.input)} · out ${tokens(t.output)} · cache read ${tokens(t.cacheRead)} · cache write ${tokens(t.cacheWrite)}${rate}` }])
   out.push([{ text: `Compactions ${b.meta.compactions}${b.meta.lastCompactAt === null ? '' : `, at ${clock(b.meta.lastCompactAt)}`}` }])
   return out
 }
 
-const cols = (s: ToolStat): string => `${String(s.calls).padStart(6)}${String(s.ok).padStart(5)}${String(s.failed).padStart(5)}${String(s.stopped).padStart(5)}`
+// The Tools table's columns: the tool, then its counts at their end
+const TOOL_COLUMNS = [24, 6, 5, 5, 5]
+const toolRow = (cells: string[], style: { tone?: Tone; bold?: boolean }): Line =>
+  cells.map((text, i) => ({ text, width: TOOL_COLUMNS[i] ?? 5, ...(i === 0 ? {} : { align: 'end' as const }), ...style }))
 
 export function toolsLines(b: TabInput): Line[] {
-  const out: Line[] = [[{ text: `${'Tools'.padEnd(24)}${'calls'.padStart(6)}${'ok'.padStart(5)}${'✗'.padStart(5)}${'⊘'.padStart(5)}`, bold: true }]]
+  const out: Line[] = [toolRow(['Tools', 'calls', 'ok', '✗', '⊘'], { bold: true })]
   const rows = Object.entries(b.stats).sort((x, y) => y[1].calls - x[1].calls)
   if (rows.length === 0) out.push([{ text: 'No tool calls yet.', tone: 'dim' }])
   for (const [key, s] of rows) {
-    out.push([key.startsWith('Skill:') ? { text: `${key.padEnd(23)} `, tone: 'skill' } : { text: `${key.padEnd(23)} ` }, { text: cols(s) }])
+    const row = toolRow([key, ...[s.calls, s.ok, s.failed, s.stopped].map(String)], {})
+    out.push(key.startsWith('Skill:') ? [{ text: key, width: TOOL_COLUMNS[0], tone: 'skill' }, ...row.slice(1)] : row)
   }
   out.push([{ text: 'Last failures and blocks', bold: true }])
   if (b.failures.length === 0) out.push([{ text: 'None.', tone: 'dim' }])
@@ -299,13 +306,16 @@ export function toolsLines(b: TabInput): Line[] {
   return out
 }
 
+// The Timeline's columns before its last, the failures: turn, prompt and reply times, how long, tokens, tools
+const TIMELINE_COLUMNS = [4, 8, 9, 9, 14, 8]
+const timelineRow = (cells: string[], style: { bold?: boolean }): Line => cells.map((text, i) => ({ text, width: TIMELINE_COLUMNS[i] ?? 8, ...style }))
+
 export function timelineLines(turns: Turn[], rows: number): Line[] {
-  const out: Line[] = [[{ text: '#   you     Claude   took     in / out      tools   ✗', bold: true }]]
+  const out: Line[] = [[...timelineRow(['#', 'you', 'Claude', 'took', 'in / out', 'tools'], { bold: true }), { text: '✗', bold: true }]]
   if (turns.length === 0) out.push([{ text: 'No turns yet.', tone: 'dim' }])
   for (const t of [...turns].reverse().slice(0, rows)) {
-    const row = `${String(t.n).padEnd(4)}${(t.promptAt === null ? '—' : clock(t.promptAt)).padEnd(8)}${clock(t.replyAt).padEnd(9)}`
-      + `${duration(t.durationMs).padEnd(9)}${`${tokens(t.tokensIn)} / ${tokens(t.tokensOut)}`.padEnd(14)}${String(t.tools).padEnd(8)}`
-    out.push([{ text: row }, t.failures > 0 ? { text: String(t.failures), tone: 'fail' } : { text: '0', tone: 'dim' }])
+    const cells = [String(t.n), t.promptAt === null ? '—' : clock(t.promptAt), clock(t.replyAt), duration(t.durationMs), `${tokens(t.tokensIn)} / ${tokens(t.tokensOut)}`, String(t.tools)]
+    out.push([...timelineRow(cells, {}), t.failures > 0 ? { text: String(t.failures), tone: 'fail' } : { text: '0', tone: 'dim' }])
   }
   return out
 }

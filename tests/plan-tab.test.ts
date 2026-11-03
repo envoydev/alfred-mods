@@ -275,7 +275,7 @@ for (const surface of SURFACES) {
     await begin($, on)
     await inspect($, 'plan')
     const ui = await pane($, surface)
-    expect(await colorOf(ui, /^ Plan $/)).toBe('#ca8a04')
+    expect(await colorOf(ui, /^Plan$/)).toBe('#ca8a04')
     expect(await colorOf(await band($, surface, true), /^▰▰▰$/)).toBe('#ca8a04')
   })
 

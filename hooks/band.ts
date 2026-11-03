@@ -12,7 +12,8 @@ import type { AgentRow, Cache, Level, Live, Meta, Pace, Turn, Usage, Window } fr
 
 export type Tone = 'ok' | 'warn' | 'fail' | 'dim' | 'usage' | 'skill' | 'agents' | 'cache' | 'plan' | 'handoff' | 'opus' | 'sonnet' | 'haiku' | 'fable'
 export type Seg =
-  | { text: string; tone?: Tone; bold?: boolean }
+  // With a `width`, a table cell: that many cells wide, its text cut with '…' when longer, at its end with `align: 'end'`
+  | { text: string; tone?: Tone; bold?: boolean; width?: number; align?: 'start' | 'end' }
   // A toned button draws its label bold in the colour of the feature it acts on; a plain one draws `<hotkey>: <label>`
   | { button: { key: string; label: string; hotkey?: string; tone?: Tone; plain?: boolean } }
   | { code: string }
