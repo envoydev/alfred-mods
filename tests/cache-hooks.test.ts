@@ -123,9 +123,10 @@ test('the 5 min toast fires once per warm stretch', async ($, on) => {
   expect(cacheToasts(toasts)).toHaveLength(2)
 })
 
-// It walks an hour of the clock, 2 to 4 s of real time: a full run on a loaded machine needs more than the kit's 5 s
+// The reload comes 50 minutes after the last request, so the walk to the toast is 5 minutes: a 55-minute walk held the
+// toast's timer open past a hook's 10 s budget on CI's Windows runner
 test('after a reload, a warm 1h cache still gets its toast', { timeoutMs: 15_000 }, async ($, on) => {
-  const { clock, toasts } = stubAll(on, { usage: PLAN })
+  const { clock, toasts } = stubAll(on, { usage: PLAN, now: 3_000_000 })
   engine(on)
   // A reload keeps $.state and runs register and session.start again: the cache stands warm from a switch at 0
   const warm: Cache = {
@@ -145,8 +146,10 @@ test('after a reload, a warm 1h cache still gets its toast', { timeoutMs: 15_000
   })
 
   await $.session.start(START)
-  await clock.advance(3_300_000)
+  await clock.advance(299_000)
+  expect(cacheToasts(toasts)).toEqual([])
 
+  await clock.advance(1_000)
   expect(cacheToasts(toasts)).toEqual(['Cache cold in 5m (rewrite ≈ $1.44): press 3 to compact, or /inspect cache'])
 })
 
