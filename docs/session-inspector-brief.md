@@ -94,7 +94,7 @@ Ten features, F1 to F10. The probe must settle every Medium row before the verdi
 
 | ID | Feature | Shows | Data source | Confidence |
 | --- | --- | --- | --- | --- |
-| F1 | Session metrics | Model and effort; context tokens, window and %; 5h and weekly % with reset times, plus any other window kind by name; session duration; session cost; today's cost across sessions; output tok/s; total tokens in, out, cache read, cache write; compactions; account plan and email | `$.session.usage()`, `session.measure`, `$.store`, `turn.step`, `session.compact`, the global config file (`$CLAUDE_CONFIG_DIR/.claude.json` when set, else `~/.claude.json`) via `$.fs.read` | High; Medium for tok/s, token totals, account (agent) |
+| F1 | Session metrics | Model and effort; context tokens, window and %; 5h and weekly % with reset times, plus any other window kind by name; session duration; session cost; today's cost across sessions; output tok/s as an average (`≈70 tok/s avg`: output over the main loop's request time, a throughput, not a decode speed); total tokens in, out, cache read, cache write; compactions; account plan and email | `$.session.usage()`, `session.measure`, `$.store`, `turn.step`, `session.compact`, the global config file (`$CLAUDE_CONFIG_DIR/.claude.json` when set, else `~/.claude.json`) via `$.fs.read` | High; Medium for tok/s, token totals, account (agent) |
 | F2 | Tools and skills | Calls per tool, skill and MCP server; outcome ok, error, denied or blocked (refused by a guard hook or one of Claude Code's own rules); last 10 failures with time, target and reason | `tool.call` after `await next(e)`, `tool.check`, `skill.prompt`, `classic.PostToolUseFailure` (an error the tool raises while it runs has one; an input error and a refusal raised before `tool.check` have none, and look alike); calls of the main loop and of agents seen at `agent.spawn` only | High, but a refusal raised before the check shows as an error (agent) |
 | F3 | Agents | Type, model, task, status, elapsed; current action; final report; effort, context used out of window, tools and skills per agent with failures | `agent.spawn` (its result's `agentId`), `$.agent.list()`, `tool.call` and `tool.check` (`e.agentId`), `tool.call` on the Agent and Skill tools, `turn.step` and `turn.complete` (`e.agentId`) | High for the first three groups; Medium for the per-agent group (agent) |
 | F4 | Cache | TTL tier (5 min or 1 h); expiry clock time; hit rate for the last request and the session; cached tokens; rewrite cost if it goes cold; toast at 5 min left; \[Compact\] button | `turn.step` usage, `classic.PreModelSwitch` (`cache_ttl`, at a model switch only), deck price table | Medium; the tier and rate are known only after a model switch (agent) |
@@ -249,7 +249,7 @@ Context   ▰▰▱▱▱ 45%   90k / 200k     ≈6 turns to 80%
 5h        ▰▱▱▱▱ 25%   resets 28.10 16:15       on pace
 7d        ▰▰▰▱▱ 62%   resets 31.10 09:00   on pace
 Cost      $3.12 session · $18.49 today, est.
-Tokens    in 412k · out 38k · cache read 1.9M · cache write 210k · 70.5 tok/s
+Tokens    in 412k · out 38k · cache read 1.9M · cache write 210k · ≈70 tok/s avg
 Account   Max 20x · <account>              Compactions 1, at 14:40
 ```
 
@@ -1253,7 +1253,7 @@ Overall: NO-GO by this brief's rule, on two fields. F5 and F6 are GO; F1 is PART
 
 ## Build phases
 
-Six phases after an approved verdict, core first. Skip any feature the verdict marked NO-GO, and hide PARTIAL fields.
+Six phases after an approved verdict, core first, then Phase 7, the flightdeck findings. Skip any feature the verdict marked NO-GO, and hide PARTIAL fields.
 
 | Phase | Builds | Done when |
 | --- | --- | --- |
@@ -1263,6 +1263,7 @@ Six phases after an approved verdict, core first. Skip any feature the verdict m
 | 4. Handoff, REC and compact rows | F8, F9, F10; starts once the deck, or the user's spec of F8 and F9's behaviour, is in hand (the verdict's Also report) | At the threshold, ask mode waits and auto mode saves; `/rec strict` hides account, home paths and $ amounts in the band, the pane, toasts and spinners; `/rec test` passes for keys, emails and phones; /quiet on shows one line per tool call and keeps up to 3 error lines on a failure, on the main screen and in fullscreen; /quiet off restores the full rows; REC masks compact rows too; and the acceptance in 'F8 and F9 behaviour' (agent) |
 | 5. Alfred Code integration | Starts only on the user's word (the user, 2026-10-28: 'nothing from the Alfred Code integration until I say so'; the word, 2026-10-29: 'Contract and prompt first'). The status file's presence check for F8's stand-down came in Phase 4 (the user, 2026-10-28). The rest of the status file reader; the mode banner; the runway against the stack's resume trigger; the stack's ready prompt, filled by `f` in the ALFRED CODE section (F8 and F9 choice 18). The stack side, its hooks publishing `status/<session id>.json`, lands in alfred-code first | With a valid status file for this session, the band shows the mode banner, the runway is measured against the resume trigger, and \[Handoff\] fills the stack's prompt verbatim, only into an empty prompt and never sending it; with no file, an unknown schema or another session's file, every surface draws what the core draws and the diagnostics row under \[Inspect\] names the reason (agent). Checked as 'The reader, Phase 5' says, each draw on the terminal and the Desktop surface in tests, then live without Alfred Code and with the stack's own file |
 | 6. Ship | Marketplace entry | `claude plugin validate --strict` passes; `tsc` and `claude plugin test` pass; installing from the marketplace in a clean session loads `1 mod active · session-inspector`; `claude plugin test` and one terminal session pass on Windows and on Linux, or the user waives that platform in writing for this release, as the mod must work on all three (where they run is the user's call, the verdict's Also report) (agent) |
+| 7. Flightdeck findings | The findings of the claude-flightdeck review, in the machine-local spec `docs/superpowers/specs/2026-11-03-flightdeck-findings-design.md`, in three releases: hardening (draw hooks that fail safe, REC's four new key forms, the compaction-point retry, the tok/s label) and CI; the draw layer; then the borrowed features and the probes | Each release's acceptance in that spec; `claude plugin test` and validate green in CI on Linux, macOS and Windows; each release's live checks with and without Alfred Code (agent) |
 
 **Every phase**
 
@@ -1294,7 +1295,7 @@ The Claude Code limits below are from the mods reference; the right column is ho
 | Pane opened without the user asking | Placed from 144 terminal columns, 110 once the person has opened it | Never auto-opens a pane; panes open only on a command (agent) |
 | `$.process.run` | 30 s timeout by default, 4 MiB per stream | The one `git status` passes a short timeout of its own (agent) |
 | `claude plugin test` | 5 s per test; every `$` call needs a stub, registered before the test's first call | Timers run on `mock.clock`, never on real waits (agent) |
-| Platforms | Windows, Linux and macOS (the user, 2026-10-28) | Finds the config from `CLAUDE_CONFIG_DIR`, else `HOME`, else `USERPROFILE`; reads plan and score files with LF or CRLF; a missing `git` leaves the handoff without git state; each phase's terminal check runs on all three or reports the rest NOT RUN (agent) |
+| Platforms | Windows, Linux and macOS (the user, 2026-10-28) | Finds the config from `CLAUDE_CONFIG_DIR`, else `HOME`, else `USERPROFILE`; reads plan and score files with LF or CRLF; a missing `git` leaves the handoff without git state; each phase's terminal check runs on all three or reports the rest NOT RUN; CI (`.github/workflows/ci.yml`) runs `claude plugin validate` and `claude plugin test` on all three and `tsc` on Linux, its first run on the user's push (agent) |
 
 **Security**
 
@@ -1347,6 +1348,7 @@ No known blocker: the core features rest on documented events. The material risk
 - [Create a marketplace](https://code.claude.com/docs/en/plugin-marketplaces): plugin sources and pinning; with the [marketplace reference](https://code.claude.com/docs/en/plugins/marketplace-reference) for `ref` and `sha`, and [Host and maintain a marketplace](https://code.claude.com/docs/en/plugins/host-marketplace) for versions and updates. Read 2026-10-28. (agent)
 - [claude-hud repository](https://github.com/jarrodwatts/claude-hud): the statusline approach this mod replaces; its README, read 2026-10-28, lists context, rate limits, tools, agents and todos, and does not say how a failed tool shows. (agent)
 - claude\_code\_mods.pptx, slides 10 to 20: the six deck mods and their settings.
+- [claude-flightdeck](https://github.com/scasella/claude-flightdeck) at `f9c3c52`: another session mod, read 2026-11-03 for Phase 7's findings (its redaction, its fixed compaction-point read, its CI). (agent)
 
 ## Changes by agent
 
