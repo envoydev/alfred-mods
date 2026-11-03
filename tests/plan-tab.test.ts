@@ -170,10 +170,10 @@ for (const surface of SURFACES) {
     await inspect($, 'plan')
     const ui = await pane($, surface)
     expect((await rows(ui)).map(fold)).toContain('Plan · Token refresh 3/5 · ≈1h 42m total · ≈30m left (×1.2)')
-    expect(await colorOf(ui, /^last update/)).not.toBe('#f59e0b')
+    expect(await colorOf(ui, /^last update/)).not.toBe('warning')
     await clock.advance(13 * MIN)
     expect((await rows(ui)).map(fold)).toContain('last update 21m ago')
-    expect(await colorOf(ui, /^last update/)).toBe('#f59e0b')
+    expect(await colorOf(ui, /^last update/)).toBe('warning')
   })
 
   test(`a finished plan draws its second form while working for 10 minutes (${surface})`, async ($, on) => {
@@ -228,7 +228,7 @@ for (const surface of SURFACES) {
     const ui = await pane($, surface)
 
     expect((await rows(ui)).map(fold)).toContain('last update 25m ago')
-    expect(await colorOf(ui, /^last update/)).toBe('#f59e0b')
+    expect(await colorOf(ui, /^last update/)).toBe('warning')
   })
 
   test(`the Now tab's PLAN comes first (${surface})`, async ($, on) => {

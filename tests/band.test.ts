@@ -212,8 +212,23 @@ for (const surface of SURFACES) {
 
     const texts = await (await mount($, surface, band(false))).findAll({ type: 'Text' })
 
-    expect(texts.find(t => t.text === '82%')?.props.color).toBe('#f59e0b')
-    expect(texts.find(t => t.text === '20%')?.props.color).toBe('#22c55e')
+    expect(texts.find(t => t.text === '82%')?.props.color).toBe('warning')
+    expect(texts.find(t => t.text === '20%')?.props.color).toBe('success')
+  })
+
+  // ok, warn and fail follow the person's theme; the deck's feature colours and the chart's SVG keep their hex (spec C5)
+  test(`the state tones draw theme keys (${surface})`, async ($, on) => {
+    stubAll(on, { usage: reading(82, 20, 30), now: NOW })
+    failingCalls(on)
+    engine(on, ['tool.call'])
+    await oneTurn($, 1)
+
+    const texts = await (await mount($, surface, band(false))).findAll({ type: 'Text' })
+
+    expect(texts.find(t => t.text === '· 1 ✗')?.props.color).toBe('error')
+    expect(texts.find(t => t.text === '82%')?.props.color).toBe('warning')
+    expect(texts.find(t => t.text === '20%')?.props.color).toBe('success')
+    expect(texts.find(t => t.text === 'ctx')?.props.color).toBe('#60a5fa')
   })
 
   test(`working shows the running Bash and its time (${surface})`, async ($, on) => {
@@ -338,6 +353,16 @@ for (const surface of SURFACES) {
     expect(await rows(await mount($, surface, band(false, 120, true)))).toEqual(['engine'])
   })
 }
+
+test('the chart\'s SVG keeps its hex', async ($, on) => {
+  on('ui.render', { component: 'Pane', requestId: 'chart' }, (h$, e) => drawLines(h$, e, [[{ chart: [10, 50, 90] }]], { noColor: false, press: {}, columns: 80 }))
+  const ui = await $.ui.mount({
+    plugin: 'session-inspector', surface: 'desktop', component: 'Pane', requestId: 'chart',
+    props: { title: 'chart', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 10 }, view: {} },
+  })
+
+  expect(String((await ui.find({ type: 'Svg' }))?.props.source)).toContain('stroke="#60a5fa"')
+})
 
 test('every drawn string passes through mask', async ($, on) => {
   // drawLines draws a site the mod leaves to the engine, with a hook's `$`

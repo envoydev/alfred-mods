@@ -164,8 +164,8 @@ for (const surface of SURFACES) {
 
     const texts = await (await pane($, surface)).findAll({ type: 'Text' })
 
-    expect(texts.find(t => t.text === '90%')?.props.color).toBe('#ef4444')
-    expect(texts.find(t => t.text === '40%')?.props.color).toBe('#22c55e')
+    expect(texts.find(t => t.text === '90%')?.props.color).toBe('error')
+    expect(texts.find(t => t.text === '40%')?.props.color).toBe('success')
   })
 
   test(`the Usage tab says when a window runs out before its reset (${surface})`, async ($, on) => {

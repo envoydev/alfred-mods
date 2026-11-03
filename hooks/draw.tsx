@@ -9,8 +9,10 @@ import type { Line, Seg, Tone } from './band.ts'
 
 const show = (text: string): string => mask(printable(text))
 
+// ok, warn and fail are the theme's own keys, so a light, dark or colour-blind theme draws them as it draws its state;
+// every feature and model colour is the deck's (spec C5). An SVG keeps hex: it takes no theme key.
 const COLOR: Record<Exclude<Tone, 'dim'>, string> = {
-  ok: '#22c55e', warn: '#f59e0b', fail: '#ef4444', usage: '#60a5fa', skill: '#65a30d', agents: '#f472b6', cache: '#22d3ee',
+  ok: 'success', warn: 'warning', fail: 'error', usage: '#60a5fa', skill: '#65a30d', agents: '#f472b6', cache: '#22d3ee',
   opus: '#ff8c1a', sonnet: '#3d9bff', haiku: '#19c3a6', fable: '#d16bff', plan: '#ca8a04', handoff: '#a78bfa',
 }
 
