@@ -34,6 +34,51 @@ test('every key sample is hidden, a named value by its value alone', () => {
   expect(maskText(c, 'API_KEY=hunter2hunter2')).toBe('API_KEY=‹key›')
 })
 
+test('the four forms hide their value, at on and strict', () => {
+  const forms: [string, string][] = [
+    ['password=hunter2', 'password=‹key›'], ['--password hunter2', '--password ‹key›'], ['--token=abcd1234', '--token=‹key›'],
+    ['Authorization: Basic dXNlcjpwYXNz', 'Authorization: Basic ‹key›'], ['authorization=Token abcd', 'authorization=Token ‹key›'],
+    ['postgres://admin:hunter2@localhost', 'postgres://admin:‹key›@localhost'],
+  ]
+  for (const level of ['on', 'strict'] as const) {
+    const c = compile(level, [], '/Users/jane')
+    for (const [text, masked] of forms) expect({ level, out: maskText(c, text) }).toEqual({ level, out: masked })
+  }
+})
+
+test('near misses of the four forms stay', () => {
+  const c = compile('on', [], null)
+  const misses = ['Basic usage', '$ pwd', 'key: id', 'password: null', 'secret: true', '--token-file ./t', 'https://example.com/a:b@c', 'password=', 'https://u@h']
+  for (const t of misses) expect(maskText(c, t)).toBe(t)
+  for (const t of misses.slice(0, 7)) expect(LEFT_ALONE).toContain(t)
+})
+
+test('a token in URL credentials masks once', () => {
+  const c = compile('on', [], null)
+  const url = 'https://bot:' + 'gh' + 'p_' + 'aB3'.repeat(12) + '@github.com/o/r.git'
+  expect(maskText(c, url)).toBe('https://bot:‹key›@github.com/o/r.git')
+  expect(maskText(c, 'postgres://admin:hunter2@db.example.com/x')).toBe('postgres://admin:‹key›@db.example.com/x')
+  const user = 'https://' + 'gh' + 'p_' + 'aB3'.repeat(12) + ':x-oauth-basic@github.com'
+  expect(maskText(c, user)).toBe('https://‹key›:‹key›@github.com')
+})
+
+test("HANDOFF's key class gains the forms", () => {
+  expect(maskForFile('password=hunter2')).toBe('password=‹key›')
+  expect(maskForFile('postgres://admin:hunter2@localhost')).toBe('postgres://admin:‹key›@localhost')
+})
+
+test('a 100 kB line of each form masks in under 50 ms', () => {
+  const c = compile('on', [], null)
+  const forms = ['password=hunter2 ', '--password hunter2 ', 'Authorization: Basic dXNlcjpwYXNz ', 'postgres://admin:hunter2@localhost ']
+  for (const form of forms) {
+    const text = form.repeat(Math.ceil(100_000 / form.length))
+    maskText(c, text)
+    const at = performance.now()
+    maskText(c, text)
+    expect({ form, fast: performance.now() - at < 50 }).toEqual({ form, fast: true })
+  }
+})
+
 test('every email and phone sample is hidden', () => {
   const c = compile('on', [], null)
   for (const s of [...EMAILS, ...PHONES]) expect(maskText(c, s.text)).toBe(s.masked)

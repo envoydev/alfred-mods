@@ -20,6 +20,13 @@ export const KEYS: Sample[] = [
   { text: 'Authorization: ' + 'Bearer ' + 'abcdefghijklmnop1234', masked: 'Authorization: Bearer ‹key›' },
   { text: 'API_KEY=' + 'hunter2hunter2', masked: 'API_KEY=‹key›' },
   { text: '"password": "' + 'correct-horse"', masked: '"password": "‹key›"' },
+  // The short named form, a secret flag, an Authorization header of any scheme, and credentials in a URL
+  { text: 'password=' + 'hunter2', masked: 'password=‹key›' },
+  { text: '--password ' + 'hunter2', masked: '--password ‹key›' },
+  { text: '--token=' + 'abcd1234', masked: '--token=‹key›' },
+  { text: 'Authorization: ' + 'Basic ' + 'dXNlcjpwYXNz', masked: 'Authorization: Basic ‹key›' },
+  { text: 'authorization=' + 'Token ' + 'abcd', masked: 'authorization=Token ‹key›' },
+  { text: 'postgres://admin:' + 'hunter2' + '@localhost', masked: 'postgres://admin:‹key›@localhost' },
 ]
 
 export const EMAILS: Sample[] = ['jane.doe@example.com', 'a+b@sub.example.co.uk', 'ops@example.io'].map(t => whole(t, '‹email›'))
@@ -32,7 +39,10 @@ export const PHONES: Sample[] = [
 export const LEFT_ALONE: string[] = [
   'c50c7aa', 'c50c7aa' + '0123456789abcdef0123456789abcdef0', '14:05', '2026-10-28', '(28.10 16:15)', '2.1.312',
   '180k cached', '1,234,567 tokens', 'localhost:8080', 'src/auth/refresh.ts', 'https://example.com/a?b=1',
-  '123e4567-e89b-12d3-a456-426614174000', '12345678901', '10.100.200.150', '$3.12',
+  '123e4567-e89b-12d3-a456-426614174000', '12345678901', '10.100.200.150',
+  // Near misses of the key forms
+  'Basic usage', '$ pwd', 'key: id', 'password: null', 'secret: true', '--token-file ./t', 'https://example.com/a:b@c',
+  '$3.12',
 ]
 
 export const AMOUNTS: Sample[] = [
