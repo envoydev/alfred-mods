@@ -463,7 +463,8 @@ test('a draft that is not empty gets the fallback toast', async ($, on) => {
   expect(toasts).toContain(`Handoff saved ${clockText(at)}: ask Claude to read ${PATH}`)
 })
 
-test('no save, or past 2 hours, fills nothing', async ($, on) => {
+// Two hours of the clock run every one-second timer: 1.7 s on a laptop, past 5 s on a CI runner
+test('no save, or past 2 hours, fills nothing', { timeoutMs: 15_000 }, async ($, on) => {
   const { prompt, clock, toasts, h } = await start($, on)
   await $.classic.SessionStart({ source: 'clear' })
   expect(prompt.fills).toEqual([])

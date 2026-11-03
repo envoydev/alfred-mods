@@ -76,11 +76,13 @@ export function stubAll(on: On, o: Options = {}): {
   })
   on('settings.read', () => ({ value: (o.settings ?? {}) as Settings }))
   // A test changes the files mid-test through `files.current`; a folder with no file in it is missing. The kit hands a
-  // hook the path resolved against the mod's folder, so a stub matches its end; `{ deny }` rejects the mod's call.
+  // hook the path resolved against the mod's folder, with Windows' separators on Windows, so a stub matches its end
+  // after `\` reads as `/`; `{ deny }` rejects the mod's call.
   const files = { current: { ...(o.files ?? {}) }, reads: [] as string[], writes: [] as string[], exists: [] as string[] }
-  const at = (full: string, path: string): boolean => full === path || full.endsWith(`/${path}`)
+  const slashed = (path: string): string => path.replace(/\\/g, '/')
+  const at = (full: string, path: string): boolean => slashed(full) === path || slashed(full).endsWith(`/${path}`)
   on('fs.list', (_, e) => {
-    const dir = e.path.replace(/\/$/, '')
+    const dir = slashed(e.path).replace(/\/$/, '')
     const inDir = Object.entries(files.current).filter(([path]) => at(dir, path.slice(0, path.lastIndexOf('/'))))
     if (inDir.length === 0) return { deny: `ENOENT: no such directory, ${e.path}` }
     return {
@@ -98,12 +100,12 @@ export function stubAll(on: On, o: Options = {}): {
   })
   // Each path asked, so a test counts the reads of a missing file
   on('fs.exists', (_, e) => {
-    files.exists.push(e.path)
+    files.exists.push(slashed(e.path))
     return { value: Object.keys(files.current).some(path => at(e.path, path)) }
   })
   // A write lands at the path of a file the test gave, else at the path the mod passed
   on('fs.write', (_, e) => {
-    const key = Object.keys(files.current).find(path => at(e.path, path)) ?? e.path
+    const key = Object.keys(files.current).find(path => at(e.path, path)) ?? slashed(e.path)
     files.current[key] = { text: e.text, mtimeMs: o.now ?? 0 }
     files.writes.push(key)
     return { value: undefined }
