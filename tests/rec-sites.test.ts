@@ -2,6 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, RenderPropsOf } from 'claude-code'
 
+import { compile, maskHits } from '../hooks/rec.ts'
 import { EMAILS, KEYS } from '../hooks/samples.ts'
 import { maskDeep, maskDialog, maskResult, resultLines } from '../hooks/sites.ts'
 import { PRESENTATION, SPINNER, START, engine, engineSites, rows, stubAll } from './kit.ts'
@@ -212,6 +213,16 @@ test('every masked dialog keeps headers of 12 characters or fewer and its labels
   expect(out.map(q => q.options.map(o => o.label))).toEqual(qs.map(q => q.options.map(o => o.label)))
   expect(out[0]!.header).toBe('‹email›')
   expect(out[1]!.header).toBe('Pay $•.••?')
+})
+
+test('two questions told apart by URL passwords draw numbered keys', () => {
+  const c = compile('on', [], null)
+  const ask = (pw: string) => ({
+    question: `Connect to postgres://admin:${pw}@db?`, header: 'DB', multiSelect: false,
+    options: [{ label: 'Yes', description: 'go' }, { label: 'No', description: 'stop' }],
+  })
+  const out = maskDialog([ask('aaaa1111'), ask('bbbb2222')], s => maskHits(c, s)) as ReturnType<typeof ask>[]
+  expect(out.map(q => q.question)).toEqual(['Connect to postgres://admin:‹key 1›@db?', 'Connect to postgres://admin:‹key 2›@db?'])
 })
 
 test("a tool on the refused list draws the mod's own masked text tree in place of the rewrite", () => {

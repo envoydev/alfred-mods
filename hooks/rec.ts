@@ -24,7 +24,7 @@ const NOT_SECRET = ['null', 'true', 'false', 'none'].map(either).join('|')
 const SHORT_VALUE = String.raw`(?!(?:${NOT_SECRET})(?![^\s"'` + '`' + String.raw`]))[^\s"'` + '`' + String.raw`]{4,7}(?![^\s"'` + '`' + '])'
 const VALUE4 = String.raw`[^\s"'` + '`' + ']{4,}'
 const FLAGS = ['password', 'passwd', 'token', 'secret', 'api-key', 'apikey', 'auth-token'].join('|')
-const SCHEMES = ['basic', 'bearer', 'token', 'digest'].map(either).join('|')
+const VALUE1 = String.raw`[^\s"'` + '`' + ']{1,}'
 
 // One regex for every key form. A named, flag, header or bearer value hides the value alone, the group that ends the
 // match; URL credentials hide the password from its ':' on, a start before the email class's, so a password that
@@ -38,16 +38,19 @@ const KEY = new RegExp([
   String.raw`(?<![\w.-])(?=[\w.-]{0,64}?(?:${NAMES}))[\w.-]{1,64}["']?[ \t]{0,4}[:=][ \t]{0,4}["']?(?<named>${VALUE})`,
   String.raw`(?<![\w.-])(?=[\w.-]{0,64}?(?:${SHORT_NAMES}))[\w.-]{1,64}["']?[ \t]{0,4}[:=][ \t]{0,4}["']?(?<short>${SHORT_VALUE})`,
   String.raw`(?<![\w-])--(?:${FLAGS})(?:[ \t]{1,4}|=)["']?(?!-)(?<flag>${VALUE4})`,
-  String.raw`(?<![\w-])${either('authorization')}["']?[ \t]{0,4}[:=][ \t]{0,4}["']?(?:(?:${SCHEMES})[ \t]{1,4})?(?<auth>${VALUE4})`,
-  // From the ':' alone, so a token as the user still matches as a token
-  String.raw`:(?<=[A-Za-z][A-Za-z0-9+.-]{1,20}:\/\/[^\s:@\/]{1,64}:)(?<url>[^\s@\/]{1,128})(?=@)`,
+  // A scheme is one word of letters (Basic, Bearer, Bot, ApiKey, SSWS); its credential hides at any length, and a value
+  // with no scheme from 4 characters
+  String.raw`(?<![\w-])(?:${either('proxy')}-)?${either('authorization')}["']?[ \t]{0,4}[:=][ \t]{0,4}["']?(?:[A-Za-z][A-Za-z-]{1,30}[ \t]{1,4}(?<auth>${VALUE1})|(?<authBare>${VALUE4}))`,
+  // From the ':' alone, so a token as the user still matches as a token; the user may be empty (redis://:pw@host), and
+  // the password runs to the last '@' before the host, so one holding '@' hides whole
+  String.raw`:(?<=[A-Za-z][A-Za-z0-9+.-]{1,20}:\/\/[^\s:@\/]{0,64}:)(?<url>[^\s\/?#]{1,128})(?=@)`,
 ].join('|'), 'g')
 
 const keyHit = (m: RegExpExecArray): Hit => {
   const g = m.groups ?? {}
   const end = m.index + m[0].length
   if (g['url'] !== undefined) return { start: m.index, end, text: ':‹key›' }
-  const value = g['bearer'] ?? g['named'] ?? g['short'] ?? g['flag'] ?? g['auth']
+  const value = g['bearer'] ?? g['named'] ?? g['short'] ?? g['flag'] ?? g['auth'] ?? g['authBare']
   return { start: value === undefined ? m.index : end - value.length, end, text: '‹key›' }
 }
 

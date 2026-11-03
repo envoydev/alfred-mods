@@ -94,7 +94,8 @@ export function resultLines(text: string, o: { isExpanded: boolean; isErrored: b
   return lines
 }
 
-const BARE = /^‹(key|email|phone|private|user)›$/
+// A bare token, after the ':' a URL password's token keeps
+const BARE = /^(:?)‹(key|email|phone|private|user)›$/
 const HEADER_MAX = 12
 
 // The dialog's strings masked inside the tool's limits: a kind hiding two or more distinct values numbers them across
@@ -105,10 +106,12 @@ const HEADER_MAX = 12
 export function maskDialog(questions: unknown[], spans: (s: string) => Hit[]): unknown[] {
   // The distinct values each kind hides, in the order the dialog shows them; a token already in the text is no value
   const values = new Map<string, string[]>()
-  const valueOf = (s: string, h: Hit): { kind: string; value: string } | null => {
-    const kind = BARE.exec(h.text)?.[1]
-    const value = s.slice(h.start, h.end)
-    return kind === undefined || value === h.text ? null : { kind, value: value.toLowerCase() }
+  const valueOf = (s: string, h: Hit): { kind: string; value: string; lead: string } | null => {
+    const m = BARE.exec(h.text)
+    const lead = m?.[1] ?? ''
+    const kind = m?.[2]
+    const value = s.slice(h.start + lead.length, h.end)
+    return kind === undefined || value === h.text.slice(lead.length) ? null : { kind, value: value.toLowerCase(), lead }
   }
   questions.forEach(q => maskQuestion(q, s => {
     for (const h of spans(s)) {
@@ -126,7 +129,7 @@ export function maskDialog(questions: unknown[], spans: (s: string) => Hit[]): u
     for (const h of hits) {
       const v = valueOf(s, h)
       const list = v === null ? [] : values.get(v.kind) ?? []
-      out += s.slice(at, h.start) + (v !== null && list.length > 1 ? `‹${v.kind} ${list.indexOf(v.value) + 1}›` : h.text)
+      out += s.slice(at, h.start) + (v !== null && list.length > 1 ? `${v.lead}‹${v.kind} ${list.indexOf(v.value) + 1}›` : h.text)
       at = h.end
     }
     return out + s.slice(at)

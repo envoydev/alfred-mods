@@ -62,6 +62,34 @@ test('a token in URL credentials masks once', () => {
   expect(maskText(c, user)).toBe('https://‹key›:‹key›@github.com')
 })
 
+test('Authorization of any scheme hides its credential, Proxy-Authorization too', () => {
+  const c = compile('on', [], null)
+  const cases: [string, string][] = [
+    ['Authorization: Bot ' + 'abcd'.repeat(6), 'Authorization: Bot ‹key›'],
+    ['authorization: Key abcd1234:efgh5678', 'authorization: Key ‹key›'],
+    ['Authorization: ApiKey abcdef123456', 'Authorization: ApiKey ‹key›'],
+    ['Authorization: SSWS 00abcdEFGH', 'Authorization: SSWS ‹key›'],
+    ['Proxy-Authorization: Basic dXNlcjpwYXNz', 'Proxy-Authorization: Basic ‹key›'],
+    ['Authorization: Bearer abc', 'Authorization: Bearer ‹key›'],
+    ['Authorization: abcd1234 in the header', 'Authorization: ‹key› in the header'],
+  ]
+  for (const [text, masked] of cases) expect(maskText(c, text)).toBe(masked)
+  expect(maskText(c, 'Authorization header missing')).toBe('Authorization header missing')
+})
+
+test('URL credentials with no user or an @ in the password hide the whole password, once', () => {
+  const c = compile('on', [], null)
+  const cases: [string, string][] = [
+    ['redis://:hunter2@localhost:6379', 'redis://:‹key›@localhost:6379'],
+    ['postgres://admin:p@ss@localhost', 'postgres://admin:‹key›@localhost'],
+    ['ftp://anonymous:jane@example.com@ftp.example.com/', 'ftp://anonymous:‹key›@ftp.example.com/'],
+  ]
+  for (const [text, masked] of cases) {
+    expect(maskText(c, text)).toBe(masked)
+    expect(maskText(c, masked)).toBe(masked)
+  }
+})
+
 test("HANDOFF's key class gains the forms", () => {
   expect(maskForFile('password=hunter2')).toBe('password=‹key›')
   expect(maskForFile('postgres://admin:hunter2@localhost')).toBe('postgres://admin:‹key›@localhost')
