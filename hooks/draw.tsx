@@ -85,6 +85,13 @@ export function drawLines($: EngineInterface, e: ResolveInput, lines: Line[], o:
   return <Box flexDirection="column">{lines.map(row)}</Box>
 }
 
+// One dim line a draw hook's .catch draws in place of its tree. Not masked: the text is the mod's own, and the masker
+// may be what failed.
+export function drawNote($: EngineInterface, e: ResolveInput, text: string): RenderElement {
+  const { Box, Text } = $.ui.resolve(e)
+  return <Box flexDirection="column"><Text dimColor wrap="truncate-end">{text}</Text></Box>
+}
+
 // Lines above an Input and lines below it, as the rec pane draws them: the field takes the keys as the pane opens. A
 // surface with no Input (mobile) draws the lines alone.
 export function drawWithInput(

@@ -12,10 +12,11 @@ import {
   addRequest, afterCompact, billingOf, cacheView, idleOf, minutes, needsTick, pinOf, takeRate, takeSwitch, toastAt,
 } from './cache.ts'
 import { baseCost, pruneCost, recordCost, todayUsd } from './cost.ts'
-import { drawLines, drawWithInput } from './draw.tsx'
+import { drawLines, drawNote, drawWithInput } from './draw.tsx'
+import { REC_HIDDEN, SPINNER_WORD, bandFailed, paneFailed } from './failsafe.ts'
 import { clock, fingerprint, mins, oneLine, printable, tokens, usd, when } from './format.ts'
 import { mask, maskForFile, maskSpans, recLevel, setRec, toast } from './mask.ts'
-import { maskDeep, maskDialog, maskResult, resultLines } from './sites.ts'
+import { maskDeep, maskDialog, maskResult, neutralDialog, resultLines } from './sites.ts'
 import { DROPS_RESULT, callLine, emptyPreview, groupLines } from './compact.ts'
 import type { CompactCall } from './compact.ts'
 import {
@@ -1550,7 +1551,7 @@ export const register: Register = on => {
     if (lines.length === 0) return next(e)
     const press = { inspect: () => inspectFromBand($), compact: () => compactNow($, held), handoff: () => saveNow($) }
     return drawLines($, e, lines, { noColor: await isNoColor($), press })
-  })
+  }).catch(($, e, next) => drawNote($, e, bandFailed(next.error.kind)))
 
   // The main loop's spinner adds its action, context and the agents running; an agent's spinner, that agent's
   on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
@@ -1563,7 +1564,7 @@ export const register: Register = on => {
     const props = word === e.props.word && message === e.props.message ? e.props : { ...e.props, word, message }
     if (text === null) return props === e.props ? next(e) : next({ ...e, props })
     return next({ ...e, props: { ...props, suffix: `${e.props.suffix} ${mask(printable(text))}` } })
-  })
+  }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : next({ ...e, props: { ...e.props, word: SPINNER_WORD, message: null } })))
 
   // REC on Claude Code's rows: each site rewrites its props only while REC is on and masking changes something, else
   // passes next(e) as it came. The stored messages and what the model reads stay as they are.
@@ -1571,19 +1572,19 @@ export const register: Register = on => {
     if (!(await isRecOn($))) return next(e)
     const text = mask(e.props.text)
     return text === e.props.text ? next(e) : next({ ...e, props: { ...e.props, text: printable(text) } })
-  })
+  }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
 
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
     if (!(await isRecOn($))) return next(e)
     const text = mask(e.props.text)
     return text === e.props.text ? next(e) : next({ ...e, props: { ...e.props, text: printable(text) } })
-  })
+  }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
 
   on('ui.render', { component: 'CommandOutput' }, async ($, e, next) => {
     if (!(await isRecOn($))) return next(e)
     const text = mask(e.props.text)
     return text === e.props.text ? next(e) : next({ ...e, props: { ...e.props, text: printable(text) } })
-  })
+  }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
 
   // The tool sites in two steps (Decision 14): /quiet's compact row or emptied result first, then REC over whatever
   // the first hands on. A settled row that is not expanded, or that a group unfolded, draws its compact line.
@@ -1612,7 +1613,7 @@ export const register: Register = on => {
     const output = maskDeep(e.props.output, mask)
     if (input === e.props.input && output === e.props.output) return next(e)
     return next({ ...e, props: { ...e.props, input, ...(output === e.props.output ? {} : { output }) } })
-  })
+  }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
 
   // Under /quiet an errored result draws an empty Box, as Claude Code would draw its whole error text and the compact
   // row above carries ✗ and its error lines, and so does an Edit or Write result (DROPS_RESULT); any other keeps
@@ -1635,7 +1636,7 @@ export const register: Register = on => {
     if (masked.kind === 'output') return next({ ...e, props: { ...props, output: masked.output } })
     const lines = resultLines(masked.text, { isExpanded: e.props.isExpanded === true, isErrored: e.props.isErrored, gutter: e.surface === 'terminal' })
     return drawLines($, e, lines, { noColor: await isNoColor($), press: {} })
-  })
+  }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
 
   // Under /quiet a settled group of calls alone draws its compact lines. One holding another row, or an errored or
   // interrupted call, is unfolded and its calls marked, so each draws its own compact line; a group drawn expanded (the
@@ -1657,13 +1658,13 @@ export const register: Register = on => {
     if (isQuiet && (isRec || !e.props.isActive)) mark(ids)
     else if (!isRec) return next(e)
     return next({ ...e, props: { ...e.props, isExpanded: true } })
-  })
+  }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
 
   on('ui.render', { component: 'AskUserQuestion' }, async ($, e, next) => {
     if (!(await isRecOn($))) return next(e)
     const questions = maskDialog(e.props.questions, maskSpans)
     return questions === e.props.questions ? next(e) : next({ ...e, props: { ...e.props, questions } })
-  })
+  }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : next({ ...e, props: { ...e.props, questions: neutralDialog(e.props.questions) } })))
 
   on('ui.render', { component: 'Pane', requestId: 'inspect' }, async ($, e) => {
     await read($, tick)
@@ -1715,7 +1716,7 @@ export const register: Register = on => {
       if (agent.report !== null) press[`report-${agent.id}`] = () => toggleShown($, `report:${agent.id}`)
     }
     return drawLines($, e, [...bar, ...body], { noColor: await isNoColor($), press })
-  })
+  }).catch(($, e, next) => drawNote($, e, paneFailed(next.error.kind, next.error.message, recLevel() !== 'off')))
 
   // The private-words pane: words are added only here, never through a command's arguments, which the transcript echoes
   on('ui.render', { component: 'Pane', requestId: 'rec' }, async ($, e) => {
@@ -1726,5 +1727,5 @@ export const register: Register = on => {
     const note = r.note === null ? [] : [[{ text: r.note, tone: 'warn' as const }]]
     const input = { key: 'word', label: 'Add a word', submitLabel: 'Add', onSubmit: (value: string) => { void addRecWord($, value) } }
     return drawWithInput($, e, recPaneLines(r.level, words), input, note, { noColor: await isNoColor($), press })
-  })
+  }).catch(($, e, next) => drawNote($, e, paneFailed(next.error.kind, next.error.message, recLevel() !== 'off')))
 }

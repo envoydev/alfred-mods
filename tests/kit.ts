@@ -2,7 +2,8 @@
 import { mock } from 'claude-code/testing'
 import type { Engine, MockClock } from 'claude-code/testing'
 import type {
-  AgentInfo, ClassicResult, On, ProcessRunResult, RenderElement, SessionUsage, Settings, TurnStepInput, TurnStepResult, TurnUsage, UiPane,
+  AgentInfo, ClassicResult, EngineInterface, On, ProcessRunResult, RenderElement, RenderInput, SessionUsage, Settings, TurnStepInput, TurnStepResult,
+  TurnUsage, UiPane,
 } from 'claude-code'
 
 export const NO_READING: SessionUsage = { startedAt: 0, context: { window: 200_000 }, rateLimits: [] }
@@ -252,6 +253,37 @@ export async function rows(ui: { drawn: () => Promise<RenderElement> }): Promise
   }
   walk(await ui.drawn())
   return out
+}
+
+// Claude Code's own drawing of each site the mod rewrites, beneath the mod: the props it was handed, as JSON. The
+// dialog's tree must hold Claude Code's own node, so its stub keeps the props it was handed, newest last, and passes
+// the node on rather than drawing them.
+export function engineSites(on: On): { asked: unknown[] } {
+  const asked: unknown[] = []
+  const json = (h$: EngineInterface, e: RenderInput): RenderElement => {
+    const { Text } = h$.ui.resolve(e)
+    return h(Text, null, JSON.stringify(e.props)) as RenderElement
+  }
+  on('ui.render', { component: 'UserMessage' }, json)
+  on('ui.render', { component: 'AssistantMessage' }, json)
+  on('ui.render', { component: 'CommandOutput' }, json)
+  on('ui.render', { component: 'ToolUse' }, json)
+  on('ui.render', { component: 'ToolResult' }, json)
+  on('ui.render', { component: 'ToolGroup' }, json)
+  on('ui.render', { component: 'AskUserQuestion' }, (_, e) => {
+    asked.push(e.props)
+    return { type: 'engine', ref: 0 } as RenderElement
+  })
+  on('ui.render', { component: 'Spinner' }, json)
+  return { asked }
+}
+
+// Refuses the mod's read of one atom while `key` is set, as a store that fails would: every render hook reads an
+// atom before it draws, so this makes any of them throw
+export function failState(on: On): { key: string | null } {
+  const fail = { key: null as string | null }
+  on('state.get', (_, e, next) => (fail.key !== null && e.key === fail.key ? { deny: 'test: state read refused' } : next(e)))
+  return fail
 }
 
 // A call a test leaves held past its end: the kit rejects it once the test's stubs are gone, which is expected, so the

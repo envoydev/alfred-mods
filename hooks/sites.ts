@@ -139,6 +139,16 @@ export function maskDialog(questions: unknown[], spans: (s: string) => Hit[]): u
   })
 }
 
+// The dialog when its hook failed under REC: every string maskQuestion reaches reads `‹hidden›`, and the option labels
+// stay as asked, as a changed label draws the original dialog. Two or more questions are numbered, `‹hidden 1›`, so
+// no two read the same should the tool's schema hold them distinct: a rewrite outside it draws the original too.
+export function neutralDialog(questions: unknown[]): unknown[] {
+  return questions.map((q, i) => {
+    const out = maskQuestion(q, () => '‹hidden›')
+    return questions.length > 1 && isRecord(out) && typeof out.question === 'string' ? { ...out, question: `‹hidden ${i + 1}›` } : out
+  })
+}
+
 // One question through `fn`, every string but its options' labels
 function maskQuestion(q: unknown, fn: (s: string) => string): unknown {
   if (!isRecord(q) || !Array.isArray(q.options)) return maskDeep(q, fn)

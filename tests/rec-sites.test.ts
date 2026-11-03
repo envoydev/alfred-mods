@@ -1,10 +1,10 @@
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
-import type { EngineInterface, On, RenderElement, RenderInput, RenderPropsOf } from 'claude-code'
+import type { On, RenderPropsOf } from 'claude-code'
 
 import { EMAILS, KEYS } from '../hooks/samples.ts'
 import { maskDeep, maskDialog, maskResult, resultLines } from '../hooks/sites.ts'
-import { PRESENTATION, SPINNER, START, engine, rows, stubAll } from './kit.ts'
+import { PRESENTATION, SPINNER, START, engine, engineSites, rows, stubAll } from './kit.ts'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const EMAIL = EMAILS[0]!.text
@@ -14,32 +14,12 @@ const HOME = { HOME: '/Users/jane' }
 
 const rec = ($: Engine, args: string) => $.command.run({ command: 'rec', args, origin: { kind: 'composer' }, presentation: PRESENTATION })
 
-// The dialog's props as handed beneath the mod, newest last: its tree must hold Claude Code's own node, so the stub
-// passes it on rather than drawing them
-const asked: unknown[] = []
-
-// Claude Code's own drawing of each site, beneath the mod: the props it was handed, as JSON
-function sites(on: On): void {
-  const json = (h$: EngineInterface, e: RenderInput): RenderElement => {
-    const { Text } = h$.ui.resolve(e)
-    return h(Text, null, JSON.stringify(e.props)) as RenderElement
-  }
-  on('ui.render', { component: 'UserMessage' }, json)
-  on('ui.render', { component: 'AssistantMessage' }, json)
-  on('ui.render', { component: 'CommandOutput' }, json)
-  on('ui.render', { component: 'ToolUse' }, json)
-  on('ui.render', { component: 'ToolResult' }, json)
-  on('ui.render', { component: 'ToolGroup' }, json)
-  on('ui.render', { component: 'AskUserQuestion' }, (_, e) => {
-    asked.push(e.props)
-    return { type: 'engine', ref: 0 } as RenderElement
-  })
-  on('ui.render', { component: 'Spinner' }, json)
-}
+// The dialog's props as handed beneath the mod in the running test, newest last (engineSites)
+let asked: unknown[] = []
 
 async function start($: Engine, on: On, level: 'off' | 'on' | 'strict', words: string[] = []): Promise<void> {
   stubAll(on, { env: HOME, store: { 'settings:rec': level, 'rec:words': words } })
-  sites(on)
+  asked = engineSites(on).asked
   engine(on)
   await $.session.start(START)
 }
@@ -164,7 +144,7 @@ for (const surface of SURFACES) {
   // Claude Code draws an errored result's error text, not its `output`, which live is no string (2026-10-28)
   test(`with REC on, an errored ToolResult draws the error text Claude read, masked, whatever its output holds (${surface})`, async ($, on) => {
     stubAll(on, { env: HOME, store: { 'settings:rec': 'on' } })
-    sites(on)
+    asked = engineSites(on).asked
     on('tool.call', () => ({ isError: true as const, result: `Exit code 3\nTOKEN=${KEY.text}`, text: `Exit code 3\nTOKEN=${KEY.text}` }))
     engine(on, ['tool.call'])
     await $.session.start(START)
