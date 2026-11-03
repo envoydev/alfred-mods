@@ -3,7 +3,7 @@
 // imported from another module.
 import { atom, read, update } from 'claude-code'
 import type {
-  EngineInterface, Register, SessionRateLimit, SessionUsage, Timer, TurnStepInput, TurnStepResult, UiOpenResult,
+  EngineInterface, Register, SessionContextBreakdown, SessionRateLimit, SessionUsage, Timer, TurnStepInput, TurnStepResult, UiOpenResult,
 } from 'claude-code'
 
 import { actionOf, isLive, newRow, refreshAgents, statusAt, upsertSpawn } from './agents.ts'
@@ -764,6 +764,8 @@ async function loadQuiet($: EngineInterface): Promise<boolean> {
 const handoffMem = {
   stoodDown: false, rearm: false, pointKey: null as string | null, saving: null as Promise<SaveResult> | null,
   savedStep: null as number | null, armedAt: null as number | null,
+  // The reads of the compaction point that gave no breakdown, for one model and window
+  pointMiss: { key: null as string | null, count: 0 },
 }
 
 // Only ask mode keeps an ask up: a change to auto or off, here or polled from another session, takes it down
@@ -843,13 +845,28 @@ async function readStack($: EngineInterface, r: { exists: boolean; text: string 
 }
 
 // The tokens where Claude Code compacts by itself (Decision 12): the breakdown's `autoCompactThreshold`, else the
-// window; read at the first reading and again when the model or the window changes
+// window; read at the first reading and again when the model or the window changes. A read with no breakdown, or one
+// that fails, gives the window for that reading alone and counts a miss; the third miss for one model and window
+// keeps the window as the point and asks no more.
 async function pointOf($: EngineInterface, window: number): Promise<number> {
   const key = `${(await read($, meta)).model ?? ''}:${window}`
   const known = (await read($, handoff)).point
   if (handoffMem.pointKey === key && known !== null) return known
-  const b = (await $.session.usage({ breakdown: 'summary' })).context.breakdown
-  const point = b !== undefined && b.isAutoCompactEnabled && b.autoCompactThreshold !== undefined ? b.autoCompactThreshold : window
+  if (handoffMem.pointMiss.key !== key) handoffMem.pointMiss = { key, count: 0 }
+  let b: SessionContextBreakdown | undefined
+  try {
+    b = (await $.session.usage({ breakdown: 'summary' })).context.breakdown
+  } catch {
+    b = undefined
+  }
+  if (b === undefined) {
+    const count = ++handoffMem.pointMiss.count
+    const point = count >= 3 ? window : null
+    if (point !== null) handoffMem.pointKey = key
+    await update($, handoff, h => (h.point === point ? h : { ...h, point }))
+    return window
+  }
+  const point = b.isAutoCompactEnabled && b.autoCompactThreshold !== undefined ? b.autoCompactThreshold : window
   handoffMem.pointKey = key
   await update($, handoff, h => (h.point === point ? h : { ...h, point }))
   return point

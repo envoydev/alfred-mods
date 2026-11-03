@@ -5,7 +5,7 @@ import type { On, RenderSurface, SessionUsage } from 'claude-code'
 import { clock as clockText } from '../hooks/format.ts'
 import { KEYS } from '../hooks/samples.ts'
 import type { Handoff, Meta } from '../types'
-import { PRESENTATION, SPAWN, START, engine, gitResult, rows, stubAll, watchState } from './kit.ts'
+import { NO_READING, PRESENTATION, SPAWN, START, engine, gitResult, rows, step, stepEngine, stubAll, watchState } from './kit.ts'
 import type { FileStub } from './kit.ts'
 import { PLAN_JSON, SCORES_JSON } from './plans.ts'
 
@@ -118,6 +118,78 @@ test('with auto-compaction off a 200k window asks at 160k', async ($, on) => {
   expect(h().isAskUp).toBe(false)
   await measure($, 160_000)
   expect(h()).toMatchObject({ isAskUp: true, point: 200_000 })
+})
+
+// A main-loop step on a model, which the mod keeps as the session's model; the test registers stepEngine first
+async function onModel($: Engine, model: string, turnId: string): Promise<void> {
+  await $.turn.start({ text: 'q', turnId })
+  await step($, { turnId, index: 0, model, messageCount: 1 })
+}
+
+test('a first read with no breakdown reads against the window, the second against the point', async ($, on) => {
+  const { usage, h } = await start($, on)
+  await measure($, 150_000)
+  expect(h()).toMatchObject({ isAskUp: false, point: null })
+  usage.current = withPoint(200_000, 160_000)
+  await measure($, 130_000)
+  expect(h()).toMatchObject({ isAskUp: true, point: 160_000, handled: 80 })
+  expect(usage.breakdowns).toBe(2)
+})
+
+test('three misses keep the window and a fourth measurement asks nothing', async ($, on) => {
+  const { usage, h } = await start($, on)
+  for (let i = 0; i < 4; i++) await measure($, 100_000)
+  expect(usage.breakdowns).toBe(3)
+  expect(h().point).toBe(200_000)
+})
+
+test('a read that throws gives the window and counts a miss', async ($, on) => {
+  const { usage, toasts, h } = await start($, on)
+  usage.refuse = true
+  await measure($, 162_000)
+  expect(h()).toMatchObject({ isAskUp: true, handled: 80, point: null })
+  expect(toasts).toEqual([ASK(80)])
+  expect(usage.breakdowns).toBe(1)
+})
+
+test('a model switch starts the count again', async ($, on) => {
+  stepEngine(on, () => null)
+  const { usage } = await start($, on)
+  await onModel($, 'claude-opus-5-5', 't1')
+  await measure($, 100_000)
+  await measure($, 100_000)
+  await onModel($, 'claude-sonnet-5-5', 't2')
+  for (let i = 0; i < 4; i++) await measure($, 100_000)
+  expect(usage.breakdowns).toBe(5)
+})
+
+test('a good read on one model never serves another', async ($, on) => {
+  stepEngine(on, () => null)
+  const { usage, h } = await start($, on, { usage: withPoint(200_000, 160_000) })
+  await onModel($, 'claude-opus-5-5', 't1')
+  await measure($, 100_000)
+  expect(h().point).toBe(160_000)
+  await onModel($, 'claude-sonnet-5-5', 't2')
+  usage.current = NO_READING
+  const points: (number | null)[] = []
+  for (let i = 0; i < 4; i++) {
+    await measure($, 150_000)
+    points.push(h().point)
+    expect(h().isAskUp).toBe(false)
+  }
+  expect(points).toEqual([null, null, 200_000, 200_000])
+  expect(usage.breakdowns).toBe(4)
+})
+
+test('a host with no breakdown asks three times only', async ($, on) => {
+  const { usage, h } = await start($, on)
+  expect(h().point).toBe(null)
+  const asks: number[] = []
+  for (let i = 0; i < 4; i++) {
+    await measure($, 100_000)
+    asks.push(usage.breakdowns)
+  }
+  expect(asks).toEqual([1, 2, 3, 3])
 })
 
 test('a valid status file with fullContext fresh-session stands F8 down', async ($, on) => {

@@ -276,7 +276,8 @@ export function usageLines(b: TabInput): Line[] {
   if (cost.length > 0) out.push([{ text: 'Cost      ' }, { text: `${cost.join(' · ')}${u.windows.length > 0 ? ', est.' : ''}` }])
 
   const t = b.totals
-  const rate = t.stepMs > 0 ? ` · ${Math.round(t.stepOutput / (t.stepMs / 1000))} tok/s` : ''
+  // Output over the main loop's request time, first token and the hooks beneath included: a throughput, not a decode speed
+  const rate = t.stepMs > 0 ? ` · ≈${Math.round(t.stepOutput / (t.stepMs / 1000))} tok/s avg` : ''
   out.push([{ text: 'Tokens    ' }, { text: `in ${tokens(t.input)} · out ${tokens(t.output)} · cache read ${tokens(t.cacheRead)} · cache write ${tokens(t.cacheWrite)}${rate}` }])
   out.push([{ text: `Compactions ${b.meta.compactions}${b.meta.lastCompactAt === null ? '' : `, at ${clock(b.meta.lastCompactAt)}`}` }])
   return out
