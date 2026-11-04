@@ -10,6 +10,8 @@ export type Turn = {
   n: number; turnId: string; promptAt: number | null; replyAt: number; durationMs: number
   tokensIn: number; tokensOut: number; tools: number; failures: number
   contextPercent: number | null; end: TurnEnd
+  // The session's spend while the turn ran, agents included (spec C4); absent in a turn an earlier version kept
+  spendUsd?: number | null
 }
 // Every main-loop call in flight, oldest first
 export type Running = { id: string; tool: string; label: string; startedAt: number }
@@ -45,6 +47,9 @@ export type AgentRow = {
   startedAt: number; endedAt: number | null
   action: string | null; report: string | null; contextTokens: number | null
   tools: Record<string, ToolStat>
+  // The last step's stop reason, `max_tokens` when the agent was cut off (spec C4); absent in a row an earlier version
+  // kept
+  lastStop?: string | null
 }
 export type CacheTier = '5m' | '1h'
 // Read off the 5h and 7d windows: within the plan's usage, on usage credits, or neither window (off a subscription)

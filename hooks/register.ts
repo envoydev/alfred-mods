@@ -301,16 +301,23 @@ async function cacheClose($: EngineInterface): Promise<void> {
   await update($, cache, x => ({ ...x, toastedFor: lastAt }))
 }
 
-// An agent's step: its model and effort, and its context as the sum the engine's own `context_tokens` uses
+// An agent's step: its model and effort, its context as the sum the engine's own `context_tokens` uses, and how it
+// stopped, so a report cut off at max_tokens is flagged (spec C4)
 async function agentStep($: EngineInterface, e: TurnStepInput, step: TurnStepResult): Promise<void> {
   const u = step.usage
   await updateRow($, e.agentId ?? '', r => ({
     ...r, model: e.model, effort: e.effort === undefined ? r.effort : String(e.effort),
     contextTokens: u === null ? r.contextTokens : u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens + u.output_tokens,
+    lastStop: step.stopReason ?? null,
   }))
 }
 
+// The session's cost at the main loop's turn.start, by turn id (spec C4); the main loop runs one turn at a time, so it
+// holds one. A /clear empties it: a turn across it has no start read in the new session.
+const spendMem = new Map<string, number>()
+
 async function resetAll($: EngineInterface): Promise<void> {
+  spendMem.clear()
   await update($, stats, () => INITIAL.stats)
   await update($, failures, () => INITIAL.failures)
   await update($, turns, () => INITIAL.turns)
@@ -613,11 +620,15 @@ async function endTurn($: EngineInterface, turnId: string, durationMs: number, e
   const now = await $.clock.now()
   const before = await read($, meta)
   const counts = await read($, live)
+  // The cost between the turn's start and end; none when either read failed, or under half a cent or negative
+  const start = spendMem.get(turnId)
+  spendMem.delete(turnId)
+  const spend = start === undefined || reading.cost === undefined ? null : reading.cost.usd - start
   await update($, turns, list => {
     const turn: Turn = {
       n: before.turnCount + 1, turnId, promptAt: counts.promptAt,
       replyAt: now, durationMs, ...used, tools: counts.tools, failures: counts.failures,
-      contextPercent: reading.context.percent ?? null, end,
+      contextPercent: reading.context.percent ?? null, end, spendUsd: spend !== null && spend >= 0.005 ? spend : null,
     }
     return [...list, turn].slice(-50)
   })
@@ -1354,6 +1365,13 @@ export const register: Register = on => {
         })
       }
       await update($, live, () => ({ turnId: e.turnId, startedAt, tools: 0, failures: 0, running: [], promptAt }))
+      spendMem.clear()
+      try {
+        const cost = (await $.session.usage()).cost
+        if (cost !== undefined) spendMem.set(e.turnId, cost.usd)
+      } catch {
+        // No start read: the turn's spend is unknown
+      }
     }
     return next(e)
   }).catch(($, e, next) => next(e))
@@ -1711,7 +1729,7 @@ export const register: Register = on => {
       : shown.tab === 'agents' ? agentsLines(input)
       : shown.tab === 'cache' ? cacheLines(input)
       : shown.tab === 'tools' ? toolsLines(input)
-      : shown.tab === 'timeline' ? timelineLines(input.turns, Math.max(3, e.props.scroll.bodyRows - 1 - bar.length))
+      : shown.tab === 'timeline' ? timelineLines(input.turns, Math.max(3, e.props.scroll.bodyRows - 1 - bar.length), u.windows.length > 0)
       : shown.tab === 'plan' ? planLines(d.shown, d.scores, { invalid: d.invalid, others: d.others, otherScores: d.otherScores, updatedAt: d.updatedAt, now, columns: e.props.bodyColumns })
       : nowLines(input)
     const press: Record<string, () => unknown> = {

@@ -115,6 +115,9 @@ export function agentsLines(b: TabInput): Line[] {
     const line: Line = [{ text: t.prefix, tone: 'dim' }, agentGlyph(r), { text: ` ${r.type} · ` }, familySeg(r.model)]
     if (r.effort !== null) line.push({ text: ` ◑ ${r.effort}`, tone: 'dim' })
     line.push({ text: `   ${agentTime(r, b.now)}`, tone: 'dim' })
+    // Its report ends mid-way: the last step stopped at the output limit (spec C4)
+    const isCut = r.lastStop === 'max_tokens'
+    if (isCut) line.push({ text: '   ⚠ max_tokens', tone: 'warn' })
     out.push(line)
     const indent = `${t.prefix.slice(0, -2)}${t.isLast ? '  ' : '│ '}    `
     const doing: Line = [{ text: indent, tone: 'dim' }, { text: 'doing: ', tone: 'dim' }, { text: `"${r.description}"` }]
@@ -124,7 +127,7 @@ export function agentsLines(b: TabInput): Line[] {
     if (!isLive(r.status) && r.report !== null) {
       const isShown = b.view.shown.includes(`report:${r.id}`)
       out.push([
-        { text: indent, tone: 'dim' }, { text: `result: ${fitLine(printable(r.report), 60)}` }, { text: ' ' },
+        { text: indent, tone: 'dim' }, { text: `result${isCut ? ' (cut off)' : ''}: ${fitLine(printable(r.report), 60)}` }, { text: ' ' },
         { button: { key: `report-${r.id}`, label: isShown ? 'Hide report' : 'Show report' } },
       ])
       if (isShown) out.push([{ code: r.report }])
@@ -310,16 +313,23 @@ export function toolsLines(b: TabInput): Line[] {
   return out
 }
 
-// The Timeline's columns before its last, the failures: turn, prompt and reply times, how long, tokens, tools
-const TIMELINE_COLUMNS = [4, 8, 9, 9, 14, 8]
-const timelineRow = (cells: string[], style: { bold?: boolean }): Line => cells.map((text, i) => ({ text, width: TIMELINE_COLUMNS[i] ?? 8, ...style }))
+// The Timeline's columns before its last, the failures: turn, prompt and reply times, how long, tokens, tools, and the
+// session's spend while the turn ran (spec C4), 12 cells when its header says the cost is an estimate
+const TIMELINE_COLUMNS = [4, 8, 9, 9, 14, 8, 8]
+const timelineRow = (cells: string[], style: { bold?: boolean }, spend: number): Line =>
+  cells.map((text, i) => ({ text, width: i === 6 ? spend : TIMELINE_COLUMNS[i] ?? 8, ...style }))
 
-export function timelineLines(turns: Turn[], rows: number): Line[] {
-  const out: Line[] = [[...timelineRow(['#', 'you', 'Claude', 'took', 'in / out', 'tools'], { bold: true }), { text: '✗', bold: true }]]
+export function timelineLines(turns: Turn[], rows: number, isEstimate: boolean): Line[] {
+  const spend = isEstimate ? 12 : 8
+  const head = ['#', 'you', 'Claude', 'took', 'in / out', 'tools', isEstimate ? 'spend, est.' : 'spend']
+  const out: Line[] = [[...timelineRow(head, { bold: true }, spend), { text: '✗', bold: true }]]
   if (turns.length === 0) out.push([{ text: 'No turns yet.', tone: 'dim' }])
   for (const t of [...turns].reverse().slice(0, rows)) {
-    const cells = [String(t.n), t.promptAt === null ? '—' : clock(t.promptAt), clock(t.replyAt), duration(t.durationMs), `${tokens(t.tokensIn)} / ${tokens(t.tokensOut)}`, String(t.tools)]
-    out.push([...timelineRow(cells, {}), t.failures > 0 ? { text: String(t.failures), tone: 'fail' } : { text: '0', tone: 'dim' }])
+    const cells = [
+      String(t.n), t.promptAt === null ? '—' : clock(t.promptAt), clock(t.replyAt), duration(t.durationMs), `${tokens(t.tokensIn)} / ${tokens(t.tokensOut)}`,
+      String(t.tools), t.spendUsd === undefined || t.spendUsd === null ? '-' : usd(t.spendUsd),
+    ]
+    out.push([...timelineRow(cells, {}, spend), t.failures > 0 ? { text: String(t.failures), tone: 'fail' } : { text: '0', tone: 'dim' }])
   }
   return out
 }

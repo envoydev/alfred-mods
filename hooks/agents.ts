@@ -20,7 +20,7 @@ export function newRow(s: Spawned, now: number): AgentRow {
   return {
     id: s.id, parentId: s.parentId, type: s.type, description: oneLine(s.description, 60), ...promptLines(s.prompt),
     isTeammate: s.isTeammate, model: s.model, effort: null, status: 'running', isListed: false,
-    startedAt: now, endedAt: null, action: null, report: null, contextTokens: null, tools: {},
+    startedAt: now, endedAt: null, action: null, report: null, contextTokens: null, tools: {}, lastStop: null,
   }
 }
 

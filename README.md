@@ -33,6 +33,11 @@ in fixed-width cells and margins rather than runs of spaces, for surfaces that d
 Desktop app; a table too wide for its pane shows its leading whole columns, and a failure row cuts its text before it
 gives up its Show and Copy buttons.
 
+An agent whose last step stopped at the output limit ends its Agents row with `⚠ max_tokens`, and its result reads
+`result (cut off): …`, as the report ends mid-way. The Timeline's `spend` is the session's spend while the turn ran,
+agents included (`spend, est.` on a plan, as the Usage tab marks cost); spend while no turn runs, such as an agent
+finishing after the reply, falls in no row, so the column does not sum to the session's cost.
+
 ## Commands
 
 - `/inspect [now|usage|agents|tools|cache|timeline|plan [name]]` opens the pane on a tab, Now when none is named.

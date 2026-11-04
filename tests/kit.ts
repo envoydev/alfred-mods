@@ -33,7 +33,7 @@ export const gitResult = (stdout: string, exitCode = 0, stderr = ''): ProcessRun
 export type FileStub = { text: string; mtimeMs: number; size?: number }
 
 export function stubAll(on: On, o: Options = {}): {
-  clock: MockClock; toasts: string[]; opened: string[]; copied: string[]; usage: { current: SessionUsage; breakdowns: number; refuse: boolean }; panes: UiPane[]
+  clock: MockClock; toasts: string[]; opened: string[]; copied: string[]; usage: { current: SessionUsage; breakdowns: number; refuse: boolean; fail: boolean }; panes: UiPane[]
   listed: { current: AgentInfo[]; calls: number }; files: { current: Record<string, FileStub>; reads: string[]; writes: string[]; exists: string[] }
   // `git.current` and `git.calls`; the draft a test types and the texts the mod filled
   git: { current: ProcessRunResult | string; calls: number; argv: readonly string[] | null; timeoutMs: number | null }; prompt: { draft: string; fills: string[] }
@@ -50,9 +50,10 @@ export function stubAll(on: On, o: Options = {}): {
   const panes: UiPane[] = []
   const copied: string[] = []
   // A test changes the reading mid-test through `usage.current`; `breakdowns` counts the reads asking for a breakdown,
-  // and `refuse` makes those reads fail
-  const usage = { current: o.usage ?? NO_READING, breakdowns: 0, refuse: false }
+  // `refuse` makes those reads fail, and `fail` every read
+  const usage = { current: o.usage ?? NO_READING, breakdowns: 0, refuse: false, fail: false }
   on('session.usage', (_, e) => {
+    if (usage.fail) return { deny: 'test: usage read failed' }
     if (e.breakdown === undefined) return { value: usage.current }
     usage.breakdowns++
     return usage.refuse ? { deny: 'test: usage refused' } : { value: usage.current }

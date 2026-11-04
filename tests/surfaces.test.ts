@@ -283,7 +283,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     await turns($, 2)
     await inspect($, 'timeline')
     const ui = await $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: { ...PANE, bodyColumns: 120 } })
-    expect((await rowsOf(ui)).find(l => l.startsWith('#'))?.trimEnd()).toBe('#   you     Claude   took     in / out      tools   ✗')
+    expect((await rowsOf(ui)).find(l => l.startsWith('#'))?.trimEnd()).toBe('#   you     Claude   took     in / out      tools   spend   ✗')
     await ui.redraw({ ...PANE, bodyColumns: 40 })
     expect((await rowsOf(ui)).find(l => l.startsWith('#'))?.trimEnd()).toBe('#   you     Claude   took')
   })
