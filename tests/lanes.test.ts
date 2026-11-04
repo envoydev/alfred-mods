@@ -15,6 +15,16 @@ function all(tree: unknown, type: string): Drawn[] {
   if (!isDrawn(tree)) return []
   return [...(tree.type === type ? [tree] : []), ...(tree.children ?? []).flatMap(c => all(c, type))]
 }
+// The element whose children hold one of `type`
+function parentOf(tree: unknown, type: string): Drawn | undefined {
+  if (!isDrawn(tree)) return undefined
+  if ((tree.children ?? []).some(c => isDrawn(c) && c.type === type)) return tree
+  for (const c of tree.children ?? []) {
+    const found = parentOf(c, type)
+    if (found !== undefined) return found
+  }
+  return undefined
+}
 
 const mount = async ($: Engine, surface: RenderSurface, columns: number) => {
   await $.command.run({ command: 'inspect', args: 'agents', origin: { kind: 'composer' }, presentation: PRESENTATION })
@@ -43,9 +53,9 @@ async function two($: Engine, on: On, o: Parameters<typeof stubAll>[1] = {}, tas
   return kit
 }
 
-// At 60 columns the bar is 27 cells: a glyph and a space, a 14-cell label, the bar, a space and a 16-cell time
-const LANE_1 = `✓ ${'Explore'.padEnd(14)}${'━'.repeat(14)}${'·'.repeat(13)} done in 4s`
-const LANE_2 = `⟳ ${'task T-7'.padEnd(14)}${'·'.repeat(6)}${'━'.repeat(21)} 6s`
+// At 60 columns the bar is 22 cells: a glyph and a space, a 14-cell label, the bar, a space and a 21-cell time
+const LANE_1 = `✓ ${'Explore'.padEnd(14)}${'━'.repeat(11)}${'·'.repeat(11)} done in 4s`
+const LANE_2 = `⟳ ${'task T-7'.padEnd(14)}${'·'.repeat(5)}${'━'.repeat(17)} 6s`
 
 test('two agents draw lanes between the head and the tree at 60 columns and wider', { timeoutMs: 15_000 }, async ($, on) => {
   await two($, on)
@@ -57,7 +67,7 @@ test('two agents draw lanes between the head and the tree at 60 columns and wide
   const wide = await agentsTab($, 'terminal', 100)
   const at = wide.findIndex(l => l.startsWith('Agents (2)'))
   expect(wide[at + 1]?.startsWith(`✓ ${'Explore'.padEnd(14)}━`)).toBe(true)
-  expect([...(wide[at + 1] ?? '')].filter(c => c === '━' || c === '·').length).toBe(100 - 33)
+  expect([...(wide[at + 1] ?? '')].filter(c => c === '━' || c === '·').length).toBe(100 - 38)
 })
 
 test('under 60 columns draws none', { timeoutMs: 15_000 }, async ($, on) => {
@@ -147,6 +157,27 @@ test('desktop and vscode draw one Svg with a rect per lane in fixed hex', { time
     expect(source.includes('>Explore<')).toBe(true)
     expect(source.includes('>task T-7<')).toBe(true)
     expect((await rows(ui)).some(l => l.includes('━'))).toBe(false)
+    // In a Box as wide as the pane, so the drawing scales down to it rather than spilling past it (release 3 review)
+    const slot = parentOf(tree, 'Svg')
+    expect(slot?.props?.['width']).toBe(60)
+    expect(slot?.props?.['flexShrink'] === 0).toBe(false)
     await ui.unmount()
   }
+})
+
+// The longest time a lane draws, whole (release 3 review: a 16-cell time cut 'stopped after 12m 30s' to 'stopped after 1…')
+test("a lane's time is never cut", { timeoutMs: 15_000 }, async ($, on) => {
+  const kit = stubAll(on)
+  engine(on, ['agent.spawn'])
+  spawns(on, { first: { agentId: 'a1' }, second: { agentId: 'a2' } })
+  await $.session.start(START)
+  await kit.clock.advance(1000)
+  await $.agent.spawn({ ...SPAWN, subagentType: 'Explore', description: 'first' })
+  await kit.clock.advance(1000)
+  await $.agent.spawn({ ...SPAWN, description: 'second' })
+  await kit.clock.advance(749_000)
+  await $.turn.complete(complete('x1', { agentId: 'a1', reason: 'aborted', isAborted: true }))
+  const lanes = (await agentsTab($, 'terminal', 60)).filter(l => l.includes('━'))
+  expect(lanes[0]?.endsWith(' stopped after 12m 30s')).toBe(true)
+  expect([...(lanes[0] ?? '')].length).toBe(60)
 })

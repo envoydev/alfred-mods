@@ -12,12 +12,19 @@ export const NO_PARTS: Parts = { at: null, categories: [], plugins: [], memory: 
 const slashed = (p: string): string => p.replace(/\\/g, '/')
 const isDrive = (p: string): boolean => /^[A-Za-z]:\//.test(p)
 
-// `.claude/CLAUDE.md` for a file under the project, else `User CLAUDE.md`; a Windows path compares without case
+// `.claude/CLAUDE.md` for a file under the project, else `User CLAUDE.md`; a Windows path compares without case. A
+// session at a root or a drive root has no project to name from, and the auto memory's folder under
+// `.claude/projects/` is named after a path: both would keep the user name (the release 3 review), so both take the
+// type and base name.
 export function memoryName(path: string, type: string, cwd: string): string {
   const file = slashed(path)
   const root = slashed(cwd).replace(/\/+$/, '')
   const fold = (p: string): string => (isDrive(file) ? p.toLowerCase() : p)
-  if (root !== '' && fold(file).startsWith(`${fold(root)}/`)) return file.slice(root.length + 1)
+  const isRoot = root === '' || /^[A-Za-z]:$/.test(root)
+  if (!isRoot && fold(file).startsWith(`${fold(root)}/`)) {
+    const inside = file.slice(root.length + 1)
+    if (!/(^|\/)\.claude\/projects\//.test(inside)) return inside
+  }
   return `${type} ${file.split('/').pop() ?? ''}`
 }
 

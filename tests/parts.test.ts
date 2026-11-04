@@ -132,6 +132,15 @@ test('a memory file outside the project is named by type and base name', { timeo
   expect(state.writes.some(w => w.includes('jane'))).toBe(false)
 })
 
+// A session started in the home folder or at a drive root: the auto memory's folder name and a drive path both hold the
+// user name (release 3 review)
+test('a memory file under the home folder or a drive root keeps no user name', () => {
+  expect(memoryName('/Users/jane/.claude/projects/-Users-jane/memory/MEMORY.md', 'AutoMem', '/Users/jane')).toBe('AutoMem MEMORY.md')
+  expect(memoryName('C:\\Users\\jane\\.claude\\CLAUDE.md', 'User', 'C:\\')).toBe('User CLAUDE.md')
+  expect(memoryName('/Users/jane/CLAUDE.md', 'Project', '/')).toBe('Project CLAUDE.md')
+  expect(memoryName('/w/.claude/rules/a.md', 'Project', '/w')).toBe('.claude/rules/a.md')
+})
+
 // Review Focus 4
 test('a Windows memory path is named inside the project', () => {
   expect(memoryName('C:\\Users\\me\\proj\\.claude\\CLAUDE.md', 'Project', 'C:\\Users\\me\\proj')).toBe('.claude/CLAUDE.md')

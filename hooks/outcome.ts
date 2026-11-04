@@ -40,14 +40,14 @@ export function classify(f: CallFacts): { outcome: Outcome; reason: string; isNe
 function hookBlock(text: string, unnamed: string): { outcome: Outcome; reason: string; isNew: boolean; by: string | null } {
   const by = blockerOf(text)
   if (by === null) return { outcome: 'blocked', reason: unnamed, isNew: false, by: null }
-  const message = oneLine(/hook error: \[[^\]\n]*\]:?\s*([\s\S]*)$/.exec(text)?.[1] ?? '', 200).replace(/^Blocked:\s*/i, '')
+  const message = oneLine(/hook error: \[[^\n]*?\]:(?:\s|$)\s*([\s\S]*)$/.exec(text)?.[1] ?? '', 200).replace(/^Blocked:\s*/i, '')
   return { outcome: 'blocked', reason: oneLine(message === '' ? `blocked by ${by}` : `blocked by ${by}: ${message}`, 80), isNew: false, by }
 }
 
 // A plugin's hook names its command before its message ('hook error: [node "…/guard.js"]: Blocked: …'): the message
 // is what the person reads, on one line
 function hookReason(reason: string): string {
-  return oneLine(reason.replace(/^([^[\n]*hook error: )\[[^\]\n]*\]: */, '$1'), 80)
+  return oneLine(reason.replace(/^([^[\n]*hook error: )\[[^\n]*?\]:(?:\s+|$)/, '$1'), 80)
 }
 
 const SCRIPT = /\.(?:js|mjs|cjs|ts|sh|py|ps1|rb)$/
@@ -55,9 +55,10 @@ const SCRIPT = /\.(?:js|mjs|cjs|ts|sh|py|ps1|rb)$/
 // The script a hook's block names (spec C6). Claude Code reports it as 'hook error: [<command>]: <message>', the
 // bracket being the hook's command: the base name of its last token that ends in a script extension, quotes removed,
 // at most 40 printable characters. No path or argument is kept; a command with no script, such as `node -e …`, names
-// none. A second bracket, in the message, is never read.
+// none. The command ends at the first ']: ', so one with brackets of its own (`[ -x a.sh ] && a.sh`) is read whole and a
+// second bracket, in the message, is never read.
 export function blockerOf(text: string): string | null {
-  const command = /hook error: \[([^\]\n]*)\]/.exec(text)?.[1]
+  const command = /hook error: \[([^\n]*?)\]:(?:\s|$)/.exec(text)?.[1]
   if (command === undefined) return null
   const scripts = command.split(/\s+/).map(t => t.replace(/["']/g, '')).filter(t => SCRIPT.test(t))
   const name = scripts[scripts.length - 1]?.split(/[\\/]/).pop() ?? ''

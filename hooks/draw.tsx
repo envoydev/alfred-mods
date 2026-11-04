@@ -51,9 +51,10 @@ function spans(lanes: Lane[], now: number, width: number): Span[] {
   })
 }
 
-// A lane's text line: its glyph, a 14-cell label, the bar, and its time in 16 cells (spec C2)
+// A lane's text line: its glyph, a 14-cell label, the bar, and its time in 21 cells, the longest the tree writes
+// ('stopped after 12m 30s'; the release 3 review: 16 cut it to 'stopped after 1…') (spec C2)
 const LANE_LABEL = 14
-const LANE_TIME = 16
+const LANE_TIME = 21
 function laneLine(l: Lane, s: Span): Line {
   const glyph = statusGlyph(l.status)
   return [
@@ -268,7 +269,9 @@ export function drawLines(
     if (e.surface === 'desktop' || e.surface === 'vscode') {
       const { Svg } = $.ui.resolve(e)
       const alt = show(`${seg.lanes.length} agents on a time axis`)
-      return [<Box key={`line-${n}`} flexDirection="row" {...width} overflow="hidden"><Box flexShrink={0}><Svg source={lanesSvg(seg.lanes, seg.now, o.noColor)} alt={alt} /></Box></Box>]
+      // Straight in a Box as wide as the pane, the slot an unsized Svg scales down to (a Box that cannot shrink gave it
+      // none, the release 3 review)
+      return [<Box key={`line-${n}`} flexDirection="column" {...width} overflow="hidden"><Svg source={lanesSvg(seg.lanes, seg.now, o.noColor)} alt={alt} /></Box>]
     }
     const bar = Math.max(1, o.columns - LANE_LABEL - LANE_TIME - 3)
     const at = spans(seg.lanes, seg.now, bar)

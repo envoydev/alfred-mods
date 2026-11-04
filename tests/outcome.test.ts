@@ -38,6 +38,16 @@ test("a plugin hook's block reads its message on one line, by its script, withou
     .toBe('PreToolUse:Bash hook error: Blocked: no')
 })
 
+// A hook command that holds its own brackets ends at the first ']: ', not the first ']' (release 3 review)
+test('a hook command with brackets of its own keeps the message and no path', () => {
+  const checkReason = 'PreToolUse:Bash hook error: [[ -x "/Users/jane/p/.claude/hooks/guard.sh" ] && "/Users/jane/p/.claude/hooks/guard.sh"]: Blocked: use Monitor'
+  expect(classify({ ...base, checked: 'deny', checkReason, result: { isError: true, deny: null, text: 'x' } }))
+    .toEqual({ outcome: 'blocked', reason: 'blocked by guard.sh: use Monitor', isNew: false, by: 'guard.sh' })
+  const unnamed = 'PreToolUse:Bash hook error: [[ -f /Users/jane/x ] && exit 2]: Blocked: no'
+  expect(classify({ ...base, checked: 'deny', checkReason: unnamed, result: { isError: true, deny: null, text: 'x' } }).reason)
+    .toBe('PreToolUse:Bash hook error: Blocked: no')
+})
+
 test("the person's No is denied", () => {
   expect(classify({ ...base, checked: 'ask', asked: true, result: { isError: true, deny: null, text: 'rejected' } }))
     .toEqual({ outcome: 'denied', reason: 'denied by you', isNew: true, by: null })
