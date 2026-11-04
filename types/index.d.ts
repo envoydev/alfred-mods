@@ -128,6 +128,14 @@ export type Stack = {
   updatedAt: number | null; readAt: number | null; ignored: string[]
 }
 
+// What fills the context (spec C1), from the last breakdown read: `at` null before one. Categories of kind `used` only;
+// plugins by name, from their agents and skills; memory files named inside the project, else by type and base name.
+export type PartsPlugin = { name: string; agents: number; agentTokens: number; skills: number; skillTokens: number }
+export type Parts = {
+  at: number | null; categories: { name: string; tokens: number }[]; plugins: PartsPlugin[]
+  memory: { files: number; tokens: number; top: { name: string; tokens: number }[] }
+}
+
 declare module 'claude-code' {
   interface PluginState {
     'session-inspector': {
@@ -138,6 +146,7 @@ declare module 'claude-code' {
       stack: Shaped<Stack>
       // Blocks per hook script this session (spec C6), so the failure list's cap loses no count
       blockers: Shaped<Record<string, number>>
+      parts: Shaped<Parts>
     }
   }
 }

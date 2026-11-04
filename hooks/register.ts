@@ -14,6 +14,7 @@ import {
 import { baseCost, pruneCost, recordCost, todayUsd } from './cost.ts'
 import { drawLines, drawNote, drawWithInput } from './draw.tsx'
 import { REC_HIDDEN, SPINNER_WORD, bandFailed, paneFailed } from './failsafe.ts'
+import { NO_PARTS, partsOf } from './parts.ts'
 import { clock, fingerprint, mins, oneLine, printable, tokens, usd, when } from './format.ts'
 import { mask, maskForFile, maskSpans, recLevel, setRec, toast } from './mask.ts'
 import { maskDeep, maskDialog, maskResult, neutralDialog, resultLines } from './sites.ts'
@@ -93,6 +94,7 @@ const INITIAL = {
     hasPrompt: false, updatedAt: null, readAt: null, ignored: [],
   } as Stack,
   blockers: {} as Record<string, number>,
+  parts: NO_PARTS,
 }
 
 // Change a tag when that value's fields change: it declines what an earlier version stored, which outlives a reload.
@@ -116,6 +118,7 @@ const quiet = atom({ plugin: 'session-inspector', key: 'quiet' } as const, INITI
 const handoff = atom({ plugin: 'session-inspector', key: 'handoff' } as const, INITIAL.handoff, { shape: 'handoff-1' })
 const stack = atom({ plugin: 'session-inspector', key: 'stack' } as const, INITIAL.stack, { shape: 'stack-1' })
 const blockers = atom({ plugin: 'session-inspector', key: 'blockers' } as const, INITIAL.blockers, { shape: 'blockers-1' })
+const parts = atom({ plugin: 'session-inspector', key: 'parts' } as const, INITIAL.parts, { shape: 'parts-1' })
 
 const NO_FACTS: Omit<CallFacts, 'tool'> = {
   checked: null, checkReason: null, asked: false, failedInTool: false, interrupted: false, classifierReason: null, hookDeny: null, result: null,
@@ -356,6 +359,8 @@ async function resetAll($: EngineInterface): Promise<void> {
   await update($, handoff, () => INITIAL.handoff)
   await update($, stack, () => INITIAL.stack)
   await update($, blockers, () => INITIAL.blockers)
+  await update($, parts, () => INITIAL.parts)
+  partsMem.lastAt = null
 }
 
 // Every session's step and overhead time in the store; this session's own totals are the credit atom's
@@ -662,6 +667,8 @@ async function endTurn($: EngineInterface, turnId: string, durationMs: number, e
 async function openInspect($: EngineInterface, tab: Tab): Promise<UiOpenResult> {
   const opening = $.ui.open({ id: 'inspect', title: 'Inspect' })
   await update($, view, v => ({ ...v, tab }))
+  // The Usage tab reads the context's parts again when the last read is over a minute old
+  if (tab === 'usage' && (partsMem.lastAt === null || (await $.clock.now()) - partsMem.lastAt > 60_000)) readBreakdownSoon($)
   const opened = await opening
   if (!opened.isPlaced) return opened
   if (tab === 'now' || tab === 'tools') {
@@ -874,6 +881,33 @@ async function readStack($: EngineInterface, r: { exists: boolean; text: string 
   await update($, stack, s => (JSON.stringify(s) === JSON.stringify(next) ? s : next))
 }
 
+// The time of the last breakdown read that gave one, for the Usage tab's 60-second rule (spec C1)
+const partsMem = { lastAt: null as number | null }
+
+// One breakdown read serves the compaction point and the context's parts (spec C1): a read that gives one writes the
+// parts atom; a read that fails or gives none is null, and the parts stay as they were
+async function readBreakdown($: EngineInterface): Promise<SessionContextBreakdown | null> {
+  let b: SessionContextBreakdown | undefined
+  try {
+    b = (await $.session.usage({ breakdown: 'summary' })).context.breakdown
+  } catch {
+    return null
+  }
+  if (b === undefined) return null
+  const now = await $.clock.now()
+  const next = partsOf(b, await $.session.cwd(), now)
+  partsMem.lastAt = now
+  await update($, parts, () => next)
+  return b
+}
+
+// A read off the hook path, after a compaction or as the Usage tab opens stale (spec C1)
+function readBreakdownSoon($: EngineInterface): void {
+  $.clock.after(0, () => {
+    readBreakdown($).catch(() => undefined)
+  })
+}
+
 // The tokens where Claude Code compacts by itself (Decision 12): the breakdown's `autoCompactThreshold`, else the
 // window; read at the first reading and again when the model or the window changes. A read with no breakdown, or one
 // that fails, gives the window for that reading alone and counts a miss; the third miss for one model and window
@@ -883,13 +917,8 @@ async function pointOf($: EngineInterface, window: number): Promise<number> {
   const known = (await read($, handoff)).point
   if (handoffMem.pointKey === key && known !== null) return known
   if (handoffMem.pointMiss.key !== key) handoffMem.pointMiss = { key, count: 0 }
-  let b: SessionContextBreakdown | undefined
-  try {
-    b = (await $.session.usage({ breakdown: 'summary' })).context.breakdown
-  } catch {
-    b = undefined
-  }
-  if (b === undefined) {
+  const b = await readBreakdown($)
+  if (b === null) {
     const count = ++handoffMem.pointMiss.count
     const point = count >= 3 ? window : null
     if (point !== null) handoffMem.pointKey = key
@@ -1477,7 +1506,10 @@ export const register: Register = on => {
 
   on('session.compact', async ($, e, next) => {
     const compacted = await next(e)
-    if (e.agentId === undefined && e.trigger !== 'precompute' && compacted.skip === undefined) await countCompaction($, held)
+    if (e.agentId === undefined && e.trigger !== 'precompute' && compacted.skip === undefined) {
+      await countCompaction($, held)
+      readBreakdownSoon($)
+    }
     return compacted
   }).catch(($, e, next) => next(e))
 
@@ -1739,7 +1771,7 @@ export const register: Register = on => {
       now, columns: e.props.bodyColumns, isWorking: counts.turnId !== null, live: counts, usage: u,
       meta: m, turns: await read($, turns), newFailures: rows.filter(f => f.isNew).length,
       pace: await read($, pace), failures: rows, stats: await read($, stats), totals: await read($, totals), view: shown,
-      agents: await read($, agents), cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score, blockers: await read($, blockers),
+      agents: await read($, agents), cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score, blockers: await read($, blockers), parts: await read($, parts),
       rec: recOf(await read($, rec)), forecast: forecastOf(h, u, runway), handoff: handoffView(h, u, counts.turnId !== null, runway),
       stack: { view: st, prompt: stackMem.prompt, runway, sessionModel: m.model },
     }

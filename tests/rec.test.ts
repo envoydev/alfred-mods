@@ -187,7 +187,9 @@ test('masking a masked string changes nothing', () => {
   expect(maskText(c, '‹email 2› and ‹user›')).toBe('‹email 2› and ‹user›')
 })
 
-test("a 1 MB line masks in under 15 times a 100 kB line's time", () => {
+// Linear reads about 10 (10.1 to 10.5 alone, 2026-11-04) and quadratic about 100; the suite's parallel test processes
+// pushed it to 18, so the bound leaves room for them
+test("a 1 MB line masks in under 25 times a 100 kB line's time", () => {
   const c = compile('on', Array.from({ length: 100 }, (_, i) => `wrd${i}q`), null)
   const small = base64(100_000)
   const big = base64(1_000_000)
@@ -203,7 +205,7 @@ test("a 1 MB line masks in under 15 times a 100 kB line's time", () => {
     return best
   }
   const ratio = time(big) / time(small)
-  expect(ratio).toBeLessThan(15)
+  expect(ratio).toBeLessThan(25)
 })
 
 test('a second mask of the same string is the cached result', () => {

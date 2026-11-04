@@ -6,19 +6,20 @@ import type { BandInput, Line, Seg, Tone } from './band.ts'
 import { clock, duration, fitLine, modelParts, modelText, printable, tokens, usd, when } from './format.ts'
 import { pace, turnsLeft } from './forecast.ts'
 import { handoffLines } from './handoff.ts'
+import { partsLines } from './parts.ts'
 import type { HandoffView } from './handoff.ts'
 import { planSection } from './planlines.ts'
 import { recStatus } from './rec.ts'
 import { stackLines } from './stack.ts'
 import type { Runway } from './stack.ts'
 
-import type { AgentRow, Failure, Stack, Tab, ToolStat, Totals, Turn, View } from '../types'
+import type { AgentRow, Failure, Parts, Stack, Tab, ToolStat, Totals, Turn, View } from '../types'
 
 // `stack`: Alfred Code's status as last read, its resume prompt from module memory, the runway and the session's model
 export type TabInput = BandInput & {
   failures: Failure[]; stats: Record<string, ToolStat>; totals: Totals; view: View; handoff?: HandoffView
-  // Blocks per hook script (spec C6)
-  blockers?: Record<string, number>
+  // Blocks per hook script (spec C6); what fills the context (spec C1)
+  blockers?: Record<string, number>; parts?: Parts
   stack?: { view: Stack; prompt: string | null; runway: Runway | null; sessionModel: string | null }
 }
 
@@ -287,6 +288,7 @@ export function usageLines(b: TabInput): Line[] {
   // Output over the main loop's request time, first token and the hooks beneath included: a throughput, not a decode speed
   const rate = t.stepMs > 0 ? ` · ≈${Math.round(t.stepOutput / (t.stepMs / 1000))} tok/s avg` : ''
   out.push([{ text: 'Tokens', width: LABEL }, { text: `in ${tokens(t.input)} · out ${tokens(t.output)} · cache read ${tokens(t.cacheRead)} · cache write ${tokens(t.cacheWrite)}${rate}` }])
+  if (b.parts !== undefined) out.push(...partsLines(b.parts))
   out.push([{ text: `Compactions ${b.meta.compactions}${b.meta.lastCompactAt === null ? '' : `, at ${clock(b.meta.lastCompactAt)}`}` }])
   return out
 }
