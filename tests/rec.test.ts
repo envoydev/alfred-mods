@@ -187,25 +187,27 @@ test('masking a masked string changes nothing', () => {
   expect(maskText(c, '‹email 2› and ‹user›')).toBe('‹email 2› and ‹user›')
 })
 
-// Linear reads about 10 (10.1 to 10.5 alone, 2026-11-04) and quadratic about 100; the suite's parallel test processes
-// pushed it to 18, so the bound leaves room for them
-test("a 1 MB line masks in under 25 times a 100 kB line's time", () => {
+// Linear reads about 10 (10.1 to 10.5 alone, 2026-11-04) and quadratic about 100. The suite's parallel test processes
+// pushed a ratio timed one size after the other to 25.5, so the sizes are timed in turn, each its best of 7, and the
+// bound sits between the noise and quadratic
+test("a 1 MB line masks in under 40 times a 100 kB line's time", () => {
   const c = compile('on', Array.from({ length: 100 }, (_, i) => `wrd${i}q`), null)
   const small = base64(100_000)
   const big = base64(1_000_000)
   maskText(c, small)
   maskText(c, big)
-  const time = (text: string): number => {
-    let best = Infinity
-    for (let i = 0; i < 5; i++) {
-      const at = performance.now()
-      maskText(c, text)
-      best = Math.min(best, performance.now() - at)
-    }
-    return best
+  const once = (text: string): number => {
+    const at = performance.now()
+    maskText(c, text)
+    return performance.now() - at
   }
-  const ratio = time(big) / time(small)
-  expect(ratio).toBeLessThan(25)
+  let bestSmall = Infinity
+  let bestBig = Infinity
+  for (let i = 0; i < 7; i++) {
+    bestSmall = Math.min(bestSmall, once(small))
+    bestBig = Math.min(bestBig, once(big))
+  }
+  expect(bestBig / bestSmall).toBeLessThan(40)
 })
 
 test('a second mask of the same string is the cached result', () => {
