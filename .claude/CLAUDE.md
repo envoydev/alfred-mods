@@ -5,7 +5,8 @@
 `session-inspector`, a Claude Code mod, and its own plugin marketplace, `alfred-mods`. A mod is a plugin with a hooks
 module (`hooks/hooks.json` `modules`), loaded by Claude Code 2.1.287 or later
 (https://code.claude.com/docs/en/plugins/mods/overview). The repo root is the plugin, and
-`.claude-plugin/marketplace.json` lists it with `"source": "./"`; users install it as `session-inspector@alfred-mods`.
+`.claude-plugin/marketplace.json` lists it with `"source": "./"`. Users install it as `session-inspector@envoydev`;
+`session-inspector@alfred-mods` is the development route.
 
 The mod shows session metrics, tool failures, agents, cache, plan progress, a handoff, an on-screen mask and compact
 tool rows, in one band and an `/inspect` pane. Its design record, decisions and build phases are
