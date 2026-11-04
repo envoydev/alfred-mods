@@ -1,8 +1,9 @@
 // Agents as rows: what a spawn says, how a run ends, which rows are kept, the tree they draw and their tool counts.
 import type { AgentInfo } from 'claude-code'
 
-import { oneLine } from './format.ts'
-import type { AgentRow, AgentStatus, ToolStat, TurnEnd } from '../types'
+import { oneLine, tokens } from './format.ts'
+import type { Line } from './band.ts'
+import type { AgentRow, AgentStatus, Loop, ToolStat, TurnEnd } from '../types'
 
 // The first word of a prompt's first `plan:` and `task:` lines; nothing else of the prompt is kept, the rest of either
 // line included, as a model may write its brief on it
@@ -54,6 +55,25 @@ export function refreshAgents(rows: AgentRow[], listed: readonly AgentInfo[], no
     if (l === undefined) return r.isListed ? { ...r, status: 'completed' as const, endedAt: now } : r
     return { ...r, isListed: true, status: l.status, endedAt: isLive(l.status) ? null : now, parentId: r.parentId ?? l.parentId ?? null }
   })
+}
+
+// Loops no spawn announced (spec C3): a step adds to its loop, or starts one; the newest 60 are kept
+export function addLoopStep(loops: Loop[], id: string, output: number, now: number): Loop[] {
+  const known = loops.find(l => l.id === id)
+  if (known !== undefined) return loops.map(l => (l === known ? { ...l, steps: l.steps + 1, output: l.output + output, lastAt: now } : l))
+  return [...loops, { id, steps: 1, output, firstAt: now, lastAt: now, isDone: false }].slice(-60)
+}
+
+// D3 found workflow agents raise agent.spawn, so what is left is a compaction's or a fork's loop
+export const LOOPS_NOTE = '(no spawn: compactions, forks)'
+
+// The Agents tab's line after the tree while any loop was seen: how many, how many active (not done, a step in the
+// last 15 seconds), their output, then the dim note
+export function loopsLine(loops: Loop[], now: number, note: string): Line[] {
+  if (loops.length === 0) return []
+  const active = loops.filter(l => !l.isDone && now - l.lastAt < 15_000).length
+  const output = loops.reduce((sum, l) => sum + l.output, 0)
+  return [[{ text: `Other loops ${loops.length} · ${active} active · out ${tokens(output)}` }], [{ text: note, tone: 'dim' }]]
 }
 
 // A teammate waits for its next message; any other agent's run ends

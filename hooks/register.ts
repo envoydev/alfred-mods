@@ -6,7 +6,7 @@ import type {
   EngineInterface, Register, SessionContextBreakdown, SessionRateLimit, SessionUsage, Timer, TurnStepInput, TurnStepResult, UiOpenResult,
 } from 'claude-code'
 
-import { actionOf, isLive, newRow, refreshAgents, statusAt, upsertSpawn } from './agents.ts'
+import { actionOf, addLoopStep, isLive, newRow, refreshAgents, statusAt, upsertSpawn } from './agents.ts'
 import { bandLines, spinnerSuffix } from './band.ts'
 import {
   addRequest, afterCompact, billingOf, cacheView, idleOf, minutes, needsTick, pinOf, takeRate, takeSwitch, toastAt,
@@ -38,7 +38,7 @@ import { classify, fold, targetOf, toolKey } from './outcome.ts'
 import { LEVELS, REC_HELP, addWord, parseLevel, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec.ts'
 import type { CallFacts } from './outcome.ts'
 import type {
-  AgentRow, Cache, CacheConfig, Credit, Failure, Handoff, Live, Meta, Outcome, Pace, Plan, PlanChange, Level, Plans, Quiet, RecState, SaveResult, Scores, Stack, Tab, TaskItem, ToolStat, Totals, Turn, Usage, View,
+  AgentRow, Cache, CacheConfig, Credit, Failure, Handoff, Live, Loop, Meta, Outcome, Pace, Plan, PlanChange, Level, Plans, Quiet, RecState, SaveResult, Scores, Stack, Tab, TaskItem, ToolStat, Totals, Turn, Usage, View,
   Watched, Window,
 } from '../types'
 
@@ -95,6 +95,7 @@ const INITIAL = {
   } as Stack,
   blockers: {} as Record<string, number>,
   parts: NO_PARTS,
+  loops: [] as Loop[],
 }
 
 // Change a tag when that value's fields change: it declines what an earlier version stored, which outlives a reload.
@@ -119,6 +120,7 @@ const handoff = atom({ plugin: 'session-inspector', key: 'handoff' } as const, I
 const stack = atom({ plugin: 'session-inspector', key: 'stack' } as const, INITIAL.stack, { shape: 'stack-1' })
 const blockers = atom({ plugin: 'session-inspector', key: 'blockers' } as const, INITIAL.blockers, { shape: 'blockers-1' })
 const parts = atom({ plugin: 'session-inspector', key: 'parts' } as const, INITIAL.parts, { shape: 'parts-1' })
+const loops = atom({ plugin: 'session-inspector', key: 'loops' } as const, INITIAL.loops, { shape: 'loops-1' })
 
 const NO_FACTS: Omit<CallFacts, 'tool'> = {
   checked: null, checkReason: null, asked: false, failedInTool: false, interrupted: false, classifierReason: null, hookDeny: null, result: null,
@@ -326,7 +328,14 @@ async function cacheClose($: EngineInterface): Promise<void> {
 // stopped, so a report cut off at max_tokens is flagged (spec C4)
 async function agentStep($: EngineInterface, e: TurnStepInput, step: TurnStepResult): Promise<void> {
   const u = step.usage
-  await updateRow($, e.agentId ?? '', r => ({
+  const id = e.agentId ?? ''
+  // A loop no spawn announced is counted apart (spec C3)
+  if (!(await read($, agents)).some(r => r.id === id)) {
+    const now = await $.clock.now()
+    await update($, loops, list => addLoopStep(list, id, u?.output_tokens ?? 0, now))
+    return
+  }
+  await updateRow($, id, r => ({
     ...r, model: e.model, effort: e.effort === undefined ? r.effort : String(e.effort),
     contextTokens: u === null ? r.contextTokens : u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens + u.output_tokens,
     lastStop: step.stopReason ?? null,
@@ -360,6 +369,7 @@ async function resetAll($: EngineInterface): Promise<void> {
   await update($, stack, () => INITIAL.stack)
   await update($, blockers, () => INITIAL.blockers)
   await update($, parts, () => INITIAL.parts)
+  await update($, loops, () => INITIAL.loops)
   partsMem.lastAt = null
 }
 
@@ -1164,6 +1174,8 @@ export const register: Register = on => {
       }, now)
       await update($, agents, rows => upsertSpawn(rows, row, e.resume !== undefined))
       await addMark($, markOf(row))
+      // Its first step came before its spawn resolved: the loop is this agent's
+      if ((await read($, loops)).some(l => l.id === id)) await update($, loops, list => list.filter(l => l.id !== id))
     }
     return spawned
   }).catch(($, e, next) => next(e))
@@ -1463,7 +1475,11 @@ export const register: Register = on => {
   on('turn.complete', async ($, e, next) => {
     const done = await next(e)
     await closeLoops($, held, [e.agentId ?? 'main'], await $.clock.now(), false)
-    if (e.agentId !== undefined && !(await read($, agents)).some(r => r.id === e.agentId)) return done
+    if (e.agentId !== undefined && !(await read($, agents)).some(r => r.id === e.agentId)) {
+      const id = e.agentId
+      if ((await read($, loops)).some(l => l.id === id)) await update($, loops, list => list.map(l => (l.id === id ? { ...l, isDone: true } : l)))
+      return done
+    }
     if (e.agentId !== undefined) {
       const now = await $.clock.now()
       const reason = e.reason
@@ -1772,6 +1788,7 @@ export const register: Register = on => {
       meta: m, turns: await read($, turns), newFailures: rows.filter(f => f.isNew).length,
       pace: await read($, pace), failures: rows, stats: await read($, stats), totals: await read($, totals), view: shown,
       agents: await read($, agents), cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score, blockers: await read($, blockers), parts: await read($, parts),
+      loops: await read($, loops),
       rec: recOf(await read($, rec)), forecast: forecastOf(h, u, runway), handoff: handoffView(h, u, counts.turnId !== null, runway),
       stack: { view: st, prompt: stackMem.prompt, runway, sessionModel: m.model },
     }

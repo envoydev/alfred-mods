@@ -1,5 +1,5 @@
 // Each /inspect tab, from the session's values to lines of styled segments.
-import { agentTree, isLive, toolSummary } from './agents.ts'
+import { LOOPS_NOTE, agentTree, isLive, loopsLine, toolSummary } from './agents.ts'
 import { REC_MARK, barSegs, cacheWarning, pctSeg, windowsInOrder, working } from './band.ts'
 import { IDLE_COMPACT_MS, billingOf, cacheLine, cacheView, selfCompacts, toastAt } from './cache.ts'
 import type { BandInput, Line, Seg, Tone } from './band.ts'
@@ -13,13 +13,13 @@ import { recStatus } from './rec.ts'
 import { stackLines } from './stack.ts'
 import type { Runway } from './stack.ts'
 
-import type { AgentRow, Failure, Parts, Stack, Tab, ToolStat, Totals, Turn, View } from '../types'
+import type { AgentRow, Failure, Loop, Parts, Stack, Tab, ToolStat, Totals, Turn, View } from '../types'
 
 // `stack`: Alfred Code's status as last read, its resume prompt from module memory, the runway and the session's model
 export type TabInput = BandInput & {
   failures: Failure[]; stats: Record<string, ToolStat>; totals: Totals; view: View; handoff?: HandoffView
-  // Blocks per hook script (spec C6); what fills the context (spec C1)
-  blockers?: Record<string, number>; parts?: Parts
+  // Blocks per hook script (spec C6); what fills the context (spec C1); loops no spawn announced (spec C3)
+  blockers?: Record<string, number>; parts?: Parts; loops?: Loop[]
   stack?: { view: Stack; prompt: string | null; runway: Runway | null; sessionModel: string | null }
 }
 
@@ -143,6 +143,7 @@ export function agentsLines(b: TabInput): Line[] {
     if (parts.length > 0) out.push([{ text: indent, tone: 'dim' }, ...parts.flatMap((p, i) => (i === 0 ? p : [{ text: '   ' }, ...p]))])
   }
   if (b.agents.length === 0) out.push([{ text: 'No agents yet.', tone: 'dim' }])
+  out.push(...loopsLine(b.loops ?? [], b.now, LOOPS_NOTE))
   const skills = skillsLine(b.stats)
   if (skills !== null) out.push(skills)
   return out

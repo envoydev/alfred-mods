@@ -53,6 +53,9 @@ export type AgentRow = {
   // kept
   lastStop?: string | null
 }
+// A model loop no spawn announced (spec C3): its steps and output tokens, first and last step, and whether its
+// turn.complete came
+export type Loop = { id: string; steps: number; output: number; firstAt: number; lastAt: number; isDone: boolean }
 export type CacheTier = '5m' | '1h'
 // Read off the 5h and 7d windows: within the plan's usage, on usage credits, or neither window (off a subscription)
 export type Billing = 'plan' | 'credits' | 'other'
@@ -147,6 +150,7 @@ declare module 'claude-code' {
       // Blocks per hook script this session (spec C6), so the failure list's cap loses no count
       blockers: Shaped<Record<string, number>>
       parts: Shaped<Parts>
+      loops: Shaped<Loop[]>
     }
   }
 }
