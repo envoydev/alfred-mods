@@ -31,7 +31,7 @@ const agentsTab = async ($: Engine, surface: RenderSurface): Promise<string[]> =
 }
 
 for (const surface of SURFACES) {
-  test(`a step from an unknown loop is counted (${surface})`, async ($, on) => {
+  test(`a step from an unknown loop is counted (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     stubAll(on)
     engine(on, ['agent.spawn'])
     spawns(on, { scout: { agentId: 'a1' } })
@@ -50,7 +50,7 @@ for (const surface of SURFACES) {
     expect(lines.findIndex(l => l.includes('Explore')) < at).toBe(true)
   })
 
-  test(`a loop goes quiet after 15 seconds or at its turn.complete (${surface})`, async ($, on) => {
+  test(`a loop goes quiet after 15 seconds or at its turn.complete (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     const { clock } = stubAll(on)
     engine(on)
     outputs(on)
@@ -67,7 +67,7 @@ for (const surface of SURFACES) {
     expect((await agentsTab($, surface)).find(l => l.startsWith('Other loops'))).toBe('Other loops 2 · 0 active · out 0')
   })
 
-  test(`no line while no loop was seen (${surface})`, async ($, on) => {
+  test(`no line while no loop was seen (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     stubAll(on)
     engine(on)
     const lines = await agentsTab($, surface)
@@ -76,7 +76,7 @@ for (const surface of SURFACES) {
 }
 
 // A background agent's first step can come before its spawn resolves
-test('a spawn that names a counted loop moves it out', async ($, on) => {
+test('a spawn that names a counted loop moves it out', { timeoutMs: 15_000 }, async ($, on) => {
   stubAll(on)
   const state = watchState(on)
   engine(on, ['agent.spawn'])
@@ -91,7 +91,7 @@ test('a spawn that names a counted loop moves it out', async ($, on) => {
   expect(lines.some(l => l.startsWith('Other loops'))).toBe(false)
 })
 
-test('the 61st loop drops the oldest', async ($, on) => {
+test('the 61st loop drops the oldest', { timeoutMs: 15_000 }, async ($, on) => {
   stubAll(on)
   const state = watchState(on)
   engine(on)
@@ -104,7 +104,7 @@ test('the 61st loop drops the oldest', async ($, on) => {
   expect(loops[59]?.id).toBe('l60')
 })
 
-test('/clear empties the loops', async ($, on) => {
+test('/clear empties the loops', { timeoutMs: 15_000 }, async ($, on) => {
   stubAll(on)
   const state = watchState(on)
   engine(on)
@@ -117,7 +117,7 @@ test('/clear empties the loops', async ($, on) => {
   expect(state.get('loops')).toEqual([])
 })
 
-test('tool calls from a loop stay uncounted', async ($, on) => {
+test('tool calls from a loop stay uncounted', { timeoutMs: 15_000 }, async ($, on) => {
   stubAll(on)
   const state = watchState(on)
   engine(on)

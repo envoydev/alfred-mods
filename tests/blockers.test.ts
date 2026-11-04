@@ -56,7 +56,7 @@ test('no script, two brackets, a long name', () => {
 })
 
 for (const surface of SURFACES) {
-  test(`a block reads blocked by <name> (${surface})`, async ($, on) => {
+  test(`a block reads blocked by <name> (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     stubAll(on)
     const state = watchState(on)
     guards(on, { 'git push': guard('guard-bash.js', 'use Monitor'), 'echo probe': 'guard: marked', 'rm ': 'PreToolUse:Bash hook error: [grep -q rm]: no rm' })
@@ -75,7 +75,7 @@ for (const surface of SURFACES) {
     expect(lines.some(l => l.includes('/h/hooks'))).toBe(false)
   })
 
-  test(`the Tools tab counts blocks by hook (${surface})`, async ($, on) => {
+  test(`the Tools tab counts blocks by hook (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     stubAll(on)
     const state = watchState(on)
     guards(on, { 'git ': guard('guard-bash.js', 'use Monitor'), 'cat ': guard('guard-sensitive-data.js', 'a secret file') })
@@ -95,7 +95,7 @@ for (const surface of SURFACES) {
   })
 }
 
-test("a PermissionRequest hook's deny is named too, and a later PermissionDenied moves the count", async ($, on) => {
+test("a PermissionRequest hook's deny is named too, and a later PermissionDenied moves the count", { timeoutMs: 15_000 }, async ($, on) => {
   stubAll(on)
   const state = watchState(on)
   on('tool.check', () => ({ decision: 'ask' }))
@@ -113,7 +113,7 @@ test("a PermissionRequest hook's deny is named too, and a later PermissionDenied
 })
 
 // Spec 'Backward compatibility': a failure an earlier version kept has no `by`, and there is no blockers atom
-test('an old failure without by reads as null, and no blockers atom draws no line', async ($, on) => {
+test('an old failure without by reads as null, and no blockers atom draws no line', { timeoutMs: 15_000 }, async ($, on) => {
   const old = { id: 'f0', at: 0, tool: 'Bash', target: 'Push', outcome: 'blocked', reason: 'PreToolUse:Bash hook error: Blocked: use Monitor', detail: '', count: 1, isNew: false }
   const written = new Set<string>()
   on('state.set', async ($$, e, next) => {

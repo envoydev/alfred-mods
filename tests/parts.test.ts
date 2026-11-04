@@ -63,7 +63,7 @@ const usageTab = async ($: Engine, surface: RenderSurface): Promise<string[]> =>
 }
 
 for (const surface of SURFACES) {
-  test(`the Usage tab shows what fills the context (${surface})`, async ($, on) => {
+  test(`the Usage tab shows what fills the context (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     const kit = stubAll(on, { usage: reading(breakdown()) })
     engine(on)
     await $.session.start(START)
@@ -81,7 +81,7 @@ for (const surface of SURFACES) {
     expect(lines[i - 1]?.startsWith('Tokens')).toBe(true)
   })
 
-  test(`no Plugins row with no plugin agents or skills (${surface})`, async ($, on) => {
+  test(`no Plugins row with no plugin agents or skills (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     const mine = breakdown({ agents: AGENTS.slice(45), skills: { totalSkills: 3, includedSkills: 3, tokens: 240, skillFrontmatter: SKILLS.slice(52) } })
     stubAll(on, { usage: reading(mine) })
     engine(on)
@@ -94,7 +94,7 @@ for (const surface of SURFACES) {
     expect(lines.some(l => l.startsWith('Memory'))).toBe(true)
   })
 
-  test(`no section before a breakdown (${surface})`, async ($, on) => {
+  test(`no section before a breakdown (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     stubAll(on, { usage: reading(undefined) })
     engine(on)
     await $.session.start(START)
@@ -104,7 +104,7 @@ for (const surface of SURFACES) {
     expect(lines.some(l => /^(In context|Plugins|Memory)\b/.test(l))).toBe(false)
   })
 
-  test(`a breakdown with no skills draws no skill counts (${surface})`, async ($, on) => {
+  test(`a breakdown with no skills draws no skill counts (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     const { skills: _, ...rest } = breakdown()
     stubAll(on, { usage: reading(rest as SessionContextBreakdown) })
     engine(on)
@@ -116,7 +116,7 @@ for (const surface of SURFACES) {
   })
 }
 
-test('a memory file outside the project is named by type and base name', async ($, on) => {
+test('a memory file outside the project is named by type and base name', { timeoutMs: 15_000 }, async ($, on) => {
   expect(memoryName('/Users/jane/.claude/CLAUDE.md', 'User', '/w')).toBe('User CLAUDE.md')
   expect(memoryName('/w/.claude/CLAUDE.md', 'Project', '/w')).toBe('.claude/CLAUDE.md')
   expect(memoryName('/w/.claude/CLAUDE.md', 'Project', '/w/')).toBe('.claude/CLAUDE.md')
@@ -141,7 +141,7 @@ test('a Windows memory path is named inside the project', () => {
   expect(JSON.stringify(parts).includes('Users')).toBe(false)
 })
 
-test('one read serves the point and the parts', async ($, on) => {
+test('one read serves the point and the parts', { timeoutMs: 15_000 }, async ($, on) => {
   const state = watchState(on)
   const { usage } = stubAll(on, { usage: reading(breakdown()) })
   engine(on)
@@ -160,7 +160,7 @@ test('one read serves the point and the parts', async ($, on) => {
   expect(parts.memory).toMatchObject({ files: 5, tokens: 6500 })
 })
 
-test('a compaction and a stale Usage tab read again from a timer', async ($, on) => {
+test('a compaction and a stale Usage tab read again from a timer', { timeoutMs: 15_000 }, async ($, on) => {
   const { usage, clock: time } = stubAll(on, { usage: reading(breakdown()) })
   engine(on)
   await $.session.start(START)

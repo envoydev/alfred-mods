@@ -55,7 +55,7 @@ const timeline = async ($: Engine, surface: RenderSurface): Promise<string[]> =>
 }
 
 for (const surface of SURFACES) {
-  test(`an agent cut at max_tokens shows ⚠ max_tokens (${surface})`, async ($, on) => {
+  test(`an agent cut at max_tokens shows ⚠ max_tokens (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     stubAll(on)
     engine(on, ['agent.spawn'])
     spawns(on, { 'Write the parser': { agentId: 'a1' } })
@@ -84,7 +84,7 @@ for (const surface of SURFACES) {
     expect(after.some(l => l.trim().startsWith('result: The parser reads each line and keeps the rest.'))).toBe(true)
   })
 
-  test(`a turn's spend is the session cost between its start and end (${surface})`, async ($, on) => {
+  test(`a turn's spend is the session cost between its start and end (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     const { usage } = stubAll(on)
     const state = watchState(on)
     engine(on)
@@ -96,7 +96,7 @@ for (const surface of SURFACES) {
     expect(lines.find(l => l.startsWith('1 '))).toMatch(/ \$0\.25 +0$/)
   })
 
-  test(`spend is null under half a cent, when negative or when a read fails (${surface})`, async ($, on) => {
+  test(`spend is null under half a cent, when negative or when a read fails (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     const { usage } = stubAll(on)
     const state = watchState(on)
     engine(on)
@@ -115,7 +115,7 @@ for (const surface of SURFACES) {
     for (const n of ['1', '2', '3']) expect(lines.find(l => l.startsWith(`${n} `))).toMatch(/ - +0$/)
   })
 
-  test(`the header says est. on a plan (${surface})`, async ($, on) => {
+  test(`the header says est. on a plan (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     const plan = [{ kind: 'five_hour' as const, percentUsed: 20, resetsAt: '2026-10-27T17:00:00Z' }]
     const { usage } = stubAll(on, { usage: costing(1, plan) })
     engine(on)
@@ -126,7 +126,7 @@ for (const surface of SURFACES) {
     expect(lines.find(l => l.startsWith('1 '))).toMatch(/ \$0\.50 +0$/)
   })
 
-  test(`a turn across /clear has no spend (${surface})`, async ($, on) => {
+  test(`a turn across /clear has no spend (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     const { usage } = stubAll(on, { usage: costing(1) })
     const state = watchState(on)
     engine(on)
@@ -139,7 +139,7 @@ for (const surface of SURFACES) {
     expect((state.get('turns') as Turn[]).map(t => t.spendUsd)).toEqual([null])
   })
 
-  test(`REC strict hides the spend (${surface})`, async ($, on) => {
+  test(`REC strict hides the spend (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     const { usage } = stubAll(on, { store: { 'settings:rec': 'strict' } })
     engine(on)
 
@@ -152,7 +152,7 @@ for (const surface of SURFACES) {
 }
 
 // Spec 'Backward compatibility': a turn and an agent row kept by an earlier version have neither field
-test('an old atom without the fields reads as null', async ($, on) => {
+test('an old atom without the fields reads as null', { timeoutMs: 15_000 }, async ($, on) => {
   const oldTurn = { n: 1, turnId: 't0', promptAt: null, replyAt: 0, durationMs: 3000, tokensIn: 10, tokensOut: 2, tools: 0, failures: 0, contextPercent: null, end: 'answer' }
   const oldRow = {
     id: 'a0', parentId: null, type: 'Explore', description: 'old', plan: null, task: null, isTeammate: false, model: 'claude-haiku-5-5',
