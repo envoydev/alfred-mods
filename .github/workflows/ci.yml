@@ -14,7 +14,7 @@ concurrency:
 
 env:
   # The build each release was checked against; a release moves it
-  CLAUDE_CODE_VERSION: 2.1.317
+  CLAUDE_CODE_VERSION: 2.1.318
   TYPESCRIPT_VERSION: 6.0.3
   # Keep the pinned CLI from updating itself or sending telemetry
   DISABLE_AUTOUPDATER: 1

@@ -38,6 +38,22 @@ An agent whose last step stopped at the output limit ends its Agents row with `�
 agents included (`spend, est.` on a plan, as the Usage tab marks cost); spend while no turn runs, such as an agent
 finishing after the reply, falls in no row, so the column does not sum to the session's cost.
 
+The Usage tab shows what fills the context, from Claude Code's own estimate: `In context` lists each part (system
+prompt, tools, agents, memory files, messages), `Plugins` each plugin's agents and skills with their tokens, and
+`Memory` the memory files with the three largest. It reads again after a compaction, and when the tab opens a minute or
+more after the last read. A memory file outside the project is named by its type and base name, never its path.
+
+With two agents or more and a pane 60 columns wide, the Agents tab draws them on one time axis above the tree, one
+lane each, the newest 8; the Desktop app and VS Code draw it as a picture. Model loops that no Agent call started are
+counted apart on one line, `Other loops 2 · 1 active · out 41k`; their tool calls are not counted.
+
+A call a hook blocked names the hook's script, `⊘ blocked by guard.js: …`, and the Tools tab counts blocks by script
+under `Blocked by hooks`.
+
+While something needs you - recording mode on, the context at 60% or more, new failures - the mod pins one line under
+the prompt, `⚠ session-inspector: ● REC · ctx 82% · ✗ 2 new`, which stays while the band is collapsed (Ctrl+X Ctrl+A).
+It changes only when its text does, and clears once nothing needs you.
+
 ## Commands
 
 - `/inspect [now|usage|agents|tools|cache|timeline|plan [name]]` opens the pane on a tab, Now when none is named.
@@ -113,6 +129,10 @@ start, every 30 seconds and after `/clear`, and shows more:
 - **The resume prompt:** while the pane has the focus (Ctrl+X Tab, or a click in fullscreen), `f` fills the stack's
   prompt into an empty prompt box, never sending it. Enter in the prompt box sends it; in the terminal the focus is
   back there after the fill. With something already typed, a toast says to clear it first.
+
+The stack's own parts show as any plugin's do, the status file aside: the Usage tab names `alfred-code` with its
+agents' tokens, the Tools tab names its guards (`blocked by shell-guards.js: …`), and its dispatched agents take their
+`task:` id as their lane's label.
 
 Without Alfred Code, or when the file is missing, has another schema or names another session, the band shows none of
 this, and the ALFRED CODE section shows one dim line with the reason, such as `Alfred Code: no status file for this

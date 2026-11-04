@@ -254,11 +254,21 @@ Context   ▰▰▱▱▱ 45%   90k / 200k     ≈6 turns to 80%
 7d        ▰▰▰▱▱ 62%   resets 31.10 09:00   on pace
 Cost      $3.12 session · $18.49 today, est.
 Tokens    in 412k · out 38k · cache read 1.9M · cache write 210k · ≈70 tok/s avg
+In context  est. 14:52 · System prompt 3.1k · System tools 12k · Custom agents 9.8k · Messages 61k
+Plugins     alfred-code 11k: 45 agents, 38 skills · superpowers 1.4k: 14 skills
+Memory      5 files 6.5k · .claude/CLAUDE.md 2.1k · User CLAUDE.md 1.5k · AutoMem MEMORY.md 1.2k · +2
 Account   Max 20x · <account>              Compactions 1, at 14:40
 ```
 
+`In context`, `Plugins` and `Memory` are Claude Code's own estimate of what fills the context, by part, by plugin (its
+agents and skills) and by memory file (spec C1). A file outside the project is named by its type and base name, so no
+home path is kept.
+
 ```text
 Agents (3)                                             opus 1 · haiku 2
+✓ general-purp… ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━········ done in 1m 5s
+⟳ Explore       ·····━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2m 15s
+⟳ Plan          ···························━━━━━━━━━━━ 40s
 ⟳ Explore [haiku ◑ medium]  Finding auth code                   2m 15s
    ▸ Grep 'AuthService' in src/
    ctx ▱▱▱▱▱ 17%   tools Read ×6 ✓ · Grep ×3 ✓ · Bash ×1 ✗
@@ -266,7 +276,16 @@ Agents (3)                                             opus 1 · haiku 2
    ▸ Read src/auth/token.ts
 ✓ general-purpose [haiku]  Check test coverage                  done in 1m 05s
    result: 12 files, 3 untested services                        [Show report]
+✗ general-purpose [haiku]  Write the summary         failed after 20s   ⚠ max_tokens
+   result (cut off): The module splits into three …              [Show report]
+Other loops 2 · 1 active · out 41k
+(no spawn: compactions, forks)
 ```
+
+With two agents or more and 60 columns, the agents sit on one time axis between the head and the tree, oldest first,
+the newest 8, labelled `task <id>` from a dispatch's `task:` line or by type (spec C2); the Desktop app and VS Code draw
+the axis as one SVG. An agent whose last step stopped at the output limit ends its row with `⚠ max_tokens` (C4). Model
+loops no `agent.spawn` announced are counted on one line, active while a step came in the last 15 seconds (C3).
 
 ```text
 Tools                   calls   ok   ✗   ⊘
@@ -275,13 +294,17 @@ Edit                        9    8   1   0
 Bash                        9    5   1   3
 Skill: plan-builder         2    2   0   0
 mcp: context7               3    3   0   0
+Blocked by hooks  guard.js ×2 · shell-guards.js ×1
 
 Last failures and blocks
 ✗ 14:21  Edit  src/auth/token.ts   old_string not found          [Show] [Copy]
 ✗ 14:09  Bash  npm test            exit 1: 2 failing tests       [Show] [Copy]
-⊘ 14:03  Bash  sleep 25; gh run…   blocked: use Monitor ×2       [Show]
+⊘ 14:03  Bash  sleep 25; gh run…   blocked by guard.js: use Monitor ×2   [Show]
 ⊘ 13:55  Bash  rm -rf dist         denied by you
 ```
+
+A hook's block names the script its command runs, `blocked by guard.js: …`, and `Blocked by hooks` counts blocks by
+script, most first (spec C6); a hook command with no script keeps the message alone.
 
 ```text
 Cache      TTL 1h · expires 15:05, in 52m
@@ -291,10 +314,13 @@ If cold    rewrite ≈ $1.12 on Opus 5.5                          [Compact]
 ```
 
 ```text
-#   you     Claude   took     in / out      tools   ✗
-7   14:02   14:05    3m 10s   12k / 2.1k    9       1
-6   13:51   13:52    48s      8k / 0.9k     3       0
+#   you     Claude   took     in / out      tools   spend   ✗
+7   14:02   14:05    3m 10s   12k / 2.1k    9       $0.42   1
+6   13:51   13:52    48s      8k / 0.9k     3       -       0
 ```
+
+`spend` is the session's spend while the turn ran, agents included, `-` under half a cent, and `spend, est.` on a plan
+(spec C4). Spend while no turn runs falls in no row, so the column does not sum to the session's cost.
 
 ```text
 Plan · Token refresh              3/5 · ≈1h 37m total · ≈30m left (×1.2)
@@ -1322,7 +1348,7 @@ No known blocker: the core features rest on documented events. The material risk
 | MATERIAL | The person can collapse the band, and the mod cannot tell | ctrl+x ctrl+a or `[-]` | Every item that needs you also raises a toast or shows in the Now tab (agent) |
 | MATERIAL | The Desktop and VS Code checks of every phase need the real account | A phase's Desktop check | Run only on the user's word, else reported NOT RUN; the terminal checks run under an isolated config (agent) |
 | MATERIAL | Two homes for a full context: F8 Handoff and the stack's guard-fresh-session-start hook, which offers a fresh session before a heavy run on a full context | Both act as context nears its limit | With a valid status file, the stack owns handoff and F8 only shows the state (Phase 5's `f` in the ALFRED CODE section fills the stack's prompt); without one, F8's own handoff is the only one (agent) |
-| MATERIAL | Calls come from agents no `agent.spawn` announced, such as the engine-internal one auto mode ran a failing ToolSearch under (probe I 266) | Auto mode, background engine work | F2 and F3 count only the main loop and agents seen at `agent.spawn` (agent) |
+| MATERIAL | Calls come from agents no `agent.spawn` announced, such as the engine-internal one auto mode ran a failing ToolSearch under (probe I 266) | Auto mode, background engine work | F2 and F3 count only the main loop and agents seen at `agent.spawn`; the Agents tab counts their loops apart as `Other loops`, while their tool calls stay uncounted (spec C3) (agent) |
 | MATERIAL | The cache tier and write rate are known only after a model switch (probe I 240) | A session with no `/model` switch | F4 hides the expiry clock, its toast and the rewrite cost until then; hit rate and cached tokens always show (agent) |
 | MATERIAL | Only macOS is checked here, and the mod must work on Windows and Linux too | A path, line ending or `$.process` difference | The Platforms limit; each phase reports Windows and Linux NOT RUN until a machine runs them (agent) |
 | MATERIAL | A Bash call draws as a ToolUse row on the main screen and as a ToolGroup line in fullscreen's normal view, and the layout can change with sign-in alone (probe question 10) | F10 built and checked in one layout only | F10 hooks all three sites; Phase 4 checks /quiet on and off in both layouts (agent) |
