@@ -39,6 +39,8 @@ export function stubAll(on: On, o: Options = {}): {
   git: { current: ProcessRunResult | string; calls: number; argv: readonly string[] | null; timeoutMs: number | null }; prompt: { draft: string; fills: string[] }
   // Each `$.ui.invalidate` event the mod raised, in order
   invalidates: string[]
+  // Each `$.ui.status` text the mod set, in order; undefined is a clear
+  statuses: (string | undefined)[]
   // `set` writes as another session would, beneath the mod
   store: { get(key: string): unknown; keys(): string[]; set(key: string, value: unknown): void }
   // A test changes the session id mid-test, as a /clear does, through `session.id`
@@ -135,6 +137,11 @@ export function stubAll(on: On, o: Options = {}): {
     invalidates.push(e.event)
     return { value: undefined }
   })
+  const statuses: (string | undefined)[] = []
+  on('ui.status', (_, e) => {
+    statuses.push(e.text)
+    return { value: undefined }
+  })
   on('ui.copy', (_, e) => {
     copied.push(e.text)
     return { value: { isCopied: true } }
@@ -171,7 +178,7 @@ export function stubAll(on: On, o: Options = {}): {
     set: (key: string, value: unknown): void => void stored.set(key, JSON.parse(JSON.stringify(value)) as unknown),
   }
   mock.env(on, o.env ?? {})
-  return { clock, toasts, opened, copied, usage, panes, listed, files, store, session, git, prompt, invalidates }
+  return { clock, toasts, opened, copied, usage, panes, listed, files, store, session, git, prompt, invalidates, statuses }
 }
 
 // Claude Code's own answers to the events a session raises, for a test that drives a whole turn. A test hooks an

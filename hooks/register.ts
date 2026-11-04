@@ -7,7 +7,7 @@ import type {
 } from 'claude-code'
 
 import { actionOf, addLoopStep, isLive, newRow, refreshAgents, statusAt, upsertSpawn } from './agents.ts'
-import { bandLines, spinnerSuffix } from './band.ts'
+import { bandLines, spinnerSuffix, statusText } from './band.ts'
 import {
   addRequest, afterCompact, billingOf, cacheView, idleOf, minutes, needsTick, pinOf, takeRate, takeSwitch, toastAt,
 } from './cache.ts'
@@ -238,6 +238,7 @@ async function settle($: EngineInterface, id: string, call: Call): Promise<void>
     running: l.running.filter(r => r.id !== id),
   }))
   if (isMain && before === null) await update($, meta, m => ({ ...m, mainCalls: m.mainCalls + 1 }))
+  await syncStatus($)
 }
 
 const windowsOf = (limits: readonly SessionRateLimit[]): Window[] =>
@@ -273,6 +274,26 @@ async function tickOnce($: EngineInterface): Promise<void> {
   }
   const isWarm = needsTick(await read($, cache), billingOf((await read($, usage)).windows), now)
   if (anyLive || isWarm || (await read($, live)).turnId !== null) await update($, tick, n => n + 1)
+  // A failure the pane marked seen, a /clear or a stack file read leaves the line as it was until here
+  await syncStatus($)
+}
+
+// The status line under the prompt, which Claude Code draws while the band is collapsed (spec D2): set only when its
+// text changes, cleared once nothing needs the person. The context's percent is the band's, against the runway while
+// it applies. `last` is null until the module's first call, which is always sent: a line an earlier copy of the mod
+// pinned before a reload is cleared or replaced at once.
+const statusMem = { last: null as string | undefined | null }
+async function syncStatus($: EngineInterface): Promise<void> {
+  const u = await read($, usage)
+  const runway = runwayOf(await read($, stack), u, (await read($, meta)).model)
+  const raw = statusText({
+    percent: runway?.percent ?? u.percent, newFailures: (await read($, failures)).filter(f => f.isNew).length,
+    recLevel: (await read($, rec)).level,
+  })
+  const text = raw === null ? undefined : mask(raw)
+  if (text === statusMem.last) return
+  statusMem.last = text
+  $.ui.status(text)
 }
 
 // The variables and settings that pin the cache's tier or turn idle compaction off, written only on a change
@@ -769,6 +790,7 @@ async function loadRec($: EngineInterface, note: string | null = null): Promise<
     $.ui.invalidate('ui.render')
   }
   await update($, rec, r => (r.level === level && r.count === words.length && r.note === note ? r : { level, count: words.length, note }))
+  await syncStatus($)
 }
 
 // Whether a site masks: mask.ts's level, which a /clear, a resume or a fork leaves as it was while the atom is reset;
@@ -1517,6 +1539,7 @@ export const register: Register = on => {
     }))
     for (const text of await trackPace($, e.rateLimits, at)) toast($, text)
     await stepHandoff($, e.context.tokens, e.context.window)
+    await syncStatus($)
     return measured
   }).catch(($, e, next) => next(e))
 

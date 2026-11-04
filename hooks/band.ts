@@ -239,6 +239,17 @@ function withPlanTail(b: BandInput, line: Line): Line {
 
 export const REC_MARK: Seg = { text: '● REC', tone: 'fail', bold: true }
 
+// The status line under the prompt (spec D2), which stays while the band is collapsed: what needs the person, short
+// and in the band's order - REC, the context once the band turns hot at 60, the new failures - or null for none
+export function statusText(o: { percent: number | null; newFailures: number; recLevel: Level }): string | null {
+  const parts = [
+    o.recLevel === 'off' ? null : '● REC',
+    o.percent !== null && Math.round(o.percent) >= 60 ? `ctx ${pct(o.percent)}` : null,
+    o.newFailures > 0 ? `✗ ${o.newFailures} new` : null,
+  ].filter((p): p is string => p !== null)
+  return parts.length === 0 ? null : parts.join(' · ')
+}
+
 // A red '● REC' while REC is on, then Alfred Code's mode banner, lead line 1 in every state, never dropped for width:
 // the body's first line follows them while it fits what is left, else they take line 1 alone and the body keeps the
 // full width, so no gauge, reset or the cost drops for them
