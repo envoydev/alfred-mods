@@ -45,7 +45,8 @@ import type {
 // `pendingMs`: a call the person was asked about, settled before its `duration_ms` arrived, waits for it.
 type Call = {
   facts: CallFacts; key: string; tool: string; target: string; agentId: string | null
-  settled: boolean; outcome: Outcome | null; rowId: string | null
+  // `by`: the hook script its last settle counted a block for
+  settled: boolean; outcome: Outcome | null; rowId: string | null; by: string | null
   startedAt: number | null; durationMs: number | null; pendingMs: number | null
 }
 
@@ -91,6 +92,7 @@ const INITIAL = {
     state: 'none', reason: null, fullContext: null, model: null, window: null, resumeAt: null, noOffer: false, autoRun: null, scorer: null,
     hasPrompt: false, updatedAt: null, readAt: null, ignored: [],
   } as Stack,
+  blockers: {} as Record<string, number>,
 }
 
 // Change a tag when that value's fields change: it declines what an earlier version stored, which outlives a reload.
@@ -113,6 +115,7 @@ const rec = atom({ plugin: 'session-inspector', key: 'rec' } as const, INITIAL.r
 const quiet = atom({ plugin: 'session-inspector', key: 'quiet' } as const, INITIAL.quiet, { shape: 'quiet-1' })
 const handoff = atom({ plugin: 'session-inspector', key: 'handoff' } as const, INITIAL.handoff, { shape: 'handoff-1' })
 const stack = atom({ plugin: 'session-inspector', key: 'stack' } as const, INITIAL.stack, { shape: 'stack-1' })
+const blockers = atom({ plugin: 'session-inspector', key: 'blockers' } as const, INITIAL.blockers, { shape: 'blockers-1' })
 
 const NO_FACTS: Omit<CallFacts, 'tool'> = {
   checked: null, checkReason: null, asked: false, failedInTool: false, interrupted: false, classifierReason: null, hookDeny: null, result: null,
@@ -146,13 +149,13 @@ async function isPaneShown($: EngineInterface): Promise<boolean> {
 }
 
 // A failure row for a call that was not ok; it is seen at once while the pane shows Now or Tools
-async function addRow($: EngineInterface, id: string, call: Call, outcome: Exclude<Outcome, 'ok'>, reason: string, isNew: boolean, drop: string | null): Promise<void> {
+async function addRow($: EngineInterface, id: string, call: Call, outcome: Exclude<Outcome, 'ok'>, reason: string, isNew: boolean, drop: string | null, by: string | null): Promise<void> {
   const { tab } = await read($, view)
   const isSeen = (tab === 'now' || tab === 'tools') && await isPaneShown($)
   const result = call.facts.result
   const row: Failure = {
     id, at: await $.clock.now(), tool: call.tool, target: call.target, outcome, reason,
-    detail: (result?.deny ?? result?.text ?? '').slice(0, 4000), count: 1, isNew: isNew && !isSeen,
+    detail: (result?.deny ?? result?.text ?? '').slice(0, 4000), count: 1, isNew: isNew && !isSeen, by,
   }
   await update($, failures, list => {
     const i = drop === null ? -1 : list.findIndex(f => f.id === drop)
@@ -194,7 +197,7 @@ function compactOf(id: string | undefined, c: { tool: string; input: unknown; ou
 
 // Counts a settled call, or counts it again when a later event changed its outcome
 async function settle($: EngineInterface, id: string, call: Call): Promise<void> {
-  const { outcome, reason, isNew } = classify(call.facts)
+  const { outcome, reason, isNew, by } = classify(call.facts)
   compactMem.outcomes.delete(id)
   compactMem.outcomes.set(id, { outcome, reason })
   keepLast(compactMem.outcomes)
@@ -205,7 +208,22 @@ async function settle($: EngineInterface, id: string, call: Call): Promise<void>
     ({ ...s, [call.key]: before === null ? tally(s[call.key], outcome, 1) : tally(tally(s[call.key], before, -1), outcome, 1) })
   await update($, stats, retally)
   if (call.agentId !== null) await updateRow($, call.agentId, r => ({ ...r, tools: retally(r.tools) }))
-  if (outcome !== 'ok') await addRow($, id, call, outcome, reason, isNew, before !== null && before !== 'ok' ? call.rowId : null)
+  if (outcome !== 'ok') await addRow($, id, call, outcome, reason, isNew, before !== null && before !== 'ok' ? call.rowId : null, by)
+  // A block counts for the script that made it; a later settle that names another blocker moves the count (spec C6)
+  const counted = call.by
+  call.by = by
+  if (counted !== by) {
+    await update($, blockers, b => {
+      const out = { ...b }
+      if (counted !== null) {
+        const n = (out[counted] ?? 0) - 1
+        if (n > 0) out[counted] = n
+        else delete out[counted]
+      }
+      if (by !== null) out[by] = (out[by] ?? 0) + 1
+      return out
+    })
+  }
   const isMain = call.agentId === null
   const failed = (o: Outcome | null): number => (o !== null && o !== 'ok' ? 1 : 0)
   await update($, live, l => ({
@@ -337,6 +355,7 @@ async function resetAll($: EngineInterface): Promise<void> {
   await update($, quiet, () => INITIAL.quiet)
   await update($, handoff, () => INITIAL.handoff)
   await update($, stack, () => INITIAL.stack)
+  await update($, blockers, () => INITIAL.blockers)
 }
 
 // Every session's step and overhead time in the store; this session's own totals are the credit atom's
@@ -1095,7 +1114,7 @@ export const register: Register = on => {
     let call = calls.get(id)
     if (call === undefined) {
       call = {
-        facts: { tool, ...NO_FACTS }, key: tool, tool, target: '', agentId: null, settled: false, outcome: null, rowId: null,
+        facts: { tool, ...NO_FACTS }, key: tool, tool, target: '', agentId: null, settled: false, outcome: null, rowId: null, by: null,
         startedAt: null, durationMs: null, pendingMs: null,
       }
       calls.set(id, call)
@@ -1720,7 +1739,7 @@ export const register: Register = on => {
       now, columns: e.props.bodyColumns, isWorking: counts.turnId !== null, live: counts, usage: u,
       meta: m, turns: await read($, turns), newFailures: rows.filter(f => f.isNew).length,
       pace: await read($, pace), failures: rows, stats: await read($, stats), totals: await read($, totals), view: shown,
-      agents: await read($, agents), cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score,
+      agents: await read($, agents), cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score, blockers: await read($, blockers),
       rec: recOf(await read($, rec)), forecast: forecastOf(h, u, runway), handoff: handoffView(h, u, counts.turnId !== null, runway),
       stack: { view: st, prompt: stackMem.prompt, runway, sessionModel: m.model },
     }

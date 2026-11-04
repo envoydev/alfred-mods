@@ -4,6 +4,8 @@ export type ToolStat = { calls: number; ok: number; failed: number; stopped: num
 export type Failure = {
   id: string; at: number; tool: string; target: string
   outcome: Exclude<Outcome, 'ok'>; reason: string; detail: string; count: number; isNew: boolean
+  // The hook script that blocked the call (spec C6); absent in a row an earlier version kept
+  by?: string | null
 }
 export type TurnEnd = 'answer' | 'aborted' | 'refusal' | 'error'
 export type Turn = {
@@ -134,6 +136,8 @@ declare module 'claude-code' {
       view: Shaped<View>; pace: Shaped<Pace>; agents: Shaped<AgentRow[]>; cache: Shaped<Cache>; tick: number
       plans: Shaped<Plans>; credit: Shaped<Credit>; tasks: Shaped<TaskItem[]>; rec: Shaped<RecState>; quiet: Shaped<Quiet>; handoff: Shaped<Handoff>
       stack: Shaped<Stack>
+      // Blocks per hook script this session (spec C6), so the failure list's cap loses no count
+      blockers: Shaped<Record<string, number>>
     }
   }
 }

@@ -17,6 +17,8 @@ import type { AgentRow, Failure, Stack, Tab, ToolStat, Totals, Turn, View } from
 // `stack`: Alfred Code's status as last read, its resume prompt from module memory, the runway and the session's model
 export type TabInput = BandInput & {
   failures: Failure[]; stats: Record<string, ToolStat>; totals: Totals; view: View; handoff?: HandoffView
+  // Blocks per hook script (spec C6)
+  blockers?: Record<string, number>
   stack?: { view: Stack; prompt: string | null; runway: Runway | null; sessionModel: string | null }
 }
 
@@ -306,6 +308,9 @@ export function toolsLines(b: TabInput): Line[] {
     const row = toolRow([key, ...[s.calls, s.ok, s.failed, s.stopped].map(String)], first, {})
     out.push(key.startsWith('Skill:') ? [{ text: key, width: first, tone: 'skill' }, ...row.slice(1)] : row)
   }
+  // Which hook scripts blocked calls, most first, counted past the failure list's cap (spec C6)
+  const named = Object.entries(b.blockers ?? {}).filter(([, n]) => n > 0).sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0]))
+  if (named.length > 0) out.push([{ text: 'Blocked by hooks' }, { text: `  ${named.map(([name, n]) => `${name} ×${n}`).join(' · ')}` }])
   out.push([{ text: 'Last failures and blocks', bold: true }])
   if (b.failures.length === 0) out.push([{ text: 'None.', tone: 'dim' }])
   for (const f of [...b.failures].reverse()) out.push(...failureRows(f, b.view.shown))
