@@ -158,9 +158,9 @@ Colour marks three things: state, model and feature. Every state keeps its glyph
 
 | Role | Colour | Where |
 | --- | --- | --- |
-| OK | green `#22c55e` | ✓, a bar's fill and its percent under 60%, score ▲, on pace, ● live |
-| Warning | amber `#f59e0b` | ⚠, ⊘ denied, a bar's fill and its percent from 60 to 85%, a forecast that misses its reset time |
-| Failure | red `#ef4444` | ✗, a bar's fill and its percent over 85%, NEEDS A LOOK, score ▼, ● REC |
+| OK | the theme's `success` (green) | ✓, a bar's fill and its percent under 60%, score ▲, on pace, ● live |
+| Warning | the theme's `warning` (amber) | ⚠, ⊘ denied, a bar's fill and its percent from 60 to 85%, a forecast that misses its reset time |
+| Failure | the theme's `error` (red) | ✗, a bar's fill and its percent over 85%, NEEDS A LOOK, score ▼, ● REC |
 | Running | bold default text | ⟳ rows; no colour, so amber keeps meaning warning |
 | Secondary | the terminal's dim colour | Empty bar cells, separators, times, error text |
 | Opus, Sonnet, Haiku, Fable | `#ff8c1a`, `#3d9bff`, `#19c3a6`, `#d16bff` | Model badges in the band, agent rows and spinners |
@@ -174,6 +174,10 @@ Colour marks three things: state, model and feature. Every state keeps its glyph
 - **Bars:** filled cells and the percent beside them take the state colour, and empty cells stay dim (the user, 2026-10-28).
 - **Buttons:** bold, in the colour of the feature they act on; \[Inspect\], \[Show\] and \[Copy\] stay in the default colour.
 - **No colour:** when `NO_COLOR` is set, everything draws in the default colour and the glyphs carry the meaning.
+- **State follows the theme:** OK, Warning and Failure are Claude Code theme keys, so a light, dark or colour-blind
+  theme draws them as it draws its own state (Phase 7, release 2; before it, green `#22c55e`, amber `#f59e0b` and red
+  `#ef4444`). Model and feature colours keep the deck's hex, and the Usage chart's SVG keeps hex: an SVG takes no theme
+  key.
 - **Light terminal themes:** Phase 1 measured lime `#a3e635` at 1.51:1 on white, so skills use `#65a30d` (3.09:1 on white, 5.40:1 on `#1e1e1e`). Gold reads poorly on white too: check it in Phase 3, where plan progress first draws it, and switch to `#ca8a04` if needed.
 
 The band and Now tab mockups below use this palette in the terminal.

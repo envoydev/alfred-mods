@@ -27,6 +27,12 @@ in [the session-inspector brief](docs/session-inspector-brief.md).
 If the band or the pane fails to draw, it shows one dim line naming the failure, such as `session-inspector: the band
 failed to draw (throw)`, instead of going blank.
 
+OK, warning and failure take your theme's own colours (`/theme`), so a light or colour-blind theme draws them as it
+draws Claude Code's; with `NO_COLOR` set, nothing is coloured and the glyphs carry the meaning. Every row is laid out
+in fixed-width cells and margins rather than runs of spaces, for surfaces that draw in a proportional face such as the
+Desktop app; a table too wide for its pane shows its leading whole columns, and a failure row cuts its text before it
+gives up its Show and Copy buttons.
+
 ## Commands
 
 - `/inspect [now|usage|agents|tools|cache|timeline|plan [name]]` opens the pane on a tab, Now when none is named.
