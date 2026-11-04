@@ -1820,7 +1820,7 @@ export const register: Register = on => {
       : shown.tab === 'agents' ? agentsLines(input)
       : shown.tab === 'cache' ? cacheLines(input)
       : shown.tab === 'tools' ? toolsLines(input)
-      : shown.tab === 'timeline' ? timelineLines(input.turns, Math.max(3, e.props.scroll.bodyRows - 1 - bar.length), u.windows.length > 0)
+      : shown.tab === 'timeline' ? timelineLines(input.turns, Math.max(3, e.props.scroll.bodyRows - 1 - bar.length), u.windows.length > 0, e.props.bodyColumns)
       : shown.tab === 'plan' ? planLines(d.shown, d.scores, { invalid: d.invalid, others: d.others, otherScores: d.otherScores, updatedAt: d.updatedAt, now, columns: e.props.bodyColumns })
       : nowLines(input)
     const press: Record<string, () => unknown> = {

@@ -3,7 +3,8 @@
 import type { EngineInterface, RenderElement, ResolveInput } from 'claude-code'
 
 import { mask } from './mask.ts'
-import { statusGlyph } from './agents.ts'
+import { laneFit, statusGlyph } from './agents.ts'
+import type { LaneFit } from './agents.ts'
 import { spark } from './forecast.ts'
 import { printable } from './format.ts'
 import type { Lane, Line, Seg, Tone } from './band.ts'
@@ -51,18 +52,16 @@ function spans(lanes: Lane[], now: number, width: number): Span[] {
   })
 }
 
-// A lane's text line: its glyph, a 14-cell label, the bar, and its time in 21 cells, the longest the tree writes
-// ('stopped after 12m 30s'; the release 3 review: 16 cut it to 'stopped after 1…') (spec C2)
-const LANE_LABEL = 14
-const LANE_TIME = 21
-function laneLine(l: Lane, s: Span): Line {
+// A lane's text line: its glyph, the label, the bar, and its time, in laneFit's widths; the time cell is as wide as the
+// longest lane's, so 'stopped after 12m 30s' is never cut (the release 3 review) (spec C2)
+function laneLine(l: Lane, s: Span, w: LaneFit): Line {
   const glyph = statusGlyph(l.status)
   return [
-    { ...glyph, text: `${glyph.text} ` }, { text: l.label, width: LANE_LABEL },
+    { ...glyph, text: `${glyph.text} ` }, { text: l.label, width: w.label },
     ...(s.before > 0 ? [{ text: '·'.repeat(s.before), tone: 'dim' as const }] : []),
     { text: '━'.repeat(s.bar), ...(glyph.tone === undefined ? { bold: true } : { tone: glyph.tone }) },
     ...(s.after > 0 ? [{ text: '·'.repeat(s.after), tone: 'dim' as const }] : []),
-    { text: ' ' }, { text: l.time, tone: 'dim', width: LANE_TIME },
+    { text: ' ' }, { text: l.time, tone: 'dim', width: w.time },
   ]
 }
 
@@ -273,10 +272,11 @@ export function drawLines(
       // none, the release 3 review)
       return [<Box key={`line-${n}`} flexDirection="column" {...width} overflow="hidden"><Svg source={lanesSvg(seg.lanes, seg.now, o.noColor)} alt={alt} /></Box>]
     }
-    const bar = Math.max(1, o.columns - LANE_LABEL - LANE_TIME - 3)
-    const at = spans(seg.lanes, seg.now, bar)
+    // The Agents tab draws a lanes line only where they fit; a narrower width keeps the smallest label and a 1-cell bar
+    const w = laneFit(seg.lanes, o.columns) ?? { label: 6, time: Math.max(0, ...seg.lanes.map(l => [...l.time].length)), bar: 1 }
+    const at = spans(seg.lanes, seg.now, w.bar)
     const face = e.surface === 'mobile' ? draw({ mono: true }) : plain
-    return seg.lanes.map((l, k) => row(laneLine(l, at[k] ?? { before: 0, bar, after: 0 }), `line-${n}-${k}`, face))
+    return seg.lanes.map((l, k) => row(laneLine(l, at[k] ?? { before: 0, bar: w.bar, after: 0 }, w), `line-${n}-${k}`, face))
   }
   const rows = (line: Line, n: number): RenderElement[] => {
     const only = line.length === 1 ? line[0] : undefined

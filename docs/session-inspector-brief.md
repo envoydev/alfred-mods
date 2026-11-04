@@ -282,9 +282,10 @@ Other loops 2 · 1 active · out 41k
 (no spawn: compactions, forks)
 ```
 
-With two agents or more and 60 columns, the agents sit on one time axis between the head and the tree, oldest first,
-the newest 8, labelled `task <id>` from a dispatch's `task:` line or by type (spec C2); the Desktop app and VS Code draw
-the axis as one SVG. An agent whose last step stopped at the output limit ends its row with `⚠ max_tokens` (C4). Model
+With two agents or more, the agents sit on one time axis between the head and the tree, oldest first, the newest 8,
+labelled `task <id>` from a dispatch's `task:` line or by type (spec C2); the Desktop app and VS Code draw the axis as
+one SVG. A text lane's time cell is as wide as the longest lane's, and its 14-cell label gives way down to 6 so the bar
+keeps 10 cells; with less room, about 30 columns, no lane is drawn. An agent whose last step stopped at the output limit ends its row with `⚠ max_tokens` (C4). Model
 loops no `agent.spawn` announced are counted on one line, active while a step came in the last 15 seconds (C3).
 
 ```text
@@ -320,7 +321,10 @@ If cold    rewrite ≈ $1.12 on Opus 5.5                          [Compact]
 ```
 
 `spend` is the session's spend while the turn ran, agents included, `-` under half a cent, and `spend, est.` on a plan
-(spec C4). Spend while no turn runs falls in no row, so the column does not sum to the session's cost.
+(spec C4). Spend while no turn runs falls in no row, so the column does not sum to the session's cost. A pane narrower
+than the table (61 cells, 65 with the estimate) leaves out `you` and draws the rest tighter, so a 40-column dock reads
+`#   Claude took    in / out    tools`; the Tools tab's name column gives way under 45 columns, down to 7, to keep the
+counts.
 
 ```text
 Plan · Token refresh              3/5 · ≈1h 37m total · ≈30m left (×1.2)

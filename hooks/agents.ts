@@ -85,6 +85,16 @@ export function lanesOf(rows: AgentRow[], now: number): Lane[] {
   }))
 }
 
+// A lane's text widths at `columns` (spec C2): a glyph and a space, the label, the bar, a space and the time. The time
+// cell is as wide as the longest lane's, never cut; the label is 14 cells and gives way down to 6 so the bar keeps 10.
+// Null where even that does not fit: the pane draws no lanes.
+export type LaneFit = { label: number; bar: number; time: number }
+export function laneFit(lanes: Lane[], columns: number): LaneFit | null {
+  const time = Math.max(0, ...lanes.map(l => [...l.time].length))
+  const label = Math.min(14, columns - 3 - time - 10)
+  return label < 6 ? null : { label, bar: columns - 3 - time - label, time }
+}
+
 // Loops no spawn announced (spec C3): a step adds to its loop, or starts one; the newest 60 are kept
 export function addLoopStep(loops: Loop[], id: string, output: number, now: number): Loop[] {
   const known = loops.find(l => l.id === id)

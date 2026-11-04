@@ -1,5 +1,5 @@
 // Each /inspect tab, from the session's values to lines of styled segments.
-import { LOOPS_NOTE, agentTime, agentTree, isLive, lanesOf, loopsLine, statusGlyph, toolSummary } from './agents.ts'
+import { LOOPS_NOTE, agentTime, agentTree, isLive, laneFit, lanesOf, loopsLine, statusGlyph, toolSummary } from './agents.ts'
 import { REC_MARK, barSegs, cacheWarning, pctSeg, windowsInOrder, working } from './band.ts'
 import { IDLE_COMPACT_MS, billingOf, cacheLine, cacheView, selfCompacts, toastAt } from './cache.ts'
 import type { BandInput, Line, Seg, Tone } from './band.ts'
@@ -94,9 +94,9 @@ export function agentsLines(b: TabInput): Line[] {
   }
   root.push({ text: ` · ${b.meta.mainCalls} ${b.meta.mainCalls === 1 ? 'tool' : 'tools'}` })
   const out: Line[] = [head]
-  // Two or more agents on one time axis, where the pane has room for it (spec C2)
-  const lanes = b.columns >= 60 ? lanesOf(b.agents, b.now) : []
-  if (lanes.length >= 2) out.push([{ lanes, now: b.now }])
+  // Two or more agents on one time axis, where the pane has room for a 10-cell bar (spec C2)
+  const lanes = lanesOf(b.agents, b.now)
+  if (lanes.length >= 2 && laneFit(lanes, b.columns) !== null) out.push([{ lanes, now: b.now }])
   out.push(root)
   for (const t of agentTree(b.agents)) {
     const r = t.row
@@ -281,7 +281,7 @@ export function usageLines(b: TabInput): Line[] {
 
 // The Tools table's columns: the tool, then its counts at their end. The tool's column is 24 cells, or as wide as the
 // longest name and a space where the counts' 21 cells leave room, so two long names cut alike stay apart (the release
-// 2 review: 'Skill: superpowers:writ…' twice)
+// 2 review: 'Skill: superpowers:writ…' twice). Under 45 columns it gives way, down to 7 cells, so the counts stay.
 const COUNT_COLUMNS = [6, 5, 5, 5]
 const toolRow = (cells: string[], first: number, style: { tone?: Tone; bold?: boolean }): Line =>
   cells.map((text, i) => ({ text, width: i === 0 ? first : COUNT_COLUMNS[i - 1] ?? 5, ...(i === 0 ? {} : { align: 'end' as const }), ...style }))
@@ -289,7 +289,7 @@ const toolRow = (cells: string[], first: number, style: { tone?: Tone; bold?: bo
 export function toolsLines(b: TabInput): Line[] {
   const rows = Object.entries(b.stats).sort((x, y) => y[1].calls - x[1].calls)
   const longest = Math.max(0, ...rows.map(([key]) => [...key].length))
-  const first = Math.max(24, Math.min(longest + 1, b.columns - COUNT_COLUMNS.reduce((a, c) => a + c, 0)))
+  const first = Math.max(7, Math.min(Math.max(24, longest + 1), b.columns - COUNT_COLUMNS.reduce((a, c) => a + c, 0)))
   const out: Line[] = [toolRow(['Tools', 'calls', 'ok', '✗', '⊘'], first, { bold: true })]
   if (rows.length === 0) out.push([{ text: 'No tool calls yet.', tone: 'dim' }])
   for (const [key, s] of rows) {
@@ -307,22 +307,28 @@ export function toolsLines(b: TabInput): Line[] {
 }
 
 // The Timeline's columns before its last, the failures: turn, prompt and reply times, how long, tokens, tools, and the
-// session's spend while the turn ran (spec C4), 12 cells when its header says the cost is an estimate
-const TIMELINE_COLUMNS = [4, 8, 9, 9, 14, 8, 8]
-const timelineRow = (cells: string[], style: { bold?: boolean }, spend: number): Line =>
-  cells.map((text, i) => ({ text, width: i === 6 ? spend : TIMELINE_COLUMNS[i] ?? 8, ...style }))
+// session's spend while the turn ran (spec C4), 12 cells when its header says the cost is an estimate. A pane narrower
+// than the table (61 cells, 65 with the estimate) leaves out the prompt's time and draws the rest tighter, so how long
+// each turn took and its tokens stay in a docked pane (24-39 columns, spec Optional).
+const TIMELINE_COLUMNS = [4, 8, 9, 9, 14, 8]
+const NARROW_COLUMNS = [4, 7, 8, 12, 6]
+const timelineRow = (cells: string[], widths: number[], style: { bold?: boolean }, spend: number): Line =>
+  cells.map((text, i) => ({ text, width: widths[i] ?? spend, ...style }))
 
-export function timelineLines(turns: Turn[], rows: number, isEstimate: boolean): Line[] {
+export function timelineLines(turns: Turn[], rows: number, isEstimate: boolean, columns: number): Line[] {
   const spend = isEstimate ? 12 : 8
-  const head = ['#', 'you', 'Claude', 'took', 'in / out', 'tools', isEstimate ? 'spend, est.' : 'spend']
-  const out: Line[] = [[...timelineRow(head, { bold: true }, spend), { text: '✗', bold: true }]]
+  const isNarrow = columns < TIMELINE_COLUMNS.reduce((a, c) => a + c, 0) + spend + 1
+  const widths = isNarrow ? NARROW_COLUMNS : TIMELINE_COLUMNS
+  const pick = (cells: string[]): string[] => (isNarrow ? cells.filter((_, i) => i !== 1) : cells)
+  const head = pick(['#', 'you', 'Claude', 'took', 'in / out', 'tools', isEstimate ? 'spend, est.' : 'spend'])
+  const out: Line[] = [[...timelineRow(head, widths, { bold: true }, spend), { text: '✗', bold: true }]]
   if (turns.length === 0) out.push([{ text: 'No turns yet.', tone: 'dim' }])
   for (const t of [...turns].reverse().slice(0, rows)) {
-    const cells = [
+    const cells = pick([
       String(t.n), t.promptAt === null ? '—' : clock(t.promptAt), clock(t.replyAt), duration(t.durationMs), `${tokens(t.tokensIn)} / ${tokens(t.tokensOut)}`,
       String(t.tools), t.spendUsd === undefined || t.spendUsd === null ? '-' : usd(t.spendUsd),
-    ]
-    out.push([...timelineRow(cells, {}, spend), t.failures > 0 ? { text: String(t.failures), tone: 'fail' } : { text: '0', tone: 'dim' }])
+    ])
+    out.push([...timelineRow(cells, widths, {}, spend), t.failures > 0 ? { text: String(t.failures), tone: 'fail' } : { text: '0', tone: 'dim' }])
   }
   return out
 }

@@ -53,9 +53,10 @@ async function two($: Engine, on: On, o: Parameters<typeof stubAll>[1] = {}, tas
   return kit
 }
 
-// At 60 columns the bar is 22 cells: a glyph and a space, a 14-cell label, the bar, a space and a 21-cell time
-const LANE_1 = `✓ ${'Explore'.padEnd(14)}${'━'.repeat(11)}${'·'.repeat(11)} done in 4s`
-const LANE_2 = `⟳ ${'task T-7'.padEnd(14)}${'·'.repeat(5)}${'━'.repeat(17)} 6s`
+// A glyph and a space, a 14-cell label, the bar, a space and the time in a cell as wide as the longest lane's ('done in
+// 4s', 10): at 60 columns the bar is 33 cells, the axis 8 s, the first lane 0-4 s of it and the second 2-8 s
+const LANE_1 = `✓ ${'Explore'.padEnd(14)}${'━'.repeat(17)}${'·'.repeat(16)} done in 4s`
+const LANE_2 = `⟳ ${'task T-7'.padEnd(14)}${'·'.repeat(8)}${'━'.repeat(25)} 6s`
 
 test('two agents draw lanes between the head and the tree at 60 columns and wider', { timeoutMs: 15_000 }, async ($, on) => {
   await two($, on)
@@ -67,12 +68,31 @@ test('two agents draw lanes between the head and the tree at 60 columns and wide
   const wide = await agentsTab($, 'terminal', 100)
   const at = wide.findIndex(l => l.startsWith('Agents (2)'))
   expect(wide[at + 1]?.startsWith(`✓ ${'Explore'.padEnd(14)}━`)).toBe(true)
-  expect([...(wide[at + 1] ?? '')].filter(c => c === '━' || c === '·').length).toBe(100 - 38)
+  expect([...(wide[at + 1] ?? '')].filter(c => c === '━' || c === '·').length).toBe(100 - 3 - 14 - 10)
 })
 
-test('under 60 columns draws none', { timeoutMs: 15_000 }, async ($, on) => {
+// A pane docked beside a 120-column terminal is about 49 columns: the lanes draw there with their whole label
+test('a pane docked beside a 120-column terminal draws the lanes', { timeoutMs: 15_000 }, async ($, on) => {
   await two($, on)
-  expect((await agentsTab($, 'terminal', 59)).some(l => l.includes('━'))).toBe(false)
+  const lines = await agentsTab($, 'terminal', 49)
+  const head = lines.findIndex(l => l.startsWith('Agents (2)'))
+  expect(lines.slice(head + 1, head + 3)).toEqual([
+    `✓ ${'Explore'.padEnd(14)}${'━'.repeat(11)}${'·'.repeat(11)} done in 4s`,
+    `⟳ ${'task T-7'.padEnd(14)}${'·'.repeat(5)}${'━'.repeat(17)} 6s`,
+  ])
+})
+
+// Narrower, the label gives way down to 6 cells so the bar keeps 10; with less room no lane is drawn
+test('a narrow pane shortens the label to keep a 10-cell bar, and draws none below that', { timeoutMs: 15_000 }, async ($, on) => {
+  await two($, on)
+  const lines = await agentsTab($, 'terminal', 32)
+  const head = lines.findIndex(l => l.startsWith('Agents (2)'))
+  expect(lines.slice(head + 1, head + 3)).toEqual([
+    `✓ ${'Explore'.padEnd(9)}${'━'.repeat(5)}${'·'.repeat(5)} done in 4s`,
+    `⟳ ${'task T-7'.padEnd(9)}${'·'.repeat(2)}${'━'.repeat(8)} 6s`,
+  ])
+  expect((await agentsTab($, 'terminal', 29)).filter(l => l.includes('━'))).toHaveLength(2)
+  expect((await agentsTab($, 'terminal', 28)).some(l => l.includes('━'))).toBe(false)
 })
 
 test('one agent alone draws no lanes', { timeoutMs: 15_000 }, async ($, on) => {

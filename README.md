@@ -31,7 +31,9 @@ OK, warning and failure take your theme's own colours (`/theme`), so a light or 
 draws Claude Code's; with `NO_COLOR` set, nothing is coloured and the glyphs carry the meaning. Every row is laid out
 in fixed-width cells and margins rather than runs of spaces, for surfaces that draw in a proportional face such as the
 Desktop app; a table too wide for its pane shows its leading whole columns, and a failure row cuts its text before it
-gives up its Show and Copy buttons.
+gives up its Show and Copy buttons. A narrow pane, down to 24 columns, keeps the numbers: the Tools tab narrows the
+tool's column to keep its counts, and the Timeline leaves out the prompt's time to keep how long each turn took and
+its tokens.
 
 An agent whose last step stopped at the output limit ends its Agents row with `⚠ max_tokens`, and its result reads
 `result (cut off): …`, as the report ends mid-way. The Timeline's `spend` is the session's spend while the turn ran,
@@ -43,8 +45,9 @@ prompt, tools, agents, memory files, messages), `Plugins` each plugin's agents a
 `Memory` the memory files with the three largest. It reads again after a compaction, and when the tab opens a minute or
 more after the last read. A memory file outside the project is named by its type and base name, never its path.
 
-With two agents or more and a pane 60 columns wide, the Agents tab draws them on one time axis above the tree, one
-lane each, the newest 8; the Desktop app and VS Code draw it as a picture. Model loops that no Agent call started are
+With two agents or more, the Agents tab draws them on one time axis above the tree, one lane each, the newest 8; the
+Desktop app and VS Code draw it as a picture. A narrow pane shortens the lane labels to keep a 10-cell bar, so a pane
+docked beside a 120-column terminal shows the lanes, and one under about 30 columns draws none. Model loops that no Agent call started are
 counted apart on one line, `Other loops 2 · 1 active · out 41k`; their tool calls are not counted.
 
 A call a hook blocked names the hook's script, `⊘ blocked by guard.js: …`, and the Tools tab counts blocks by script

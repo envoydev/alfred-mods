@@ -140,7 +140,7 @@ test('no faults or spills in each tab and the rec pane', { timeoutMs: 15_000 }, 
   for (const tab of TABS) {
     await $.command.run({ command: 'inspect', args: tab, origin: { kind: 'composer' }, presentation: PRESENTATION })
     for (const surface of ALL) {
-      for (const columns of [40, 48, 64, 80, 100, 120]) {
+      for (const columns of [24, 28, 32, 36, 40, 48, 64, 80, 100, 120]) {
         const ui = await $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: { ...PANE, bodyColumns: columns } })
         found.push(...check(await ui.drawn(), surface, `${tab} ${surface} ${columns}`))
         await ui.unmount()
@@ -148,7 +148,7 @@ test('no faults or spills in each tab and the rec pane', { timeoutMs: 15_000 }, 
     }
   }
   for (const surface of ALL) {
-    for (const columns of [40, 48, 64, 80, 100, 120]) {
+    for (const columns of [24, 28, 32, 36, 40, 48, 64, 80, 100, 120]) {
       const ui = await $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'rec', props: { ...PANE, title: 'REC words', bodyColumns: columns } })
       found.push(...check(await ui.drawn(), surface, `rec ${surface} ${columns}`))
       await ui.unmount()
@@ -231,31 +231,41 @@ const tabRows = async ($: Engine, surface: RenderSurface, columns: number) => {
 }
 
 for (const surface of ['terminal', 'desktop'] as const) {
-  test(`a Timeline at 40 columns ends at a whole column (${surface})`, async ($, on) => {
+  // Narrower than its 61 cells, the Timeline leaves out the prompt's time and draws its cells tighter, so a docked pane
+  // keeps how long each turn took and its tokens (24-39 columns, spec Optional)
+  test(`a Timeline narrower than its table leaves out the prompt time and ends at a whole column (${surface})`, async ($, on) => {
     stubAll(on)
     engine(on, ['tool.call'])
     failing(on)
     await turns($, 2)
     await inspect($, 'timeline')
-    const lines = await tabRows($, surface, 40)
-    const head = lines.findIndex(l => l.startsWith('#'))
-    expect(lines[head]?.trimEnd()).toBe('#   you     Claude   took')
-    for (const l of lines.slice(head)) {
-      expect([...l].length <= 40).toBe(true)
-      expect(l.includes(' / ')).toBe(false)
-    }
+    const compact = (cells: string[]) => cells.map((c, i) => c.padEnd([4, 7, 8, 12, 6, 8][i] ?? 1)).join('').trimEnd()
+    // The clock reads in the runner's time zone
+    const at = async (columns: number) =>
+      (await tabRows($, surface, columns)).filter(l => /^(#|\d) /.test(l)).map(l => l.trimEnd().replace(/\d\d:\d\d/g, 'HH:MM'))
+    expect(await at(46)).toEqual([
+      compact(['#', 'Claude', 'took', 'in / out', 'tools', 'spend', '✗']), compact(['2', 'HH:MM', '3s', '0 / 0', '1', '-', '1']),
+      compact(['1', 'HH:MM', '3s', '0 / 0', '1', '-', '1']),
+    ])
+    const narrow = await at(40)
+    expect(narrow[0]).toBe(compact(['#', 'Claude', 'took', 'in / out', 'tools']))
+    expect(narrow.every(l => [...l].length <= 40 && !l.includes('$'))).toBe(true)
+    expect((await at(24))[0]).toBe(compact(['#', 'Claude', 'took']))
   })
 
-  test(`a Tools table at 40 columns ends at a whole column (${surface})`, async ($, on) => {
+  // Under 45 columns the tool's column gives way, down to 7 cells, so the counts stay
+  test(`a Tools table narrower than its columns narrows the tool's column and keeps the counts (${surface})`, async ($, on) => {
     stubAll(on)
     engine(on, ['tool.call'])
     failing(on)
     await turns($, 1)
     await inspect($, 'tools')
     const lines = await tabRows($, surface, 40)
-    const head = lines.find(l => l.startsWith('Tools'))
-    expect(head).toBe(`${'Tools'.padEnd(24)}${'calls'.padStart(6)}${'ok'.padStart(5)}${'✗'.padStart(5)}`)
-    expect(lines.find(l => l.startsWith('Bash'))).toBe(`${'Bash'.padEnd(24)}${'1'.padStart(6)}${'0'.padStart(5)}${'1'.padStart(5)}`)
+    expect(lines.find(l => l.startsWith('Tools'))).toBe(`${'Tools'.padEnd(19)}${'calls'.padStart(6)}${'ok'.padStart(5)}${'✗'.padStart(5)}${'⊘'.padStart(5)}`)
+    expect(lines.find(l => l.startsWith('Bash'))).toBe(`${'Bash'.padEnd(19)}${'1'.padStart(6)}${'0'.padStart(5)}${'1'.padStart(5)}${'0'.padStart(5)}`)
+    const narrow = await tabRows($, surface, 24)
+    expect(narrow.find(l => l.startsWith('Tools'))).toBe(`${'Tools'.padEnd(7)}${'calls'.padStart(6)}${'ok'.padStart(5)}${'✗'.padStart(5)}`)
+    expect(narrow.find(l => l.startsWith('Bash'))).toBe(`${'Bash'.padEnd(7)}${'1'.padStart(6)}${'0'.padStart(5)}${'1'.padStart(5)}`)
   })
 
   test(`a CJK tool name keeps the Tools row on one line (${surface})`, async ($, on) => {
@@ -276,7 +286,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     expect(spills(tree)).toEqual([])
   })
 
-  test(`a pane narrowed from 120 to 40 drops whole Timeline columns (${surface})`, async ($, on) => {
+  test(`a pane narrowed from 120 to 40 draws the narrow Timeline (${surface})`, async ($, on) => {
     stubAll(on)
     engine(on, ['tool.call'])
     failing(on)
@@ -285,7 +295,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: { ...PANE, bodyColumns: 120 } })
     expect((await rowsOf(ui)).find(l => l.startsWith('#'))?.trimEnd()).toBe('#   you     Claude   took     in / out      tools   spend   ✗')
     await ui.redraw({ ...PANE, bodyColumns: 40 })
-    expect((await rowsOf(ui)).find(l => l.startsWith('#'))?.trimEnd()).toBe('#   you     Claude   took')
+    expect((await rowsOf(ui)).find(l => l.startsWith('#'))?.trimEnd()).toBe('#   Claude took    in / out    tools')
   })
 
   // The buttons at a line's end keep their place and the text before them is cut, so a docked pane keeps Show and Copy
@@ -374,13 +384,12 @@ for (const surface of ['terminal', 'desktop'] as const) {
     expect(faults(await ui.drawn(), surface)).toEqual([])
   })
 
+  // The Tools table narrows its first column now, so a drawn line with a 24-cell first cell stands in for it
   test(`a pane narrower than the first column truncates that cell (${surface})`, async ($, on) => {
     stubAll(on)
-    engine(on, ['tool.call'])
-    failing(on)
-    await turns($, 1)
-    await inspect($, 'tools')
-    const ui = await $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: { ...PANE, bodyColumns: 20 } })
+    engine(on)
+    fitPane(on, [[{ text: 'Tools', width: 24 }, { text: 'calls', width: 6, align: 'end' }]])
+    const ui = await mountFit($, surface, 20)
     const head = lineBoxes(await ui.drawn()).find(l => textOf(l).startsWith('Tools'))!
     expect(pieces(head).length).toBe(1)
     expect(pieces(head)[0]?.props).toMatchObject({ width: 20 })
