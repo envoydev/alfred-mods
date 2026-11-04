@@ -1,8 +1,8 @@
 // Agents as rows: what a spawn says, how a run ends, which rows are kept, the tree they draw and their tool counts.
 import type { AgentInfo } from 'claude-code'
 
-import { oneLine, tokens } from './format.ts'
-import type { Line } from './band.ts'
+import { duration, oneLine, tokens } from './format.ts'
+import type { Lane, Line, Seg } from './band.ts'
 import type { AgentRow, AgentStatus, Loop, ToolStat, TurnEnd } from '../types'
 
 // The first word of a prompt's first `plan:` and `task:` lines; nothing else of the prompt is kept, the rest of either
@@ -55,6 +55,34 @@ export function refreshAgents(rows: AgentRow[], listed: readonly AgentInfo[], no
     if (l === undefined) return r.isListed ? { ...r, status: 'completed' as const, endedAt: now } : r
     return { ...r, isListed: true, status: l.status, endedAt: isLive(l.status) ? null : now, parentId: r.parentId ?? l.parentId ?? null }
   })
+}
+
+// How long the agent has run, or how it ended and after how long
+export function agentTime(r: AgentRow, now: number): string {
+  const took = duration((r.endedAt ?? now) - r.startedAt)
+  switch (r.status) {
+    case 'running': return took
+    case 'waiting': return `waiting · ${took}`
+    case 'pending': return 'pending'
+    case 'completed': return `done in ${took}`
+    case 'failed': return `failed after ${took}`
+    case 'killed': return `stopped after ${took}`
+    case 'idle': return 'idle'
+  }
+}
+
+export function statusGlyph(status: AgentStatus): Extract<Seg, { text: string }> {
+  if (isLive(status)) return { text: '⟳', bold: true }
+  if (status === 'completed') return { text: '✓', tone: 'ok' }
+  return status === 'idle' ? { text: '·', tone: 'dim' } : { text: '✗', tone: 'fail' }
+}
+
+// The time axis's lanes (spec C2): the 8 newest rows that have a start, oldest first; a live row has no end yet
+export function lanesOf(rows: AgentRow[], now: number): Lane[] {
+  return rows.filter(r => r.startedAt > 0).sort((a, b) => a.startedAt - b.startedAt).slice(-8).map(r => ({
+    label: r.task === null ? r.type : `task ${r.task}`, startAt: r.startedAt,
+    endAt: isLive(r.status) ? null : r.endedAt ?? now, status: r.status, time: agentTime(r, now),
+  }))
 }
 
 // Loops no spawn announced (spec C3): a step adds to its loop, or starts one; the newest 60 are kept

@@ -3,9 +3,11 @@
 import type { EngineInterface, RenderElement, ResolveInput } from 'claude-code'
 
 import { mask } from './mask.ts'
+import { statusGlyph } from './agents.ts'
 import { spark } from './forecast.ts'
 import { printable } from './format.ts'
-import type { Line, Seg, Tone } from './band.ts'
+import type { Lane, Line, Seg, Tone } from './band.ts'
+import type { AgentStatus } from '../types'
 
 const show = (text: string): string => mask(printable(text))
 
@@ -34,6 +36,58 @@ function polyline(values: number[], noColor: boolean): string {
 }
 
 const drawsSvg = (e: ResolveInput): boolean => e.surface === 'desktop' || e.surface === 'vscode'
+
+// Where each lane sits on `width` cells (spec C2, flightdeck's lanes): the axis runs from the earliest start to now,
+// or to the last end when none runs; every lane keeps at least one cell of bar
+type Span = { before: number; bar: number; after: number }
+function spans(lanes: Lane[], now: number, width: number): Span[] {
+  const start = Math.min(...lanes.map(l => l.startAt))
+  const end = lanes.some(l => l.endAt === null) ? now : Math.max(...lanes.map(l => l.endAt ?? now))
+  const span = Math.max(1, end - start)
+  return lanes.map(l => {
+    const from = Math.min(width - 1, Math.max(0, Math.floor(((l.startAt - start) / span) * width)))
+    const to = Math.min(width, Math.max(from + 1, Math.ceil((((l.endAt ?? end) - start) / span) * width)))
+    return { before: from, bar: to - from, after: width - to }
+  })
+}
+
+// A lane's text line: its glyph, a 14-cell label, the bar, and its time in 16 cells (spec C2)
+const LANE_LABEL = 14
+const LANE_TIME = 16
+function laneLine(l: Lane, s: Span): Line {
+  const glyph = statusGlyph(l.status)
+  return [
+    { ...glyph, text: `${glyph.text} ` }, { text: l.label, width: LANE_LABEL },
+    ...(s.before > 0 ? [{ text: '·'.repeat(s.before), tone: 'dim' as const }] : []),
+    { text: '━'.repeat(s.bar), ...(glyph.tone === undefined ? { bold: true } : { tone: glyph.tone }) },
+    ...(s.after > 0 ? [{ text: '·'.repeat(s.after), tone: 'dim' as const }] : []),
+    { text: ' ' }, { text: l.time, tone: 'dim', width: LANE_TIME },
+  ]
+}
+
+// SVG cannot name theme keys: flightdeck's mid-tones that read on light and dark backgrounds (SVG_COLORS)
+const LANE_HEX = { running: '#3b82f6', done: '#16a34a', failed: '#dc2626', other: '#8b5cf6', label: '#6b7280' }
+const laneHex = (s: AgentStatus): string =>
+  s === 'running' ? LANE_HEX.running : s === 'completed' ? LANE_HEX.done : s === 'failed' || s === 'killed' ? LANE_HEX.failed : LANE_HEX.other
+const xml = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+// The lanes as one SVG, 520 by 18 a lane, a label then a rect each; no size on the element, so it takes the markup's
+// width up to its slot and scales down in a narrow one
+function lanesSvg(lanes: Lane[], now: number, noColor: boolean): string {
+  const ROW = 18
+  const W = 520
+  const at = spans(lanes, now, 100)
+  const body = lanes.map((l, i) => {
+    const s = at[i] ?? { before: 0, bar: 1, after: 99 }
+    const x = 150 + (s.before / 100) * (W - 160)
+    const w = Math.max(3, (s.bar / 100) * (W - 160))
+    const label = xml([...show(l.label)].slice(0, 22).join(''))
+    const fill = noColor ? 'currentColor' : laneHex(l.status)
+    return `<text x="4" y="${i * ROW + 13}" font-size="11" fill="${noColor ? 'currentColor' : LANE_HEX.label}">${label}</text><rect x="${x.toFixed(1)}" y="${i * ROW + 4}" width="${w.toFixed(1)}" height="10" rx="3" fill="${fill}"/>`
+  }).join('')
+  const h = lanes.length * ROW + 4
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${h}" viewBox="0 0 ${W} ${h}">${body}</svg>`
+}
 
 // A chart where the surface draws Svg, its sparkline as text elsewhere. The Svg is drawn at the markup's 120 by 24,
 // whatever the turns, in a Box of CHART_MAX cells (the release 2 review: sized by the turns, two turns drew it 2 cells
@@ -97,6 +151,8 @@ function piecesOf(line: Line, isSvg: boolean): Piece[] {
   return line.flatMap((seg): Piece[] => {
     if ('text' in seg) return seg.width === undefined ? textPieces(seg, show(seg.text)) : [{ kind: 'cell', text: show(seg.text), width: seg.width, seg }]
     if ('code' in seg) return [{ kind: 'code', source: show(seg.code) }]
+    // A lanes segment is alone on its line and drawn by its own rows (laneRows), never as a piece
+    if ('lanes' in seg) return []
     if ('chart' in seg) {
       const values = seg.chart.slice(-CHART_MAX)
       return [{ kind: 'chart', values, cells: isSvg ? CHART_MAX : values.length }]
@@ -175,17 +231,17 @@ export function drawLines(
   $: EngineInterface, e: ResolveInput, lines: Line[], o: { noColor: boolean; press: Record<string, () => unknown>; columns: number; fill?: boolean },
 ): RenderElement {
   const { Box, Button, Code, Text } = $.ui.resolve(e)
-  const draw = ({ piece: p, cut }: Fitted): RenderElement => {
+  const draw = (face: { mono?: true }) => ({ piece: p, cut }: Fitted): RenderElement => {
     switch (p.kind) {
       case 'gap': return <Box width={p.width} flexShrink={0} />
       case 'cell': {
         const end = p.seg.align === 'end' ? { justifyContent: 'flex-end' as const } : {}
-        return <Box width={p.width} flexShrink={0} {...end}><Text {...style(p.seg, o.noColor)} wrap="truncate-end">{p.text}</Text></Box>
+        return <Box width={p.width} flexShrink={0} {...end}><Text {...style(p.seg, o.noColor)} {...face} wrap="truncate-end">{p.text}</Text></Box>
       }
       case 'text': {
         const margins = { ...(p.ml > 0 ? { marginLeft: p.ml } : {}), ...(cut === undefined && p.mr > 0 ? { marginRight: p.mr } : {}) }
-        if (cut !== undefined) return <Box width={cut} flexShrink={0} {...margins}><Text {...style(p.seg, o.noColor)} wrap="truncate-end">{p.text}</Text></Box>
-        return <Box flexShrink={0} {...margins}><Text {...style(p.seg, o.noColor)}>{p.text}</Text></Box>
+        if (cut !== undefined) return <Box width={cut} flexShrink={0} {...margins}><Text {...style(p.seg, o.noColor)} {...face} wrap="truncate-end">{p.text}</Text></Box>
+        return <Box flexShrink={0} {...margins}><Text {...style(p.seg, o.noColor)} {...face}>{p.text}</Text></Box>
       }
       case 'chart': return <Box width={p.cells} flexShrink={0}>{chart($, e, p.values, o.noColor)}</Box>
       case 'code': return <Code source={p.source} />
@@ -202,10 +258,29 @@ export function drawLines(
   }
   const width = o.fill === true ? {} : { width: o.columns }
   const isSvg = drawsSvg(e)
-  const row = (line: Line, n: number) => (
-    <Box key={`line-${n}`} flexDirection="row" {...width} minHeight={1} overflow="hidden">{fit(piecesOf(line, isSvg), o.columns).map(draw)}</Box>
+  const plain = draw({})
+  const row = (line: Line, key: string, face = plain) => (
+    <Box key={key} flexDirection="row" {...width} minHeight={1} overflow="hidden">{fit(piecesOf(line, isSvg), o.columns).map(face)}</Box>
   )
-  return <Box flexDirection="column">{lines.map(row)}</Box>
+  // Agents on a time axis (spec C2): one SVG where the surface draws one beside text, else a text line per lane, in
+  // the monospaced face on mobile so the bars line up
+  const laneRows = (seg: Extract<Seg, { lanes: Lane[] }>, n: number): RenderElement[] => {
+    if (e.surface === 'desktop' || e.surface === 'vscode') {
+      const { Svg } = $.ui.resolve(e)
+      const alt = show(`${seg.lanes.length} agents on a time axis`)
+      return [<Box key={`line-${n}`} flexDirection="row" {...width} overflow="hidden"><Box flexShrink={0}><Svg source={lanesSvg(seg.lanes, seg.now, o.noColor)} alt={alt} /></Box></Box>]
+    }
+    const bar = Math.max(1, o.columns - LANE_LABEL - LANE_TIME - 3)
+    const at = spans(seg.lanes, seg.now, bar)
+    const face = e.surface === 'mobile' ? draw({ mono: true }) : plain
+    return seg.lanes.map((l, k) => row(laneLine(l, at[k] ?? { before: 0, bar, after: 0 }), `line-${n}-${k}`, face))
+  }
+  const rows = (line: Line, n: number): RenderElement[] => {
+    const only = line.length === 1 ? line[0] : undefined
+    if (only !== undefined && 'lanes' in only) return laneRows(only, n)
+    return [row(line, `line-${n}`)]
+  }
+  return <Box flexDirection="column">{lines.flatMap(rows)}</Box>
 }
 
 // One dim line a draw hook's .catch draws in place of its tree. Not masked: the text is the mod's own, and the masker

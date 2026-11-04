@@ -8,7 +8,7 @@ import { narrowPlan, planLine, scoreSeg } from './planlines.ts'
 import type { PlanView, ScoresView } from './plan.ts'
 import type { Runway } from './stack.ts'
 
-import type { AgentRow, Cache, Level, Live, Meta, Pace, Turn, Usage, Window } from '../types'
+import type { AgentRow, AgentStatus, Cache, Level, Live, Meta, Pace, Turn, Usage, Window } from '../types'
 
 export type Tone = 'ok' | 'warn' | 'fail' | 'dim' | 'usage' | 'skill' | 'agents' | 'cache' | 'plan' | 'handoff' | 'opus' | 'sonnet' | 'haiku' | 'fable'
 export type Seg =
@@ -18,7 +18,12 @@ export type Seg =
   | { button: { key: string; label: string; hotkey?: string; tone?: Tone; plain?: boolean } }
   | { code: string }
   | { chart: number[] }
+  // Agents on one time axis (spec C2), alone on its line: text lanes on the terminal and mobile, one Svg elsewhere
+  | { lanes: Lane[]; now: number }
 export type Line = Seg[]
+// One agent on the axis: its label (`task <id>` or its type), when it started, when it ended (null while it runs), its
+// status and its time as the tree shows it
+export type Lane = { label: string; startAt: number; endAt: number | null; status: AgentStatus; time: string }
 // `plan`: the shown plan or task list while it runs, or for 10 minutes after it finished; `planInvalid`: the shown
 // plan's file failed its last read; `score`: the shown plan's scores, else the newest scores file's; `rec`: REC's level
 // and how many private words it hides

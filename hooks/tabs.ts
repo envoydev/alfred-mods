@@ -1,5 +1,5 @@
 // Each /inspect tab, from the session's values to lines of styled segments.
-import { LOOPS_NOTE, agentTree, isLive, loopsLine, toolSummary } from './agents.ts'
+import { LOOPS_NOTE, agentTime, agentTree, isLive, lanesOf, loopsLine, statusGlyph, toolSummary } from './agents.ts'
 import { REC_MARK, barSegs, cacheWarning, pctSeg, windowsInOrder, working } from './band.ts'
 import { IDLE_COMPACT_MS, billingOf, cacheLine, cacheView, selfCompacts, toastAt } from './cache.ts'
 import type { BandInput, Line, Seg, Tone } from './band.ts'
@@ -13,7 +13,7 @@ import { recStatus } from './rec.ts'
 import { stackLines } from './stack.ts'
 import type { Runway } from './stack.ts'
 
-import type { AgentRow, Failure, Loop, Parts, Stack, Tab, ToolStat, Totals, Turn, View } from '../types'
+import type { Failure, Loop, Parts, Stack, Tab, ToolStat, Totals, Turn, View } from '../types'
 
 // `stack`: Alfred Code's status as last read, its resume prompt from module memory, the runway and the session's model
 export type TabInput = BandInput & {
@@ -75,25 +75,6 @@ function familySeg(model: string): Seg {
   return parts === null ? { text: modelText(model) } : { text: parts.family, tone: parts.family }
 }
 
-// How long the agent has run, or how it ended and after how long
-function agentTime(r: AgentRow, now: number): string {
-  const took = duration((r.endedAt ?? now) - r.startedAt)
-  switch (r.status) {
-    case 'running': return took
-    case 'waiting': return `waiting · ${took}`
-    case 'pending': return 'pending'
-    case 'completed': return `done in ${took}`
-    case 'failed': return `failed after ${took}`
-    case 'killed': return `stopped after ${took}`
-    case 'idle': return 'idle'
-  }
-}
-
-function agentGlyph(r: AgentRow): Seg {
-  if (isLive(r.status)) return { text: '⟳', bold: true }
-  if (r.status === 'completed') return { text: '✓', tone: 'ok' }
-  return r.status === 'idle' ? { text: '·', tone: 'dim' } : { text: '✗', tone: 'fail' }
-}
 
 // The main loop as the root, then each agent under the one that started it, its task, action or result, and tools
 export function agentsLines(b: TabInput): Line[] {
@@ -112,10 +93,14 @@ export function agentsLines(b: TabInput): Line[] {
     root.push({ text: ' · ' }, parts === null ? { text: b.meta.model } : { text: modelText(b.meta.model), tone: parts.family })
   }
   root.push({ text: ` · ${b.meta.mainCalls} ${b.meta.mainCalls === 1 ? 'tool' : 'tools'}` })
-  const out: Line[] = [head, root]
+  const out: Line[] = [head]
+  // Two or more agents on one time axis, where the pane has room for it (spec C2)
+  const lanes = b.columns >= 60 ? lanesOf(b.agents, b.now) : []
+  if (lanes.length >= 2) out.push([{ lanes, now: b.now }])
+  out.push(root)
   for (const t of agentTree(b.agents)) {
     const r = t.row
-    const line: Line = [{ text: t.prefix, tone: 'dim' }, agentGlyph(r), { text: ` ${r.type} · ` }, familySeg(r.model)]
+    const line: Line = [{ text: t.prefix, tone: 'dim' }, statusGlyph(r.status), { text: ` ${r.type} · ` }, familySeg(r.model)]
     if (r.effort !== null) line.push({ text: ` ◑ ${r.effort}`, tone: 'dim' })
     line.push({ text: `   ${agentTime(r, b.now)}`, tone: 'dim' })
     // Its report ends mid-way: the last step stopped at the output limit (spec C4)
