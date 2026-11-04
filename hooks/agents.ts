@@ -1,8 +1,9 @@
 // Agents as rows: what a spawn says, how a run ends, which rows are kept, the tree they draw and their tool counts.
 import type { AgentInfo } from 'claude-code'
 
-import { oneLine } from './format.ts'
-import type { AgentRow, AgentStatus, ToolStat, TurnEnd } from '../types'
+import { duration, oneLine, tokens } from './format.ts'
+import type { Lane, Line, Seg } from './band.ts'
+import type { AgentRow, AgentStatus, Loop, ToolStat, TurnEnd } from '../types'
 
 // The first word of a prompt's first `plan:` and `task:` lines; nothing else of the prompt is kept, the rest of either
 // line included, as a model may write its brief on it
@@ -20,7 +21,7 @@ export function newRow(s: Spawned, now: number): AgentRow {
   return {
     id: s.id, parentId: s.parentId, type: s.type, description: oneLine(s.description, 60), ...promptLines(s.prompt),
     isTeammate: s.isTeammate, model: s.model, effort: null, status: 'running', isListed: false,
-    startedAt: now, endedAt: null, action: null, report: null, contextTokens: null, tools: {},
+    startedAt: now, endedAt: null, action: null, report: null, contextTokens: null, tools: {}, lastStop: null,
   }
 }
 
@@ -54,6 +55,63 @@ export function refreshAgents(rows: AgentRow[], listed: readonly AgentInfo[], no
     if (l === undefined) return r.isListed ? { ...r, status: 'completed' as const, endedAt: now } : r
     return { ...r, isListed: true, status: l.status, endedAt: isLive(l.status) ? null : now, parentId: r.parentId ?? l.parentId ?? null }
   })
+}
+
+// How long the agent has run, or how it ended and after how long
+export function agentTime(r: AgentRow, now: number): string {
+  const took = duration((r.endedAt ?? now) - r.startedAt)
+  switch (r.status) {
+    case 'running': return took
+    case 'waiting': return `waiting · ${took}`
+    case 'pending': return 'pending'
+    case 'completed': return `done in ${took}`
+    case 'failed': return `failed after ${took}`
+    case 'killed': return `stopped after ${took}`
+    case 'idle': return 'idle'
+  }
+}
+
+export function statusGlyph(status: AgentStatus): Extract<Seg, { text: string }> {
+  if (isLive(status)) return { text: '⟳', bold: true }
+  if (status === 'completed') return { text: '✓', tone: 'ok' }
+  return status === 'idle' ? { text: '·', tone: 'dim' } : { text: '✗', tone: 'fail' }
+}
+
+// The time axis's lanes (spec C2): the 8 newest rows that have a start, oldest first; a live row has no end yet
+export function lanesOf(rows: AgentRow[], now: number): Lane[] {
+  return rows.filter(r => r.startedAt > 0).sort((a, b) => a.startedAt - b.startedAt).slice(-8).map(r => ({
+    label: r.task === null ? r.type : `task ${r.task}`, startAt: r.startedAt,
+    endAt: isLive(r.status) ? null : r.endedAt ?? now, status: r.status, time: agentTime(r, now),
+  }))
+}
+
+// A lane's text widths at `columns` (spec C2): a glyph and a space, the label, the bar, a space and the time. The time
+// cell is as wide as the longest lane's, never cut; the label is 14 cells and gives way down to 6 so the bar keeps 10.
+// Null where even that does not fit: the pane draws no lanes.
+export type LaneFit = { label: number; bar: number; time: number }
+export function laneFit(lanes: Lane[], columns: number): LaneFit | null {
+  const time = Math.max(0, ...lanes.map(l => [...l.time].length))
+  const label = Math.min(14, columns - 3 - time - 10)
+  return label < 6 ? null : { label, bar: columns - 3 - time - label, time }
+}
+
+// Loops no spawn announced (spec C3): a step adds to its loop, or starts one; the newest 60 are kept
+export function addLoopStep(loops: Loop[], id: string, output: number, now: number): Loop[] {
+  const known = loops.find(l => l.id === id)
+  if (known !== undefined) return loops.map(l => (l === known ? { ...l, steps: l.steps + 1, output: l.output + output, lastAt: now } : l))
+  return [...loops, { id, steps: 1, output, firstAt: now, lastAt: now, isDone: false }].slice(-60)
+}
+
+// D3 found workflow agents raise agent.spawn, so what is left is a compaction's or a fork's loop
+export const LOOPS_NOTE = '(no spawn: compactions, forks)'
+
+// The Agents tab's line after the tree while any loop was seen: how many, how many active (not done, a step in the
+// last 15 seconds), their output, then the dim note
+export function loopsLine(loops: Loop[], now: number, note: string): Line[] {
+  if (loops.length === 0) return []
+  const active = loops.filter(l => !l.isDone && now - l.lastAt < 15_000).length
+  const output = loops.reduce((sum, l) => sum + l.output, 0)
+  return [[{ text: `Other loops ${loops.length} · ${active} active · out ${tokens(output)}` }], [{ text: note, tone: 'dim' }]]
 }
 
 // A teammate waits for its next message; any other agent's run ends

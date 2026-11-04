@@ -9,6 +9,16 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+// Node starts no .cmd or .bat file without a shell since 18.20.2 and 20.12.2 (CVE-2024-27980), and npm's global
+// `claude` on Windows may be a .cmd shim: there it runs through the shell, each argument double-quoted, which starts a
+// shim and an .exe alike. Elsewhere it starts directly, as before.
+const quote = (arg) => `"${arg.replace(/"/g, '\\"')}"`;
+function claude(args)
+{
+    if (process.platform !== 'win32') return spawnSync('claude', args, { encoding: 'utf8' });
+    return spawnSync(['claude', ...args.map(quote)].join(' '), { encoding: 'utf8', shell: true });
+}
 const ls = spawnSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: root, encoding: 'utf8' });
 if (ls.error || ls.status !== 0)
 {
@@ -35,7 +45,7 @@ try
     ];
     for (const [label, args] of runs)
     {
-        const r = spawnSync('claude', ['plugin', 'validate', ...args], { encoding: 'utf8' });
+        const r = claude(['plugin', 'validate', ...args]);
         if (r.error) { console.error(`validate: cannot run claude (${r.error.message})`); code = 2; break; }
         if (r.status !== 0) { console.error(`validate: the ${label} failed\n${`${r.stdout}${r.stderr}`.trim()}`); code = 1; }
         else console.log(`validate: the ${label} passed (${args.slice(1).join(' ')}) on the ${files.length} files git would ship`);

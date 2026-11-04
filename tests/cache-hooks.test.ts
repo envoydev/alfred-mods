@@ -46,7 +46,7 @@ test('a model switch reports the tier under its billing and prices the rewrite',
   expect(Math.abs((c.ratePerToken ?? 0) - 0.000008) < 1e-12).toBe(true)
 })
 
-test('a switch declined after PreModelSwitch keeps the cache warm', async ($, on) => {
+test('a switch declined after PreModelSwitch keeps the cache warm', { timeoutMs: 15_000 }, async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: PLAN })
   const state = watchState(on)
   engine(on)
@@ -101,7 +101,7 @@ test("idle compaction's threshold is read at the start", async ($, on) => {
   expect((state.get('cache') as Cache).config.idleMinTokens).toBe(120_000)
 })
 
-test('the 5 min toast fires once per warm stretch', async ($, on) => {
+test('the 5 min toast fires once per warm stretch', { timeoutMs: 15_000 }, async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: PLAN })
   engine(on)
   stepEngine(on, () => MAIN)
@@ -123,9 +123,10 @@ test('the 5 min toast fires once per warm stretch', async ($, on) => {
   expect(cacheToasts(toasts)).toHaveLength(2)
 })
 
-// It walks an hour of the clock, 2 to 4 s of real time: a full run on a loaded machine needs more than the kit's 5 s
+// The reload comes 50 minutes after the last request, so the walk to the toast is 5 minutes: a 55-minute walk held the
+// toast's timer open past a hook's 10 s budget on CI's Windows runner
 test('after a reload, a warm 1h cache still gets its toast', { timeoutMs: 15_000 }, async ($, on) => {
-  const { clock, toasts } = stubAll(on, { usage: PLAN })
+  const { clock, toasts } = stubAll(on, { usage: PLAN, now: 3_000_000 })
   engine(on)
   // A reload keeps $.state and runs register and session.start again: the cache stands warm from a switch at 0
   const warm: Cache = {
@@ -145,12 +146,14 @@ test('after a reload, a warm 1h cache still gets its toast', { timeoutMs: 15_000
   })
 
   await $.session.start(START)
-  await clock.advance(3_300_000)
+  await clock.advance(299_000)
+  expect(cacheToasts(toasts)).toEqual([])
 
+  await clock.advance(1_000)
   expect(cacheToasts(toasts)).toEqual(['Cache cold in 5m (rewrite ≈ $1.44): press 3 to compact, or /inspect cache'])
 })
 
-test('with no switch, a subscription within its plan gets the toast as an estimate', async ($, on) => {
+test('with no switch, a subscription within its plan gets the toast as an estimate', { timeoutMs: 15_000 }, async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: PLAN })
   engine(on)
   stepEngine(on, () => MAIN)
@@ -162,7 +165,7 @@ test('with no switch, a subscription within its plan gets the toast as an estima
   expect(cacheToasts(toasts)).toEqual(['Cache cold in ≈5m: press 3 to compact, or /inspect cache'])
 })
 
-test('crossing into usage credits withholds the 1h toast', async ($, on) => {
+test('crossing into usage credits withholds the 1h toast', { timeoutMs: 15_000 }, async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: PLAN })
   engine(on)
   stepEngine(on, () => MAIN)
@@ -176,7 +179,7 @@ test('crossing into usage credits withholds the 1h toast', async ($, on) => {
 })
 
 // The user's ruling (2026-10-28): no warning under 100k cached
-test('a 1h cache under 100k gets no toast', async ($, on) => {
+test('a 1h cache under 100k gets no toast', { timeoutMs: 15_000 }, async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: PLAN })
   engine(on)
   stepEngine(on, () => ({ ...MAIN, cache_read_input_tokens: 30_000, cache_creation_input_tokens: 3_000 }))
@@ -188,7 +191,7 @@ test('a 1h cache under 100k gets no toast', async ($, on) => {
   expect(cacheToasts(toasts)).toEqual([])
 })
 
-test('no toast while a turn runs', async ($, on) => {
+test('no toast while a turn runs', { timeoutMs: 15_000 }, async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: PLAN })
   engine(on)
   stepEngine(on, () => MAIN)
@@ -214,7 +217,7 @@ test('no toast on the 5m tier', async ($, on) => {
   expect(cacheToasts(toasts)).toEqual([])
 })
 
-test('where Claude Code should compact the conversation itself, the toast waits for it and comes if it does not', async ($, on) => {
+test('where Claude Code should compact the conversation itself, the toast waits for it and comes if it does not', { timeoutMs: 15_000 }, async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: reading(210_000) })
   engine(on)
   stepEngine(on, () => MAIN)
@@ -228,7 +231,7 @@ test('where Claude Code should compact the conversation itself, the toast waits 
   expect(cacheToasts(toasts)).toEqual(['Cache cold in ≈3m: press 3 to compact, or /inspect cache'])
 })
 
-test("Claude Code's own idle compaction leaves no warning", async ($, on) => {
+test("Claude Code's own idle compaction leaves no warning", { timeoutMs: 15_000 }, async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: reading(210_000) })
   engine(on)
   stepEngine(on, () => MAIN)
@@ -242,7 +245,7 @@ test("Claude Code's own idle compaction leaves no warning", async ($, on) => {
   expect(cacheToasts(toasts)).toEqual([])
 })
 
-test('the toast stays when idle compaction is off', async ($, on) => {
+test('the toast stays when idle compaction is off', { timeoutMs: 15_000 }, async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: reading(210_000), settings: { idleCompaction: false } })
   engine(on)
   stepEngine(on, () => MAIN)
@@ -254,7 +257,7 @@ test('the toast stays when idle compaction is off', async ($, on) => {
   expect(cacheToasts(toasts)).toHaveLength(1)
 })
 
-test('the toast stays off the terminal, where idle compaction waits for the next message', async ($, on) => {
+test('the toast stays off the terminal, where idle compaction waits for the next message', { timeoutMs: 15_000 }, async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: reading(210_000) })
   engine(on)
   stepEngine(on, () => MAIN)
@@ -266,7 +269,7 @@ test('the toast stays off the terminal, where idle compaction waits for the next
   expect(cacheToasts(toasts)).toHaveLength(1)
 })
 
-test('after /clear in the terminal, the toast still waits for self-compaction', async ($, on) => {
+test('after /clear in the terminal, the toast still waits for self-compaction', { timeoutMs: 15_000 }, async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: reading(210_000) })
   const state = watchState(on)
   engine(on)
@@ -281,7 +284,7 @@ test('after /clear in the terminal, the toast still waits for self-compaction', 
   expect(cacheToasts(toasts)).toEqual([])
 })
 
-test('after /clear the armed toast stays quiet', async ($, on) => {
+test('after /clear the armed toast stays quiet', { timeoutMs: 15_000 }, async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: PLAN })
   engine(on)
   stepEngine(on, () => MAIN)

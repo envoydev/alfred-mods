@@ -8,16 +8,22 @@ import { narrowPlan, planLine, scoreSeg } from './planlines.ts'
 import type { PlanView, ScoresView } from './plan.ts'
 import type { Runway } from './stack.ts'
 
-import type { AgentRow, Cache, Level, Live, Meta, Pace, Turn, Usage, Window } from '../types'
+import type { AgentRow, AgentStatus, Cache, Level, Live, Meta, Pace, Turn, Usage, Window } from '../types'
 
 export type Tone = 'ok' | 'warn' | 'fail' | 'dim' | 'usage' | 'skill' | 'agents' | 'cache' | 'plan' | 'handoff' | 'opus' | 'sonnet' | 'haiku' | 'fable'
 export type Seg =
-  | { text: string; tone?: Tone; bold?: boolean }
+  // With a `width`, a table cell: that many cells wide, its text cut with '…' when longer, at its end with `align: 'end'`
+  | { text: string; tone?: Tone; bold?: boolean; width?: number; align?: 'start' | 'end' }
   // A toned button draws its label bold in the colour of the feature it acts on; a plain one draws `<hotkey>: <label>`
   | { button: { key: string; label: string; hotkey?: string; tone?: Tone; plain?: boolean } }
   | { code: string }
   | { chart: number[] }
+  // Agents on one time axis (spec C2), alone on its line: text lanes on the terminal and mobile, one Svg elsewhere
+  | { lanes: Lane[]; now: number }
 export type Line = Seg[]
+// One agent on the axis: its label (`task <id>` or its type), when it started, when it ended (null while it runs), its
+// status and its time as the tree shows it
+export type Lane = { label: string; startAt: number; endAt: number | null; status: AgentStatus; time: string }
 // `plan`: the shown plan or task list while it runs, or for 10 minutes after it finished; `planInvalid`: the shown
 // plan's file failed its last read; `score`: the shown plan's scores, else the newest scores file's; `rec`: REC's level
 // and how many private words it hides
@@ -232,6 +238,17 @@ function withPlanTail(b: BandInput, line: Line): Line {
 }
 
 export const REC_MARK: Seg = { text: '● REC', tone: 'fail', bold: true }
+
+// The status line under the prompt (spec D2), which stays while the band is collapsed: what needs the person, short
+// and in the band's order - REC, the context once the band turns hot at 60, the new failures - or null for none
+export function statusText(o: { percent: number | null; newFailures: number; recLevel: Level }): string | null {
+  const parts = [
+    o.recLevel === 'off' ? null : '● REC',
+    o.percent !== null && Math.round(o.percent) >= 60 ? `ctx ${pct(o.percent)}` : null,
+    o.newFailures > 0 ? `✗ ${o.newFailures} new` : null,
+  ].filter((p): p is string => p !== null)
+  return parts.length === 0 ? null : parts.join(' · ')
+}
 
 // A red '● REC' while REC is on, then Alfred Code's mode banner, lead line 1 in every state, never dropped for width:
 // the body's first line follows them while it fits what is left, else they take line 1 alone and the body keeps the

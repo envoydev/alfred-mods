@@ -206,6 +206,14 @@ test('the Usage tab counts turns to the runway, else to 80%', () => {
   expect(usageLines({ ...input, turns: [turn(1, 50), turn(2, 60), turn(3, 70)] }).map(text).join('\n')).toContain('≈1 turns to 80%')
 })
 
+test('the Usage tab labels tok/s an average', () => {
+  const input = {
+    ...BASE, turns: [], failures: [], stats: {},
+    totals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, stepOutput: 7000, stepMs: 100_000 }, view: { tab: 'usage' as const, shown: [], planSlug: null },
+  }
+  expect(usageLines(input).map(text).join('\n')).toContain(' · ≈70 tok/s avg')
+})
+
 const VIEW: HandoffView = {
   mode: 'ask', threshold: 80, isAskUp: false, percent: 31, point: 300_000, window: 1_000_000, handled: null, lastSave: null,
   alfred: { state: 'stood-down', reason: null }, isWorking: false, runway: null,

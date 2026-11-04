@@ -15,14 +15,47 @@ in [the session-inspector brief](docs/session-inspector-brief.md).
 
 ## What it shows
 
-- **On Claude Code alone:** model and effort, context used out of the window, the 5-hour and weekly limits, session
-  and daily cost, failed and denied tool calls with their reasons, running subagents, cache expiry, plan progress, a
-  handoff prompt of its own, an on-screen mask for recordings (`/rec`) and compact tool rows (`/quiet`), in one calm
-  band and an `/inspect` pane.
+- **On Claude Code alone:** model and effort, context used out of the window, the 5-hour and weekly limits, session and
+  daily cost, output speed as an average over the session (`≈70 tok/s avg` in the Usage tab), failed and denied tool
+  calls with their reasons, running subagents, cache expiry, plan progress, a handoff prompt of its own, an on-screen
+  mask for recordings (`/rec`) and compact tool rows (`/quiet`), in one calm band and an `/inspect` pane.
 - **With Alfred Code:** where the stack publishes its status file, the stack handles a full context and the mod's
   handoff stands down ([Handoff](#handoff)), and the mod shows the stack's mode banner, the context runway measured
   against the stack's resume trigger, and an ALFRED CODE section whose `f` fills the stack's ready resume prompt
   ([With Alfred Code](#with-alfred-code)).
+
+If the band or the pane fails to draw, it shows one dim line naming the failure, such as `session-inspector: the band
+failed to draw (throw)`, instead of going blank.
+
+OK, warning and failure take your theme's own colours (`/theme`), so a light or colour-blind theme draws them as it
+draws Claude Code's; with `NO_COLOR` set, nothing is coloured and the glyphs carry the meaning. Every row is laid out
+in fixed-width cells and margins rather than runs of spaces, for surfaces that draw in a proportional face such as the
+Desktop app; a table too wide for its pane shows its leading whole columns, and a failure row cuts its text before it
+gives up its Show and Copy buttons. A narrow pane, down to 24 columns, keeps the numbers: the Tools tab narrows the
+tool's column to keep its counts, and the Timeline leaves out the prompt's time to keep how long each turn took and
+its tokens.
+
+An agent whose last step stopped at the output limit ends its Agents row with `⚠ max_tokens`, and its result reads
+`result (cut off): …`, as the report ends mid-way. The Timeline's `spend` is the session's spend while the turn ran,
+agents included (`spend, est.` on a plan, as the Usage tab marks cost); spend while no turn runs, such as an agent
+finishing after the reply, falls in no row, so the column does not sum to the session's cost.
+
+The Usage tab shows what fills the context, from Claude Code's own estimate: `In context` lists each part (system
+prompt, tools, agents, memory files, messages), `Plugins` each plugin's agents and skills with their tokens, and
+`Memory` the memory files with the three largest. It reads again after a compaction, and when the tab opens a minute or
+more after the last read. A memory file outside the project is named by its type and base name, never its path.
+
+With two agents or more, the Agents tab draws them on one time axis above the tree, one lane each, the newest 8; the
+Desktop app and VS Code draw it as a picture. A narrow pane shortens the lane labels to keep a 10-cell bar, so a pane
+docked beside a 120-column terminal shows the lanes, and one under about 30 columns draws none. Model loops that no Agent call started are
+counted apart on one line, `Other loops 2 · 1 active · out 41k`; their tool calls are not counted.
+
+A call a hook blocked names the hook's script, `⊘ blocked by guard.js: …`, and the Tools tab counts blocks by script
+under `Blocked by hooks`.
+
+While something needs you - recording mode on, the context at 60% or more, new failures - the mod pins one line under
+the prompt, `⚠ session-inspector: ● REC · ctx 82% · ✗ 2 new`, which stays while the band is collapsed (Ctrl+X Ctrl+A).
+It changes only when its text does, and clears once nothing needs you.
 
 ## Commands
 
@@ -100,6 +133,10 @@ start, every 30 seconds and after `/clear`, and shows more:
   prompt into an empty prompt box, never sending it. Enter in the prompt box sends it; in the terminal the focus is
   back there after the fill. With something already typed, a toast says to clear it first.
 
+The stack's own parts show as any plugin's do, the status file aside: the Usage tab names `alfred-code` with its
+agents' tokens, the Tools tab names its guards (`blocked by shell-guards.js: …`), and its dispatched agents take their
+`task:` id as their lane's label.
+
 Without Alfred Code, or when the file is missing, has another schema or names another session, the band shows none of
 this, and the ALFRED CODE section shows one dim line with the reason, such as `Alfred Code: no status file for this
 session`. The file is the stack's: the mod never writes it and reads nothing else of the stack.
@@ -125,7 +162,16 @@ session`. The file is the stack's: the mod never writes it and reads nothing els
   is 3 to 64 characters, up to 100 words, matched inside longer words regardless of case. They are stored as plain
   JSON in the mod's store file on this machine, not encrypted, and never in session state, a log, a toast, a file the
   mod writes or Claude's context. With REC on, the pane shows only how many there are.
-- **`/rec test`** runs the masker over fake samples of each kind and your private words, and prints what it hid.
+- **Keys** are provider keys and tokens, private key blocks, bearer tokens and named secrets (`API_KEY=…`), and also:
+  a value named `password`, `passwd`, `pwd` or `secret` from 4 characters (`password=‹key›`, not `password: null`);
+  a secret flag and its value (`--password ‹key›`, `--token=‹key›`); an Authorization header of any scheme
+  (`Authorization: Basic ‹key›`); and the password in a URL's credentials (`postgres://admin:‹key›@localhost`). Only
+  the value is hidden.
+- **If a row fails to draw** while REC is on, it reads `‹row hidden: REC could not mask it›`, the spinner reads
+  `Working`, and a question dialog keeps its option labels with every other text `‹hidden›`. With REC off, Claude Code
+  draws the row as it would without the mod.
+- **`/rec test`** runs the masker over fake samples of each kind, near misses that must stay visible, and your private
+  words, and prints what it hid.
 - **Before you record:** run `/rec test` and check that each sample and private word is hidden, then clear the
   terminal or start a new session, so no row drawn before REC went on is left in view.
 
@@ -284,6 +330,9 @@ npm test                 # claude plugin test: hooks fired with stubs, no sessio
 npm run validate         # claude plugin validate --strict on both manifests (the mod with --profile directory too), on a copy of the files git would ship
 claude --plugin-dir .    # load the working tree for one session; a save reloads the hooks
 ```
+
+CI (`.github/workflows/ci.yml`) runs `npm run validate` and `npm test` on Linux, macOS and Windows, and `tsc` on Linux
+against the types the pinned Claude Code build writes.
 
 The first interactive `--plugin-dir` session writes the mod types for the running build into
 `.claude-plugin/types/` (git-ignored), which editors and `tsc` read. Requires Node 22 for the scripts (built-ins

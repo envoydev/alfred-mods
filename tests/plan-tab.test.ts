@@ -113,7 +113,7 @@ for (const surface of SURFACES) {
     expect(header.endsWith('(uncalibrated)')).toBe(true)
   })
 
-  test(`the band's line 1 is the plan line while it runs (${surface})`, async ($, on) => {
+  test(`the band's line 1 is the plan line while it runs (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     const { clock } = await begin($, on, { answer: slowCalls })
     expect((await rows(await band($, surface, true)))[0]).toBe(PLAN_LINE)
 
@@ -125,7 +125,7 @@ for (const surface of SURFACES) {
     await finish(clock, [call])
   })
 
-  test(`past the width, agents fold first, then Bash, then the step (${surface})`, async ($, on) => {
+  test(`past the width, agents fold first, then Bash, then the step (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     const { files, clock } = await begin($, on, { answer: slowCalls })
     for (const description of ['one', 'two']) await $.agent.spawn({ ...SPAWN, subagentType: 'Explore', description })
     const calls = [
@@ -163,20 +163,20 @@ for (const surface of SURFACES) {
     expect(await planTab($, surface)).toContain(fold('⟳ S4 Update interceptor   13m of ≈24m   est 20m'))
   })
 
-  test(`a plan left running by an earlier session keeps out of line 1 (${surface})`, async ($, on) => {
+  test(`a plan left running by an earlier session keeps out of line 1 (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     const { clock } = await begin($, on, { files: { [PLAN_PATH]: file(PLAN_JSON, NOW - 60_000) } })
 
     expect((await rows(await band($, surface, true)))[0]).toBe('⟳ Turn 1 · 0:00')
     await inspect($, 'plan')
     const ui = await pane($, surface)
     expect((await rows(ui)).map(fold)).toContain('Plan · Token refresh 3/5 · ≈1h 42m total · ≈30m left (×1.2)')
-    expect(await colorOf(ui, /^last update/)).not.toBe('#f59e0b')
+    expect(await colorOf(ui, /^last update/)).not.toBe('warning')
     await clock.advance(13 * MIN)
     expect((await rows(ui)).map(fold)).toContain('last update 21m ago')
-    expect(await colorOf(ui, /^last update/)).toBe('#f59e0b')
+    expect(await colorOf(ui, /^last update/)).toBe('warning')
   })
 
-  test(`a finished plan draws its second form while working for 10 minutes (${surface})`, async ($, on) => {
+  test(`a finished plan draws its second form while working for 10 minutes (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     const { files, clock, toasts } = await begin($, on, { store: { ...STORE, 'step:token-refresh:S5:s0': at(7 * MIN) } })
 
     files.current[PLAN_PATH] = file(planText({ S4: 'done', S5: 'done' }), NOW + 1)
@@ -228,7 +228,7 @@ for (const surface of SURFACES) {
     const ui = await pane($, surface)
 
     expect((await rows(ui)).map(fold)).toContain('last update 25m ago')
-    expect(await colorOf(ui, /^last update/)).toBe('#f59e0b')
+    expect(await colorOf(ui, /^last update/)).toBe('warning')
   })
 
   test(`the Now tab's PLAN comes first (${surface})`, async ($, on) => {
@@ -275,7 +275,7 @@ for (const surface of SURFACES) {
     await begin($, on)
     await inspect($, 'plan')
     const ui = await pane($, surface)
-    expect(await colorOf(ui, /^ Plan $/)).toBe('#ca8a04')
+    expect(await colorOf(ui, /^Plan$/)).toBe('#ca8a04')
     expect(await colorOf(await band($, surface, true), /^▰▰▰$/)).toBe('#ca8a04')
   })
 

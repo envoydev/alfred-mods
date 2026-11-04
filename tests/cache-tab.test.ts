@@ -112,7 +112,7 @@ for (const surface of SURFACES) {
     expect(await rows(await pane($, surface))).toContain('Tier      5m, set by CLAUDE_CODE_PROMPT_CACHE_TTL')
   })
 
-  test(`the band offers Compact in a 1h cache's last 5 minutes (${surface})`, async ($, on) => {
+  test(`the band offers Compact in a 1h cache's last 5 minutes (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     const { clock } = stubAll(on, { usage: PLAN })
     engine(on)
     stepEngine(on, () => MAIN)
@@ -270,7 +270,7 @@ for (const surface of SURFACES) {
     expect((await rows(ui)).some(l => /warm 59m/.test(l))).toBe(true)
   })
 
-  test(`a 5m cache counts down to cold while idle (${surface})`, async ($, on) => {
+  test(`a 5m cache counts down to cold while idle (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     const { clock } = stubAll(on, { usage: PLAN })
     engine(on)
     stepEngine(on, () => MAIN)

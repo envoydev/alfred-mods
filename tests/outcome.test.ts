@@ -9,7 +9,7 @@ const base: CallFacts = { tool: 'Bash', checked: null, checkReason: null, asked:
 
 test('a Bash exit is a new error with its first line', () => {
   expect(classify({ ...base, checked: 'allow', failedInTool: true, result: { isError: true, deny: null, text: 'Exit code 1\nboom' } }))
-    .toEqual({ outcome: 'error', reason: 'Exit code 1', isNew: true })
+    .toEqual({ outcome: 'error', reason: 'Exit code 1', isNew: true, by: null })
 })
 
 test("Claude Code's own refusal before the check is an error, by the ruling", () => {
@@ -24,19 +24,33 @@ test("an input error's reason drops the tool_use_error tag", () => {
 
 test('a guard hook deny is blocked and never new', () => {
   expect(classify({ ...base, checked: 'deny', checkReason: 'guard: marked command', result: { isError: true, deny: null, text: 'x' } }))
-    .toEqual({ outcome: 'blocked', reason: 'guard: marked command', isNew: false })
+    .toEqual({ outcome: 'blocked', reason: 'guard: marked command', isNew: false, by: null })
 })
 
-// A plugin's hook names its own command first, which filled the row before the message (Task 8, with Alfred Code)
-test("a plugin hook's block reads its message on one line, without the hook's command", () => {
+// A plugin's hook names its own command first, which filled the row before the message (Task 8, with Alfred Code); the
+// row names its script in place of the command (spec C6)
+test("a plugin hook's block reads its message on one line, by its script, without the hook's command", () => {
   const checkReason = 'PreToolUse:Bash hook error: [node "/p/stack/hooks/shell-guards.js"]: Blocked: this discards uncommitted work\n   M notes.txt'
-  expect(classify({ ...base, checked: 'deny', checkReason, result: { isError: true, deny: null, text: 'x' } }).reason)
-    .toBe('PreToolUse:Bash hook error: Blocked: this discards uncommitted work')
+  expect(classify({ ...base, checked: 'deny', checkReason, result: { isError: true, deny: null, text: 'x' } }))
+    .toEqual({ outcome: 'blocked', reason: 'blocked by shell-guards.js: this discards uncommitted work', isNew: false, by: 'shell-guards.js' })
+  // A command with no script keeps the message alone
+  expect(classify({ ...base, checked: 'deny', checkReason: 'PreToolUse:Bash hook error: [grep -q x]: Blocked: no', result: { isError: true, deny: null, text: 'x' } }).reason)
+    .toBe('PreToolUse:Bash hook error: Blocked: no')
+})
+
+// A hook command that holds its own brackets ends at the first ']: ', not the first ']' (release 3 review)
+test('a hook command with brackets of its own keeps the message and no path', () => {
+  const checkReason = 'PreToolUse:Bash hook error: [[ -x "/Users/jane/p/.claude/hooks/guard.sh" ] && "/Users/jane/p/.claude/hooks/guard.sh"]: Blocked: use Monitor'
+  expect(classify({ ...base, checked: 'deny', checkReason, result: { isError: true, deny: null, text: 'x' } }))
+    .toEqual({ outcome: 'blocked', reason: 'blocked by guard.sh: use Monitor', isNew: false, by: 'guard.sh' })
+  const unnamed = 'PreToolUse:Bash hook error: [[ -f /Users/jane/x ] && exit 2]: Blocked: no'
+  expect(classify({ ...base, checked: 'deny', checkReason: unnamed, result: { isError: true, deny: null, text: 'x' } }).reason)
+    .toBe('PreToolUse:Bash hook error: Blocked: no')
 })
 
 test("the person's No is denied", () => {
   expect(classify({ ...base, checked: 'ask', asked: true, result: { isError: true, deny: null, text: 'rejected' } }))
-    .toEqual({ outcome: 'denied', reason: 'denied by you', isNew: true })
+    .toEqual({ outcome: 'denied', reason: 'denied by you', isNew: true, by: null })
 })
 
 test('a classifier block is blocked once PermissionDenied names the call', () => {
@@ -49,7 +63,7 @@ test('an ask that errors with no prompt and no PermissionDenied is refused', () 
 
 test('an interrupted call is an error that is not new', () => {
   expect(classify({ ...base, checked: 'allow', failedInTool: true, interrupted: true, result: { isError: true, deny: null, text: '' } }))
-    .toEqual({ outcome: 'error', reason: 'interrupted', isNew: false })
+    .toEqual({ outcome: 'error', reason: 'interrupted', isNew: false, by: null })
 })
 
 // An empty reason left the row with nothing after the target (final review minor)
@@ -61,7 +75,7 @@ test("an error with no text reads 'failed'", () => {
 // A PermissionRequest hook's deny read 'refused' with no reason; the hook blocked it and said why (final review minor)
 test("a permission hook's deny is blocked with its message", () => {
   expect(classify({ ...base, checked: 'ask', hookDeny: 'not on main', result: { isError: true, deny: null, text: 'not on main' } }))
-    .toEqual({ outcome: 'blocked', reason: 'hook: not on main', isNew: false })
+    .toEqual({ outcome: 'blocked', reason: 'hook: not on main', isNew: false, by: null })
   expect(classify({ ...base, checked: 'ask', hookDeny: '', result: { isError: true, deny: null, text: '' } }).reason).toBe('blocked by a hook')
 })
 

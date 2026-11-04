@@ -34,6 +34,79 @@ test('every key sample is hidden, a named value by its value alone', () => {
   expect(maskText(c, 'API_KEY=hunter2hunter2')).toBe('API_KEY=‹key›')
 })
 
+test('the four forms hide their value, at on and strict', () => {
+  const forms: [string, string][] = [
+    ['password=hunter2', 'password=‹key›'], ['--password hunter2', '--password ‹key›'], ['--token=abcd1234', '--token=‹key›'],
+    ['Authorization: Basic dXNlcjpwYXNz', 'Authorization: Basic ‹key›'], ['authorization=Token abcd', 'authorization=Token ‹key›'],
+    ['postgres://admin:hunter2@localhost', 'postgres://admin:‹key›@localhost'],
+  ]
+  for (const level of ['on', 'strict'] as const) {
+    const c = compile(level, [], '/Users/jane')
+    for (const [text, masked] of forms) expect({ level, out: maskText(c, text) }).toEqual({ level, out: masked })
+  }
+})
+
+test('near misses of the four forms stay', () => {
+  const c = compile('on', [], null)
+  const misses = ['Basic usage', '$ pwd', 'key: id', 'password: null', 'secret: true', '--token-file ./t', 'https://example.com/a:b@c', 'password=', 'https://u@h']
+  for (const t of misses) expect(maskText(c, t)).toBe(t)
+  for (const t of misses.slice(0, 7)) expect(LEFT_ALONE).toContain(t)
+})
+
+test('a token in URL credentials masks once', () => {
+  const c = compile('on', [], null)
+  const url = 'https://bot:' + 'gh' + 'p_' + 'aB3'.repeat(12) + '@github.com/o/r.git'
+  expect(maskText(c, url)).toBe('https://bot:‹key›@github.com/o/r.git')
+  expect(maskText(c, 'postgres://admin:hunter2@db.example.com/x')).toBe('postgres://admin:‹key›@db.example.com/x')
+  const user = 'https://' + 'gh' + 'p_' + 'aB3'.repeat(12) + ':x-oauth-basic@github.com'
+  expect(maskText(c, user)).toBe('https://‹key›:‹key›@github.com')
+})
+
+test('Authorization of any scheme hides its credential, Proxy-Authorization too', () => {
+  const c = compile('on', [], null)
+  const cases: [string, string][] = [
+    ['Authorization: Bot ' + 'abcd'.repeat(6), 'Authorization: Bot ‹key›'],
+    ['authorization: Key abcd1234:efgh5678', 'authorization: Key ‹key›'],
+    ['Authorization: ApiKey abcdef123456', 'Authorization: ApiKey ‹key›'],
+    ['Authorization: SSWS 00abcdEFGH', 'Authorization: SSWS ‹key›'],
+    ['Proxy-Authorization: Basic dXNlcjpwYXNz', 'Proxy-Authorization: Basic ‹key›'],
+    ['Authorization: Bearer abc', 'Authorization: Bearer ‹key›'],
+    ['Authorization: abcd1234 in the header', 'Authorization: ‹key› in the header'],
+  ]
+  for (const [text, masked] of cases) expect(maskText(c, text)).toBe(masked)
+  expect(maskText(c, 'Authorization header missing')).toBe('Authorization header missing')
+})
+
+test('URL credentials with no user or an @ in the password hide the whole password, once', () => {
+  const c = compile('on', [], null)
+  const cases: [string, string][] = [
+    ['redis://:hunter2@localhost:6379', 'redis://:‹key›@localhost:6379'],
+    ['postgres://admin:p@ss@localhost', 'postgres://admin:‹key›@localhost'],
+    ['ftp://anonymous:jane@example.com@ftp.example.com/', 'ftp://anonymous:‹key›@ftp.example.com/'],
+  ]
+  for (const [text, masked] of cases) {
+    expect(maskText(c, text)).toBe(masked)
+    expect(maskText(c, masked)).toBe(masked)
+  }
+})
+
+test("HANDOFF's key class gains the forms", () => {
+  expect(maskForFile('password=hunter2')).toBe('password=‹key›')
+  expect(maskForFile('postgres://admin:hunter2@localhost')).toBe('postgres://admin:‹key›@localhost')
+})
+
+test('a 100 kB line of each form masks in under 50 ms', () => {
+  const c = compile('on', [], null)
+  const forms = ['password=hunter2 ', '--password hunter2 ', 'Authorization: Basic dXNlcjpwYXNz ', 'postgres://admin:hunter2@localhost ']
+  for (const form of forms) {
+    const text = form.repeat(Math.ceil(100_000 / form.length))
+    maskText(c, text)
+    const at = performance.now()
+    maskText(c, text)
+    expect({ form, fast: performance.now() - at < 50 }).toEqual({ form, fast: true })
+  }
+})
+
 test('every email and phone sample is hidden', () => {
   const c = compile('on', [], null)
   for (const s of [...EMAILS, ...PHONES]) expect(maskText(c, s.text)).toBe(s.masked)
@@ -114,23 +187,27 @@ test('masking a masked string changes nothing', () => {
   expect(maskText(c, '‹email 2› and ‹user›')).toBe('‹email 2› and ‹user›')
 })
 
-test("a 1 MB line masks in under 15 times a 100 kB line's time", () => {
+// Linear reads about 10 (10.1 to 10.5 alone, 2026-11-04) and quadratic about 100. The suite's parallel test processes
+// pushed a ratio timed one size after the other to 25.5, so the sizes are timed in turn, each its best of 7, and the
+// bound sits between the noise and quadratic
+test("a 1 MB line masks in under 40 times a 100 kB line's time", () => {
   const c = compile('on', Array.from({ length: 100 }, (_, i) => `wrd${i}q`), null)
   const small = base64(100_000)
   const big = base64(1_000_000)
   maskText(c, small)
   maskText(c, big)
-  const time = (text: string): number => {
-    let best = Infinity
-    for (let i = 0; i < 5; i++) {
-      const at = performance.now()
-      maskText(c, text)
-      best = Math.min(best, performance.now() - at)
-    }
-    return best
+  const once = (text: string): number => {
+    const at = performance.now()
+    maskText(c, text)
+    return performance.now() - at
   }
-  const ratio = time(big) / time(small)
-  expect(ratio).toBeLessThan(15)
+  let bestSmall = Infinity
+  let bestBig = Infinity
+  for (let i = 0; i < 7; i++) {
+    bestSmall = Math.min(bestSmall, once(small))
+    bestBig = Math.min(bestBig, once(big))
+  }
+  expect(bestBig / bestSmall).toBeLessThan(40)
 })
 
 test('a second mask of the same string is the cached result', () => {

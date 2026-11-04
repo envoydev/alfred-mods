@@ -16,28 +16,53 @@ export type CallFacts = {
 }
 
 // The first rule that holds wins. Blocked, refused and interrupted calls never count as new: Claude recovers from
-// a block by itself, and an interrupt is the person's own act.
-export function classify(f: CallFacts): { outcome: Outcome; reason: string; isNew: boolean } {
+// a block by itself, and an interrupt is the person's own act. `by` names the hook script that blocked the call, when
+// its reason names one (spec C6).
+export function classify(f: CallFacts): { outcome: Outcome; reason: string; isNew: boolean; by: string | null } {
   // Claude Code wraps an input error in a tag meant for the model
   const text = (f.result?.text ?? '').replace(/<\/?tool_use_error>/g, '')
-  if (f.result?.deny) return { outcome: 'blocked', reason: `blocked: ${f.result.deny}`, isNew: false }
-  if (f.checked === 'deny') return { outcome: 'blocked', reason: f.checkReason === null ? 'blocked by a rule' : hookReason(f.checkReason), isNew: false }
-  if (f.classifierReason) return { outcome: 'blocked', reason: `auto mode: ${f.classifierReason}`, isNew: false }
+  const plain = (outcome: Outcome, reason: string, isNew: boolean) => ({ outcome, reason, isNew, by: null })
+  if (f.result?.deny) return plain('blocked', `blocked: ${f.result.deny}`, false)
+  if (f.checked === 'deny') return f.checkReason === null ? plain('blocked', 'blocked by a rule', false) : hookBlock(f.checkReason, hookReason(f.checkReason))
+  if (f.classifierReason) return plain('blocked', `auto mode: ${f.classifierReason}`, false)
   // A PermissionRequest hook answered the ask with a deny, so the person never saw it
-  if (f.hookDeny !== null) return { outcome: 'blocked', reason: f.hookDeny.trim() === '' ? 'blocked by a hook' : `hook: ${oneLine(f.hookDeny, 80)}`, isNew: false }
-  if (!f.result?.isError) return { outcome: 'ok', reason: '', isNew: false }
-  if (f.failedInTool && f.interrupted) return { outcome: 'error', reason: 'interrupted', isNew: false }
-  if (f.failedInTool) return { outcome: 'error', reason: oneLine(text, 80) || 'failed', isNew: true }
-  if (f.checked === 'ask' && f.asked) return { outcome: 'denied', reason: 'denied by you', isNew: true }
-  if (f.checked === 'ask') return { outcome: 'refused', reason: oneLine(text, 80) || 'refused', isNew: false }
+  if (f.hookDeny !== null) return hookBlock(f.hookDeny, f.hookDeny.trim() === '' ? 'blocked by a hook' : `hook: ${oneLine(f.hookDeny, 80)}`)
+  if (!f.result?.isError) return plain('ok', '', false)
+  if (f.failedInTool && f.interrupted) return plain('error', 'interrupted', false)
+  if (f.failedInTool) return plain('error', oneLine(text, 80) || 'failed', true)
+  if (f.checked === 'ask' && f.asked) return plain('denied', 'denied by you', true)
+  if (f.checked === 'ask') return plain('refused', oneLine(text, 80) || 'refused', false)
   // No check, an error, no failure: an input error or Claude Code's own refusal, shown as an error by the ruling
-  return { outcome: 'error', reason: oneLine(text, 80) || 'failed', isNew: true }
+  return plain('error', oneLine(text, 80) || 'failed', true)
+}
+
+// A hook's block: 'blocked by <script>: <message>' when its reason names the script, else today's text
+function hookBlock(text: string, unnamed: string): { outcome: Outcome; reason: string; isNew: boolean; by: string | null } {
+  const by = blockerOf(text)
+  if (by === null) return { outcome: 'blocked', reason: unnamed, isNew: false, by: null }
+  const message = oneLine(/hook error: \[[^\n]*?\]:(?:\s|$)\s*([\s\S]*)$/.exec(text)?.[1] ?? '', 200).replace(/^Blocked:\s*/i, '')
+  return { outcome: 'blocked', reason: oneLine(message === '' ? `blocked by ${by}` : `blocked by ${by}: ${message}`, 80), isNew: false, by }
 }
 
 // A plugin's hook names its command before its message ('hook error: [node "…/guard.js"]: Blocked: …'): the message
 // is what the person reads, on one line
 function hookReason(reason: string): string {
-  return oneLine(reason.replace(/^([^[\n]*hook error: )\[[^\]\n]*\]: */, '$1'), 80)
+  return oneLine(reason.replace(/^([^[\n]*hook error: )\[[^\n]*?\]:(?:\s+|$)/, '$1'), 80)
+}
+
+const SCRIPT = /\.(?:js|mjs|cjs|ts|sh|py|ps1|rb)$/
+
+// The script a hook's block names (spec C6). Claude Code reports it as 'hook error: [<command>]: <message>', the
+// bracket being the hook's command: the base name of its last token that ends in a script extension, quotes removed,
+// at most 40 printable characters. No path or argument is kept; a command with no script, such as `node -e …`, names
+// none. The command ends at the first ']: ', so one with brackets of its own (`[ -x a.sh ] && a.sh`) is read whole and a
+// second bracket, in the message, is never read.
+export function blockerOf(text: string): string | null {
+  const command = /hook error: \[([^\n]*?)\]:(?:\s|$)/.exec(text)?.[1]
+  if (command === undefined) return null
+  const scripts = command.split(/\s+/).map(t => t.replace(/["']/g, '')).filter(t => SCRIPT.test(t))
+  const name = scripts[scripts.length - 1]?.split(/[\\/]/).pop() ?? ''
+  return name !== '' && [...name].length <= 40 && !/\p{C}/u.test(name) ? name : null
 }
 
 // The Tools table's row: a skill by its name, an MCP tool by its server, anything else by the tool's name.

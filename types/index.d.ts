@@ -4,12 +4,16 @@ export type ToolStat = { calls: number; ok: number; failed: number; stopped: num
 export type Failure = {
   id: string; at: number; tool: string; target: string
   outcome: Exclude<Outcome, 'ok'>; reason: string; detail: string; count: number; isNew: boolean
+  // The hook script that blocked the call (spec C6); absent in a row an earlier version kept
+  by?: string | null
 }
 export type TurnEnd = 'answer' | 'aborted' | 'refusal' | 'error'
 export type Turn = {
   n: number; turnId: string; promptAt: number | null; replyAt: number; durationMs: number
   tokensIn: number; tokensOut: number; tools: number; failures: number
   contextPercent: number | null; end: TurnEnd
+  // The session's spend while the turn ran, agents included (spec C4); absent in a turn an earlier version kept
+  spendUsd?: number | null
 }
 // Every main-loop call in flight, oldest first
 export type Running = { id: string; tool: string; label: string; startedAt: number }
@@ -45,7 +49,13 @@ export type AgentRow = {
   startedAt: number; endedAt: number | null
   action: string | null; report: string | null; contextTokens: number | null
   tools: Record<string, ToolStat>
+  // The last step's stop reason, `max_tokens` when the agent was cut off (spec C4); absent in a row an earlier version
+  // kept
+  lastStop?: string | null
 }
+// A model loop no spawn announced (spec C3): its steps and output tokens, first and last step, and whether its
+// turn.complete came
+export type Loop = { id: string; steps: number; output: number; firstAt: number; lastAt: number; isDone: boolean }
 export type CacheTier = '5m' | '1h'
 // Read off the 5h and 7d windows: within the plan's usage, on usage credits, or neither window (off a subscription)
 export type Billing = 'plan' | 'credits' | 'other'
@@ -121,6 +131,14 @@ export type Stack = {
   updatedAt: number | null; readAt: number | null; ignored: string[]
 }
 
+// What fills the context (spec C1), from the last breakdown read: `at` null before one. Categories of kind `used` only;
+// plugins by name, from their agents and skills; memory files named inside the project, else by type and base name.
+export type PartsPlugin = { name: string; agents: number; agentTokens: number; skills: number; skillTokens: number }
+export type Parts = {
+  at: number | null; categories: { name: string; tokens: number }[]; plugins: PartsPlugin[]
+  memory: { files: number; tokens: number; top: { name: string; tokens: number }[] }
+}
+
 declare module 'claude-code' {
   interface PluginState {
     'session-inspector': {
@@ -129,6 +147,10 @@ declare module 'claude-code' {
       view: Shaped<View>; pace: Shaped<Pace>; agents: Shaped<AgentRow[]>; cache: Shaped<Cache>; tick: number
       plans: Shaped<Plans>; credit: Shaped<Credit>; tasks: Shaped<TaskItem[]>; rec: Shaped<RecState>; quiet: Shaped<Quiet>; handoff: Shaped<Handoff>
       stack: Shaped<Stack>
+      // Blocks per hook script this session (spec C6), so the failure list's cap loses no count
+      blockers: Shaped<Record<string, number>>
+      parts: Shaped<Parts>
+      loops: Shaped<Loop[]>
     }
   }
 }

@@ -18,9 +18,17 @@ const TOKENS: Klass = { re: /‹(?:key|email|phone|private|user)(?: \d+)?›/g, 
 const either = (word: string): string => [...word].map(c => `[${c.toUpperCase()}${c.toLowerCase()}]`).join('')
 const NAMES = ['key', 'token', 'secret', 'passwd', 'password', 'pwd'].map(either).join('|')
 const VALUE = String.raw`[^\s"'` + '`' + ']{8,}'
+// The names whose value hides from 4 characters, and the whole values that are no secret
+const SHORT_NAMES = ['secret', 'passwd', 'password', 'pwd'].map(either).join('|')
+const NOT_SECRET = ['null', 'true', 'false', 'none'].map(either).join('|')
+const SHORT_VALUE = String.raw`(?!(?:${NOT_SECRET})(?![^\s"'` + '`' + String.raw`]))[^\s"'` + '`' + String.raw`]{4,7}(?![^\s"'` + '`' + '])'
+const VALUE4 = String.raw`[^\s"'` + '`' + ']{4,}'
+const FLAGS = ['password', 'passwd', 'token', 'secret', 'api-key', 'apikey', 'auth-token'].join('|')
+const VALUE1 = String.raw`[^\s"'` + '`' + ']{1,}'
 
-// One regex for every key form. A named value and a bearer value hide the value alone, the group that ends the match;
-// a name is at most 64 characters, so no part backtracks over more.
+// One regex for every key form. A named, flag, header or bearer value hides the value alone, the group that ends the
+// match; URL credentials hide the password from its ':' on, a start before the email class's, so a password that
+// reads as an email's start stays one key. A name is at most 64 characters, so no part backtracks over more.
 const KEY = new RegExp([
   String.raw`(?<![\w-])(?:sk-[\w-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|xox[abposr]-[A-Za-z0-9-]{10,}|(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{10,}|AIza[\w-]{35,}|eyJ[\w-]{4,}\.[\w-]{4,}\.[\w-]{4,})`,
   String.raw`(?<![A-Z0-9])(?:AKIA|ASIA)[A-Z0-9]{16}(?![A-Z0-9])`,
@@ -28,11 +36,21 @@ const KEY = new RegExp([
   String.raw`-----BEGIN[A-Z ]{0,40}PRIVATE KEY-----(?:[\s\S]*?-----END[A-Z ]{0,40}PRIVATE KEY-----|[\s\S]*)`,
   String.raw`\b[Bb]earer +(?<bearer>${VALUE})`,
   String.raw`(?<![\w.-])(?=[\w.-]{0,64}?(?:${NAMES}))[\w.-]{1,64}["']?[ \t]{0,4}[:=][ \t]{0,4}["']?(?<named>${VALUE})`,
+  String.raw`(?<![\w.-])(?=[\w.-]{0,64}?(?:${SHORT_NAMES}))[\w.-]{1,64}["']?[ \t]{0,4}[:=][ \t]{0,4}["']?(?<short>${SHORT_VALUE})`,
+  String.raw`(?<![\w-])--(?:${FLAGS})(?:[ \t]{1,4}|=)["']?(?!-)(?<flag>${VALUE4})`,
+  // A scheme is one word of letters (Basic, Bearer, Bot, ApiKey, SSWS); its credential hides at any length, and a value
+  // with no scheme from 4 characters
+  String.raw`(?<![\w-])(?:${either('proxy')}-)?${either('authorization')}["']?[ \t]{0,4}[:=][ \t]{0,4}["']?(?:[A-Za-z][A-Za-z-]{1,30}[ \t]{1,4}(?<auth>${VALUE1})|(?<authBare>${VALUE4}))`,
+  // From the ':' alone, so a token as the user still matches as a token; the user may be empty (redis://:pw@host), and
+  // the password runs to the last '@' before the host, so one holding '@' hides whole
+  String.raw`:(?<=[A-Za-z][A-Za-z0-9+.-]{1,20}:\/\/[^\s:@\/]{0,64}:)(?<url>[^\s\/?#]{1,128})(?=@)`,
 ].join('|'), 'g')
 
 const keyHit = (m: RegExpExecArray): Hit => {
-  const value = m.groups?.['bearer'] ?? m.groups?.['named']
+  const g = m.groups ?? {}
   const end = m.index + m[0].length
+  if (g['url'] !== undefined) return { start: m.index, end, text: ':‹key›' }
+  const value = g['bearer'] ?? g['named'] ?? g['short'] ?? g['flag'] ?? g['auth'] ?? g['authBare']
   return { start: value === undefined ? m.index : end - value.length, end, text: '‹key›' }
 }
 
@@ -227,7 +245,7 @@ export function recTest(level: Level, words: string[], home: string | null): str
   }
   const alone = LEFT_ALONE.filter(t => level !== 'strict' || !t.startsWith('$'))
   const moved = alone.filter(t => maskText(c, t) !== t)
-  out.push(row(moved.length === 0, 'left alone', alone.length - moved.length, alone.length, 'shown (SHA, time, date, version, token count, port, path, URL, UUID, digits, IP, $ off strict)'))
+  out.push(row(moved.length === 0, 'left alone', alone.length - moved.length, alone.length, 'shown (SHA, time, date, version, token count, port, path, URL, UUID, digits, IP, key near misses, $ off strict)'))
   for (const t of moved) failed.push(`  ✗ left alone: ${t}`)
   const strict = compile('strict', words, home)
   const part = (label: string, samples: { text: string; masked: string }[]): string => {

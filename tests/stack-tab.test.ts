@@ -90,7 +90,7 @@ for (const surface of SURFACES) {
     expect((await rows(ui)).includes('ctx 62% of 150k · handoff by Alfred Code')).toBe(true)
   })
 
-  test(`the reduced forms (${surface})`, async ($, on) => {
+  test(`the reduced forms (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     const { ui, files, clock: c } = await now($, on, surface, { files: { [STATUS]: status({ resumeAt: null }) } })
     const at = async (file: FileStub): Promise<string[]> => {
       files.current[STATUS] = file

@@ -136,18 +136,23 @@ for (const surface of SURFACES) {
     expect(openedAtWrite[0]).toBe(1)
   })
 
-  // A Text per segment wraps inside itself once the line passes the width, splitting '≈304 turns' (Task 8, live)
-  test(`a line's texts are one Text that truncates at the end (${surface})`, async ($, on) => {
+  // A Text per segment wrapped inside itself once the line passed the width, splitting '≈304 turns' (Task 8, live):
+  // each piece now keeps its width in a row as wide as the band, and the line reads whole (spec A1)
+  test(`a line's pieces keep their width in one row (${surface})`, async ($, on) => {
     stubAll(on, { usage: reading(82, 20, 30) })
     failingCalls(on)
     engine(on, ['tool.call'])
     await oneTurn($, 1)
 
     const ui = await mount($, surface, band(false))
-    const runs = (await ui.findAll({ type: 'Text' })).filter(t => t.props.wrap === 'truncate-end')
+    const lines = await rows(ui)
+    const boxes = await ui.findAll({ type: 'Box' })
+    const pieces = boxes.filter(b => String(b.props.key ?? '').startsWith('line-')).flatMap(b => (b.children ?? []) as { type: string; props: Record<string, unknown> }[])
 
-    expect(runs.some(t => /^✓ Turn 1 · 3s · 1 tool · 1 ✗ │ you /.test(t.text ?? ''))).toBe(true)
-    expect(runs.some(t => /^ctx .* │ 5h .* │ 7d 30% \(\d\d\.\d\d \d\d:\d\d\)$/.test(t.text ?? ''))).toBe(true)
+    expect(lines.some(l => /^✓ Turn 1 · 3s · 1 tool · 1 ✗ │ you /.test(l))).toBe(true)
+    expect(lines.some(l => /^ctx .* │ 5h .* │ 7d 30% \(\d\d\.\d\d \d\d:\d\d\)$/.test(l))).toBe(true)
+    expect(pieces.filter(p => p.type === 'Box').length > 3).toBe(true)
+    expect(pieces.filter(p => p.type === 'Box').every(p => p.props.flexShrink === 0)).toBe(true)
   })
 
   // At 120 columns '≈N turns', 'on pace' and the cost pushed the times past the width (Task 8, live)
@@ -207,11 +212,26 @@ for (const surface of SURFACES) {
 
     const texts = await (await mount($, surface, band(false))).findAll({ type: 'Text' })
 
-    expect(texts.find(t => t.text === ' 82%')?.props.color).toBe('#f59e0b')
-    expect(texts.find(t => t.text === ' 20%')?.props.color).toBe('#22c55e')
+    expect(texts.find(t => t.text === '82%')?.props.color).toBe('warning')
+    expect(texts.find(t => t.text === '20%')?.props.color).toBe('success')
   })
 
-  test(`working shows the running Bash and its time (${surface})`, async ($, on) => {
+  // ok, warn and fail follow the person's theme; the deck's feature colours and the chart's SVG keep their hex (spec C5)
+  test(`the state tones draw theme keys (${surface})`, async ($, on) => {
+    stubAll(on, { usage: reading(82, 20, 30), now: NOW })
+    failingCalls(on)
+    engine(on, ['tool.call'])
+    await oneTurn($, 1)
+
+    const texts = await (await mount($, surface, band(false))).findAll({ type: 'Text' })
+
+    expect(texts.find(t => t.text === '· 1 ✗')?.props.color).toBe('error')
+    expect(texts.find(t => t.text === '82%')?.props.color).toBe('warning')
+    expect(texts.find(t => t.text === '20%')?.props.color).toBe('success')
+    expect(texts.find(t => t.text === 'ctx')?.props.color).toBe('#60a5fa')
+  })
+
+  test(`working shows the running Bash and its time (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     const { clock } = stubAll(on, { usage: reading(30, 15, 40) })
     on('tool.call', async () => {
       await clock.sleep(60_000)
@@ -334,9 +354,19 @@ for (const surface of SURFACES) {
   })
 }
 
+test('the chart\'s SVG keeps its hex', async ($, on) => {
+  on('ui.render', { component: 'Pane', requestId: 'chart' }, (h$, e) => drawLines(h$, e, [[{ chart: [10, 50, 90] }]], { noColor: false, press: {}, columns: 80 }))
+  const ui = await $.ui.mount({
+    plugin: 'session-inspector', surface: 'desktop', component: 'Pane', requestId: 'chart',
+    props: { title: 'chart', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 10 }, view: {} },
+  })
+
+  expect(String((await ui.find({ type: 'Svg' }))?.props.source)).toContain('stroke="#60a5fa"')
+})
+
 test('every drawn string passes through mask', async ($, on) => {
   // drawLines draws a site the mod leaves to the engine, with a hook's `$`
-  on('ui.render', (h$, e) => drawLines(h$, e, [[{ text: 'abc' }]], { noColor: false, press: {} }))
+  on('ui.render', (h$, e) => drawLines(h$, e, [[{ text: 'abc' }]], { noColor: false, press: {}, columns: 80 }))
   const ui = await $.ui.mount({
     plugin: 'session-inspector', surface: 'terminal', component: 'Pane', requestId: 'mask-check',
     props: { title: 'mask', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 10 }, view: {} },

@@ -3,19 +3,21 @@
 // imported from another module.
 import { atom, read, update } from 'claude-code'
 import type {
-  EngineInterface, Register, SessionRateLimit, SessionUsage, Timer, TurnStepInput, TurnStepResult, UiOpenResult,
+  EngineInterface, Register, SessionContextBreakdown, SessionRateLimit, SessionUsage, Timer, TurnStepInput, TurnStepResult, UiOpenResult,
 } from 'claude-code'
 
-import { actionOf, isLive, newRow, refreshAgents, statusAt, upsertSpawn } from './agents.ts'
-import { bandLines, spinnerSuffix } from './band.ts'
+import { actionOf, addLoopStep, isLive, newRow, refreshAgents, statusAt, upsertSpawn } from './agents.ts'
+import { bandLines, spinnerSuffix, statusText } from './band.ts'
 import {
   addRequest, afterCompact, billingOf, cacheView, idleOf, minutes, needsTick, pinOf, takeRate, takeSwitch, toastAt,
 } from './cache.ts'
 import { baseCost, pruneCost, recordCost, todayUsd } from './cost.ts'
-import { drawLines, drawWithInput } from './draw.tsx'
+import { drawLines, drawNote, drawWithInput } from './draw.tsx'
+import { REC_HIDDEN, SPINNER_WORD, bandFailed, paneFailed } from './failsafe.ts'
+import { NO_PARTS, partsOf } from './parts.ts'
 import { clock, fingerprint, mins, oneLine, printable, tokens, usd, when } from './format.ts'
 import { mask, maskForFile, maskSpans, recLevel, setRec, toast } from './mask.ts'
-import { maskDeep, maskDialog, maskResult, resultLines } from './sites.ts'
+import { maskDeep, maskDialog, maskResult, neutralDialog, resultLines } from './sites.ts'
 import { DROPS_RESULT, callLine, emptyPreview, groupLines } from './compact.ts'
 import type { CompactCall } from './compact.ts'
 import {
@@ -36,7 +38,7 @@ import { classify, fold, targetOf, toolKey } from './outcome.ts'
 import { LEVELS, REC_HELP, addWord, parseLevel, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec.ts'
 import type { CallFacts } from './outcome.ts'
 import type {
-  AgentRow, Cache, CacheConfig, Credit, Failure, Handoff, Live, Meta, Outcome, Pace, Plan, PlanChange, Level, Plans, Quiet, RecState, SaveResult, Scores, Stack, Tab, TaskItem, ToolStat, Totals, Turn, Usage, View,
+  AgentRow, Cache, CacheConfig, Credit, Failure, Handoff, Live, Loop, Meta, Outcome, Pace, Plan, PlanChange, Level, Plans, Quiet, RecState, SaveResult, Scores, Stack, Tab, TaskItem, ToolStat, Totals, Turn, Usage, View,
   Watched, Window,
 } from '../types'
 
@@ -44,7 +46,8 @@ import type {
 // `pendingMs`: a call the person was asked about, settled before its `duration_ms` arrived, waits for it.
 type Call = {
   facts: CallFacts; key: string; tool: string; target: string; agentId: string | null
-  settled: boolean; outcome: Outcome | null; rowId: string | null
+  // `by`: the hook script its last settle counted a block for
+  settled: boolean; outcome: Outcome | null; rowId: string | null; by: string | null
   startedAt: number | null; durationMs: number | null; pendingMs: number | null
 }
 
@@ -90,6 +93,9 @@ const INITIAL = {
     state: 'none', reason: null, fullContext: null, model: null, window: null, resumeAt: null, noOffer: false, autoRun: null, scorer: null,
     hasPrompt: false, updatedAt: null, readAt: null, ignored: [],
   } as Stack,
+  blockers: {} as Record<string, number>,
+  parts: NO_PARTS,
+  loops: [] as Loop[],
 }
 
 // Change a tag when that value's fields change: it declines what an earlier version stored, which outlives a reload.
@@ -112,6 +118,9 @@ const rec = atom({ plugin: 'session-inspector', key: 'rec' } as const, INITIAL.r
 const quiet = atom({ plugin: 'session-inspector', key: 'quiet' } as const, INITIAL.quiet, { shape: 'quiet-1' })
 const handoff = atom({ plugin: 'session-inspector', key: 'handoff' } as const, INITIAL.handoff, { shape: 'handoff-1' })
 const stack = atom({ plugin: 'session-inspector', key: 'stack' } as const, INITIAL.stack, { shape: 'stack-1' })
+const blockers = atom({ plugin: 'session-inspector', key: 'blockers' } as const, INITIAL.blockers, { shape: 'blockers-1' })
+const parts = atom({ plugin: 'session-inspector', key: 'parts' } as const, INITIAL.parts, { shape: 'parts-1' })
+const loops = atom({ plugin: 'session-inspector', key: 'loops' } as const, INITIAL.loops, { shape: 'loops-1' })
 
 const NO_FACTS: Omit<CallFacts, 'tool'> = {
   checked: null, checkReason: null, asked: false, failedInTool: false, interrupted: false, classifierReason: null, hookDeny: null, result: null,
@@ -145,13 +154,13 @@ async function isPaneShown($: EngineInterface): Promise<boolean> {
 }
 
 // A failure row for a call that was not ok; it is seen at once while the pane shows Now or Tools
-async function addRow($: EngineInterface, id: string, call: Call, outcome: Exclude<Outcome, 'ok'>, reason: string, isNew: boolean, drop: string | null): Promise<void> {
+async function addRow($: EngineInterface, id: string, call: Call, outcome: Exclude<Outcome, 'ok'>, reason: string, isNew: boolean, drop: string | null, by: string | null): Promise<void> {
   const { tab } = await read($, view)
   const isSeen = (tab === 'now' || tab === 'tools') && await isPaneShown($)
   const result = call.facts.result
   const row: Failure = {
     id, at: await $.clock.now(), tool: call.tool, target: call.target, outcome, reason,
-    detail: (result?.deny ?? result?.text ?? '').slice(0, 4000), count: 1, isNew: isNew && !isSeen,
+    detail: (result?.deny ?? result?.text ?? '').slice(0, 4000), count: 1, isNew: isNew && !isSeen, by,
   }
   await update($, failures, list => {
     const i = drop === null ? -1 : list.findIndex(f => f.id === drop)
@@ -193,7 +202,7 @@ function compactOf(id: string | undefined, c: { tool: string; input: unknown; ou
 
 // Counts a settled call, or counts it again when a later event changed its outcome
 async function settle($: EngineInterface, id: string, call: Call): Promise<void> {
-  const { outcome, reason, isNew } = classify(call.facts)
+  const { outcome, reason, isNew, by } = classify(call.facts)
   compactMem.outcomes.delete(id)
   compactMem.outcomes.set(id, { outcome, reason })
   keepLast(compactMem.outcomes)
@@ -204,7 +213,22 @@ async function settle($: EngineInterface, id: string, call: Call): Promise<void>
     ({ ...s, [call.key]: before === null ? tally(s[call.key], outcome, 1) : tally(tally(s[call.key], before, -1), outcome, 1) })
   await update($, stats, retally)
   if (call.agentId !== null) await updateRow($, call.agentId, r => ({ ...r, tools: retally(r.tools) }))
-  if (outcome !== 'ok') await addRow($, id, call, outcome, reason, isNew, before !== null && before !== 'ok' ? call.rowId : null)
+  if (outcome !== 'ok') await addRow($, id, call, outcome, reason, isNew, before !== null && before !== 'ok' ? call.rowId : null, by)
+  // A block counts for the script that made it; a later settle that names another blocker moves the count (spec C6)
+  const counted = call.by
+  call.by = by
+  if (counted !== by) {
+    await update($, blockers, b => {
+      const out = { ...b }
+      if (counted !== null) {
+        const n = (out[counted] ?? 0) - 1
+        if (n > 0) out[counted] = n
+        else delete out[counted]
+      }
+      if (by !== null) out[by] = (out[by] ?? 0) + 1
+      return out
+    })
+  }
   const isMain = call.agentId === null
   const failed = (o: Outcome | null): number => (o !== null && o !== 'ok' ? 1 : 0)
   await update($, live, l => ({
@@ -214,6 +238,7 @@ async function settle($: EngineInterface, id: string, call: Call): Promise<void>
     running: l.running.filter(r => r.id !== id),
   }))
   if (isMain && before === null) await update($, meta, m => ({ ...m, mainCalls: m.mainCalls + 1 }))
+  await syncStatus($)
 }
 
 const windowsOf = (limits: readonly SessionRateLimit[]): Window[] =>
@@ -249,6 +274,26 @@ async function tickOnce($: EngineInterface): Promise<void> {
   }
   const isWarm = needsTick(await read($, cache), billingOf((await read($, usage)).windows), now)
   if (anyLive || isWarm || (await read($, live)).turnId !== null) await update($, tick, n => n + 1)
+  // A failure the pane marked seen, a /clear or a stack file read leaves the line as it was until here
+  await syncStatus($)
+}
+
+// The status line under the prompt, which Claude Code draws while the band is collapsed (spec D2): set only when its
+// text changes, cleared once nothing needs the person. The context's percent is the band's, against the runway while
+// it applies. `last` is null until the module's first call, which is always sent: a line an earlier copy of the mod
+// pinned before a reload is cleared or replaced at once.
+const statusMem = { last: null as string | undefined | null }
+async function syncStatus($: EngineInterface): Promise<void> {
+  const u = await read($, usage)
+  const runway = runwayOf(await read($, stack), u, (await read($, meta)).model)
+  const raw = statusText({
+    percent: runway?.percent ?? u.percent, newFailures: (await read($, failures)).filter(f => f.isNew).length,
+    recLevel: (await read($, rec)).level,
+  })
+  const text = raw === null ? undefined : mask(raw)
+  if (text === statusMem.last) return
+  statusMem.last = text
+  $.ui.status(text)
 }
 
 // The variables and settings that pin the cache's tier or turn idle compaction off, written only on a change
@@ -300,16 +345,30 @@ async function cacheClose($: EngineInterface): Promise<void> {
   await update($, cache, x => ({ ...x, toastedFor: lastAt }))
 }
 
-// An agent's step: its model and effort, and its context as the sum the engine's own `context_tokens` uses
+// An agent's step: its model and effort, its context as the sum the engine's own `context_tokens` uses, and how it
+// stopped, so a report cut off at max_tokens is flagged (spec C4)
 async function agentStep($: EngineInterface, e: TurnStepInput, step: TurnStepResult): Promise<void> {
   const u = step.usage
-  await updateRow($, e.agentId ?? '', r => ({
+  const id = e.agentId ?? ''
+  // A loop no spawn announced is counted apart (spec C3)
+  if (!(await read($, agents)).some(r => r.id === id)) {
+    const now = await $.clock.now()
+    await update($, loops, list => addLoopStep(list, id, u?.output_tokens ?? 0, now))
+    return
+  }
+  await updateRow($, id, r => ({
     ...r, model: e.model, effort: e.effort === undefined ? r.effort : String(e.effort),
     contextTokens: u === null ? r.contextTokens : u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens + u.output_tokens,
+    lastStop: step.stopReason ?? null,
   }))
 }
 
+// The session's cost at the main loop's turn.start, by turn id (spec C4); the main loop runs one turn at a time, so it
+// holds one. A /clear empties it: a turn across it has no start read in the new session.
+const spendMem = new Map<string, number>()
+
 async function resetAll($: EngineInterface): Promise<void> {
+  spendMem.clear()
   await update($, stats, () => INITIAL.stats)
   await update($, failures, () => INITIAL.failures)
   await update($, turns, () => INITIAL.turns)
@@ -329,6 +388,10 @@ async function resetAll($: EngineInterface): Promise<void> {
   await update($, quiet, () => INITIAL.quiet)
   await update($, handoff, () => INITIAL.handoff)
   await update($, stack, () => INITIAL.stack)
+  await update($, blockers, () => INITIAL.blockers)
+  await update($, parts, () => INITIAL.parts)
+  await update($, loops, () => INITIAL.loops)
+  partsMem.lastAt = null
 }
 
 // Every session's step and overhead time in the store; this session's own totals are the credit atom's
@@ -612,11 +675,15 @@ async function endTurn($: EngineInterface, turnId: string, durationMs: number, e
   const now = await $.clock.now()
   const before = await read($, meta)
   const counts = await read($, live)
+  // The cost between the turn's start and end; none when either read failed, or under half a cent or negative
+  const start = spendMem.get(turnId)
+  spendMem.delete(turnId)
+  const spend = start === undefined || reading.cost === undefined ? null : reading.cost.usd - start
   await update($, turns, list => {
     const turn: Turn = {
       n: before.turnCount + 1, turnId, promptAt: counts.promptAt,
       replyAt: now, durationMs, ...used, tools: counts.tools, failures: counts.failures,
-      contextPercent: reading.context.percent ?? null, end,
+      contextPercent: reading.context.percent ?? null, end, spendUsd: spend !== null && spend >= 0.005 ? spend : null,
     }
     return [...list, turn].slice(-50)
   })
@@ -631,6 +698,8 @@ async function endTurn($: EngineInterface, turnId: string, durationMs: number, e
 async function openInspect($: EngineInterface, tab: Tab): Promise<UiOpenResult> {
   const opening = $.ui.open({ id: 'inspect', title: 'Inspect' })
   await update($, view, v => ({ ...v, tab }))
+  // The Usage tab reads the context's parts again when the last read is over a minute old
+  if (tab === 'usage' && (partsMem.lastAt === null || (await $.clock.now()) - partsMem.lastAt > 60_000)) readBreakdownSoon($)
   const opened = await opening
   if (!opened.isPlaced) return opened
   if (tab === 'now' || tab === 'tools') {
@@ -721,6 +790,7 @@ async function loadRec($: EngineInterface, note: string | null = null): Promise<
     $.ui.invalidate('ui.render')
   }
   await update($, rec, r => (r.level === level && r.count === words.length && r.note === note ? r : { level, count: words.length, note }))
+  await syncStatus($)
 }
 
 // Whether a site masks: mask.ts's level, which a /clear, a resume or a fork leaves as it was while the atom is reset;
@@ -763,6 +833,8 @@ async function loadQuiet($: EngineInterface): Promise<boolean> {
 const handoffMem = {
   stoodDown: false, rearm: false, pointKey: null as string | null, saving: null as Promise<SaveResult> | null,
   savedStep: null as number | null, armedAt: null as number | null,
+  // The reads of the compaction point that gave no breakdown, for one model and window
+  pointMiss: { key: null as string | null, count: 0 },
 }
 
 // Only ask mode keeps an ask up: a change to auto or off, here or polled from another session, takes it down
@@ -841,14 +913,51 @@ async function readStack($: EngineInterface, r: { exists: boolean; text: string 
   await update($, stack, s => (JSON.stringify(s) === JSON.stringify(next) ? s : next))
 }
 
+// The time of the last breakdown read that gave one, for the Usage tab's 60-second rule (spec C1)
+const partsMem = { lastAt: null as number | null }
+
+// One breakdown read serves the compaction point and the context's parts (spec C1): a read that gives one writes the
+// parts atom; a read that fails or gives none is null, and the parts stay as they were
+async function readBreakdown($: EngineInterface): Promise<SessionContextBreakdown | null> {
+  let b: SessionContextBreakdown | undefined
+  try {
+    b = (await $.session.usage({ breakdown: 'summary' })).context.breakdown
+  } catch {
+    return null
+  }
+  if (b === undefined) return null
+  const now = await $.clock.now()
+  const next = partsOf(b, await $.session.cwd(), now)
+  partsMem.lastAt = now
+  await update($, parts, () => next)
+  return b
+}
+
+// A read off the hook path, after a compaction or as the Usage tab opens stale (spec C1)
+function readBreakdownSoon($: EngineInterface): void {
+  $.clock.after(0, () => {
+    readBreakdown($).catch(() => undefined)
+  })
+}
+
 // The tokens where Claude Code compacts by itself (Decision 12): the breakdown's `autoCompactThreshold`, else the
-// window; read at the first reading and again when the model or the window changes
+// window; read at the first reading and again when the model or the window changes. A read with no breakdown, or one
+// that fails, gives the window for that reading alone and counts a miss; the third miss for one model and window
+// keeps the window as the point and asks no more.
 async function pointOf($: EngineInterface, window: number): Promise<number> {
   const key = `${(await read($, meta)).model ?? ''}:${window}`
   const known = (await read($, handoff)).point
   if (handoffMem.pointKey === key && known !== null) return known
-  const b = (await $.session.usage({ breakdown: 'summary' })).context.breakdown
-  const point = b !== undefined && b.isAutoCompactEnabled && b.autoCompactThreshold !== undefined ? b.autoCompactThreshold : window
+  if (handoffMem.pointMiss.key !== key) handoffMem.pointMiss = { key, count: 0 }
+  const b = await readBreakdown($)
+  if (b === null) {
+    const count = ++handoffMem.pointMiss.count
+    const point = count >= 3 ? window : null
+    if (point !== null) handoffMem.pointKey = key
+    await update($, handoff, h => (h.point === point ? h : { ...h, point }))
+    return window
+  }
+  const point = b.isAutoCompactEnabled && b.autoCompactThreshold !== undefined ? b.autoCompactThreshold : window
   handoffMem.pointKey = key
   await update($, handoff, h => (h.point === point ? h : { ...h, point }))
   return point
@@ -1066,7 +1175,7 @@ export const register: Register = on => {
     let call = calls.get(id)
     if (call === undefined) {
       call = {
-        facts: { tool, ...NO_FACTS }, key: tool, tool, target: '', agentId: null, settled: false, outcome: null, rowId: null,
+        facts: { tool, ...NO_FACTS }, key: tool, tool, target: '', agentId: null, settled: false, outcome: null, rowId: null, by: null,
         startedAt: null, durationMs: null, pendingMs: null,
       }
       calls.set(id, call)
@@ -1087,6 +1196,8 @@ export const register: Register = on => {
       }, now)
       await update($, agents, rows => upsertSpawn(rows, row, e.resume !== undefined))
       await addMark($, markOf(row))
+      // Its first step came before its spawn resolved: the loop is this agent's
+      if ((await read($, loops)).some(l => l.id === id)) await update($, loops, list => list.filter(l => l.id !== id))
     }
     return spawned
   }).catch(($, e, next) => next(e))
@@ -1336,6 +1447,13 @@ export const register: Register = on => {
         })
       }
       await update($, live, () => ({ turnId: e.turnId, startedAt, tools: 0, failures: 0, running: [], promptAt }))
+      spendMem.clear()
+      try {
+        const cost = (await $.session.usage()).cost
+        if (cost !== undefined) spendMem.set(e.turnId, cost.usd)
+      } catch {
+        // No start read: the turn's spend is unknown
+      }
     }
     return next(e)
   }).catch(($, e, next) => next(e))
@@ -1379,7 +1497,11 @@ export const register: Register = on => {
   on('turn.complete', async ($, e, next) => {
     const done = await next(e)
     await closeLoops($, held, [e.agentId ?? 'main'], await $.clock.now(), false)
-    if (e.agentId !== undefined && !(await read($, agents)).some(r => r.id === e.agentId)) return done
+    if (e.agentId !== undefined && !(await read($, agents)).some(r => r.id === e.agentId)) {
+      const id = e.agentId
+      if ((await read($, loops)).some(l => l.id === id)) await update($, loops, list => list.map(l => (l.id === id ? { ...l, isDone: true } : l)))
+      return done
+    }
     if (e.agentId !== undefined) {
       const now = await $.clock.now()
       const reason = e.reason
@@ -1417,12 +1539,16 @@ export const register: Register = on => {
     }))
     for (const text of await trackPace($, e.rateLimits, at)) toast($, text)
     await stepHandoff($, e.context.tokens, e.context.window)
+    await syncStatus($)
     return measured
   }).catch(($, e, next) => next(e))
 
   on('session.compact', async ($, e, next) => {
     const compacted = await next(e)
-    if (e.agentId === undefined && e.trigger !== 'precompute' && compacted.skip === undefined) await countCompaction($, held)
+    if (e.agentId === undefined && e.trigger !== 'precompute' && compacted.skip === undefined) {
+      await countCompaction($, held)
+      readBreakdownSoon($)
+    }
     return compacted
   }).catch(($, e, next) => next(e))
 
@@ -1549,8 +1675,8 @@ export const register: Register = on => {
     })
     if (lines.length === 0) return next(e)
     const press = { inspect: () => inspectFromBand($), compact: () => compactNow($, held), handoff: () => saveNow($) }
-    return drawLines($, e, lines, { noColor: await isNoColor($), press })
-  })
+    return drawLines($, e, lines, { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
+  }).catch(($, e, next) => drawNote($, e, bandFailed(next.error.kind)))
 
   // The main loop's spinner adds its action, context and the agents running; an agent's spinner, that agent's
   on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
@@ -1563,7 +1689,7 @@ export const register: Register = on => {
     const props = word === e.props.word && message === e.props.message ? e.props : { ...e.props, word, message }
     if (text === null) return props === e.props ? next(e) : next({ ...e, props })
     return next({ ...e, props: { ...props, suffix: `${e.props.suffix} ${mask(printable(text))}` } })
-  })
+  }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : next({ ...e, props: { ...e.props, word: SPINNER_WORD, message: null } })))
 
   // REC on Claude Code's rows: each site rewrites its props only while REC is on and masking changes something, else
   // passes next(e) as it came. The stored messages and what the model reads stay as they are.
@@ -1571,19 +1697,19 @@ export const register: Register = on => {
     if (!(await isRecOn($))) return next(e)
     const text = mask(e.props.text)
     return text === e.props.text ? next(e) : next({ ...e, props: { ...e.props, text: printable(text) } })
-  })
+  }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
 
   on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
     if (!(await isRecOn($))) return next(e)
     const text = mask(e.props.text)
     return text === e.props.text ? next(e) : next({ ...e, props: { ...e.props, text: printable(text) } })
-  })
+  }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
 
   on('ui.render', { component: 'CommandOutput' }, async ($, e, next) => {
     if (!(await isRecOn($))) return next(e)
     const text = mask(e.props.text)
     return text === e.props.text ? next(e) : next({ ...e, props: { ...e.props, text: printable(text) } })
-  })
+  }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
 
   // The tool sites in two steps (Decision 14): /quiet's compact row or emptied result first, then REC over whatever
   // the first hands on. A settled row that is not expanded, or that a group unfolded, draws its compact line.
@@ -1591,8 +1717,9 @@ export const register: Register = on => {
   on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
     if (e.props.isErrored && typeof e.props.output === 'string' && !errorMem.has(e.props.tool_use_id)) keepError(e.props.tool_use_id, e.props.output)
     if ((await read($, quiet)).isOn && !e.props.isRunning && (e.props.isExpanded !== true || compactMem.marks.has(e.props.tool_use_id))) {
-      const lines = callLine(compactOf(e.props.tool_use_id, e.props), e.viewport?.columns ?? 120)
-      return drawLines($, e, lines, { noColor: await isNoColor($), press: {} })
+      const columns = e.viewport?.columns ?? 120
+      const lines = callLine(compactOf(e.props.tool_use_id, e.props), columns)
+      return drawLines($, e, lines, { noColor: await isNoColor($), press: {}, columns , fill: true })
     }
     if (!(await isRecOn($))) return next(e)
     // An unfolded group's errored row draws its error text inline, and Claude Code draws that text, not `output` (live,
@@ -1603,16 +1730,17 @@ export const register: Register = on => {
         errorRows.delete(e.props.tool_use_id)
         errorRows.add(e.props.tool_use_id)
         keepLast(errorRows)
-        const head = callLine(compactOf(e.props.tool_use_id, e.props), e.viewport?.columns ?? 120).slice(0, 1)
+        const columns = e.viewport?.columns ?? 120
+        const head = callLine(compactOf(e.props.tool_use_id, e.props), columns).slice(0, 1)
         const isExpanded = e.props.isExpanded === true
-        return drawLines($, e, [...head, ...resultLines(failed.text, { isExpanded, isErrored: true, gutter: e.surface === 'terminal' })], { noColor: await isNoColor($), press: {} })
+        return drawLines($, e, [...head, ...resultLines(failed.text, { isExpanded, isErrored: true, gutter: e.surface === 'terminal' })], { noColor: await isNoColor($), press: {}, columns , fill: true })
       }
     }
     const input = maskDeep(e.props.input, mask)
     const output = maskDeep(e.props.output, mask)
     if (input === e.props.input && output === e.props.output) return next(e)
     return next({ ...e, props: { ...e.props, input, ...(output === e.props.output ? {} : { output }) } })
-  })
+  }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
 
   // Under /quiet an errored result draws an empty Box, as Claude Code would draw its whole error text and the compact
   // row above carries ✗ and its error lines, and so does an Edit or Write result (DROPS_RESULT); any other keeps
@@ -1624,18 +1752,18 @@ export const register: Register = on => {
     if (e.props.isExpanded === true && compactMem.marks.delete(e.props.tool_use_id)) $.ui.invalidate('ui.render')
     let props = e.props
     if ((await read($, quiet)).isOn && e.props.isExpanded !== true) {
-      if (e.props.isErrored || DROPS_RESULT.includes(e.props.tool)) return drawLines($, e, [], { noColor: false, press: {} })
+      if (e.props.isErrored || DROPS_RESULT.includes(e.props.tool)) return drawLines($, e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
       const output = emptyPreview(e.props.tool, e.props.output)
       if (output !== e.props.output) props = { ...e.props, output }
     }
     if (!(await isRecOn($))) return props === e.props ? next(e) : next({ ...e, props })
-    if (e.props.isErrored && errorRows.has(e.props.tool_use_id)) return drawLines($, e, [], { noColor: false, press: {} })
+    if (e.props.isErrored && errorRows.has(e.props.tool_use_id)) return drawLines($, e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
     const masked = maskResult({ ...props, error: errorMem.get(e.props.tool_use_id) ?? null }, mask)
     if (masked.kind === 'same') return props === e.props ? next(e) : next({ ...e, props })
     if (masked.kind === 'output') return next({ ...e, props: { ...props, output: masked.output } })
     const lines = resultLines(masked.text, { isExpanded: e.props.isExpanded === true, isErrored: e.props.isErrored, gutter: e.surface === 'terminal' })
-    return drawLines($, e, lines, { noColor: await isNoColor($), press: {} })
-  })
+    return drawLines($, e, lines, { noColor: await isNoColor($), press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
+  }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
 
   // Under /quiet a settled group of calls alone draws its compact lines. One holding another row, or an errored or
   // interrupted call, is unfolded and its calls marked, so each draws its own compact line; a group drawn expanded (the
@@ -1651,19 +1779,20 @@ export const register: Register = on => {
       return next(e)
     }
     if (isQuiet && !e.props.isActive && e.props.isCallsOnly === true) {
-      const lines = groupLines(e.props.calls.map(c => compactOf(c.tool_use_id, c)), e.viewport?.columns ?? 120)
-      return drawLines($, e, lines, { noColor: await isNoColor($), press: {} })
+      const columns = e.viewport?.columns ?? 120
+      const lines = groupLines(e.props.calls.map(c => compactOf(c.tool_use_id, c)), columns)
+      return drawLines($, e, lines, { noColor: await isNoColor($), press: {}, columns , fill: true })
     }
     if (isQuiet && (isRec || !e.props.isActive)) mark(ids)
     else if (!isRec) return next(e)
     return next({ ...e, props: { ...e.props, isExpanded: true } })
-  })
+  }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
 
   on('ui.render', { component: 'AskUserQuestion' }, async ($, e, next) => {
     if (!(await isRecOn($))) return next(e)
     const questions = maskDialog(e.props.questions, maskSpans)
     return questions === e.props.questions ? next(e) : next({ ...e, props: { ...e.props, questions } })
-  })
+  }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : next({ ...e, props: { ...e.props, questions: neutralDialog(e.props.questions) } })))
 
   on('ui.render', { component: 'Pane', requestId: 'inspect' }, async ($, e) => {
     await read($, tick)
@@ -1681,7 +1810,8 @@ export const register: Register = on => {
       now, columns: e.props.bodyColumns, isWorking: counts.turnId !== null, live: counts, usage: u,
       meta: m, turns: await read($, turns), newFailures: rows.filter(f => f.isNew).length,
       pace: await read($, pace), failures: rows, stats: await read($, stats), totals: await read($, totals), view: shown,
-      agents: await read($, agents), cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score,
+      agents: await read($, agents), cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score, blockers: await read($, blockers), parts: await read($, parts),
+      loops: await read($, loops),
       rec: recOf(await read($, rec)), forecast: forecastOf(h, u, runway), handoff: handoffView(h, u, counts.turnId !== null, runway),
       stack: { view: st, prompt: stackMem.prompt, runway, sessionModel: m.model },
     }
@@ -1690,7 +1820,7 @@ export const register: Register = on => {
       : shown.tab === 'agents' ? agentsLines(input)
       : shown.tab === 'cache' ? cacheLines(input)
       : shown.tab === 'tools' ? toolsLines(input)
-      : shown.tab === 'timeline' ? timelineLines(input.turns, Math.max(3, e.props.scroll.bodyRows - 1 - bar.length))
+      : shown.tab === 'timeline' ? timelineLines(input.turns, Math.max(3, e.props.scroll.bodyRows - 1 - bar.length), u.windows.length > 0, e.props.bodyColumns)
       : shown.tab === 'plan' ? planLines(d.shown, d.scores, { invalid: d.invalid, others: d.others, otherScores: d.otherScores, updatedAt: d.updatedAt, now, columns: e.props.bodyColumns })
       : nowLines(input)
     const press: Record<string, () => unknown> = {
@@ -1714,8 +1844,8 @@ export const register: Register = on => {
     for (const agent of input.agents) {
       if (agent.report !== null) press[`report-${agent.id}`] = () => toggleShown($, `report:${agent.id}`)
     }
-    return drawLines($, e, [...bar, ...body], { noColor: await isNoColor($), press })
-  })
+    return drawLines($, e, [...bar, ...body], { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
+  }).catch(($, e, next) => drawNote($, e, paneFailed(next.error.kind, next.error.message, recLevel() !== 'off')))
 
   // The private-words pane: words are added only here, never through a command's arguments, which the transcript echoes
   on('ui.render', { component: 'Pane', requestId: 'rec' }, async ($, e) => {
@@ -1725,6 +1855,6 @@ export const register: Register = on => {
     if (r.level === 'off') words.forEach((w, i) => { press[`remove-${i}`] = () => removeRecWord($, w) })
     const note = r.note === null ? [] : [[{ text: r.note, tone: 'warn' as const }]]
     const input = { key: 'word', label: 'Add a word', submitLabel: 'Add', onSubmit: (value: string) => { void addRecWord($, value) } }
-    return drawWithInput($, e, recPaneLines(r.level, words), input, note, { noColor: await isNoColor($), press })
-  })
+    return drawWithInput($, e, recPaneLines(r.level, words), input, note, { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
+  }).catch(($, e, next) => drawNote($, e, paneFailed(next.error.kind, next.error.message, recLevel() !== 'off')))
 }

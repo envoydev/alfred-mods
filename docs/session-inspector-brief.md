@@ -94,7 +94,7 @@ Ten features, F1 to F10. The probe must settle every Medium row before the verdi
 
 | ID | Feature | Shows | Data source | Confidence |
 | --- | --- | --- | --- | --- |
-| F1 | Session metrics | Model and effort; context tokens, window and %; 5h and weekly % with reset times, plus any other window kind by name; session duration; session cost; today's cost across sessions; output tok/s; total tokens in, out, cache read, cache write; compactions; account plan and email | `$.session.usage()`, `session.measure`, `$.store`, `turn.step`, `session.compact`, the global config file (`$CLAUDE_CONFIG_DIR/.claude.json` when set, else `~/.claude.json`) via `$.fs.read` | High; Medium for tok/s, token totals, account (agent) |
+| F1 | Session metrics | Model and effort; context tokens, window and %; 5h and weekly % with reset times, plus any other window kind by name; session duration; session cost; today's cost across sessions; output tok/s as an average (`≈70 tok/s avg`: output over the main loop's request time, a throughput, not a decode speed); total tokens in, out, cache read, cache write; compactions; account plan and email | `$.session.usage()`, `session.measure`, `$.store`, `turn.step`, `session.compact`, the global config file (`$CLAUDE_CONFIG_DIR/.claude.json` when set, else `~/.claude.json`) via `$.fs.read` | High; Medium for tok/s, token totals, account (agent) |
 | F2 | Tools and skills | Calls per tool, skill and MCP server; outcome ok, error, denied or blocked (refused by a guard hook or one of Claude Code's own rules); last 10 failures with time, target and reason | `tool.call` after `await next(e)`, `tool.check`, `skill.prompt`, `classic.PostToolUseFailure` (an error the tool raises while it runs has one; an input error and a refusal raised before `tool.check` have none, and look alike); calls of the main loop and of agents seen at `agent.spawn` only | High, but a refusal raised before the check shows as an error (agent) |
 | F3 | Agents | Type, model, task, status, elapsed; current action; final report; effort, context used out of window, tools and skills per agent with failures | `agent.spawn` (its result's `agentId`), `$.agent.list()`, `tool.call` and `tool.check` (`e.agentId`), `tool.call` on the Agent and Skill tools, `turn.step` and `turn.complete` (`e.agentId`) | High for the first three groups; Medium for the per-agent group (agent) |
 | F4 | Cache | TTL tier (5 min or 1 h); expiry clock time; hit rate for the last request and the session; cached tokens; rewrite cost if it goes cold; toast at 5 min left; \[Compact\] button | `turn.step` usage, `classic.PreModelSwitch` (`cache_ttl`, at a model switch only), deck price table | Medium; the tier and rate are known only after a model switch (agent) |
@@ -158,9 +158,9 @@ Colour marks three things: state, model and feature. Every state keeps its glyph
 
 | Role | Colour | Where |
 | --- | --- | --- |
-| OK | green `#22c55e` | ✓, a bar's fill and its percent under 60%, score ▲, on pace, ● live |
-| Warning | amber `#f59e0b` | ⚠, ⊘ denied, a bar's fill and its percent from 60 to 85%, a forecast that misses its reset time |
-| Failure | red `#ef4444` | ✗, a bar's fill and its percent over 85%, NEEDS A LOOK, score ▼, ● REC |
+| OK | the theme's `success` (green) | ✓, a bar's fill and its percent under 60%, score ▲, on pace, ● live |
+| Warning | the theme's `warning` (amber) | ⚠, ⊘ denied, a bar's fill and its percent from 60 to 85%, a forecast that misses its reset time |
+| Failure | the theme's `error` (red) | ✗, a bar's fill and its percent over 85%, NEEDS A LOOK, score ▼, ● REC |
 | Running | bold default text | ⟳ rows; no colour, so amber keeps meaning warning |
 | Secondary | the terminal's dim colour | Empty bar cells, separators, times, error text |
 | Opus, Sonnet, Haiku, Fable | `#ff8c1a`, `#3d9bff`, `#19c3a6`, `#d16bff` | Model badges in the band, agent rows and spinners |
@@ -174,6 +174,10 @@ Colour marks three things: state, model and feature. Every state keeps its glyph
 - **Bars:** filled cells and the percent beside them take the state colour, and empty cells stay dim (the user, 2026-10-28).
 - **Buttons:** bold, in the colour of the feature they act on; \[Inspect\], \[Show\] and \[Copy\] stay in the default colour.
 - **No colour:** when `NO_COLOR` is set, everything draws in the default colour and the glyphs carry the meaning.
+- **State follows the theme:** OK, Warning and Failure are Claude Code theme keys, so a light, dark or colour-blind
+  theme draws them as it draws its own state (Phase 7, release 2; before it, green `#22c55e`, amber `#f59e0b` and red
+  `#ef4444`). Model and feature colours keep the deck's hex, and the Usage chart's SVG keeps hex: an SVG takes no theme
+  key.
 - **Light terminal themes:** Phase 1 measured lime `#a3e635` at 1.51:1 on white, so skills use `#65a30d` (3.09:1 on white, 5.40:1 on `#1e1e1e`). Gold reads poorly on white too: check it in Phase 3, where plan progress first draws it, and switch to `#ca8a04` if needed.
 
 The band and Now tab mockups below use this palette in the terminal.
@@ -249,12 +253,22 @@ Context   ▰▰▱▱▱ 45%   90k / 200k     ≈6 turns to 80%
 5h        ▰▱▱▱▱ 25%   resets 28.10 16:15       on pace
 7d        ▰▰▰▱▱ 62%   resets 31.10 09:00   on pace
 Cost      $3.12 session · $18.49 today, est.
-Tokens    in 412k · out 38k · cache read 1.9M · cache write 210k · 70.5 tok/s
+Tokens    in 412k · out 38k · cache read 1.9M · cache write 210k · ≈70 tok/s avg
+In context  est. 14:52 · System prompt 3.1k · System tools 12k · Custom agents 9.8k · Messages 61k
+Plugins     alfred-code 11k: 45 agents, 38 skills · superpowers 1.4k: 14 skills
+Memory      5 files 6.5k · .claude/CLAUDE.md 2.1k · User CLAUDE.md 1.5k · AutoMem MEMORY.md 1.2k · +2
 Account   Max 20x · <account>              Compactions 1, at 14:40
 ```
 
+`In context`, `Plugins` and `Memory` are Claude Code's own estimate of what fills the context, by part, by plugin (its
+agents and skills) and by memory file (spec C1). A file outside the project is named by its type and base name, so no
+home path is kept.
+
 ```text
 Agents (3)                                             opus 1 · haiku 2
+✓ general-purp… ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━········ done in 1m 5s
+⟳ Explore       ·····━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2m 15s
+⟳ Plan          ···························━━━━━━━━━━━ 40s
 ⟳ Explore [haiku ◑ medium]  Finding auth code                   2m 15s
    ▸ Grep 'AuthService' in src/
    ctx ▱▱▱▱▱ 17%   tools Read ×6 ✓ · Grep ×3 ✓ · Bash ×1 ✗
@@ -262,7 +276,17 @@ Agents (3)                                             opus 1 · haiku 2
    ▸ Read src/auth/token.ts
 ✓ general-purpose [haiku]  Check test coverage                  done in 1m 05s
    result: 12 files, 3 untested services                        [Show report]
+✗ general-purpose [haiku]  Write the summary         failed after 20s   ⚠ max_tokens
+   result (cut off): The module splits into three …              [Show report]
+Other loops 2 · 1 active · out 41k
+(no spawn: compactions, forks)
 ```
+
+With two agents or more, the agents sit on one time axis between the head and the tree, oldest first, the newest 8,
+labelled `task <id>` from a dispatch's `task:` line or by type (spec C2); the Desktop app and VS Code draw the axis as
+one SVG. A text lane's time cell is as wide as the longest lane's, and its 14-cell label gives way down to 6 so the bar
+keeps 10 cells; with less room, about 30 columns, no lane is drawn. An agent whose last step stopped at the output limit ends its row with `⚠ max_tokens` (C4). Model
+loops no `agent.spawn` announced are counted on one line, active while a step came in the last 15 seconds (C3).
 
 ```text
 Tools                   calls   ok   ✗   ⊘
@@ -271,13 +295,17 @@ Edit                        9    8   1   0
 Bash                        9    5   1   3
 Skill: plan-builder         2    2   0   0
 mcp: context7               3    3   0   0
+Blocked by hooks  guard.js ×2 · shell-guards.js ×1
 
 Last failures and blocks
 ✗ 14:21  Edit  src/auth/token.ts   old_string not found          [Show] [Copy]
 ✗ 14:09  Bash  npm test            exit 1: 2 failing tests       [Show] [Copy]
-⊘ 14:03  Bash  sleep 25; gh run…   blocked: use Monitor ×2       [Show]
+⊘ 14:03  Bash  sleep 25; gh run…   blocked by guard.js: use Monitor ×2   [Show]
 ⊘ 13:55  Bash  rm -rf dist         denied by you
 ```
+
+A hook's block names the script its command runs, `blocked by guard.js: …`, and `Blocked by hooks` counts blocks by
+script, most first (spec C6); a hook command with no script keeps the message alone.
 
 ```text
 Cache      TTL 1h · expires 15:05, in 52m
@@ -287,10 +315,16 @@ If cold    rewrite ≈ $1.12 on Opus 5.5                          [Compact]
 ```
 
 ```text
-#   you     Claude   took     in / out      tools   ✗
-7   14:02   14:05    3m 10s   12k / 2.1k    9       1
-6   13:51   13:52    48s      8k / 0.9k     3       0
+#   you     Claude   took     in / out      tools   spend   ✗
+7   14:02   14:05    3m 10s   12k / 2.1k    9       $0.42   1
+6   13:51   13:52    48s      8k / 0.9k     3       -       0
 ```
+
+`spend` is the session's spend while the turn ran, agents included, `-` under half a cent, and `spend, est.` on a plan
+(spec C4). Spend while no turn runs falls in no row, so the column does not sum to the session's cost. A pane narrower
+than the table (61 cells, 65 with the estimate) leaves out `you` and draws the rest tighter, so a 40-column dock reads
+`#   Claude took    in / out    tools`; the Tools tab's name column gives way under 45 columns, down to 7, to keep the
+counts.
 
 ```text
 Plan · Token refresh              3/5 · ≈1h 37m total · ≈30m left (×1.2)
@@ -1253,7 +1287,7 @@ Overall: NO-GO by this brief's rule, on two fields. F5 and F6 are GO; F1 is PART
 
 ## Build phases
 
-Six phases after an approved verdict, core first. Skip any feature the verdict marked NO-GO, and hide PARTIAL fields.
+Six phases after an approved verdict, core first, then Phase 7, the flightdeck findings. Skip any feature the verdict marked NO-GO, and hide PARTIAL fields.
 
 | Phase | Builds | Done when |
 | --- | --- | --- |
@@ -1263,6 +1297,7 @@ Six phases after an approved verdict, core first. Skip any feature the verdict m
 | 4. Handoff, REC and compact rows | F8, F9, F10; starts once the deck, or the user's spec of F8 and F9's behaviour, is in hand (the verdict's Also report) | At the threshold, ask mode waits and auto mode saves; `/rec strict` hides account, home paths and $ amounts in the band, the pane, toasts and spinners; `/rec test` passes for keys, emails and phones; /quiet on shows one line per tool call and keeps up to 3 error lines on a failure, on the main screen and in fullscreen; /quiet off restores the full rows; REC masks compact rows too; and the acceptance in 'F8 and F9 behaviour' (agent) |
 | 5. Alfred Code integration | Starts only on the user's word (the user, 2026-10-28: 'nothing from the Alfred Code integration until I say so'; the word, 2026-10-29: 'Contract and prompt first'). The status file's presence check for F8's stand-down came in Phase 4 (the user, 2026-10-28). The rest of the status file reader; the mode banner; the runway against the stack's resume trigger; the stack's ready prompt, filled by `f` in the ALFRED CODE section (F8 and F9 choice 18). The stack side, its hooks publishing `status/<session id>.json`, lands in alfred-code first | With a valid status file for this session, the band shows the mode banner, the runway is measured against the resume trigger, and \[Handoff\] fills the stack's prompt verbatim, only into an empty prompt and never sending it; with no file, an unknown schema or another session's file, every surface draws what the core draws and the diagnostics row under \[Inspect\] names the reason (agent). Checked as 'The reader, Phase 5' says, each draw on the terminal and the Desktop surface in tests, then live without Alfred Code and with the stack's own file |
 | 6. Ship | Marketplace entry | `claude plugin validate --strict` passes; `tsc` and `claude plugin test` pass; installing from the marketplace in a clean session loads `1 mod active · session-inspector`; `claude plugin test` and one terminal session pass on Windows and on Linux, or the user waives that platform in writing for this release, as the mod must work on all three (where they run is the user's call, the verdict's Also report) (agent) |
+| 7. Flightdeck findings | The findings of the claude-flightdeck review, in the machine-local spec `docs/superpowers/specs/2026-11-03-flightdeck-findings-design.md`, in three releases: hardening (draw hooks that fail safe, REC's four new key forms, the compaction-point retry, the tok/s label) and CI; the draw layer; then the borrowed features and the probes | Each release's acceptance in that spec; `claude plugin test` and validate green in CI on Linux, macOS and Windows; each release's live checks with and without Alfred Code (agent) |
 
 **Every phase**
 
@@ -1294,7 +1329,7 @@ The Claude Code limits below are from the mods reference; the right column is ho
 | Pane opened without the user asking | Placed from 144 terminal columns, 110 once the person has opened it | Never auto-opens a pane; panes open only on a command (agent) |
 | `$.process.run` | 30 s timeout by default, 4 MiB per stream | The one `git status` passes a short timeout of its own (agent) |
 | `claude plugin test` | 5 s per test; every `$` call needs a stub, registered before the test's first call | Timers run on `mock.clock`, never on real waits (agent) |
-| Platforms | Windows, Linux and macOS (the user, 2026-10-28) | Finds the config from `CLAUDE_CONFIG_DIR`, else `HOME`, else `USERPROFILE`; reads plan and score files with LF or CRLF; a missing `git` leaves the handoff without git state; each phase's terminal check runs on all three or reports the rest NOT RUN (agent) |
+| Platforms | Windows, Linux and macOS (the user, 2026-10-28) | Finds the config from `CLAUDE_CONFIG_DIR`, else `HOME`, else `USERPROFILE`; reads plan and score files with LF or CRLF; a missing `git` leaves the handoff without git state; each phase's terminal check runs on all three or reports the rest NOT RUN; CI (`.github/workflows/ci.yml`) runs `claude plugin validate` and `claude plugin test` on all three and `tsc` on Linux, its first run on the user's push (agent) |
 
 **Security**
 
@@ -1317,7 +1352,7 @@ No known blocker: the core features rest on documented events. The material risk
 | MATERIAL | The person can collapse the band, and the mod cannot tell | ctrl+x ctrl+a or `[-]` | Every item that needs you also raises a toast or shows in the Now tab (agent) |
 | MATERIAL | The Desktop and VS Code checks of every phase need the real account | A phase's Desktop check | Run only on the user's word, else reported NOT RUN; the terminal checks run under an isolated config (agent) |
 | MATERIAL | Two homes for a full context: F8 Handoff and the stack's guard-fresh-session-start hook, which offers a fresh session before a heavy run on a full context | Both act as context nears its limit | With a valid status file, the stack owns handoff and F8 only shows the state (Phase 5's `f` in the ALFRED CODE section fills the stack's prompt); without one, F8's own handoff is the only one (agent) |
-| MATERIAL | Calls come from agents no `agent.spawn` announced, such as the engine-internal one auto mode ran a failing ToolSearch under (probe I 266) | Auto mode, background engine work | F2 and F3 count only the main loop and agents seen at `agent.spawn` (agent) |
+| MATERIAL | Calls come from agents no `agent.spawn` announced, such as the engine-internal one auto mode ran a failing ToolSearch under (probe I 266) | Auto mode, background engine work | F2 and F3 count only the main loop and agents seen at `agent.spawn`; the Agents tab counts their loops apart as `Other loops`, while their tool calls stay uncounted (spec C3) (agent) |
 | MATERIAL | The cache tier and write rate are known only after a model switch (probe I 240) | A session with no `/model` switch | F4 hides the expiry clock, its toast and the rewrite cost until then; hit rate and cached tokens always show (agent) |
 | MATERIAL | Only macOS is checked here, and the mod must work on Windows and Linux too | A path, line ending or `$.process` difference | The Platforms limit; each phase reports Windows and Linux NOT RUN until a machine runs them (agent) |
 | MATERIAL | A Bash call draws as a ToolUse row on the main screen and as a ToolGroup line in fullscreen's normal view, and the layout can change with sign-in alone (probe question 10) | F10 built and checked in one layout only | F10 hooks all three sites; Phase 4 checks /quiet on and off in both layouts (agent) |
@@ -1347,6 +1382,7 @@ No known blocker: the core features rest on documented events. The material risk
 - [Create a marketplace](https://code.claude.com/docs/en/plugin-marketplaces): plugin sources and pinning; with the [marketplace reference](https://code.claude.com/docs/en/plugins/marketplace-reference) for `ref` and `sha`, and [Host and maintain a marketplace](https://code.claude.com/docs/en/plugins/host-marketplace) for versions and updates. Read 2026-10-28. (agent)
 - [claude-hud repository](https://github.com/jarrodwatts/claude-hud): the statusline approach this mod replaces; its README, read 2026-10-28, lists context, rate limits, tools, agents and todos, and does not say how a failed tool shows. (agent)
 - claude\_code\_mods.pptx, slides 10 to 20: the six deck mods and their settings.
+- [claude-flightdeck](https://github.com/scasella/claude-flightdeck) at `f9c3c52`: another session mod, read 2026-11-03 for Phase 7's findings (its redaction, its fixed compaction-point read, its CI). (agent)
 
 ## Changes by agent
 

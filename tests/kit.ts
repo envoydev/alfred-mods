@@ -2,7 +2,8 @@
 import { mock } from 'claude-code/testing'
 import type { Engine, MockClock } from 'claude-code/testing'
 import type {
-  AgentInfo, ClassicResult, On, ProcessRunResult, RenderElement, SessionUsage, Settings, TurnStepInput, TurnStepResult, TurnUsage, UiPane,
+  AgentInfo, ClassicResult, EngineInterface, On, ProcessRunResult, RenderElement, RenderInput, SessionUsage, Settings, TurnStepInput, TurnStepResult,
+  TurnUsage, UiPane,
 } from 'claude-code'
 
 export const NO_READING: SessionUsage = { startedAt: 0, context: { window: 200_000 }, rateLimits: [] }
@@ -32,12 +33,14 @@ export const gitResult = (stdout: string, exitCode = 0, stderr = ''): ProcessRun
 export type FileStub = { text: string; mtimeMs: number; size?: number }
 
 export function stubAll(on: On, o: Options = {}): {
-  clock: MockClock; toasts: string[]; opened: string[]; copied: string[]; usage: { current: SessionUsage }; panes: UiPane[]
+  clock: MockClock; toasts: string[]; opened: string[]; copied: string[]; usage: { current: SessionUsage; breakdowns: number; refuse: boolean; fail: boolean }; panes: UiPane[]
   listed: { current: AgentInfo[]; calls: number }; files: { current: Record<string, FileStub>; reads: string[]; writes: string[]; exists: string[] }
   // `git.current` and `git.calls`; the draft a test types and the texts the mod filled
   git: { current: ProcessRunResult | string; calls: number; argv: readonly string[] | null; timeoutMs: number | null }; prompt: { draft: string; fills: string[] }
   // Each `$.ui.invalidate` event the mod raised, in order
   invalidates: string[]
+  // Each `$.ui.status` text the mod set, in order; undefined is a clear
+  statuses: (string | undefined)[]
   // `set` writes as another session would, beneath the mod
   store: { get(key: string): unknown; keys(): string[]; set(key: string, value: unknown): void }
   // A test changes the session id mid-test, as a /clear does, through `session.id`
@@ -48,9 +51,15 @@ export function stubAll(on: On, o: Options = {}): {
   // The engine's record of the open panes; a test places a waiting one by replacing its entry
   const panes: UiPane[] = []
   const copied: string[] = []
-  // A test changes the reading mid-test through `usage.current`
-  const usage = { current: o.usage ?? NO_READING }
-  on('session.usage', () => ({ value: usage.current }))
+  // A test changes the reading mid-test through `usage.current`; `breakdowns` counts the reads asking for a breakdown,
+  // `refuse` makes those reads fail, and `fail` every read
+  const usage = { current: o.usage ?? NO_READING, breakdowns: 0, refuse: false, fail: false }
+  on('session.usage', (_, e) => {
+    if (usage.fail) return { deny: 'test: usage read failed' }
+    if (e.breakdown === undefined) return { value: usage.current }
+    usage.breakdowns++
+    return usage.refuse ? { deny: 'test: usage refused' } : { value: usage.current }
+  })
   const session = { id: o.sessionId ?? 's1' }
   on('session.id', () => ({ value: session.id }))
   on('session.cwd', () => ({ value: o.cwd ?? '/w' }))
@@ -70,11 +79,13 @@ export function stubAll(on: On, o: Options = {}): {
   })
   on('settings.read', () => ({ value: (o.settings ?? {}) as Settings }))
   // A test changes the files mid-test through `files.current`; a folder with no file in it is missing. The kit hands a
-  // hook the path resolved against the mod's folder, so a stub matches its end; `{ deny }` rejects the mod's call.
+  // hook the path resolved against the mod's folder, with Windows' separators on Windows, so a stub matches its end
+  // after `\` reads as `/`; `{ deny }` rejects the mod's call.
   const files = { current: { ...(o.files ?? {}) }, reads: [] as string[], writes: [] as string[], exists: [] as string[] }
-  const at = (full: string, path: string): boolean => full === path || full.endsWith(`/${path}`)
+  const slashed = (path: string): string => path.replace(/\\/g, '/')
+  const at = (full: string, path: string): boolean => slashed(full) === path || slashed(full).endsWith(`/${path}`)
   on('fs.list', (_, e) => {
-    const dir = e.path.replace(/\/$/, '')
+    const dir = slashed(e.path).replace(/\/$/, '')
     const inDir = Object.entries(files.current).filter(([path]) => at(dir, path.slice(0, path.lastIndexOf('/'))))
     if (inDir.length === 0) return { deny: `ENOENT: no such directory, ${e.path}` }
     return {
@@ -92,12 +103,12 @@ export function stubAll(on: On, o: Options = {}): {
   })
   // Each path asked, so a test counts the reads of a missing file
   on('fs.exists', (_, e) => {
-    files.exists.push(e.path)
+    files.exists.push(slashed(e.path))
     return { value: Object.keys(files.current).some(path => at(e.path, path)) }
   })
   // A write lands at the path of a file the test gave, else at the path the mod passed
   on('fs.write', (_, e) => {
-    const key = Object.keys(files.current).find(path => at(e.path, path)) ?? e.path
+    const key = Object.keys(files.current).find(path => at(e.path, path)) ?? slashed(e.path)
     files.current[key] = { text: e.text, mtimeMs: o.now ?? 0 }
     files.writes.push(key)
     return { value: undefined }
@@ -124,6 +135,11 @@ export function stubAll(on: On, o: Options = {}): {
   const invalidates: string[] = []
   on('ui.invalidate', (_, e) => {
     invalidates.push(e.event)
+    return { value: undefined }
+  })
+  const statuses: (string | undefined)[] = []
+  on('ui.status', (_, e) => {
+    statuses.push(e.text)
     return { value: undefined }
   })
   on('ui.copy', (_, e) => {
@@ -162,7 +178,7 @@ export function stubAll(on: On, o: Options = {}): {
     set: (key: string, value: unknown): void => void stored.set(key, JSON.parse(JSON.stringify(value)) as unknown),
   }
   mock.env(on, o.env ?? {})
-  return { clock, toasts, opened, copied, usage, panes, listed, files, store, session, git, prompt, invalidates }
+  return { clock, toasts, opened, copied, usage, panes, listed, files, store, session, git, prompt, invalidates, statuses }
 }
 
 // Claude Code's own answers to the events a session raises, for a test that drives a whole turn. A test hooks an
@@ -240,18 +256,86 @@ function textOf(n: unknown): string {
   return (el.children ?? []).map(textOf).join('')
 }
 
-// One string per drawn line: each innermost Box (one holding no Box) joins its texts and button labels in order
+type El = { type?: string; props?: Record<string, unknown>; children?: unknown[] }
+const isLine = (n: unknown): boolean => {
+  const el = n as El | null
+  return el?.type === 'Box' && typeof el.props?.['key'] === 'string' && (el.props['key'] as string).startsWith('line-')
+}
+const spaces = (v: unknown): string => ' '.repeat(typeof v === 'number' ? v : 0)
+
+// A piece of a fitted line as the terminal draws it: its margins as spaces, an empty Box of width n as n spaces, a
+// cell padded to its width on its align side (cut with '…' when longer, as truncate-end draws it)
+function pieceOf(n: unknown): string {
+  if (typeof n !== 'object' || n === null) return textOf(n)
+  const el = n as El
+  if (el.type !== 'Box') return textOf(el)
+  const p = el.props ?? {}
+  const kids = el.children ?? []
+  const inner = kids.map(pieceOf).join('')
+  let body = inner
+  if (typeof p['width'] === 'number') {
+    const width = p['width']
+    const cells = [...inner]
+    body = kids.length === 0 ? ' '.repeat(width)
+      : cells.length > width ? `${cells.slice(0, Math.max(0, width - 1)).join('')}…`
+      : p['justifyContent'] === 'flex-end' ? inner.padStart(width) : inner.padEnd(width)
+  }
+  return spaces(p['marginLeft']) + body + spaces(p['marginRight'])
+}
+
+// One string per drawn line. A tree of fitted lines (Boxes keyed `line-*`) gives one row per such Box, its pieces
+// joined; any other tree, one row per innermost Box (one holding no Box), its texts and button labels in order.
 export async function rows(ui: { drawn: () => Promise<RenderElement> }): Promise<string[]> {
+  const tree = await ui.drawn()
+  const lines: El[] = []
+  const find = (n: unknown): void => {
+    if (typeof n !== 'object' || n === null) return
+    if (isLine(n)) lines.push(n as El)
+    else ((n as El).children ?? []).forEach(find)
+  }
+  find(tree)
+  if (lines.length > 0) return lines.map(l => (l.children ?? []).map(pieceOf).join(''))
   const out: string[] = []
   const walk = (n: unknown): void => {
     if (typeof n !== 'object' || n === null) return
-    const el = n as { type?: string; children?: unknown[] }
+    const el = n as El
     const kids = el.children ?? []
-    if (el.type === 'Box' && kids.some(k => (k as { type?: string } | null)?.type === 'Box')) kids.forEach(walk)
+    if (el.type === 'Box' && kids.some(k => (k as El | null)?.type === 'Box')) kids.forEach(walk)
     else out.push(textOf(el))
   }
-  walk(await ui.drawn())
+  walk(tree)
   return out
+}
+
+// Claude Code's own drawing of each site the mod rewrites, beneath the mod: the props it was handed, as JSON. The
+// dialog's tree must hold Claude Code's own node, so its stub keeps the props it was handed, newest last, and passes
+// the node on rather than drawing them.
+export function engineSites(on: On): { asked: unknown[] } {
+  const asked: unknown[] = []
+  const json = (h$: EngineInterface, e: RenderInput): RenderElement => {
+    const { Text } = h$.ui.resolve(e)
+    return h(Text, null, JSON.stringify(e.props)) as RenderElement
+  }
+  on('ui.render', { component: 'UserMessage' }, json)
+  on('ui.render', { component: 'AssistantMessage' }, json)
+  on('ui.render', { component: 'CommandOutput' }, json)
+  on('ui.render', { component: 'ToolUse' }, json)
+  on('ui.render', { component: 'ToolResult' }, json)
+  on('ui.render', { component: 'ToolGroup' }, json)
+  on('ui.render', { component: 'AskUserQuestion' }, (_, e) => {
+    asked.push(e.props)
+    return { type: 'engine', ref: 0 } as RenderElement
+  })
+  on('ui.render', { component: 'Spinner' }, json)
+  return { asked }
+}
+
+// Refuses the mod's read of one atom while `key` is set, as a store that fails would: every render hook reads an
+// atom before it draws, so this makes any of them throw
+export function failState(on: On): { key: string | null } {
+  const fail = { key: null as string | null }
+  on('state.get', (_, e, next) => (fail.key !== null && e.key === fail.key ? { deny: 'test: state read refused' } : next(e)))
+  return fail
 }
 
 // A call a test leaves held past its end: the kit rejects it once the test's stubs are gone, which is expected, so the
