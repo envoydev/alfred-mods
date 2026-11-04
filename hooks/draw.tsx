@@ -33,13 +33,16 @@ function polyline(values: number[], noColor: boolean): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 24"><polyline fill="none" stroke="${noColor ? 'currentColor' : COLOR.usage}" stroke-width="1.5" points="${points.join(' ')}"/></svg>`
 }
 
-// A chart where the surface draws Svg, its sparkline as text elsewhere; the Svg takes the markup's width up to the
-// Box the line gives it
+const drawsSvg = (e: ResolveInput): boolean => e.surface === 'desktop' || e.surface === 'vscode'
+
+// A chart where the surface draws Svg, its sparkline as text elsewhere. The Svg is drawn at the markup's 120 by 24,
+// whatever the turns, in a Box of CHART_MAX cells (the release 2 review: sized by the turns, two turns drew it 2 cells
+// wide)
 function chart($: EngineInterface, e: ResolveInput, values: number[], noColor: boolean): RenderElement {
   const alt = show(spark(values))
   if (e.surface === 'desktop' || e.surface === 'vscode') {
     const { Svg } = $.ui.resolve(e)
-    return <Svg source={polyline(values, noColor)} alt={alt} />
+    return <Svg source={polyline(values, noColor)} alt={alt} width={120} height={24} />
   }
   const { Text } = $.ui.resolve(e)
   return <Text {...style({ tone: 'usage' }, noColor)}>{alt}</Text>
@@ -55,27 +58,49 @@ type Piece =
   | { kind: 'gap'; width: number }
   | { kind: 'cell'; text: string; width: number; seg: TextSeg }
   | { kind: 'button'; button: ButtonSeg; label: string; isPlain: boolean }
-  | { kind: 'chart'; values: number[] }
+  | { kind: 'chart'; values: number[]; cells: number }
   | { kind: 'code'; source: string }
 
 const cellsOf = (text: string): number => [...text].length
 const CHART_MAX = 20
 
 // Rule 2: leading and trailing spaces become margins, an inner run of two or more splits the segment, spaces alone are
-// a gap; a single space between words stays in the text
+// a gap; a single space between words stays in the text. One pass over the text: tool output can hold a long run of
+// spaces, and a render hook must not stall on it
 function textPieces(seg: TextSeg, text: string): Piece[] {
-  if (/^ +$/.test(text)) return [{ kind: 'gap', width: text.length }]
-  const [, lead = '', body = '', trail = ''] = /^( *)([\s\S]*?)( *)$/.exec(text) ?? []
-  const words = body.split(/ {2,}/)
-  const runs = body.match(/ {2,}/g) ?? []
-  return words.map((word, i) => ({ kind: 'text', text: word, ml: i === 0 ? lead.length : 0, mr: i < runs.length ? (runs[i] ?? '').length : trail.length, seg }))
+  let start = 0
+  while (text[start] === ' ') start++
+  if (text.length > 0 && start === text.length) return [{ kind: 'gap', width: text.length }]
+  let end = text.length
+  while (end > start && text[end - 1] === ' ') end--
+  const out: Piece[] = []
+  let ml = start
+  let from = start
+  let i = start
+  while (i < end) {
+    if (text[i] !== ' ' || text[i + 1] !== ' ') {
+      i++
+      continue
+    }
+    let j = i
+    while (text[j] === ' ') j++
+    out.push({ kind: 'text', text: text.slice(from, i), ml, mr: j - i, seg })
+    ml = 0
+    from = j
+    i = j
+  }
+  out.push({ kind: 'text', text: text.slice(from, end), ml, mr: text.length - end, seg })
+  return out
 }
 
-function piecesOf(line: Line): Piece[] {
+function piecesOf(line: Line, isSvg: boolean): Piece[] {
   return line.flatMap((seg): Piece[] => {
     if ('text' in seg) return seg.width === undefined ? textPieces(seg, show(seg.text)) : [{ kind: 'cell', text: show(seg.text), width: seg.width, seg }]
     if ('code' in seg) return [{ kind: 'code', source: show(seg.code) }]
-    if ('chart' in seg) return [{ kind: 'chart', values: seg.chart.slice(-CHART_MAX) }]
+    if ('chart' in seg) {
+      const values = seg.chart.slice(-CHART_MAX)
+      return [{ kind: 'chart', values, cells: isSvg ? CHART_MAX : values.length }]
+    }
     // A digit also answers from the empty prompt, so the terminal shows it plain, '3: Compact', where '[ Compact ]'
     // hides it; a letter answers only in the focused pane, and its button keeps the brackets
     const isPlain = seg.button.plain === true || /^\d$/.test(seg.button.hotkey ?? '')
@@ -90,7 +115,7 @@ function widthOf(p: Piece): number {
     case 'text': return p.ml + cellsOf(p.text) + p.mr
     case 'gap': case 'cell': return p.width
     case 'button': return p.isPlain ? (p.button.hotkey === undefined ? 0 : p.button.hotkey.length + 2) + cellsOf(p.label) : cellsOf(p.label) + 4
-    case 'chart': return p.values.length
+    case 'chart': return p.cells
     case 'code': return 0
   }
 }
@@ -99,7 +124,7 @@ function widthOf(p: Piece): number {
 // or more cells remain; any other piece crossing it is left out, and so is everything after. A line keeps at least its
 // first piece, cut to the width.
 type Fitted = { piece: Piece; cut?: number }
-function fit(pieces: Piece[], columns: number): Fitted[] {
+function fitFromStart(pieces: Piece[], columns: number): Fitted[] {
   const out: Fitted[] = []
   let used = 0
   let isFirst = true
@@ -124,11 +149,30 @@ function fit(pieces: Piece[], columns: number): Fitted[] {
   return out
 }
 
+// The buttons at a line's end, with the gaps between them, keep their place: the line before them is fitted into the
+// room they leave and its last text cut, so a failure row in a docked pane keeps Show and Copy (the release 2 review).
+// When that leaves under 4 cells of the text, or no text piece to cut, the line falls back to rule 5 alone.
+function fit(pieces: Piece[], columns: number): Fitted[] {
+  const whole = fitFromStart(pieces, columns)
+  let k = pieces.length
+  while (k > 0 && (pieces[k - 1]?.kind === 'button' || pieces[k - 1]?.kind === 'gap')) k--
+  const tail = pieces.slice(k)
+  if (k === 0 || !tail.some(p => p.kind === 'button') || (whole.length === pieces.length && whole.every(f => f.cut === undefined))) return whole
+  const room = columns - tail.reduce((sum, p) => sum + widthOf(p), 0)
+  const head = fitFromStart(pieces.slice(0, k), room)
+  const last = head[head.length - 1]
+  if (room <= 0 || last?.piece.kind !== 'text' || last.cut === undefined || last.cut < 4) return whole
+  return [...head, ...tail.map(piece => ({ piece }))]
+}
+
 // Each line is one row Box of the width it is drawn in, keyed `line-<n>`; each text piece one Text alone in a Box,
 // spaces as margins, columns as cells (spec A1). No Text holds a Text: the Desktop app wraps nested pieces, or lays
 // them out as blocks, and collapses runs of spaces.
+// `fill` is for a tool row: its slot can be narrower than the viewport it is measured against (a pane docked beside the
+// transcript), so its Box takes the slot's width and clips there. Each row is at least one row tall: a Box with nothing
+// in it is none, and a blank line in a result would vanish.
 export function drawLines(
-  $: EngineInterface, e: ResolveInput, lines: Line[], o: { noColor: boolean; press: Record<string, () => unknown>; columns: number },
+  $: EngineInterface, e: ResolveInput, lines: Line[], o: { noColor: boolean; press: Record<string, () => unknown>; columns: number; fill?: boolean },
 ): RenderElement {
   const { Box, Button, Code, Text } = $.ui.resolve(e)
   const draw = ({ piece: p, cut }: Fitted): RenderElement => {
@@ -143,7 +187,7 @@ export function drawLines(
         if (cut !== undefined) return <Box width={cut} flexShrink={0} {...margins}><Text {...style(p.seg, o.noColor)} wrap="truncate-end">{p.text}</Text></Box>
         return <Box flexShrink={0} {...margins}><Text {...style(p.seg, o.noColor)}>{p.text}</Text></Box>
       }
-      case 'chart': return <Box width={p.values.length} flexShrink={0}>{chart($, e, p.values, o.noColor)}</Box>
+      case 'chart': return <Box width={p.cells} flexShrink={0}>{chart($, e, p.values, o.noColor)}</Box>
       case 'code': return <Code source={p.source} />
       case 'button': {
         const { key, hotkey, tone } = p.button
@@ -156,8 +200,10 @@ export function drawLines(
       }
     }
   }
+  const width = o.fill === true ? {} : { width: o.columns }
+  const isSvg = drawsSvg(e)
   const row = (line: Line, n: number) => (
-    <Box key={`line-${n}`} flexDirection="row" width={o.columns} overflow="hidden">{fit(piecesOf(line), o.columns).map(draw)}</Box>
+    <Box key={`line-${n}`} flexDirection="row" {...width} minHeight={1} overflow="hidden">{fit(piecesOf(line, isSvg), o.columns).map(draw)}</Box>
   )
   return <Box flexDirection="column">{lines.map(row)}</Box>
 }
@@ -173,7 +219,7 @@ export function drawNote($: EngineInterface, e: ResolveInput, text: string): Ren
 // surface with no Input (mobile) draws the lines alone.
 export function drawWithInput(
   $: EngineInterface, e: ResolveInput, top: Line[], input: { key: string; label: string; submitLabel: string; onSubmit: (value: string) => void }, bottom: Line[],
-  o: { noColor: boolean; press: Record<string, () => unknown>; columns: number },
+  o: { noColor: boolean; press: Record<string, () => unknown>; columns: number; fill?: boolean },
 ): RenderElement {
   const els = $.ui.resolve(e)
   if (!('Input' in els)) return drawLines($, e, [...top, ...bottom], o)

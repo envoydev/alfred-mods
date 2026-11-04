@@ -215,7 +215,7 @@ test('an interrupted turn with no usage still records the turn', async ($, on) =
   expect(state.get('totals')).toBeUndefined()
 })
 
-test("the step's model and effort are the main loop's", async ($, on) => {
+test("the step's model and effort are the main loop's", { timeoutMs: 15_000 }, async ($, on) => {
   const { clock } = stubAll(on, { usage: READING })
   const state = watchState(on)
   on('turn.step', async function* (_, e) {

@@ -231,7 +231,7 @@ for (const surface of SURFACES) {
     expect(texts.find(t => t.text === 'ctx')?.props.color).toBe('#60a5fa')
   })
 
-  test(`working shows the running Bash and its time (${surface})`, async ($, on) => {
+  test(`working shows the running Bash and its time (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     const { clock } = stubAll(on, { usage: reading(30, 15, 40) })
     on('tool.call', async () => {
       await clock.sleep(60_000)

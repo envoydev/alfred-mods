@@ -1611,7 +1611,7 @@ export const register: Register = on => {
     if ((await read($, quiet)).isOn && !e.props.isRunning && (e.props.isExpanded !== true || compactMem.marks.has(e.props.tool_use_id))) {
       const columns = e.viewport?.columns ?? 120
       const lines = callLine(compactOf(e.props.tool_use_id, e.props), columns)
-      return drawLines($, e, lines, { noColor: await isNoColor($), press: {}, columns })
+      return drawLines($, e, lines, { noColor: await isNoColor($), press: {}, columns , fill: true })
     }
     if (!(await isRecOn($))) return next(e)
     // An unfolded group's errored row draws its error text inline, and Claude Code draws that text, not `output` (live,
@@ -1625,7 +1625,7 @@ export const register: Register = on => {
         const columns = e.viewport?.columns ?? 120
         const head = callLine(compactOf(e.props.tool_use_id, e.props), columns).slice(0, 1)
         const isExpanded = e.props.isExpanded === true
-        return drawLines($, e, [...head, ...resultLines(failed.text, { isExpanded, isErrored: true, gutter: e.surface === 'terminal' })], { noColor: await isNoColor($), press: {}, columns })
+        return drawLines($, e, [...head, ...resultLines(failed.text, { isExpanded, isErrored: true, gutter: e.surface === 'terminal' })], { noColor: await isNoColor($), press: {}, columns , fill: true })
       }
     }
     const input = maskDeep(e.props.input, mask)
@@ -1644,17 +1644,17 @@ export const register: Register = on => {
     if (e.props.isExpanded === true && compactMem.marks.delete(e.props.tool_use_id)) $.ui.invalidate('ui.render')
     let props = e.props
     if ((await read($, quiet)).isOn && e.props.isExpanded !== true) {
-      if (e.props.isErrored || DROPS_RESULT.includes(e.props.tool)) return drawLines($, e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? 120 })
+      if (e.props.isErrored || DROPS_RESULT.includes(e.props.tool)) return drawLines($, e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
       const output = emptyPreview(e.props.tool, e.props.output)
       if (output !== e.props.output) props = { ...e.props, output }
     }
     if (!(await isRecOn($))) return props === e.props ? next(e) : next({ ...e, props })
-    if (e.props.isErrored && errorRows.has(e.props.tool_use_id)) return drawLines($, e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? 120 })
+    if (e.props.isErrored && errorRows.has(e.props.tool_use_id)) return drawLines($, e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
     const masked = maskResult({ ...props, error: errorMem.get(e.props.tool_use_id) ?? null }, mask)
     if (masked.kind === 'same') return props === e.props ? next(e) : next({ ...e, props })
     if (masked.kind === 'output') return next({ ...e, props: { ...props, output: masked.output } })
     const lines = resultLines(masked.text, { isExpanded: e.props.isExpanded === true, isErrored: e.props.isErrored, gutter: e.surface === 'terminal' })
-    return drawLines($, e, lines, { noColor: await isNoColor($), press: {}, columns: e.viewport?.columns ?? 120 })
+    return drawLines($, e, lines, { noColor: await isNoColor($), press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
   }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
 
   // Under /quiet a settled group of calls alone draws its compact lines. One holding another row, or an errored or
@@ -1673,7 +1673,7 @@ export const register: Register = on => {
     if (isQuiet && !e.props.isActive && e.props.isCallsOnly === true) {
       const columns = e.viewport?.columns ?? 120
       const lines = groupLines(e.props.calls.map(c => compactOf(c.tool_use_id, c)), columns)
-      return drawLines($, e, lines, { noColor: await isNoColor($), press: {}, columns })
+      return drawLines($, e, lines, { noColor: await isNoColor($), press: {}, columns , fill: true })
     }
     if (isQuiet && (isRec || !e.props.isActive)) mark(ids)
     else if (!isRec) return next(e)

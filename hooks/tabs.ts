@@ -286,18 +286,22 @@ export function usageLines(b: TabInput): Line[] {
   return out
 }
 
-// The Tools table's columns: the tool, then its counts at their end
-const TOOL_COLUMNS = [24, 6, 5, 5, 5]
-const toolRow = (cells: string[], style: { tone?: Tone; bold?: boolean }): Line =>
-  cells.map((text, i) => ({ text, width: TOOL_COLUMNS[i] ?? 5, ...(i === 0 ? {} : { align: 'end' as const }), ...style }))
+// The Tools table's columns: the tool, then its counts at their end. The tool's column is 24 cells, or as wide as the
+// longest name and a space where the counts' 21 cells leave room, so two long names cut alike stay apart (the release
+// 2 review: 'Skill: superpowers:writ…' twice)
+const COUNT_COLUMNS = [6, 5, 5, 5]
+const toolRow = (cells: string[], first: number, style: { tone?: Tone; bold?: boolean }): Line =>
+  cells.map((text, i) => ({ text, width: i === 0 ? first : COUNT_COLUMNS[i - 1] ?? 5, ...(i === 0 ? {} : { align: 'end' as const }), ...style }))
 
 export function toolsLines(b: TabInput): Line[] {
-  const out: Line[] = [toolRow(['Tools', 'calls', 'ok', '✗', '⊘'], { bold: true })]
   const rows = Object.entries(b.stats).sort((x, y) => y[1].calls - x[1].calls)
+  const longest = Math.max(0, ...rows.map(([key]) => [...key].length))
+  const first = Math.max(24, Math.min(longest + 1, b.columns - COUNT_COLUMNS.reduce((a, c) => a + c, 0)))
+  const out: Line[] = [toolRow(['Tools', 'calls', 'ok', '✗', '⊘'], first, { bold: true })]
   if (rows.length === 0) out.push([{ text: 'No tool calls yet.', tone: 'dim' }])
   for (const [key, s] of rows) {
-    const row = toolRow([key, ...[s.calls, s.ok, s.failed, s.stopped].map(String)], {})
-    out.push(key.startsWith('Skill:') ? [{ text: key, width: TOOL_COLUMNS[0], tone: 'skill' }, ...row.slice(1)] : row)
+    const row = toolRow([key, ...[s.calls, s.ok, s.failed, s.stopped].map(String)], first, {})
+    out.push(key.startsWith('Skill:') ? [{ text: key, width: first, tone: 'skill' }, ...row.slice(1)] : row)
   }
   out.push([{ text: 'Last failures and blocks', bold: true }])
   if (b.failures.length === 0) out.push([{ text: 'None.', tone: 'dim' }])

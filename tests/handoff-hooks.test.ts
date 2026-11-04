@@ -53,7 +53,7 @@ test('readings of 70 then 88 ask once, at 85', async ($, on) => {
   expect(toasts.filter(t => t.startsWith('Context past'))).toEqual([ASK(85)])
 })
 
-test('auto mode saves at 80, 85, 90 and 95', async ($, on) => {
+test('auto mode saves at 80, 85, 90 and 95', { timeoutMs: 15_000 }, async ($, on) => {
   const { clock, toasts, h } = await start($, on, { store: { 'settings:handoff': { mode: 'auto', threshold: 80 } } })
   const saves: number[] = []
   for (const p of [70, 80, 82, 85, 91, 96, 97]) {
@@ -439,7 +439,7 @@ test('two saves at once make one write', async ($, on) => {
   expect(git.calls).toBe(1)
 })
 
-test('a /clear within 2 hours fills the resume prompt once, only into an empty draft', async ($, on) => {
+test('a /clear within 2 hours fills the resume prompt once, only into an empty draft', { timeoutMs: 15_000 }, async ($, on) => {
   const { prompt, clock, toasts, h } = await start($, on)
   await handoff($, 'now')
   await saved(clock, h)

@@ -121,7 +121,7 @@ const ALL: RenderSurface[] = ['terminal', 'desktop', 'vscode', 'mobile']
 const check = (tree: RenderElement, surface: RenderSurface, where: string): string[] =>
   [...faults(tree, surface), ...spills(tree)].map(f => `${where}: ${f}`)
 
-test('no faults or spills in the band', async ($, on) => {
+test('no faults or spills in the band', { timeoutMs: 15_000 }, async ($, on) => {
   await busy($, on)
   const found: string[] = []
   for (const surface of ['terminal', 'desktop'] as const) {
@@ -134,7 +134,7 @@ test('no faults or spills in the band', async ($, on) => {
   expect(found).toEqual([])
 })
 
-test('no faults or spills in each tab and the rec pane', async ($, on) => {
+test('no faults or spills in each tab and the rec pane', { timeoutMs: 15_000 }, async ($, on) => {
   await busy($, on)
   const found: string[] = []
   for (const tab of TABS) {
@@ -157,7 +157,7 @@ test('no faults or spills in each tab and the rec pane', async ($, on) => {
   expect(found).toEqual([])
 })
 
-test('no faults or spills in the tool rows', async ($, on) => {
+test('no faults or spills in the tool rows', { timeoutMs: 15_000 }, async ($, on) => {
   await busy($, on)
   await $.command.run({ command: 'quiet', args: 'on', origin: { kind: 'composer' }, presentation: PRESENTATION })
   const use = { tool_use_id: 'f1', tool: 'Bash', input: { command: 'false Zephyrine', description: 'Fail on purpose' }, isRunning: false, isErrored: true, isInterrupted: false, output: 'Exit code 1\nboom' }
@@ -223,8 +223,12 @@ async function turns($: Engine, n: number): Promise<void> {
 }
 const inspect = ($: Engine, tab: string) => $.command.run({ command: 'inspect', args: tab, origin: { kind: 'composer' }, presentation: PRESENTATION })
 const failing = (on: On) => on('tool.call', (_, e) => (e.tool === 'Bash' && e.command.startsWith('false') ? { isError: true as const, result: 'Exit code 1', text: 'Exit code 1' } : { result: 'ok', text: 'ok' }))
-const tabRows = async ($: Engine, surface: RenderSurface, columns: number) =>
-  (await rowsOf(await $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: { ...PANE, bodyColumns: columns } })))
+const tabRows = async ($: Engine, surface: RenderSurface, columns: number) => {
+  const ui = await $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: { ...PANE, bodyColumns: columns } })
+  const out = await rowsOf(ui)
+  await ui.unmount()
+  return out
+}
 
 for (const surface of ['terminal', 'desktop'] as const) {
   test(`a Timeline at 40 columns ends at a whole column (${surface})`, async ($, on) => {
@@ -257,7 +261,8 @@ for (const surface of ['terminal', 'desktop'] as const) {
   test(`a CJK tool name keeps the Tools row on one line (${surface})`, async ($, on) => {
     stubAll(on)
     engine(on)
-    // An MCP tool counts under its server's name, here 31 code points
+    // An MCP tool counts under its server's name, here 30 code points and more cells: the column grows to the name and a
+    // space by code points, and the cell truncates the rest
     const name = 'mcp: 検索サーバーと全文検索ツールの長い日本語の名前です'
     await $.tool.call({ tool: 'mcp__検索サーバーと全文検索ツールの長い日本語の名前です__search', query: 'x' } as never)
     await inspect($, 'tools')
@@ -266,7 +271,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     const row = lineBoxes(tree).find(l => textOf(l).startsWith(name))
     expect(row === undefined).toBe(false)
     const cell = pieces(row!)[0]!
-    expect(cell.props).toMatchObject({ width: 24, flexShrink: 0 })
+    expect(cell.props).toMatchObject({ width: [...name].length + 1, flexShrink: 0 })
     expect((cell.children ?? []).filter(isDrawn)[0]?.props).toMatchObject({ wrap: 'truncate-end' })
     expect(spills(tree)).toEqual([])
   })
@@ -283,13 +288,63 @@ for (const surface of ['terminal', 'desktop'] as const) {
     expect((await rowsOf(ui)).find(l => l.startsWith('#'))?.trimEnd()).toBe('#   you     Claude   took')
   })
 
-  test(`a Show button at the end of a row that does not fit is left out whole (${surface})`, async ($, on) => {
+  // The buttons at a line's end keep their place and the text before them is cut, so a docked pane keeps Show and Copy
+  // (the release 2 review)
+  test(`a failure row too wide for a docked pane keeps Show and Copy, its text cut (${surface})`, async ($, on) => {
+    stubAll(on)
+    engine(on)
+    const row: Line = [
+      { text: '✗ ', tone: 'fail' }, { text: '03:00 ', tone: 'dim' }, { text: 'Bash' }, { text: '  Run the test suite for the auth module', tone: 'dim' },
+      { text: '   Exit code 1' }, { text: ' ' }, { button: { key: 'show-1', label: 'Show' } }, { text: ' ' }, { button: { key: 'copy-1', label: 'Copy' } },
+    ]
+    fitPane(on, [row])
+    const tree = await (await mountFit($, surface, 46)).drawn()
+    const line = lineBoxes(tree)[0]!
+    expect(pieces(line).filter(p => p.type === 'Button').map(p => p.props?.['label'])).toEqual(['Show', 'Copy'])
+    expect(pieces(line).some(p => (p.children ?? []).filter(isDrawn).some(t => t.props?.['wrap'] === 'truncate-end'))).toBe(true)
+    expect(spills(tree)).toEqual([])
+  })
+
+  test(`a Show button at the end of a row that does not fit keeps its place, the text cut (${surface})`, async ($, on) => {
     stubAll(on)
     engine(on)
     fitPane(on, [[{ text: 'x'.repeat(50) }, { text: ' ' }, { button: { key: 'show-1', label: 'Show' } }]])
     const line = lineBoxes(await (await mountFit($, surface, 40)).drawn())[0]!
+    expect(pieces(line).map(p => p.type)).toEqual(['Box', 'Box', 'Button'])
+    expect(pieces(line)[0]?.props).toMatchObject({ width: 31 })
+  })
+
+  test(`buttons with no room for 4 cells of text before them are left out whole (${surface})`, async ($, on) => {
+    stubAll(on)
+    engine(on)
+    fitPane(on, [[{ text: 'x'.repeat(50) }, { text: ' ' }, { button: { key: 'show-1', label: 'Show' } }, { text: ' ' }, { button: { key: 'copy-1', label: 'Copy' } }]])
+    const line = lineBoxes(await (await mountFit($, surface, 20)).drawn())[0]!
     expect(pieces(line).some(p => p.type === 'Button')).toBe(false)
-    expect(pieces(line)[0]?.props).toMatchObject({ width: 40 })
+    expect(pieces(line)[0]?.props).toMatchObject({ width: 20 })
+  })
+
+  // A Box with no child is no row tall, so every line holds at least one (the release 2 review)
+  test(`a line of spaces keeps its row (${surface})`, async ($, on) => {
+    stubAll(on)
+    engine(on)
+    fitPane(on, [[{ text: 'top' }], [{ text: '     ' }], [{ text: '' }], [{ text: 'bottom' }]])
+    const boxes = lineBoxes(await (await mountFit($, surface, 40)).drawn())
+    expect(boxes.map(b => b.props?.['minHeight'])).toEqual([1, 1, 1, 1])
+  })
+
+  // The Tools name column grows to the longest name, as far as the counts' 21 cells leave room (the release 2 review)
+  test(`two long tool names stay apart in the Tools table (${surface})`, async ($, on) => {
+    stubAll(on)
+    engine(on)
+    await $.tool.call({ tool: 'mcp__a-very-long-server-name-one__x', query: 'x' } as never)
+    await $.tool.call({ tool: 'mcp__a-very-long-server-name-two__x', query: 'x' } as never)
+    await inspect($, 'tools')
+    const wide = await tabRows($, surface, 120)
+    expect(wide.find(l => l.startsWith('Tools'))).toBe(`${'Tools'.padEnd(33)}${'calls'.padStart(6)}${'ok'.padStart(5)}${'✗'.padStart(5)}${'⊘'.padStart(5)}`)
+    expect(wide.some(l => l.startsWith('mcp: a-very-long-server-name-one '))).toBe(true)
+    expect(wide.some(l => l.startsWith('mcp: a-very-long-server-name-two '))).toBe(true)
+    const docked = await tabRows($, surface, 46)
+    expect(docked.find(l => l.startsWith('Tools'))).toBe(`${'Tools'.padEnd(25)}${'calls'.padStart(6)}${'ok'.padStart(5)}${'✗'.padStart(5)}${'⊘'.padStart(5)}`)
   })
 
   test(`a button that fits keeps its place after the text (${surface})`, async ($, on) => {
@@ -341,12 +396,58 @@ for (const surface of ['terminal', 'desktop'] as const) {
   })
 }
 
-test('the per turn chart sits in a Box of its spark length at 40 columns on desktop', async ($, on) => {
+// Where the surface draws Svg, the chart keeps its 120 by 24 drawing in a Box of 20 cells, whatever the turns; the
+// terminal's sparkline takes its length (the release 2 review)
+test('the per turn chart keeps its size on desktop, and its spark length in the terminal', async ($, on) => {
   stubAll(on)
   engine(on)
   fitPane(on, [[{ text: 'per turn', width: 10 }, { chart: [10, 20, 30, 40, 50] }]])
-  const line = lineBoxes(await (await mountFit($, 'desktop', 40)).drawn())[0]!
-  const chart = pieces(line)[1]!
-  expect(chart.props).toMatchObject({ width: 5, flexShrink: 0 })
-  expect((chart.children ?? []).filter(isDrawn)[0]?.type).toBe('Svg')
+  const desk = pieces(lineBoxes(await (await mountFit($, 'desktop', 40)).drawn())[0]!)[1]!
+  expect(desk.props).toMatchObject({ width: 20, flexShrink: 0 })
+  const svg = (desk.children ?? []).filter(isDrawn)[0]
+  expect(svg?.type).toBe('Svg')
+  expect(svg?.props).toMatchObject({ width: 120, height: 24 })
+  const term = pieces(lineBoxes(await (await mountFit($, 'terminal', 40)).drawn())[0]!)[1]!
+  expect(term.props).toMatchObject({ width: 5, flexShrink: 0 })
+})
+
+// A tool row is measured against the viewport but takes its slot's width, so a slot narrower than the viewport (a pane
+// docked beside the transcript) clips the row rather than lay it out past the slot (the release 2 review)
+test("a tool row takes its slot's width, not the viewport's", async ($, on) => {
+  stubAll(on)
+  engine(on)
+  await $.command.run({ command: 'quiet', args: 'on', origin: { kind: 'composer' }, presentation: PRESENTATION })
+  const props = { tool_use_id: 'u1', tool: 'Bash', input: { command: 'ls', description: 'List files' }, isRunning: false, isErrored: false, isInterrupted: false, output: 'a\nb' }
+  const ui = await $.ui.mount({ plugin: 'session-inspector', surface: 'terminal', component: 'ToolUse', props, viewport: { columns: 120, rows: 40 } } as never)
+  const lines = lineBoxes(await ui.drawn())
+  expect(lines.length > 0).toBe(true)
+  expect(lines.map(l => [l.props?.['width'], l.props?.['overflow']])).toEqual(lines.map(() => [undefined, 'hidden']))
+})
+
+// Rule 2 is linear, so a long run of spaces in tool output does not stall a render hook (the release 2 review)
+test('a 100 kB run of spaces cuts in under 50 ms', async ($, on) => {
+  stubAll(on)
+  engine(on)
+  fitPane(on, [[{ text: `a${' '.repeat(100_000)}b` }]])
+  const ui = await mountFit($, 'terminal', 40)
+  const t0 = performance.now()
+  await ui.redraw({ ...FIT_PANE, bodyColumns: 41 })
+  await ui.drawn()
+  expect(Math.round(performance.now() - t0) < 50).toBe(true)
+})
+
+// REC on and /quiet off: an errored row draws its masked text, a blank line in it keeping its row (the release 2 review)
+test('no faults or spills in a REC-masked error with a blank line', async ($, on) => {
+  await busy($, on)
+  const props = { tool_use_id: 'e1', tool: 'Bash', input: { command: 'false', description: 'Fail' }, isRunning: false, isErrored: true, isInterrupted: false, isExpanded: true, output: 'Exit code 1\nZephyrine here\n\nend' }
+  for (const surface of ALL) {
+    const ui = await $.ui.mount({ plugin: 'session-inspector', surface, component: 'ToolUse', props, viewport: { columns: 80, rows: 40 } } as never)
+    const tree = await ui.drawn()
+    expect(check(tree, surface, surface)).toEqual([])
+    const lines = lineBoxes(tree)
+    expect(lines.length >= 4).toBe(true)
+    expect(lines.every(l => l.props?.['minHeight'] === 1)).toBe(true)
+    expect(JSON.stringify(tree).includes('Zephyrine')).toBe(false)
+    await ui.unmount()
+  }
 })

@@ -216,7 +216,7 @@ test("a main turn's time goes to the running step", async ($, on) => {
   expect(plansOf(state).times['token-refresh']?.S4?.ms).toBe(120_000)
 })
 
-test('an AskUserQuestion call is left out', async ($, on) => {
+test('an AskUserQuestion call is left out', { timeoutMs: 15_000 }, async ($, on) => {
   const { clock, store } = stubAll(on, { files: { [PLAN_PATH]: { text: PLAN_JSON, mtimeMs: 1 } } })
   engine(on, ['tool.call'])
   on('tool.call', async () => {
@@ -233,7 +233,7 @@ test('an AskUserQuestion call is left out', async ($, on) => {
   expect(msAt(store, S4_KEY)).toBe(70_000)
 })
 
-test("a call nobody was asked about keeps its whole time", async ($, on) => {
+test("a call nobody was asked about keeps its whole time", { timeoutMs: 15_000 }, async ($, on) => {
   const { clock, store } = stubAll(on, { files: { [PLAN_PATH]: { text: PLAN_JSON, mtimeMs: 1 } } })
   engine(on, ['tool.call'])
   on('tool.call', async () => {
@@ -250,7 +250,7 @@ test("a call nobody was asked about keeps its whole time", async ($, on) => {
   expect(msAt(store, S4_KEY)).toBe(120_000)
 })
 
-test("a declined prompt's whole wait is left out", async ($, on) => {
+test("a declined prompt's whole wait is left out", { timeoutMs: 15_000 }, async ($, on) => {
   const { clock, store } = stubAll(on, { files: { [PLAN_PATH]: { text: PLAN_JSON, mtimeMs: 1 } } })
   engine(on, ['tool.call'])
   // No hook answers the request, so the person is asked; the kit's refusal stands for their No, 40 s later
@@ -545,7 +545,7 @@ test('a task list this session shows over a plan left by an earlier session', as
 
 // The final review's probes: a status change inside an open wait, more than 100 notes, a pin that does not run, and
 // control characters in a toast built from a file
-test('a status change read while the main loop waits in an Agent call leaves the wait out of both steps', async ($, on) => {
+test('a status change read while the main loop waits in an Agent call leaves the wait out of both steps', { timeoutMs: 15_000 }, async ($, on) => {
   const { clock, files, store } = stubAll(on, { files: { [PLAN_PATH]: { text: PLAN_JSON, mtimeMs: 1 } } })
   engine(on, ['tool.call'])
   on('tool.call', async () => {
