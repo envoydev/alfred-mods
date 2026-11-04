@@ -295,25 +295,29 @@ Requires Claude Code 2.1.312 or later, in the terminal (`claude --version`) and 
 (`/status`). Mods load from 2.1.287, but the handoff and the compact rows use fields this mod is checked against only
 from 2.1.312.
 
+Install it from `envoydev`, the one marketplace for envoydev's plugins. It also lists Alfred Code, which the mod does
+not need:
+
 ```bash
-claude plugin marketplace add envoydev/alfred-mods
-claude plugin install session-inspector@alfred-mods
+claude plugin marketplace add envoydev/alfred-code
+claude plugin install session-inspector@envoydev
 ```
 
 Then run `/reload-plugins`, or start a new session: `/plugin` shows `1 mod active · session-inspector`.
 
-It adds nothing to every session's context: `claude plugin details session-inspector@alfred-mods` reads `Always-on:
+It adds nothing to every session's context: `claude plugin details session-inspector@envoydev` reads `Always-on:
 ~0 tok` (measured 2026-10-30). The one thing it ever tells Claude is Recording mode's short note.
 
-Install it through one marketplace only. The `envoydev` marketplace may list it too; if you added both, keep one of the
-two installs: two plugin ids with the same name register its hooks only once.
-
-Updates are pulled, not pushed:
+The `envoydev` entry follows this repo's `main` branch, so each release reaches you on your next update. Updates are
+pulled, not pushed:
 
 ```bash
-claude plugin marketplace update alfred-mods
-claude plugin update session-inspector@alfred-mods
+claude plugin marketplace update envoydev
+claude plugin update session-inspector@envoydev
 ```
+
+This repo is also a marketplace of its own, `alfred-mods`, kept for development. Install through one marketplace only:
+if you added both, keep one of the two installs, as two plugin ids with the same name register its hooks only once.
 
 A mod does not load in a session started with `--safe-mode` or `--bare`, with `disableAllHooks` set, or where your
 organization's managed settings allow only its own mods

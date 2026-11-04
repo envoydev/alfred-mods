@@ -30,9 +30,12 @@ project names, no absolute local paths, no tokens, nothing from a user's machine
   declares no `dependencies`.
 - **One version, in `.claude-plugin/plugin.json`.** The marketplace entry carries none, and a change without a bump is
   not delivered: an installed mod is cached by version.
-- **One marketplace per install.** The `envoydev` marketplace (in alfred-code) lists the mod as a second entry with a
-  GitHub source on this repo, pinned by `ref` (the release tag) and `sha`, both moved together per release. The
-  README tells users to keep one: two ids with the same plugin name register its hooks only once.
+- **One marketplace for users: `envoydev`.** The `envoydev` marketplace (in alfred-code) lists the mod with a GitHub
+  source on this repo's `main` and no `sha` (the user's ruling of 2026-11-04; alfred-code's lint check 49 allows that
+  only for an `envoydev/` repo on `main`). So `main` is the release branch: a merge there reaches every install on its
+  next update once `plugin.json`'s version is bumped, and nothing in alfred-code moves per release. This repo's own
+  `alfred-mods` marketplace stays for development and the install check. The README tells users to keep one: two ids
+  with the same plugin name register its hooks only once.
 - **Never rename or drop the id `session-inspector`.** Every install goes silent and does not self-heal.
 - **The root holds only the mod's own plugin folders.** Claude Code scans a plugin root's default folders whatever the
   manifest says, so `commands/`, `agents/`, `skills/`, `output-styles/`, `workflows/`, `monitors/`, `themes/`, `bin/`,
