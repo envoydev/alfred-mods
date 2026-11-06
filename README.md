@@ -319,9 +319,8 @@ claude plugin update alfred-mods@envoydev
 
 ### Moving from session-inspector
 
-Until 0.5.0 the mod was the plugin `session-inspector`. The `envoydev` marketplace keeps that id pinned at 0.4.0, so
-an old install keeps working but gets no more updates. Switch once, at the scope you installed it (`--scope user` by
-default):
+Until 0.5.0 the mod was the plugin `session-inspector`. The `envoydev` marketplace no longer lists that id, so an old
+install stops loading. Switch once, at the scope you installed it (`--scope user` by default):
 
 ```bash
 claude plugin marketplace update envoydev
@@ -329,7 +328,7 @@ claude plugin uninstall session-inspector@envoydev
 claude plugin install alfred-mods@envoydev
 ```
 
-Keep only one of the two: with both installed, two bands draw. Settings the mod saved between sessions (the `/rec`
+Settings the mod saved between sessions (the `/rec`
 words, `/quiet`, `/auto-handoff` and today's cost) are kept per plugin name, so they start fresh under the new id.
 The files it writes in a project keep their place under `.claude/session-inspector/`.
 

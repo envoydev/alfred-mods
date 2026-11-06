@@ -39,8 +39,8 @@ project names, no absolute local paths, no tokens, nothing from a user's machine
   `alfred-mods` marketplace stays for development and the install check. The README tells users to keep one: two ids
   with the same plugin name register its hooks only once.
 - **Never rename or drop the id `alfred-mods`.** Every install goes silent and does not self-heal. The one rename,
-  `session-inspector` to `alfred-mods` in 0.5.0, was the user's ruling of 2026-11-06: the `envoydev` catalog keeps
-  `session-inspector` pinned to the v0.4.0 commit so old installs keep loading, until no install resolves through it.
+  `session-inspector` to `alfred-mods` in 0.5.0, was the user's ruling of 2026-11-06: the `envoydev` catalog dropped
+  `session-inspector` in alfred-code 3.9.2 (the same day, the user's call), so an old install goes silent until moved.
   The project paths under `.claude/session-inspector/` and the handoff marker kept their names: the stack writes the
   status file there.
 - **The root holds only the mod's own plugin folders.** Claude Code scans a plugin root's default folders whatever the
