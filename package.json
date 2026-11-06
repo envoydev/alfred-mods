@@ -1,7 +1,7 @@
 {
-  "name": "session-inspector",
+  "name": "alfred-mods",
   "private": true,
-  "description": "Test and validate scripts for the session-inspector Claude Code mod. The mod has no runtime dependencies.",
+  "description": "Test and validate scripts for the alfred-mods Claude Code mod. The mod has no runtime dependencies.",
   "license": "MIT",
   "type": "module",
   "engines": { "node": ">=22" },

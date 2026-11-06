@@ -11,7 +11,7 @@ const USAGE = { input_tokens: 1000, output_tokens: 200, cache_read_input_tokens:
 const grep = (more: object = {}) => ({ tool: 'Grep', pattern: 'AuthService', ...more }) as never
 
 const spinner = ($: Engine, surface: RenderSurface, requestId: string) =>
-  $.ui.mount({ plugin: 'session-inspector', surface, component: 'Spinner', requestId, props: SPINNER })
+  $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Spinner', requestId, props: SPINNER })
 
 // Claude Code's own spinner: the word and the suffix; and every call held for a minute
 function engineSpinner(on: On, clock: { sleep: (ms: number) => Promise<void> }): void {

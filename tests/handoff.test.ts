@@ -73,7 +73,7 @@ test("the file reads as the spec's example", () => {
   expect(handoffText(SAVE)).toBe(`<!-- session-inspector handoff v1 -->
 # Handoff - 2026-10-28 14:05
 
-Saved at 82% context (asks at 80%) by session-inspector · session 3f2a9c1e · Opus 5.5 · branch feature/token-refresh.
+Saved at 82% context (asks at 80%) by alfred-mods · session 3f2a9c1e · Opus 5.5 · branch feature/token-refresh.
 To continue in a new session, ask Claude to read .claude/session-inspector/HANDOFF.md and resume from Next.
 
 ## Next

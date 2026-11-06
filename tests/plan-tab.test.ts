@@ -45,10 +45,10 @@ async function begin($: Engine, on: On, o: Parameters<typeof stubAll>[1] & { ans
 }
 
 const pane = ($: Engine, surface: RenderSurface, bodyColumns = 100) =>
-  $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: { ...PANE, bodyColumns } })
+  $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'inspect', props: { ...PANE, bodyColumns } })
 const band = ($: Engine, surface: RenderSurface, isWorking: boolean, bodyColumns = 120) =>
   $.ui.mount({
-    plugin: 'session-inspector', surface, component: 'AbovePrompt',
+    plugin: 'alfred-mods', surface, component: 'AbovePrompt',
     props: { hasSurvey: false, isWorking, maxRows: 6, bodyColumns, scroll: { offset: 0, bodyRows: 6 }, view: {} },
   })
 const inspect = ($: Engine, args: string) =>

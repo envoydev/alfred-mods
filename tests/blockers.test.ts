@@ -24,7 +24,7 @@ function guards(on: On, table: Record<string, string>): void {
 
 const toolsTab = async ($: Engine, surface: RenderSurface): Promise<string[]> => {
   await $.command.run({ command: 'inspect', args: 'tools', origin: { kind: 'composer' }, presentation: PRESENTATION })
-  const ui = await $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: PANE })
+  const ui = await $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'inspect', props: PANE })
   const out = await rows(ui)
   await ui.unmount()
   return out

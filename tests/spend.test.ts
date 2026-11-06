@@ -10,7 +10,7 @@ const SURFACES = ['terminal', 'desktop'] as const
 const PANE = { title: 'Inspect', isFocused: false, bodyColumns: 100, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 30 }, view: {} }
 
 const pane = ($: Engine, surface: RenderSurface) =>
-  $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: PANE })
+  $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'inspect', props: PANE })
 const inspect = ($: Engine, args: string) =>
   $.command.run({ command: 'inspect', args, origin: { kind: 'composer' }, presentation: PRESENTATION })
 const complete = (turnId: string, more: object = {}) =>
@@ -177,7 +177,7 @@ test('an old atom without the fields reads as null', { timeoutMs: 15_000 }, asyn
   const lines = await rows(await pane($, 'terminal'))
   expect(lines.find(l => l.startsWith('1 '))).toMatch(/ - +0$/)
   await inspect($, 'agents')
-  const agents = await rows(await $.ui.mount({ plugin: 'session-inspector', surface: 'desktop', component: 'Pane', requestId: 'inspect', props: PANE }))
+  const agents = await rows(await $.ui.mount({ plugin: 'alfred-mods', surface: 'desktop', component: 'Pane', requestId: 'inspect', props: PANE }))
   expect(agents.some(l => l.trim().startsWith('result: found it'))).toBe(true)
   expect(agents.some(l => l.includes('max_tokens'))).toBe(false)
 })

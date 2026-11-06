@@ -6,7 +6,7 @@
   },
   "plugins": [
     {
-      "name": "session-inspector",
+      "name": "alfred-mods",
       "source": "./",
       "description": "Context, usage, cost, tool failures, agents, cache and plan progress in one calm band and an /inspect pane.",
       "category": "productivity"

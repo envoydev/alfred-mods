@@ -12,13 +12,13 @@ export const SPINNER_WORD = 'Working'
 export type FailKind = 'throw' | 'timeout'
 
 export function bandFailed(kind: FailKind): string {
-  return `session-inspector: the band failed to draw (${kind})`
+  return `alfred-mods: the band failed to draw (${kind})`
 }
 
 // The pane names its failure, with the error's message on one printable line of at most 120 characters; while REC
 // is on the message is dropped, as it can quote what REC hides.
 export function paneFailed(kind: FailKind, message: string | undefined, isRec: boolean): string {
-  const head = `session-inspector: the pane failed to draw (${kind})`
+  const head = `alfred-mods: the pane failed to draw (${kind})`
   const text = Array.from(printable(message ?? '').replace(/\s+/g, ' ').trim()).slice(0, 120).join('')
   return isRec || text === '' ? head : `${head}: ${text}`
 }

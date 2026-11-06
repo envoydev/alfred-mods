@@ -1,4 +1,4 @@
-// The session-inspector hooks module. Every hook observes and draws; none approves, denies or rewrites a tool call.
+// The alfred-mods hooks module. Every hook observes and draws; none approves, denies or rewrites a tool call.
 // Every $.state atom is made, read and updated here alone: `claude plugin validate` refuses an atom or a ref
 // imported from another module.
 import { atom, read, update } from 'claude-code'
@@ -99,28 +99,28 @@ const INITIAL = {
 }
 
 // Change a tag when that value's fields change: it declines what an earlier version stored, which outlives a reload.
-const stats = atom({ plugin: 'session-inspector', key: 'stats' } as const, INITIAL.stats, { shape: 'stats-1' })
-const failures = atom({ plugin: 'session-inspector', key: 'failures' } as const, INITIAL.failures, { shape: 'failures-1' })
-const turns = atom({ plugin: 'session-inspector', key: 'turns' } as const, INITIAL.turns, { shape: 'turns-1' })
-const live = atom({ plugin: 'session-inspector', key: 'live' } as const, INITIAL.live, { shape: 'live-3' })
-const usage = atom({ plugin: 'session-inspector', key: 'usage' } as const, INITIAL.usage, { shape: 'usage-1' })
-const totals = atom({ plugin: 'session-inspector', key: 'totals' } as const, INITIAL.totals, { shape: 'totals-1' })
-const meta = atom({ plugin: 'session-inspector', key: 'meta' } as const, INITIAL.meta, { shape: 'meta-3' })
-const view = atom({ plugin: 'session-inspector', key: 'view' } as const, INITIAL.view, { shape: 'view-3' })
-const pace = atom({ plugin: 'session-inspector', key: 'pace' } as const, INITIAL.pace, { shape: 'pace-1' })
-const agents = atom({ plugin: 'session-inspector', key: 'agents' } as const, INITIAL.agents, { shape: 'agents-2' })
-const cache = atom({ plugin: 'session-inspector', key: 'cache' } as const, INITIAL.cache, { shape: 'cache-1' })
-const tick = atom({ plugin: 'session-inspector', key: 'tick' } as const, 0)
-const plans = atom({ plugin: 'session-inspector', key: 'plans' } as const, INITIAL.plans, { shape: 'plans-1' })
-const credit = atom({ plugin: 'session-inspector', key: 'credit' } as const, INITIAL.credit, { shape: 'credit-1' })
-const tasks = atom({ plugin: 'session-inspector', key: 'tasks' } as const, INITIAL.tasks, { shape: 'tasks-1' })
-const rec = atom({ plugin: 'session-inspector', key: 'rec' } as const, INITIAL.rec, { shape: 'rec-1' })
-const quiet = atom({ plugin: 'session-inspector', key: 'quiet' } as const, INITIAL.quiet, { shape: 'quiet-1' })
-const handoff = atom({ plugin: 'session-inspector', key: 'handoff' } as const, INITIAL.handoff, { shape: 'handoff-1' })
-const stack = atom({ plugin: 'session-inspector', key: 'stack' } as const, INITIAL.stack, { shape: 'stack-1' })
-const blockers = atom({ plugin: 'session-inspector', key: 'blockers' } as const, INITIAL.blockers, { shape: 'blockers-1' })
-const parts = atom({ plugin: 'session-inspector', key: 'parts' } as const, INITIAL.parts, { shape: 'parts-1' })
-const loops = atom({ plugin: 'session-inspector', key: 'loops' } as const, INITIAL.loops, { shape: 'loops-1' })
+const stats = atom({ plugin: 'alfred-mods', key: 'stats' } as const, INITIAL.stats, { shape: 'stats-1' })
+const failures = atom({ plugin: 'alfred-mods', key: 'failures' } as const, INITIAL.failures, { shape: 'failures-1' })
+const turns = atom({ plugin: 'alfred-mods', key: 'turns' } as const, INITIAL.turns, { shape: 'turns-1' })
+const live = atom({ plugin: 'alfred-mods', key: 'live' } as const, INITIAL.live, { shape: 'live-3' })
+const usage = atom({ plugin: 'alfred-mods', key: 'usage' } as const, INITIAL.usage, { shape: 'usage-1' })
+const totals = atom({ plugin: 'alfred-mods', key: 'totals' } as const, INITIAL.totals, { shape: 'totals-1' })
+const meta = atom({ plugin: 'alfred-mods', key: 'meta' } as const, INITIAL.meta, { shape: 'meta-3' })
+const view = atom({ plugin: 'alfred-mods', key: 'view' } as const, INITIAL.view, { shape: 'view-3' })
+const pace = atom({ plugin: 'alfred-mods', key: 'pace' } as const, INITIAL.pace, { shape: 'pace-1' })
+const agents = atom({ plugin: 'alfred-mods', key: 'agents' } as const, INITIAL.agents, { shape: 'agents-2' })
+const cache = atom({ plugin: 'alfred-mods', key: 'cache' } as const, INITIAL.cache, { shape: 'cache-1' })
+const tick = atom({ plugin: 'alfred-mods', key: 'tick' } as const, 0)
+const plans = atom({ plugin: 'alfred-mods', key: 'plans' } as const, INITIAL.plans, { shape: 'plans-1' })
+const credit = atom({ plugin: 'alfred-mods', key: 'credit' } as const, INITIAL.credit, { shape: 'credit-1' })
+const tasks = atom({ plugin: 'alfred-mods', key: 'tasks' } as const, INITIAL.tasks, { shape: 'tasks-1' })
+const rec = atom({ plugin: 'alfred-mods', key: 'rec' } as const, INITIAL.rec, { shape: 'rec-1' })
+const quiet = atom({ plugin: 'alfred-mods', key: 'quiet' } as const, INITIAL.quiet, { shape: 'quiet-1' })
+const handoff = atom({ plugin: 'alfred-mods', key: 'handoff' } as const, INITIAL.handoff, { shape: 'handoff-1' })
+const stack = atom({ plugin: 'alfred-mods', key: 'stack' } as const, INITIAL.stack, { shape: 'stack-1' })
+const blockers = atom({ plugin: 'alfred-mods', key: 'blockers' } as const, INITIAL.blockers, { shape: 'blockers-1' })
+const parts = atom({ plugin: 'alfred-mods', key: 'parts' } as const, INITIAL.parts, { shape: 'parts-1' })
+const loops = atom({ plugin: 'alfred-mods', key: 'loops' } as const, INITIAL.loops, { shape: 'loops-1' })
 
 const NO_FACTS: Omit<CallFacts, 'tool'> = {
   checked: null, checkReason: null, asked: false, failedInTool: false, interrupted: false, classifierReason: null, hookDeny: null, result: null,

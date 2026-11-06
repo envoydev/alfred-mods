@@ -33,11 +33,11 @@ async function drawn(ui: { drawn: Parameters<typeof rows>[0]['drawn']; unmount: 
   return out
 }
 const band = async ($: Engine, surface: RenderSurface, more: Partial<typeof BAND> = {}) =>
-  drawn(await $.ui.mount({ plugin: 'session-inspector', surface, component: 'AbovePrompt', props: { ...BAND, ...more } }))
+  drawn(await $.ui.mount({ plugin: 'alfred-mods', surface, component: 'AbovePrompt', props: { ...BAND, ...more } }))
 const inspectPane = async ($: Engine, surface: RenderSurface) =>
-  drawn(await $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: PANE }))
+  drawn(await $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'inspect', props: PANE }))
 const recPane = ($: Engine, surface: (typeof SURFACES)[number]) =>
-  $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'rec', props: { ...PANE, title: 'REC words' } })
+  $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'rec', props: { ...PANE, title: 'REC words' } })
 
 // Claude Code answers a `false` command with an error whose first line names an address
 function failingCalls(on: On): void {
@@ -210,7 +210,7 @@ for (const surface of SURFACES) {
     await $.turn.start({ text: 'q', turnId: 't2' })
     held($.tool.call({ tool: 'Bash', command: 'cat /Users/jane/notes-jane.doe@example.com', tool_use_id: 'c2' }))
     await clock.settle()
-    const spun = (await drawn(await $.ui.mount({ plugin: 'session-inspector', surface, component: 'Spinner', requestId: 'main', props: SPINNER }))).join('\n')
+    const spun = (await drawn(await $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Spinner', requestId: 'main', props: SPINNER }))).join('\n')
     expect(spun).toContain('Bash')
     expect(spun).not.toContain('@example.com')
     expect(spun).not.toContain('/Users/jane')
@@ -311,7 +311,7 @@ test('a row drawn while /resume resets the session is masked at the level before
     const value = e.value as { value?: { level?: string } } | undefined
     if (isArmed && e.key === 'rec' && value?.value?.level === 'off') {
       isArmed = false
-      const ui = await $.ui.mount({ plugin: 'session-inspector', surface: 'terminal', component: 'UserMessage', requestId: 'm1', props: { text: 'mail ops@example.io', origin: { kind: 'composer' }, isExpanded: false } })
+      const ui = await $.ui.mount({ plugin: 'alfred-mods', surface: 'terminal', component: 'UserMessage', requestId: 'm1', props: { text: 'mail ops@example.io', origin: { kind: 'composer' }, isExpanded: false } })
       seen = (await rows(ui)).join('\n')
       await ui.unmount()
     }

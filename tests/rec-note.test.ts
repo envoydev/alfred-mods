@@ -4,9 +4,9 @@ import type { On, PromptOrigin } from 'claude-code'
 
 import { PRESENTATION, START, engine, stubAll } from './kit.ts'
 
-const ON = 'Screen recording is on (session-inspector REC). Until told it is off, do not write secret values, API keys, tokens, passwords, email addresses or phone numbers in replies; refer to them by name, such as "the token in .env". Work on the task as usual.'
+const ON = 'Screen recording is on (alfred-mods REC). Until told it is off, do not write secret values, API keys, tokens, passwords, email addresses or phone numbers in replies; refer to them by name, such as "the token in .env". Work on the task as usual.'
 const STRICT = `${ON} Also leave out account names, home folder paths and dollar amounts.`
-const OFF = 'Screen recording is off (session-inspector REC); the earlier limit on secret values no longer applies.'
+const OFF = 'Screen recording is off (alfred-mods REC); the earlier limit on secret values no longer applies.'
 
 const rec = ($: Engine, args: string) => $.command.run({ command: 'rec', args, origin: { kind: 'composer' }, presentation: PRESENTATION })
 

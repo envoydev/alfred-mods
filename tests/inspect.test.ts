@@ -15,9 +15,9 @@ const SUBSCRIPTION: SessionUsage = {
 }
 
 const pane = ($: Engine, surface: RenderSurface) =>
-  $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: PANE })
+  $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'inspect', props: PANE })
 const bandOf = ($: Engine, surface: RenderSurface) =>
-  $.ui.mount({ plugin: 'session-inspector', surface, component: 'AbovePrompt', props: BAND })
+  $.ui.mount({ plugin: 'alfred-mods', surface, component: 'AbovePrompt', props: BAND })
 const inspect = ($: Engine, args: string) =>
   $.command.run({ command: 'inspect', args, origin: { kind: 'composer' }, presentation: PRESENTATION })
 

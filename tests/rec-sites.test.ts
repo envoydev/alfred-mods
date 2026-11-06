@@ -27,7 +27,7 @@ async function start($: Engine, on: On, level: 'off' | 'on' | 'strict', words: s
 
 // What a site drew: the props handed down as an object when Claude Code drew it, else the mod's own lines
 async function draw<C extends keyof RenderPropsOf>($: Engine, surface: (typeof SURFACES)[number], component: C, props: RenderPropsOf[C]): Promise<{ props: Record<string, unknown> | null; lines: string[] }> {
-  const ui = await $.ui.mount({ plugin: 'session-inspector', surface, component, props })
+  const ui = await $.ui.mount({ plugin: 'alfred-mods', surface, component, props })
   const lines = await rows(ui)
   await ui.unmount()
   if (component === 'AskUserQuestion') return { props: asked.at(-1) as Record<string, unknown>, lines }

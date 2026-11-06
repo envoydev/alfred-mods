@@ -17,7 +17,7 @@ const band = (isWorking: boolean, bodyColumns = 120, hasSurvey = false) =>
   ({ hasSurvey, isWorking, maxRows: 6, bodyColumns, scroll: { offset: 0, bodyRows: 6 }, view: {} })
 
 const mount = ($: Engine, surface: RenderSurface, props: ReturnType<typeof band>) =>
-  $.ui.mount({ plugin: 'session-inspector', surface, component: 'AbovePrompt', props })
+  $.ui.mount({ plugin: 'alfred-mods', surface, component: 'AbovePrompt', props })
 
 // A reading at these percents: context, the 5h window and the weekly one; a figure left out is not reported
 function reading(ctx?: number, fiveHour?: number, week?: number, usd?: number): SessionUsage {
@@ -357,7 +357,7 @@ for (const surface of SURFACES) {
 test('the chart\'s SVG keeps its hex', async ($, on) => {
   on('ui.render', { component: 'Pane', requestId: 'chart' }, (h$, e) => drawLines(h$, e, [[{ chart: [10, 50, 90] }]], { noColor: false, press: {}, columns: 80 }))
   const ui = await $.ui.mount({
-    plugin: 'session-inspector', surface: 'desktop', component: 'Pane', requestId: 'chart',
+    plugin: 'alfred-mods', surface: 'desktop', component: 'Pane', requestId: 'chart',
     props: { title: 'chart', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 10 }, view: {} },
   })
 
@@ -368,7 +368,7 @@ test('every drawn string passes through mask', async ($, on) => {
   // drawLines draws a site the mod leaves to the engine, with a hook's `$`
   on('ui.render', (h$, e) => drawLines(h$, e, [[{ text: 'abc' }]], { noColor: false, press: {}, columns: 80 }))
   const ui = await $.ui.mount({
-    plugin: 'session-inspector', surface: 'terminal', component: 'Pane', requestId: 'mask-check',
+    plugin: 'alfred-mods', surface: 'terminal', component: 'Pane', requestId: 'mask-check',
     props: { title: 'mask', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 10 }, view: {} },
   })
 

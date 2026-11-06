@@ -9,7 +9,7 @@ const PANE = { title: 'Inspect', isFocused: false, bodyColumns: 100, placement: 
 const USAGE = { input_tokens: 1000, output_tokens: 200, cache_read_input_tokens: 20_000, cache_creation_input_tokens: 10_000, model: 'claude-haiku-5-5' }
 
 const pane = ($: Engine, surface: RenderSurface) =>
-  $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: PANE })
+  $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'inspect', props: PANE })
 const inspect = ($: Engine, args: string) =>
   $.command.run({ command: 'inspect', args, origin: { kind: 'composer' }, presentation: PRESENTATION })
 const complete = (turnId: string, more: object = {}) =>
@@ -25,7 +25,7 @@ for (const surface of SURFACES) {
     await inspect($, 'agents')
 
     // Fullscreen docks the pane at about 46 columns; one bar of seven tabs needs 69
-    const narrow = await $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: { ...PANE, bodyColumns: 46 } })
+    const narrow = await $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'inspect', props: { ...PANE, bodyColumns: 46 } })
     const lines = await rows(narrow)
     expect(lines[0]).toBe('Now Usage  Agents  Tools ')
     expect(lines[1]).toBe('Cache Timeline Plan ')

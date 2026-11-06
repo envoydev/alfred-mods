@@ -161,7 +161,7 @@ export function handoffText(s: SaveInput): string {
   const d = new Date(s.at)
   const branch = branchOf(s.git)
   const about = [
-    s.percent === null ? `Saved before a context reading (asks at ${s.threshold}%) by session-inspector` : `Saved at ${s.percent}% context (asks at ${s.threshold}%) by session-inspector`,
+    s.percent === null ? `Saved before a context reading (asks at ${s.threshold}%) by alfred-mods` : `Saved at ${s.percent}% context (asks at ${s.threshold}%) by alfred-mods`,
     `session ${s.session.slice(0, 8)}`,
     ...(s.model === null ? [] : [modelText(s.model, true)]),
     ...(branch === null ? [] : [`branch ${branch}`]),

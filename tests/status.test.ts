@@ -6,7 +6,7 @@ import { START, engine, stubAll } from './kit.ts'
 import { statusText } from '../hooks/band.ts'
 
 // Spec D2: one status line under the prompt, which Claude Code draws while the band is collapsed, only while something
-// needs the person. Claude Code puts '⚠ session-inspector:' before it (the D2 probe), so the line has no ⚠ of its own.
+// needs the person. Claude Code puts '⚠ alfred-mods:' before it (the D2 probe), so the line has no ⚠ of its own.
 const measure = ($: Engine, percent: number) =>
   $.session.measure({ context: { tokens: percent * 2000, window: 200_000, percent }, rateLimits: [], changed: ['context'] })
 

@@ -39,7 +39,7 @@ const SITES: { [C in 'UserMessage' | 'AssistantMessage' | 'CommandOutput' | 'Too
 }
 
 async function drawSite($: Engine, surface: (typeof SURFACES)[number], component: keyof typeof SITES): Promise<string[]> {
-  const ui = await $.ui.mount({ plugin: 'session-inspector', surface, component, props: SITES[component] } as never)
+  const ui = await $.ui.mount({ plugin: 'alfred-mods', surface, component, props: SITES[component] } as never)
   const lines = await rows(ui)
   await ui.unmount()
   return lines
@@ -69,7 +69,7 @@ for (const surface of SURFACES) {
     const { fail } = await start($, on, 'on', ['Zephyrine'])
     fail.key = 'live'
     const props = { ...SPINNER, word: 'Reading Zephyrine.md', message: 'Zephyrine' }
-    const ui = await $.ui.mount({ plugin: 'session-inspector', surface, component: 'Spinner', props })
+    const ui = await $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Spinner', props })
     const drawn = JSON.parse((await rows(ui))[0] ?? 'null') as Record<string, unknown>
     expect(drawn).toEqual({ ...SPINNER, word: 'Working', message: null })
   })
@@ -78,7 +78,7 @@ for (const surface of SURFACES) {
     const { fail } = await start($, on, 'off')
     fail.key = 'live'
     const props = { ...SPINNER, word: 'Reading notes.md', message: 'notes' }
-    const ui = await $.ui.mount({ plugin: 'session-inspector', surface, component: 'Spinner', props })
+    const ui = await $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Spinner', props })
     expect(JSON.parse((await rows(ui))[0] ?? 'null')).toEqual(props)
   })
 
@@ -89,7 +89,7 @@ for (const surface of SURFACES) {
       question: `Mail ${EMAIL}?`, header: 'Address', multiSelect: false,
       options: [{ label: 'Yes', description: `Sends to ${EMAIL}` }, { label: 'No', description: 'Keeps it' }],
     }
-    const ui = await $.ui.mount({ plugin: 'session-inspector', surface, component: 'AskUserQuestion', props: { tool: 'AskUserQuestion', questions: [question] } })
+    const ui = await $.ui.mount({ plugin: 'alfred-mods', surface, component: 'AskUserQuestion', props: { tool: 'AskUserQuestion', questions: [question] } })
     await rows(ui)
     const drawn = asked.at(-1) as { questions: typeof question[] }
     expect(JSON.stringify(drawn)).not.toContain(EMAIL)
@@ -103,39 +103,39 @@ for (const surface of SURFACES) {
   test(`the band that throws names its failure (${surface})`, async ($, on) => {
     const { fail } = await start($, on, 'off')
     fail.key = 'tick'
-    const ui = await $.ui.mount({ plugin: 'session-inspector', surface, component: 'AbovePrompt', props: BAND })
-    expect(await rows(ui)).toEqual(['session-inspector: the band failed to draw (throw)'])
+    const ui = await $.ui.mount({ plugin: 'alfred-mods', surface, component: 'AbovePrompt', props: BAND })
+    expect(await rows(ui)).toEqual(['alfred-mods: the band failed to draw (throw)'])
   })
 
   test(`a pane that throws names its failure, its message dropped while REC is on (${surface})`, async ($, on) => {
     const { fail } = await start($, on, 'off')
     fail.key = 'tick'
-    const inspect = await $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: PANE })
+    const inspect = await $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'inspect', props: PANE })
     const [line] = await rows(inspect)
-    expect(line?.startsWith('session-inspector: the pane failed to draw (throw): ')).toBe(true)
+    expect(line?.startsWith('alfred-mods: the pane failed to draw (throw): ')).toBe(true)
     expect(line).toContain('test: state read refused')
     fail.key = 'rec'
-    const words = await $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'rec', props: { ...PANE, title: 'REC words' } })
-    expect((await rows(words))[0]?.startsWith('session-inspector: the pane failed to draw (throw): ')).toBe(true)
+    const words = await $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'rec', props: { ...PANE, title: 'REC words' } })
+    expect((await rows(words))[0]?.startsWith('alfred-mods: the pane failed to draw (throw): ')).toBe(true)
   })
 
   test(`a pane that throws with REC on ends at its kind (${surface})`, async ($, on) => {
     const { fail } = await start($, on, 'on')
     fail.key = 'tick'
-    const inspect = await $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: PANE })
-    expect(await rows(inspect)).toEqual(['session-inspector: the pane failed to draw (throw)'])
+    const inspect = await $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'inspect', props: PANE })
+    expect(await rows(inspect)).toEqual(['alfred-mods: the pane failed to draw (throw)'])
   })
 }
 
 test('the failure texts', () => {
-  expect(bandFailed('timeout')).toBe('session-inspector: the band failed to draw (timeout)')
-  expect(paneFailed('throw', undefined, false)).toBe('session-inspector: the pane failed to draw (throw)')
-  expect(paneFailed('throw', 'boom', true)).toBe('session-inspector: the pane failed to draw (throw)')
-  expect(paneFailed('timeout', 'boom', false)).toBe('session-inspector: the pane failed to draw (timeout): boom')
+  expect(bandFailed('timeout')).toBe('alfred-mods: the band failed to draw (timeout)')
+  expect(paneFailed('throw', undefined, false)).toBe('alfred-mods: the pane failed to draw (throw)')
+  expect(paneFailed('throw', 'boom', true)).toBe('alfred-mods: the pane failed to draw (throw)')
+  expect(paneFailed('timeout', 'boom', false)).toBe('alfred-mods: the pane failed to draw (timeout): boom')
 })
 
 test('a pane message is cut to 120 characters and printable', () => {
-  const prefix = 'session-inspector: the pane failed to draw (throw): '
+  const prefix = 'alfred-mods: the pane failed to draw (throw): '
   const text = paneFailed('throw', `${'x'.repeat(300)}\u0007`, false)
   expect(text.startsWith(prefix)).toBe(true)
   expect(text.slice(prefix.length).length).toBe(120)

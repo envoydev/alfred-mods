@@ -126,7 +126,7 @@ test('no faults or spills in the band', { timeoutMs: 15_000 }, async ($, on) => 
   const found: string[] = []
   for (const surface of ['terminal', 'desktop'] as const) {
     for (const columns of [60, 80, 100, 120, 160]) {
-      const ui = await $.ui.mount({ plugin: 'session-inspector', surface, component: 'AbovePrompt', props: { ...BAND, bodyColumns: columns } })
+      const ui = await $.ui.mount({ plugin: 'alfred-mods', surface, component: 'AbovePrompt', props: { ...BAND, bodyColumns: columns } })
       found.push(...check(await ui.drawn(), surface, `band ${surface} ${columns}`))
       await ui.unmount()
     }
@@ -141,7 +141,7 @@ test('no faults or spills in each tab and the rec pane', { timeoutMs: 15_000 }, 
     await $.command.run({ command: 'inspect', args: tab, origin: { kind: 'composer' }, presentation: PRESENTATION })
     for (const surface of ALL) {
       for (const columns of [24, 28, 32, 36, 40, 48, 64, 80, 100, 120]) {
-        const ui = await $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: { ...PANE, bodyColumns: columns } })
+        const ui = await $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'inspect', props: { ...PANE, bodyColumns: columns } })
         found.push(...check(await ui.drawn(), surface, `${tab} ${surface} ${columns}`))
         await ui.unmount()
       }
@@ -149,7 +149,7 @@ test('no faults or spills in each tab and the rec pane', { timeoutMs: 15_000 }, 
   }
   for (const surface of ALL) {
     for (const columns of [24, 28, 32, 36, 40, 48, 64, 80, 100, 120]) {
-      const ui = await $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'rec', props: { ...PANE, title: 'REC words', bodyColumns: columns } })
+      const ui = await $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'rec', props: { ...PANE, title: 'REC words', bodyColumns: columns } })
       found.push(...check(await ui.drawn(), surface, `rec ${surface} ${columns}`))
       await ui.unmount()
     }
@@ -170,7 +170,7 @@ test('no faults or spills in the tool rows', { timeoutMs: 15_000 }, async ($, on
   for (const site of sites) {
     for (const surface of ALL) {
       for (const columns of [60, 80, 120]) {
-        const ui = await $.ui.mount({ plugin: 'session-inspector', surface, component: site.component, props: site.props, viewport: { columns, rows: 40 } } as never)
+        const ui = await $.ui.mount({ plugin: 'alfred-mods', surface, component: site.component, props: site.props, viewport: { columns, rows: 40 } } as never)
         found.push(...check(await ui.drawn(), surface, `${site.component} ${surface} ${columns}`))
         await ui.unmount()
       }
@@ -186,7 +186,7 @@ test('a Box keeps its key in the drawn tree', async ($, on) => {
     const { Box, Text } = $$.ui.resolve(e)
     return h(Box, { key: 'line-0' }, h(Text, null, 'x')) as RenderElement
   })
-  const ui = await $.ui.mount({ plugin: 'session-inspector', surface: 'terminal', component: 'Pane', requestId: 'p3', props: { ...PANE, bodyColumns: 40 } })
+  const ui = await $.ui.mount({ plugin: 'alfred-mods', surface: 'terminal', component: 'Pane', requestId: 'p3', props: { ...PANE, bodyColumns: 40 } })
   const tree = await ui.drawn() as Drawn
   expect(tree.type).toBe('Box')
   expect(tree.props?.['key']).toBe('line-0')
@@ -199,7 +199,7 @@ function fitPane(on: On, lines: Line[]): void {
     drawLines($$, e, lines, { noColor: false, press: {}, columns: e.props.bodyColumns }))
 }
 const mountFit = ($: Engine, surface: RenderSurface, columns: number) =>
-  $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'fit', props: { ...FIT_PANE, bodyColumns: columns } })
+  $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'fit', props: { ...FIT_PANE, bodyColumns: columns } })
 // The drawn line Boxes, in order
 const lineBoxes = (tree: RenderElement): Drawn[] => {
   const out: Drawn[] = []
@@ -224,7 +224,7 @@ async function turns($: Engine, n: number): Promise<void> {
 const inspect = ($: Engine, tab: string) => $.command.run({ command: 'inspect', args: tab, origin: { kind: 'composer' }, presentation: PRESENTATION })
 const failing = (on: On) => on('tool.call', (_, e) => (e.tool === 'Bash' && e.command.startsWith('false') ? { isError: true as const, result: 'Exit code 1', text: 'Exit code 1' } : { result: 'ok', text: 'ok' }))
 const tabRows = async ($: Engine, surface: RenderSurface, columns: number) => {
-  const ui = await $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: { ...PANE, bodyColumns: columns } })
+  const ui = await $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'inspect', props: { ...PANE, bodyColumns: columns } })
   const out = await rowsOf(ui)
   await ui.unmount()
   return out
@@ -276,7 +276,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     const name = 'mcp: 検索サーバーと全文検索ツールの長い日本語の名前です'
     await $.tool.call({ tool: 'mcp__検索サーバーと全文検索ツールの長い日本語の名前です__search', query: 'x' } as never)
     await inspect($, 'tools')
-    const ui = await $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: { ...PANE, bodyColumns: 80 } })
+    const ui = await $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'inspect', props: { ...PANE, bodyColumns: 80 } })
     const tree = await ui.drawn()
     const row = lineBoxes(tree).find(l => textOf(l).startsWith(name))
     expect(row === undefined).toBe(false)
@@ -292,7 +292,7 @@ for (const surface of ['terminal', 'desktop'] as const) {
     failing(on)
     await turns($, 2)
     await inspect($, 'timeline')
-    const ui = await $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: { ...PANE, bodyColumns: 120 } })
+    const ui = await $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'inspect', props: { ...PANE, bodyColumns: 120 } })
     expect((await rowsOf(ui)).find(l => l.startsWith('#'))?.trimEnd()).toBe('#   you     Claude   took     in / out      tools   spend   ✗')
     await ui.redraw({ ...PANE, bodyColumns: 40 })
     expect((await rowsOf(ui)).find(l => l.startsWith('#'))?.trimEnd()).toBe('#   Claude took    in / out    tools')
@@ -427,7 +427,7 @@ test("a tool row takes its slot's width, not the viewport's", async ($, on) => {
   engine(on)
   await $.command.run({ command: 'quiet', args: 'on', origin: { kind: 'composer' }, presentation: PRESENTATION })
   const props = { tool_use_id: 'u1', tool: 'Bash', input: { command: 'ls', description: 'List files' }, isRunning: false, isErrored: false, isInterrupted: false, output: 'a\nb' }
-  const ui = await $.ui.mount({ plugin: 'session-inspector', surface: 'terminal', component: 'ToolUse', props, viewport: { columns: 120, rows: 40 } } as never)
+  const ui = await $.ui.mount({ plugin: 'alfred-mods', surface: 'terminal', component: 'ToolUse', props, viewport: { columns: 120, rows: 40 } } as never)
   const lines = lineBoxes(await ui.drawn())
   expect(lines.length > 0).toBe(true)
   expect(lines.map(l => [l.props?.['width'], l.props?.['overflow']])).toEqual(lines.map(() => [undefined, 'hidden']))
@@ -450,7 +450,7 @@ test('no faults or spills in a REC-masked error with a blank line', async ($, on
   await busy($, on)
   const props = { tool_use_id: 'e1', tool: 'Bash', input: { command: 'false', description: 'Fail' }, isRunning: false, isErrored: true, isInterrupted: false, isExpanded: true, output: 'Exit code 1\nZephyrine here\n\nend' }
   for (const surface of ALL) {
-    const ui = await $.ui.mount({ plugin: 'session-inspector', surface, component: 'ToolUse', props, viewport: { columns: 80, rows: 40 } } as never)
+    const ui = await $.ui.mount({ plugin: 'alfred-mods', surface, component: 'ToolUse', props, viewport: { columns: 80, rows: 40 } } as never)
     const tree = await ui.drawn()
     expect(check(tree, surface, surface)).toEqual([])
     const lines = lineBoxes(tree)

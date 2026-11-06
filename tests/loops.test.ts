@@ -24,7 +24,7 @@ const loopStep = ($: Engine, agentId: string, index = 0) => step($, { turnId: `x
 
 const agentsTab = async ($: Engine, surface: RenderSurface): Promise<string[]> => {
   await $.command.run({ command: 'inspect', args: 'agents', origin: { kind: 'composer' }, presentation: PRESENTATION })
-  const ui = await $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: PANE })
+  const ui = await $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'inspect', props: PANE })
   const out = (await rows(ui)).map(l => l.trimEnd())
   await ui.unmount()
   return out

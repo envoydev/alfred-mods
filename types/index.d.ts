@@ -1,4 +1,4 @@
-// The session-inspector's $.state contract: every value the hooks module keeps for the session.
+// The alfred-mods's $.state contract: every value the hooks module keeps for the session.
 export type Outcome = 'ok' | 'error' | 'denied' | 'blocked' | 'refused'
 export type ToolStat = { calls: number; ok: number; failed: number; stopped: number }
 export type Failure = {
@@ -141,7 +141,7 @@ export type Parts = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'session-inspector': {
+    'alfred-mods': {
       stats: Shaped<Record<string, ToolStat>>; failures: Shaped<Failure[]>; turns: Shaped<Turn[]>
       live: Shaped<Live>; usage: Shaped<Usage>; totals: Shaped<Totals>; meta: Shaped<Meta>
       view: Shaped<View>; pace: Shaped<Pace>; agents: Shaped<AgentRow[]>; cache: Shaped<Cache>; tick: number

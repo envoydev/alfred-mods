@@ -304,9 +304,9 @@ const RESUME = 'Read .claude/session-inspector/HANDOFF.md, check that the branch
 const PANE = { title: 'Inspect', isFocused: true, bodyColumns: 120, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 40 }, view: {} }
 const BAND = { hasSurvey: false, isWorking: false, maxRows: 6, bodyColumns: 120, scroll: { offset: 0, bodyRows: 6 }, view: {} }
 const pane = ($: Engine, surface: RenderSurface = 'terminal') =>
-  $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: PANE })
+  $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'inspect', props: PANE })
 const band = ($: Engine, surface: RenderSurface = 'terminal') =>
-  $.ui.mount({ plugin: 'session-inspector', surface, component: 'AbovePrompt', props: BAND })
+  $.ui.mount({ plugin: 'alfred-mods', surface, component: 'AbovePrompt', props: BAND })
 const inspect = ($: Engine, args: string) =>
   $.command.run({ command: 'inspect', args, origin: { kind: 'composer' }, presentation: PRESENTATION })
 const written = (files: { current: Record<string, FileStub> }): string | undefined =>
@@ -321,7 +321,7 @@ test('/auto-handoff now writes HANDOFF.md from a 0 ms timer: the marker, the hea
   await saved(clock, h)
   const text = written(files) ?? ''
   expect(text.startsWith(`${MARKER}\n# Handoff - `)).toBe(true)
-  expect(text).toContain('\nSaved at 62% context (asks at 80%) by session-inspector · session s1 · branch feature/x.\n')
+  expect(text).toContain('\nSaved at 62% context (asks at 80%) by alfred-mods · session s1 · branch feature/x.\n')
   expect(text).toContain('## Git\n\n    ## feature/x...origin/feature/x [ahead 1]\n     M src/a.ts\n')
   expect(text.endsWith('\n')).toBe(true)
   expect(git.argv).toEqual(['git', '--no-optional-locks', 'status', '--porcelain=v1', '--branch'])

@@ -22,9 +22,9 @@ const PLAN = reading()
 const messages = [{ role: 'user' as const, text: 'q', toolUses: [] }]
 
 const pane = ($: Engine, surface: RenderSurface) =>
-  $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: PANE })
+  $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'inspect', props: PANE })
 const bandOf = ($: Engine, surface: RenderSurface) =>
-  $.ui.mount({ plugin: 'session-inspector', surface, component: 'AbovePrompt', props: BAND })
+  $.ui.mount({ plugin: 'alfred-mods', surface, component: 'AbovePrompt', props: BAND })
 const inspect = ($: Engine, args: string) =>
   $.command.run({ command: 'inspect', args, origin: { kind: 'composer' }, presentation: PRESENTATION })
 const measure = ($: Engine, r: SessionUsage) => $.session.measure({ context: r.context, rateLimits: r.rateLimits, changed: ['rateLimits'] })

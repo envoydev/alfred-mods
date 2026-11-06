@@ -28,7 +28,7 @@ function parentOf(tree: unknown, type: string): Drawn | undefined {
 
 const mount = async ($: Engine, surface: RenderSurface, columns: number) => {
   await $.command.run({ command: 'inspect', args: 'agents', origin: { kind: 'composer' }, presentation: PRESENTATION })
-  return $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: { ...PANE, bodyColumns: columns } })
+  return $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'inspect', props: { ...PANE, bodyColumns: columns } })
 }
 const agentsTab = async ($: Engine, surface: RenderSurface, columns: number): Promise<string[]> => {
   const ui = await mount($, surface, columns)

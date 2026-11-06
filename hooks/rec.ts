@@ -177,9 +177,9 @@ export function recStatus(level: Level, count: number): string {
 export const REC_USAGE = 'Usage: /rec [on|strict|off|test|words]'
 
 // The model's note for a level, which rides the person's next prompt (spec 'The model's note')
-const NOTE_ON = 'Screen recording is on (session-inspector REC). Until told it is off, do not write secret values, API keys, tokens, passwords, email addresses or phone numbers in replies; refer to them by name, such as "the token in .env". Work on the task as usual.'
+const NOTE_ON = 'Screen recording is on (alfred-mods REC). Until told it is off, do not write secret values, API keys, tokens, passwords, email addresses or phone numbers in replies; refer to them by name, such as "the token in .env". Work on the task as usual.'
 const NOTE_STRICT = 'Also leave out account names, home folder paths and dollar amounts.'
-const NOTE_OFF = 'Screen recording is off (session-inspector REC); the earlier limit on secret values no longer applies.'
+const NOTE_OFF = 'Screen recording is off (alfred-mods REC); the earlier limit on secret values no longer applies.'
 
 export function recNote(level: Level): string {
   return level === 'off' ? NOTE_OFF : level === 'strict' ? `${NOTE_ON} ${NOTE_STRICT}` : NOTE_ON

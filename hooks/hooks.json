@@ -1,4 +1,4 @@
 {
-  "description": "The session-inspector hooks module",
+  "description": "The alfred-mods hooks module",
   "modules": ["./register.ts"]
 }

@@ -187,10 +187,10 @@ test('a throwing read after a used one clears the prompt and names unreadable', 
 const SURFACES = ['terminal', 'desktop'] as const
 const BAND = (bodyColumns: number) => ({ hasSurvey: false, isWorking: false, maxRows: 6, bodyColumns, scroll: { offset: 0, bodyRows: 6 }, view: {} })
 const band = ($: Engine, surface: RenderSurface, columns = 120) =>
-  $.ui.mount({ plugin: 'session-inspector', surface, component: 'AbovePrompt', props: BAND(columns) })
+  $.ui.mount({ plugin: 'alfred-mods', surface, component: 'AbovePrompt', props: BAND(columns) })
 const PANE = { title: 'Inspect', isFocused: true, bodyColumns: 120, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 40 }, view: {} }
 const pane = ($: Engine, surface: RenderSurface) =>
-  $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: PANE })
+  $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'inspect', props: PANE })
 const inspect = ($: Engine, args: string) =>
   $.command.run({ command: 'inspect', args, origin: { kind: 'composer' }, presentation: PRESENTATION })
 const reading = (tokens: number, window = 1_000_000): SessionUsage =>

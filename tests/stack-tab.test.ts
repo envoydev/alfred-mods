@@ -30,9 +30,9 @@ const reading = (tokens: number, window = 1_000_000): SessionUsage =>
   ({ startedAt: 0, context: { window, tokens, percent: Math.round(tokens * 100 / window) }, rateLimits: [] })
 const PANE = { title: 'Inspect', isFocused: true, bodyColumns: 120, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 40 }, view: {} }
 const pane = ($: Engine, surface: RenderSurface) =>
-  $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: PANE })
+  $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'inspect', props: PANE })
 const BAND = { hasSurvey: false, isWorking: false, maxRows: 6, bodyColumns: 120, scroll: { offset: 0, bodyRows: 6 }, view: {} }
-const band = ($: Engine, surface: RenderSurface) => $.ui.mount({ plugin: 'session-inspector', surface, component: 'AbovePrompt', props: BAND })
+const band = ($: Engine, surface: RenderSurface) => $.ui.mount({ plugin: 'alfred-mods', surface, component: 'AbovePrompt', props: BAND })
 
 async function now($: Engine, on: On, surface: RenderSurface, o: Parameters<typeof stubAll>[1] = {}) {
   const kit = stubAll(on, { now: NOW, usage: reading(93_000), ...o })

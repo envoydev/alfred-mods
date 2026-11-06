@@ -56,7 +56,7 @@ const inspect = ($: Engine, tab: string) =>
   $.command.run({ command: 'inspect', args: tab, origin: { kind: 'composer' }, presentation: PRESENTATION })
 const usageTab = async ($: Engine, surface: RenderSurface): Promise<string[]> => {
   await inspect($, 'usage')
-  const ui = await $.ui.mount({ plugin: 'session-inspector', surface, component: 'Pane', requestId: 'inspect', props: PANE })
+  const ui = await $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'inspect', props: PANE })
   const out = (await rows(ui)).map(l => l.trimEnd())
   await ui.unmount()
   return out

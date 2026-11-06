@@ -1,6 +1,7 @@
 # alfred-mods
 
-`session-inspector`, a Claude Code mod by envoydev, with its own plugin marketplace, `alfred-mods`. A mod is a Claude
+`alfred-mods`, a Claude Code mod by envoydev (named `session-inspector` until 0.5.0), with its own plugin marketplace,
+`alfred-mods`. A mod is a Claude
 Code plugin whose JavaScript or TypeScript hooks run inside Claude Code, so it can watch events and draw its own
 interface ([mods overview](https://code.claude.com/docs/en/plugins/mods/overview)).
 
@@ -24,7 +25,7 @@ in [the session-inspector brief](docs/session-inspector-brief.md).
   against the stack's resume trigger, and an ALFRED CODE section whose `f` fills the stack's ready resume prompt
   ([With Alfred Code](#with-alfred-code)).
 
-If the band or the pane fails to draw, it shows one dim line naming the failure, such as `session-inspector: the band
+If the band or the pane fails to draw, it shows one dim line naming the failure, such as `alfred-mods: the band
 failed to draw (throw)`, instead of going blank.
 
 OK, warning and failure take your theme's own colours (`/theme`), so a light or colour-blind theme draws them as it
@@ -54,7 +55,7 @@ A call a hook blocked names the hook's script, `⊘ blocked by guard.js: …`, a
 under `Blocked by hooks`.
 
 While something needs you - recording mode on, the context at 60% or more, new failures - the mod pins one line under
-the prompt, `⚠ session-inspector: ● REC · ctx 82% · ✗ 2 new`, which stays while the band is collapsed (Ctrl+X Ctrl+A).
+the prompt, `⚠ alfred-mods: ● REC · ctx 82% · ✗ 2 new`, which stays while the band is collapsed (Ctrl+X Ctrl+A).
 It changes only when its text does, and clears once nothing needs you.
 
 ## Commands
@@ -300,12 +301,12 @@ not need:
 
 ```bash
 claude plugin marketplace add envoydev/alfred-code
-claude plugin install session-inspector@envoydev
+claude plugin install alfred-mods@envoydev
 ```
 
-Then run `/reload-plugins`, or start a new session: `/plugin` shows `1 mod active · session-inspector`.
+Then run `/reload-plugins`, or start a new session: `/plugin` shows `1 mod active · alfred-mods`.
 
-It adds nothing to every session's context: `claude plugin details session-inspector@envoydev` reads `Always-on:
+It adds nothing to every session's context: `claude plugin details alfred-mods@envoydev` reads `Always-on:
 ~0 tok` (measured 2026-10-30). The one thing it ever tells Claude is Recording mode's short note.
 
 The `envoydev` entry follows this repo's `main` branch, so each release reaches you on your next update. Updates are
@@ -313,8 +314,24 @@ pulled, not pushed:
 
 ```bash
 claude plugin marketplace update envoydev
-claude plugin update session-inspector@envoydev
+claude plugin update alfred-mods@envoydev
 ```
+
+### Moving from session-inspector
+
+Until 0.5.0 the mod was the plugin `session-inspector`. The `envoydev` marketplace keeps that id pinned at 0.4.0, so
+an old install keeps working but gets no more updates. Switch once, at the scope you installed it (`--scope user` by
+default):
+
+```bash
+claude plugin marketplace update envoydev
+claude plugin uninstall session-inspector@envoydev
+claude plugin install alfred-mods@envoydev
+```
+
+Keep only one of the two: with both installed, two bands draw. Settings the mod saved between sessions (the `/rec`
+words, `/quiet`, `/auto-handoff` and today's cost) are kept per plugin name, so they start fresh under the new id.
+The files it writes in a project keep their place under `.claude/session-inspector/`.
 
 This repo is also a marketplace of its own, `alfred-mods`, kept for development. Install through one marketplace only:
 if you added both, keep one of the two installs, as two plugin ids with the same name register its hooks only once.
