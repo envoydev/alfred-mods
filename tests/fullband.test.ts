@@ -71,6 +71,12 @@ test('the info line drops items by keep order, whole', () => {
   expect(infoLine(input({ columns: 18 }))).toEqual([])
 })
 
+test("while a turn runs, the info line's 'you' is that turn's prompt", () => {
+  const at = NOW - 14_000
+  const running = input({ isWorking: true, live: { turnId: 't2', startedAt: at, tools: 0, failures: 0, running: [], promptAt: at } })
+  expect(text(infoLine(running)).endsWith(`│ you ${clock(at)} · Claude ${clock(R)}`)).toBe(true)
+})
+
 test('an unknown model id draws as given', () => {
   const line = infoLine(input({ meta: { ...input().meta, model: 'my-model' } }))
   expect(line[0]).toEqual({ text: 'my-model' })

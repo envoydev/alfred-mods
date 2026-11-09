@@ -127,9 +127,10 @@ function narrowGauges(u: Usage, runway: Runway | null | undefined): Line {
   return out
 }
 
-// 'you 14:02', 'Claude 14:05': the person's last prompt and Claude's last reply, the first `upTo` of them
-function timeParts(b: BandInput, upTo = 2): string[] {
-  const you = b.turns[b.turns.length - 1]?.promptAt ?? b.meta.lastPromptAt
+// 'you 14:02', 'Claude 14:05': the person's last prompt and Claude's last reply, the first `upTo` of them; with
+// `isLive`, the prompt is a running turn's while one runs
+function timeParts(b: BandInput, upTo = 2, isLive = false): string[] {
+  const you = (isLive ? b.live.promptAt : null) ?? b.turns[b.turns.length - 1]?.promptAt ?? b.meta.lastPromptAt
   return [you === null ? null : `you ${clock(you)}`, b.meta.lastReplyAt === null ? null : `Claude ${clock(b.meta.lastReplyAt)}`]
     .filter((p): p is string => p !== null)
     .slice(0, upTo)
@@ -174,7 +175,8 @@ function infoItems(b: BandInput): Item[] {
     }
     items.push({ keep: 2, forms })
   }
-  const parts = timeParts(b)
+  // The running turn's prompt while one runs; the last turn's, as line 1 of the calm band shows it, otherwise
+  const parts = timeParts(b, 2, true)
   if (parts.length > 0) items.push({ keep: 1, forms: parts.map((_, i) => dimText(parts.slice(0, parts.length - i).join(' · '))) })
   return items
 }
