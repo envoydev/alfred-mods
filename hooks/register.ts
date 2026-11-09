@@ -13,6 +13,7 @@ import {
 } from './cache.ts'
 import { baseCost, pruneCost, recordCost, todayUsd } from './cost.ts'
 import { drawLines, drawNote, drawWithInput } from './draw.tsx'
+import { localDate } from './forecast.ts'
 import { REC_HIDDEN, SPINNER_WORD, bandFailed, paneFailed } from './failsafe.ts'
 import { NO_PARTS, partsOf } from './parts.ts'
 import { clock, fingerprint, mins, oneLine, printable, tokens, usd, when } from './format.ts'
@@ -260,13 +261,14 @@ async function takeUsage($: EngineInterface, today?: number | null): Promise<Ses
   return reading
 }
 
-// Today's cost as the store last gave it, with the session's cost at that reading: a step adds what the session spent
-// since, so today's figure moves mid-turn with no store work (spec B). The store is written at the turn's end.
-let todayMem: { cost: number; today: number } | null = null
+// Today's cost as the store last gave it, with the session's cost at that reading and the local date it was for: a
+// step adds what the session spent since, so today's figure moves mid-turn with no store work (spec B). The store is
+// written at the turn's end, and read again by the tick once the date has turned.
+let todayMem: { cost: number; today: number; date: string } | null = null
 
 async function writeUsage($: EngineInterface, reading: SessionUsage, today?: number | null): Promise<void> {
   const at = await $.clock.now()
-  if (typeof today === 'number' && reading.cost !== undefined) todayMem = { cost: reading.cost.usd, today }
+  if (typeof today === 'number') todayMem = reading.cost === undefined ? null : { cost: reading.cost.usd, today, date: localDate(at) }
   await update($, usage, u => ({
     tokens: reading.context.tokens ?? null, window: reading.context.window, percent: reading.context.percent ?? null,
     startedAt: reading.startedAt, windows: windowsOf(reading.rateLimits), costUsd: reading.cost?.usd ?? null,
@@ -284,7 +286,8 @@ async function freshUsage($: EngineInterface): Promise<void> {
   freshMem.at = await $.clock.now()
   const reading = await $.session.usage()
   const mem = todayMem
-  const today = mem !== null && reading.cost !== undefined ? mem.today + Math.max(0, reading.cost.usd - mem.cost) : undefined
+  const isToday = mem !== null && mem.date === localDate(freshMem.at)
+  const today = isToday && reading.cost !== undefined ? mem.today + Math.max(0, reading.cost.usd - mem.cost) : undefined
   await writeUsage($, reading, today)
   await syncStatus($)
 }
@@ -313,6 +316,14 @@ async function tickOnce($: EngineInterface): Promise<void> {
   const minute = Math.floor(now / 60_000)
   const isNewMinute = minute !== tickMem.minute && (await read($, bandSetting)).mode === 'full'
   tickMem.minute = minute
+  // Past local midnight, today's cost is the new date's in the store
+  if (todayMem !== null && todayMem.date !== localDate(now)) {
+    try {
+      await takeUsage($, await todayUsd($, now))
+    } catch {
+      // The next tick tries again
+    }
+  }
   const isBusy = anyLive || (await read($, live)).turnId !== null
   if (isBusy && now - freshMem.at >= FRESH_EVERY_MS) {
     try {

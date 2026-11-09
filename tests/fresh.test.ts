@@ -117,3 +117,31 @@ test('a usage read that fails leaves the step and the figures as they were', asy
   expect(result.turnId).toBe('t1')
   expect(state.get('usage')).toMatchObject({ percent: 10, costUsd: 0.5 })
 })
+
+// Ten seconds before local midnight: another session spent $10 today and $0.25 already past midnight
+const EVE = new Date(2026, 9, 28, 23, 59, 50).getTime()
+const NIGHT = { [`cost:${localDate(EVE)}:s0`]: 10_000_000, [`cost:${localDate(EVE + 60_000)}:s0`]: 250_000 }
+
+test("today's cost turns over at local midnight while the session is idle", async ($, on) => {
+  const { clock } = stubAll(on, { usage: reading(10, 0.5), now: EVE, store: NIGHT })
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  expect(state.get('usage')).toMatchObject({ todayUsd: 10 })
+  await clock.advance(15_000)
+  expect(state.get('usage')).toMatchObject({ todayUsd: 0.25 })
+})
+
+test("a turn running over midnight adds its steps to the new day's cost", async ($, on) => {
+  const { clock, usage } = stubAll(on, { usage: reading(10, 0.5), now: EVE, store: NIGHT })
+  const state = watchState(on)
+  stepEngine(on, () => STEP_USAGE)
+  engine(on)
+  await $.session.start(START)
+  await $.prompt.submit({ text: 'q', wait: false, origin: { kind: 'composer' } })
+  await $.turn.start({ text: 'q', turnId: 't1' })
+  await clock.advance(15_000)
+  usage.current = reading(15, 1.29)
+  await step($, MAIN_STEP)
+  expect(Math.round((state.get('usage') as { todayUsd: number }).todayUsd * 100)).toBe(104)
+})
