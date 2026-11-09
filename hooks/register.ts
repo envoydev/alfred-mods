@@ -274,8 +274,14 @@ async function writeUsage($: EngineInterface, reading: SessionUsage, today?: num
   }))
 }
 
+// When the band's figures were last read mid-turn: the tick reads them at most this often while a turn runs or an
+// agent is live, since a foreground agent holds the main loop and no main step fires until it ends
+const freshMem = { at: -Infinity }
+const FRESH_EVERY_MS = 5000
+
 // A main-loop step's reading: the band's ctx and cost before the turn ends (session.measure fires after it)
 async function freshUsage($: EngineInterface): Promise<void> {
+  freshMem.at = await $.clock.now()
   const reading = await $.session.usage()
   const mem = todayMem
   const today = mem !== null && reading.cost !== undefined ? mem.today + Math.max(0, reading.cost.usd - mem.cost) : undefined
@@ -291,8 +297,8 @@ async function baseline($: EngineInterface, reading: SessionUsage): Promise<void
 // The clock's minute the last tick saw: the full band's info line shows the session's time, which moves while idle
 const tickMem = { minute: -1 }
 
-// Once a second: the engine's list moves the live agent rows, and the clocks on screen redraw while anything runs, and
-// once a minute while the band is full
+// Once a second: the engine's list moves the live agent rows, the band's figures are read every 5 seconds and the
+// clocks on screen redraw while anything runs, and the clocks redraw once a minute while the band is full
 async function tickOnce($: EngineInterface): Promise<void> {
   const rows = await read($, agents)
   const anyLive = rows.some(r => isLive(r.status))
@@ -307,7 +313,15 @@ async function tickOnce($: EngineInterface): Promise<void> {
   const minute = Math.floor(now / 60_000)
   const isNewMinute = minute !== tickMem.minute && (await read($, bandSetting)).mode === 'full'
   tickMem.minute = minute
-  if (anyLive || isWarm || isNewMinute || (await read($, live)).turnId !== null) await update($, tick, n => n + 1)
+  const isBusy = anyLive || (await read($, live)).turnId !== null
+  if (isBusy && now - freshMem.at >= FRESH_EVERY_MS) {
+    try {
+      await freshUsage($)
+    } catch {
+      // The band keeps its last figures until the next tick
+    }
+  }
+  if (isBusy || isWarm || isNewMinute) await update($, tick, n => n + 1)
   // A failure the pane marked seen, a /clear or a stack file read leaves the line as it was until here
   await syncStatus($)
 }
@@ -1380,6 +1394,7 @@ export const register: Register = on => {
     await loadBand($)
     await loadHandoff($)
     await readStatus($)
+    freshMem.at = -Infinity
     // Moves the agent rows and redraws the running times once a second
     $.clock.every(1000, () => {
       tickOnce($).catch(() => undefined)

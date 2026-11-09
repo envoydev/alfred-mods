@@ -59,12 +59,45 @@ test("today's cost moves with each main step, and the store is written at the tu
   expect(state.get('usage')).toMatchObject({ todayUsd: 0.79 })
 })
 
-test("an agent's step leaves the band's figures as they were", async ($, on) => {
+test("an agent's step reads no usage: its figures wait for the tick", async ($, on) => {
   const { usage, state } = await running($, on)
   await $.agent.spawn(SPAWN)
   usage.current = reading(15, 1.29)
   await step($, { ...MAIN_STEP, turnId: 'x', model: 'claude-haiku-5-5', agentId: 'a1' })
 
+  expect(state.get('usage')).toMatchObject({ percent: 10, costUsd: 0.5 })
+})
+
+// A foreground agent holds the main loop, so no main step fires until it ends: the once-a-second tick reads the usage
+// instead, at most every 5 seconds, while a turn runs or an agent is live
+test("while an agent works, the tick brings ctx, cost and today up to date every 5 seconds", async ($, on) => {
+  const { usage, state, clock } = await running($, on)
+  await $.agent.spawn(SPAWN)
+  usage.current = reading(15, 1.29)
+  await clock.advance(1000)
+  expect(state.get('usage')).toMatchObject({ percent: 15, costUsd: 1.29, todayUsd: 0.79 })
+
+  usage.current = reading(18, 1.5)
+  await clock.advance(1000)
+  expect(state.get('usage')).toMatchObject({ percent: 15, costUsd: 1.29 })
+  await clock.advance(4000)
+  expect(state.get('usage')).toMatchObject({ percent: 18, costUsd: 1.5, todayUsd: 1 })
+})
+
+test("a background agent's spend reaches the band while the main loop is idle", async ($, on) => {
+  const { usage, state, clock } = await running($, on)
+  await $.turn.complete({ answer: '', durationMs: 3000, isAborted: false, turnId: 't1', reason: 'answer' })
+  await $.agent.spawn({ ...SPAWN, background: true })
+  usage.current = reading(15, 1.29)
+  await clock.advance(5000)
+  expect(state.get('usage')).toMatchObject({ percent: 15, costUsd: 1.29 })
+})
+
+test('idle with no agent, the tick reads no usage', async ($, on) => {
+  const { usage, state, clock } = await running($, on)
+  await $.turn.complete({ answer: '', durationMs: 3000, isAborted: false, turnId: 't1', reason: 'answer' })
+  usage.current = reading(15, 1.29)
+  await clock.advance(10_000)
   expect(state.get('usage')).toMatchObject({ percent: 10, costUsd: 0.5 })
 })
 
