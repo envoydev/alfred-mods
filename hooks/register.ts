@@ -124,7 +124,12 @@ const loops = atom({ plugin: 'alfred-mods', key: 'loops' } as const, INITIAL.loo
 
 const NO_FACTS: Omit<CallFacts, 'tool'> = {
   checked: null, checkReason: null, asked: false, failedInTool: false, interrupted: false, classifierReason: null, hookDeny: null, result: null,
+  aborted: false, autoMode: false,
 }
+
+// The session's permission mode as the classic events last reported it (`permission_mode`), for the failure rule in
+// auto mode; null until one arrives
+const modeMem = { mode: null as string | null }
 
 function tally(stat: ToolStat | undefined, outcome: Outcome, by: 1 | -1): ToolStat {
   const t = stat ?? { calls: 0, ok: 0, failed: 0, stopped: 0 }
@@ -1209,6 +1214,7 @@ export const register: Register = on => {
     call.key = toolKey(e.tool, input)
     call.target = targetOf(e.tool, input, await $.session.cwd())
     call.agentId = e.agentId ?? null
+    call.facts = { ...call.facts, autoMode: modeMem.mode === 'auto' }
     const startedAt = await $.clock.now()
     call.startedAt = startedAt
     if (call.agentId === null) {
@@ -1223,7 +1229,11 @@ export const register: Register = on => {
     const ran = await next(e)
     const text = ran.text ?? (typeof ran.result === 'string' ? ran.result : '')
     if (ran.isError === true && text !== '') keepError(e.tool_use_id, text)
-    call.facts = { ...call.facts, result: { isError: ran.isError === true || ran.deny !== undefined, deny: ran.deny ?? null, text } }
+    call.facts = {
+      ...call.facts,
+      result: { isError: ran.isError === true || ran.deny !== undefined, deny: ran.deny ?? null, text },
+      aborted: ran.isError === true && next.signal.aborted,
+    }
     await settle($, e.tool_use_id, call)
     const endedAt = await $.clock.now()
     const ms = endedAt - startedAt
@@ -1270,6 +1280,7 @@ export const register: Register = on => {
 
   // The tool's own time, without the permission prompt or hooks: a call the person was asked about waited the rest
   on('classic.PostToolUse', async ($, e, next) => {
+    if (e.agent_id === undefined && typeof e.permission_mode === 'string') modeMem.mode = e.permission_mode
     const call = calls.get(e.tool_use_id)
     if (call !== undefined) {
       call.durationMs = e.duration_ms ?? null
@@ -1279,6 +1290,12 @@ export const register: Register = on => {
         await addWait($, call.agentId ?? 'main', Math.max(0, ms - call.durationMs), await $.clock.now())
       }
     }
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // The permission mode only: the prompt itself is never read or kept
+  on('classic.UserPromptSubmit', ($, e, next) => {
+    if (typeof e.permission_mode === 'string') modeMem.mode = e.permission_mode
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -1353,6 +1370,7 @@ export const register: Register = on => {
   // A /clear, a resume or a fork starts the session over under a new id: Claude Code resets $.state itself, and the
   // mod writes its own start values too, so the reset is the mod's and testable
   on('classic.SessionStart', async ($, e, next) => {
+    if (typeof e.permission_mode === 'string') modeMem.mode = e.permission_mode
     if (e.source === 'clear' || e.source === 'resume' || e.source === 'fork') {
       // The new id's file may land after this handler's read, from the stack's own SessionStart hook: for 10 s a read
       // that finds no file keeps the last values (Phase 5 spec Choice 12). The window opens first, so a poll tick while

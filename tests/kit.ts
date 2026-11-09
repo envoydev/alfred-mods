@@ -149,6 +149,7 @@ export function stubAll(on: On, o: Options = {}): {
   // The classic events the mod hooks have nothing beneath them in a test
   on('classic.PostToolUseFailure', () => ({}))
   on('classic.PostToolUse', () => ({}))
+  on('classic.UserPromptSubmit', () => ({}))
   on('classic.PermissionDenied', () => ({}))
   on('classic.SessionStart', () => {
     Object.assign(files.current, o.writtenBeneath ?? {})

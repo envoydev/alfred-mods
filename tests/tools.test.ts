@@ -1,4 +1,5 @@
 import { expect, test } from 'claude-code/testing'
+import type { Plugin } from 'claude-code/testing'
 
 import { SPAWN, stubAll, watchState } from './kit.ts'
 import type { Failure, Live } from '../types'
@@ -60,6 +61,82 @@ test("a permission hook's deny is blocked with its message, and a later Permissi
   expect(rows).toHaveLength(1)
   expect(rows[0]).toMatchObject({ outcome: 'blocked', reason: 'auto mode: destructive git' })
   expect(state.get('stats')).toEqual({ Bash: { calls: 1, ok: 0, failed: 0, stopped: 1 } })
+})
+
+test('in auto mode with PostToolUseFailure skipped, a call allowed without a dialog that fails counts as new', async ($, on) => {
+  stubAll(on)
+  const state = watchState(on)
+  on('tool.check', () => ({ decision: 'ask' }))
+  on('classic.PermissionRequest', () => ({ decision: { behavior: 'allow' } }))
+  on('tool.call', () => failed('Exit code 1'))
+
+  await $.classic.UserPromptSubmit({ prompt: 'q', permission_mode: 'auto' })
+  await $.tool.call({ tool: 'Bash', command: 'npm test', tool_use_id: 't1' })
+
+  expect(state.get('stats')).toEqual({ Bash: { calls: 1, ok: 0, failed: 1, stopped: 0 } })
+  expect((state.get('failures') as Failure[])[0]).toMatchObject({ outcome: 'error', reason: 'Exit code 1', isNew: true })
+  // A classifier block still arrives as PermissionDenied and re-settles the call
+  await $.classic.PermissionDenied({ tool_name: 'Bash', tool_input: {}, tool_use_id: 't1', reason: 'destructive' })
+  expect((state.get('failures') as Failure[])[0]).toMatchObject({ outcome: 'blocked', reason: 'auto mode: destructive', isNew: false })
+  expect(state.get('stats')).toEqual({ Bash: { calls: 1, ok: 0, failed: 0, stopped: 1 } })
+})
+
+test("outside auto mode the same call stays refused, and the prompt's text is never kept", async ($, on) => {
+  stubAll(on)
+  const state = watchState(on)
+  on('tool.check', () => ({ decision: 'ask' }))
+  on('classic.PermissionRequest', () => ({ decision: { behavior: 'allow' } }))
+  on('tool.call', () => failed('Exit code 1'))
+
+  await $.classic.UserPromptSubmit({ prompt: 'secret-prompt-text', permission_mode: 'dontAsk' })
+  await $.tool.call({ tool: 'Bash', command: 'npm test', tool_use_id: 't1' })
+
+  expect((state.get('failures') as Failure[])[0]).toMatchObject({ outcome: 'refused', isNew: false })
+  expect(state.writes.some(w => w.includes('secret-prompt-text'))).toBe(false)
+})
+
+test('with no permission mode ever seen, the same call stays refused', async ($, on) => {
+  stubAll(on)
+  const state = watchState(on)
+  on('tool.check', () => ({ decision: 'ask' }))
+  on('classic.PermissionRequest', () => ({ decision: { behavior: 'allow' } }))
+  on('tool.call', () => failed('Exit code 1'))
+
+  await $.tool.call({ tool: 'Bash', command: 'npm test', tool_use_id: 't1' })
+
+  expect((state.get('failures') as Failure[])[0]).toMatchObject({ outcome: 'refused', isNew: false })
+})
+
+// A managed plugin that answers first: while the tool runs it settles tool.call before the hooks beneath it finish,
+// so the mod's own dispatch is abandoned and its next.signal aborts, as at the person's Esc
+const firstSettler: Plugin = {
+  name: 'first-settler',
+  tier: 'prepend',
+  register(on) {
+    on('tool.call', async ($, e, next) => {
+      next(e).catch(() => undefined)
+      await $.clock.sleep(5)
+      return { isError: true as const, result: 'Interrupted', text: 'Interrupted' }
+    })
+  },
+}
+
+test('a call whose dispatch a hook above settled first is interrupted, not new', { plugins: [firstSettler] }, async ($, on) => {
+  const { clock } = stubAll(on)
+  const state = watchState(on)
+  on('tool.call', async () => {
+    await clock.sleep(10)
+    return failed('Exit code 1')
+  })
+
+  const call = $.tool.call({ tool: 'Bash', command: 'npm test', tool_use_id: 't1' })
+  await clock.settle()
+  await clock.advance(5) // the hook above settles while the tool still runs
+  await call
+  await clock.advance(5) // the tool's failure reaches the mod after its dispatch aborted
+  await clock.settle()
+
+  expect((state.get('failures') as Failure[])[0]).toMatchObject({ outcome: 'error', reason: 'interrupted', isNew: false })
 })
 
 test('a call from an agent no spawn announced is not counted', async ($, on) => {

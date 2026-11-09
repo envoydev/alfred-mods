@@ -54,6 +54,12 @@ counted apart on one line, `Other loops 2 · 1 active · out 41k`; their tool ca
 A call a hook blocked names the hook's script, `⊘ blocked by guard.js: …`, and the Tools tab counts blocks by script
 under `Blocked by hooks`.
 
+An administrator's managed plugin can send a failed call's `classic.PostToolUseFailure` past the plugins you install,
+and Claude Code then notes `alfred-mods: its classic.PostToolUseFailure hook was skipped`. The mod still counts a call
+that fails in auto mode as a new failure and reads an interrupt from its own tool hook. What it cannot tell then: with
+the permission dialog, a call you approved that then fails reads `denied by you`, and a classifier block whose
+`PermissionDenied` the plugin also skips counts as a new failure.
+
 While something needs you - recording mode on, the context at 60% or more, new failures - the mod pins one line under
 the prompt, `⚠ alfred-mods: ● REC · ctx 82% · ✗ 2 new`, which stays while the band is collapsed (Ctrl+X Ctrl+A).
 It changes only when its text does, and clears once nothing needs you.
