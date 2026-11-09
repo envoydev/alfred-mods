@@ -38,7 +38,7 @@ import { classify, fold, targetOf, toolKey } from './outcome.ts'
 import { LEVELS, REC_HELP, addWord, parseLevel, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec.ts'
 import type { CallFacts } from './outcome.ts'
 import type {
-  AgentRow, Cache, CacheConfig, Credit, Failure, Handoff, Live, Loop, Meta, Outcome, Pace, Plan, PlanChange, Level, Plans, Quiet, RecState, SaveResult, Scores, Stack, Tab, TaskItem, ToolStat, Totals, Turn, Usage, View,
+  AgentRow, Cache, CacheConfig, Credit, Failure, Handoff, Live, Loop, Meta, Outcome, Pace, Plan, PlanChange, Level, Plans, Quiet, BandSetting, BandMode, RecState, SaveResult, Scores, Stack, Tab, TaskItem, ToolStat, Totals, Turn, Usage, View,
   Watched, Window,
 } from '../types'
 
@@ -86,6 +86,9 @@ const INITIAL = {
   tasks: [] as TaskItem[],
   rec: { level: 'off', count: 0, note: null } as RecState,
   quiet: { isOn: false } as Quiet,
+  // Calm until session start reads the setting, which turns it full when nothing is stored: a test that never starts
+  // a session draws the band it was written for
+  band: { mode: 'calm' } as BandSetting,
   handoff: {
     mode: 'ask', threshold: 80, point: null, handled: null, isAskUp: false, lastSave: null, alfred: { state: 'none', reason: null },
   } as Handoff,
@@ -116,6 +119,7 @@ const credit = atom({ plugin: 'alfred-mods', key: 'credit' } as const, INITIAL.c
 const tasks = atom({ plugin: 'alfred-mods', key: 'tasks' } as const, INITIAL.tasks, { shape: 'tasks-1' })
 const rec = atom({ plugin: 'alfred-mods', key: 'rec' } as const, INITIAL.rec, { shape: 'rec-1' })
 const quiet = atom({ plugin: 'alfred-mods', key: 'quiet' } as const, INITIAL.quiet, { shape: 'quiet-1' })
+const bandSetting = atom({ plugin: 'alfred-mods', key: 'band' } as const, INITIAL.band, { shape: 'band-1' })
 const handoff = atom({ plugin: 'alfred-mods', key: 'handoff' } as const, INITIAL.handoff, { shape: 'handoff-1' })
 const stack = atom({ plugin: 'alfred-mods', key: 'stack' } as const, INITIAL.stack, { shape: 'stack-1' })
 const blockers = atom({ plugin: 'alfred-mods', key: 'blockers' } as const, INITIAL.blockers, { shape: 'blockers-1' })
@@ -848,6 +852,13 @@ async function loadQuiet($: EngineInterface): Promise<boolean> {
   return isOn
 }
 
+// Only the exact string 'calm' reads as calm: absent, or anything another version or a hand wrote, is full
+async function loadBand($: EngineInterface): Promise<BandMode> {
+  const mode: BandMode = (await $.store.get('settings:band')) === 'calm' ? 'calm' : 'full'
+  await update($, bandSetting, b => (b.mode === mode ? b : { mode }))
+  return mode
+}
+
 // F8's memory outside $.state: whether the stack stood F8 down, which outlives a /clear until a read of the new id's
 // file says otherwise (the stack writes it in its own SessionStart hook, which may run after the mod's); whether a
 // compaction re-arms the steps; the model and window the compaction point was read for; the save running, which a
@@ -1181,6 +1192,7 @@ function forecastOf(h: Handoff, u: Usage, runway: Runway | null): { at: number; 
 }
 
 const QUIET_USAGE = 'Usage: /quiet [on|off]'
+const BAND_USAGE = 'Usage: /band [full|calm]'
 const quietText = (isOn: boolean): string => `Compact tool rows: ${isOn ? 'on' : 'off'}`
 
 async function isNoColor($: EngineInterface): Promise<boolean> {
@@ -1353,10 +1365,12 @@ export const register: Register = on => {
     await $.command.register({ name: 'inspect', description: 'Session metrics, agents, tool failures, cache, the timeline and the plan in a pane', argumentHint: '[now|usage|agents|tools|cache|timeline|plan [name]]' })
     await $.command.register({ name: 'rec', description: 'Recording mode: hide keys, emails, phones and your private words on screen', argumentHint: '[on|strict|off|test|words]' })
     await $.command.register({ name: 'quiet', description: 'Compact tool rows: one line per tool call', argumentHint: '[on|off]' })
+    await $.command.register({ name: 'band', description: 'The band above the prompt: full with its info line, or calm, its two lines', argumentHint: '[full|calm]' })
     await $.command.register({ name: 'auto-handoff', description: 'Save a handoff before the context fills: ask, save by itself, or off', argumentHint: '[ask|auto|off|at <percent>|now]' })
     recMem.home = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE')) ?? null
     await loadRec($)
     await loadQuiet($)
+    await loadBand($)
     await loadHandoff($)
     await readStatus($)
     // Moves the agent rows and redraws the running times once a second
@@ -1379,6 +1393,7 @@ export const register: Register = on => {
       queueReload($, held)
       loadRec($).catch(() => undefined)
       loadQuiet($).catch(() => undefined)
+      loadBand($).catch(() => undefined)
       loadHandoff($).then(() => readStatus($)).catch(() => undefined)
     })
     scheduleReload($, held)
@@ -1407,6 +1422,7 @@ export const register: Register = on => {
       await resetAll($)
       await loadRec($)
       await loadQuiet($)
+      await loadBand($)
       await loadHandoff($)
       // This read, finding no file, reads once more at 2 s
       if (!(await readStatus($, true))) {
@@ -1694,6 +1710,15 @@ export const register: Register = on => {
     if (isOn !== stored) await $.store.set('settings:quiet', isOn)
     await loadQuiet($)
     return { text: quietText(isOn) }
+  })
+
+  on('command.run', { command: 'band' }, async ($, e) => {
+    const word = e.args.trim().toLowerCase()
+    const stored = await loadBand($)
+    if (word !== 'full' && word !== 'calm') return { text: `Band: ${stored}\n${BAND_USAGE}` }
+    if (word !== stored) await $.store.set('settings:band', word)
+    await loadBand($)
+    return { text: `Band: ${word}` }
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

@@ -87,7 +87,10 @@ It changes only when its text does, and clears once nothing needs you.
       FAIL tests/auth.test.ts
   ```
 
-Settings for all three apply to every session and project on the machine; other open sessions follow within 30
+- `/band [full|calm]` sets the band: `full` (the default) adds the turn's tool count, today's cost and the info line;
+  `calm` keeps its two lines. With no argument it prints the state.
+
+Settings for all four apply to every session and project on the machine; other open sessions follow within 30
 seconds.
 
 ## Handoff

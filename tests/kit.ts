@@ -24,6 +24,9 @@ type Options = {
   // What `git status` answers, or a reason that rejects the call; the prompt box's draft; what `prompt.fill` answers,
   // filled by default. A refusal's cause cannot be staged: the site strips one a hook writes (types, PromptFillResult)
   git?: ProcessRunResult | string; draft?: string; fill?: { isFilled: boolean }
+  // What a read of `settings:band` answers while the test stored none: 'calm' by default, the band every test before
+  // /band was written for; 'unset' answers nothing, as a fresh install's store does. The key is never added to the store.
+  band?: 'full' | 'calm' | 'unset'
 }
 
 export const gitResult = (stdout: string, exitCode = 0, stderr = ''): ProcessRunResult =>
@@ -163,6 +166,7 @@ export function stubAll(on: On, o: Options = {}): {
   const stored = new Map<string, unknown>(Object.entries(o.store ?? {}))
   on('store.get', async (_, e) => {
     if (o.holdStore?.until && e.key === o.holdStore.key) await o.holdStore.until
+    if (e.key === 'settings:band' && !stored.has(e.key) && o.band !== 'unset') return { value: o.band ?? 'calm' }
     return { value: stored.get(e.key) }
   })
   on('store.set', (_, e) => {
