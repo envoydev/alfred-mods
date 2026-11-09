@@ -252,13 +252,31 @@ const windowsOf = (limits: readonly SessionRateLimit[]): Window[] =>
 // The status line's figures now; today's cost is the store's, so it is only replaced when given
 async function takeUsage($: EngineInterface, today?: number | null): Promise<SessionUsage> {
   const reading = await $.session.usage()
+  await writeUsage($, reading, today)
+  return reading
+}
+
+// Today's cost as the store last gave it, with the session's cost at that reading: a step adds what the session spent
+// since, so today's figure moves mid-turn with no store work (spec B). The store is written at the turn's end.
+let todayMem: { cost: number; today: number } | null = null
+
+async function writeUsage($: EngineInterface, reading: SessionUsage, today?: number | null): Promise<void> {
   const at = await $.clock.now()
+  if (typeof today === 'number' && reading.cost !== undefined) todayMem = { cost: reading.cost.usd, today }
   await update($, usage, u => ({
     tokens: reading.context.tokens ?? null, window: reading.context.window, percent: reading.context.percent ?? null,
     startedAt: reading.startedAt, windows: windowsOf(reading.rateLimits), costUsd: reading.cost?.usd ?? null,
     todayUsd: today === undefined ? u.todayUsd : today, at,
   }))
-  return reading
+}
+
+// A main-loop step's reading: the band's ctx and cost before the turn ends (session.measure fires after it)
+async function freshUsage($: EngineInterface): Promise<void> {
+  const reading = await $.session.usage()
+  const mem = todayMem
+  const today = mem !== null && reading.cost !== undefined ? mem.today + Math.max(0, reading.cost.usd - mem.cost) : undefined
+  await writeUsage($, reading, today)
+  await syncStatus($)
 }
 
 // A session first seen now takes its cost so far as the baseline: spend a /clear or a resume carries over
@@ -1508,6 +1526,11 @@ export const register: Register = on => {
       }
     } catch {
       // The step's figures are lost; the step itself stands
+    }
+    try {
+      await freshUsage($)
+    } catch {
+      // The band keeps its last figures; the step itself stands
     }
     return step
   })
