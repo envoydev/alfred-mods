@@ -130,6 +130,17 @@ test('calm mode draws what no mode draws', () => {
   expect((texts(bandLines({ ...working, mode: 'calm' }))[0] ?? '').includes(' tools')).toBe(false)
 })
 
+test("REC's mark and the banner narrow line 1 only: the lines under it keep the band's width", () => {
+  const marks = { rec: { level: 'on' as const, words: 0 }, banner: [{ text: 'auto-run · scorer high', tone: 'dim' as const }] }
+  for (const o of [{ newFailures: 1 }, {}]) {
+    const plain = bandLines(input({ columns: 128, ...o }))
+    const marked = bandLines(input({ columns: 128, ...o, ...marks }))
+    expect(text(marked[0] ?? []).startsWith('● REC │ auto-run · scorer high │ ')).toBe(true)
+    expect(texts(marked.slice(1))).toEqual(texts(plain.slice(1)))
+    expect(texts(marked).includes(FULL)).toBe(true)
+  }
+})
+
 // The mounted band: a session started 5 minutes ago, one main step on Sonnet at medium effort
 const band = (isWorking: boolean) =>
   ({ hasSurvey: false, isCollapsed: false, isWorking, maxRows: 6, bodyColumns: 160, scroll: { offset: 0, bodyRows: 6 }, view: {} })

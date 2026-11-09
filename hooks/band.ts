@@ -339,9 +339,11 @@ export function bandLines(b: BandInput): Line[] {
   const sep: Seg = { text: ' │ ', tone: 'dim' }
   const alone: Line = marks.flatMap((m, i) => (i === 0 ? m : [sep, ...m]))
   const lead: Line = [...alone, sep]
-  const [first, ...rest] = bandBody({ ...b, columns: b.columns - widthOf(lead) }, isNarrow)
+  // Only line 1 shares its row with the marks: the lines under it are fitted to the band's whole width
+  const [first] = bandBody({ ...b, columns: b.columns - widthOf(lead) }, isNarrow)
   if (first === undefined) return [alone]
-  return widthOf(lead) + widthOf(first) <= b.columns ? [[...lead, ...first], ...rest] : [alone, ...bandBody(b, isNarrow)]
+  const body = bandBody(b, isNarrow)
+  return widthOf(lead) + widthOf(first) <= b.columns ? [[...lead, ...first], ...body.slice(1)] : [alone, ...body]
 }
 
 function bandBody(b: BandInput, isNarrow: boolean): Line[] {
