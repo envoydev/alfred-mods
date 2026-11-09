@@ -142,7 +142,7 @@ Hooks only update the shared state. Every surface reads that state and passes it
 
 **Design rules**
 
-- **Calm by default:** idle and healthy, the band is one dim line. Colour appears only when a threshold is crossed.
+- **Calm by default:** idle and healthy, the band is one dim line. Colour appears only when a threshold is crossed. (Until 2026-11-10; the user then chose the full band by default, `/band calm` for this rule's band.)
 - **Now first:** while Claude works, line 1 shows what is running: the plan step, each agent's current action, and a running Bash command with its elapsed time. When idle, it shows the last turn: duration, tool calls, failures, and the time of your last prompt and of Claude's reply.
 - **Room left:** line 2 holds the gauges. Context and 5h get bars because they move within a session; the 7d window and cost are numbers. Each window shows when it resets after its percent, as its day, month and clock in brackets, such as (31.10 09:00) (the user, 2026-10-28).
 - **Bars:** one bar everywhere, in the band and the pane: 5 cells of 20%, one character each, ▰ filled and ▱ empty, with no gaps, such as ▰▰▱▱▱ at 40% (the user, 2026-10-28). A cell fills only when its share is reached, the filled part takes the threshold colour and the empty part stays dim, so the shape reads without colour.
@@ -203,6 +203,20 @@ ctx ▰▰▰▰▱ 82% │ 5h ▰▰▱▱▱ 55% (28.10 16:15) full ≈15:40 �
 ```text
 ctx ▰▱▱▱▱ 30% │ 5h ▱▱▱▱▱ 15% (28.10 16:15) │ 7d 40% (31.10 09:00) │ $1.08 │ you 14:02 · Claude 14:05
 ```
+
+**Band: full** (the user, 2026-11-10; `/band calm` draws the forms above)
+
+```text
+⟳ Turn 10 · 8:04 · 18 tools │ Bash ▸ write answers.json 0:14
+ctx ▱▱▱▱▱ 15% ≈163 turns │ 5h ▰▱▱▱▱ 34% (10.11 00:50) on pace │ 7d 21% (16.11 03:00) │ $1.29 · today $10.46
+Sonnet 5.5 ◑ medium │ 59m │ ≈133 tok/s avg │ cache warm 54m │ AskUserQuestion ×13 · Bash ×5 · Grep ×1 │ you 22:47 · Claude 23:55
+```
+
+- **The info line** sits under the gauges and above the needs-you line in every state, dim but for the model. As the
+  width runs out its items go in this order: the times (Claude's first), the tools (one name at a time, then all),
+  the output speed, the cache, the session's time, the model. Idle and healthy, the band is the gauge line and the info
+  line, both dim, the times on the info line only. Today's cost follows the session's while line 2 fits, never on the
+  narrow form; it is the mod's own count (F1 note).
 
 **Band: narrow terminal**
 

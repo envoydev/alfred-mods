@@ -288,7 +288,11 @@ async function baseline($: EngineInterface, reading: SessionUsage): Promise<void
   if (reading.cost !== undefined) await baseCost($, await $.session.id(), reading.cost.usd, await $.clock.now())
 }
 
-// Once a second: the engine's list moves the live agent rows, and the clocks on screen redraw while anything runs
+// The clock's minute the last tick saw: the full band's info line shows the session's time, which moves while idle
+const tickMem = { minute: -1 }
+
+// Once a second: the engine's list moves the live agent rows, and the clocks on screen redraw while anything runs, and
+// once a minute while the band is full
 async function tickOnce($: EngineInterface): Promise<void> {
   const rows = await read($, agents)
   const anyLive = rows.some(r => isLive(r.status))
@@ -300,7 +304,10 @@ async function tickOnce($: EngineInterface): Promise<void> {
     }
   }
   const isWarm = needsTick(await read($, cache), billingOf((await read($, usage)).windows), now)
-  if (anyLive || isWarm || (await read($, live)).turnId !== null) await update($, tick, n => n + 1)
+  const minute = Math.floor(now / 60_000)
+  const isNewMinute = minute !== tickMem.minute && (await read($, bandSetting)).mode === 'full'
+  tickMem.minute = minute
+  if (anyLive || isWarm || isNewMinute || (await read($, live)).turnId !== null) await update($, tick, n => n + 1)
   // A failure the pane marked seen, a /clear or a stack file read leaves the line as it was until here
   await syncStatus($)
 }
@@ -1738,6 +1745,7 @@ export const register: Register = on => {
       newFailures: (await read($, failures)).filter(f => f.isNew).length, pace: await read($, pace), agents: await read($, agents),
       cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score, rec: recOf(await read($, rec)),
       forecast: forecastOf(h, u, runway), handoffAsk: h.isAskUp ? h.handled : null, runway, banner: bannerSegs(st),
+      mode: (await read($, bandSetting)).mode, totals: await read($, totals), stats: await read($, stats),
     })
     if (lines.length === 0) return next(e)
     const press = { inspect: () => inspectFromBand($), compact: () => compactNow($, held), handoff: () => saveNow($) }

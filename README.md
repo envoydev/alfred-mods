@@ -36,6 +36,13 @@ gives up its Show and Copy buttons. A narrow pane, down to 24 columns, keeps the
 tool's column to keep its counts, and the Timeline leaves out the prompt's time to keep how long each turn took and
 its tokens.
 
+By default the band has an info line under its gauges: the model and effort, the session's time, the average output
+speed, the cache, the tool calls by tool and the times of your last prompt and Claude's reply, `Sonnet 5.5 ◑ medium │
+59m │ ≈133 tok/s avg │ cache warm 54m │ Bash ×5 · Grep ×1 │ you 22:47 · Claude 23:55`; while a turn runs, its first
+line counts the turn's tool calls, and the gauges add today's cost. Today's cost is the mod's own count on this
+machine: sessions it did not run in are not in it, so it can read lower than a status line's that counts every
+session. Items drop whole when the width runs out. `/band calm` goes back to the two lines.
+
 An agent whose last step stopped at the output limit ends its Agents row with `⚠ max_tokens`, and its result reads
 `result (cut off): …`, as the report ends mid-way. The Timeline's `spend` is the session's spend while the turn ran,
 agents included (`spend, est.` on a plan, as the Usage tab marks cost); spend while no turn runs, such as an agent
