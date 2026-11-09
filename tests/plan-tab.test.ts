@@ -49,7 +49,7 @@ const pane = ($: Engine, surface: RenderSurface, bodyColumns = 100) =>
 const band = ($: Engine, surface: RenderSurface, isWorking: boolean, bodyColumns = 120) =>
   $.ui.mount({
     plugin: 'alfred-mods', surface, component: 'AbovePrompt',
-    props: { hasSurvey: false, isWorking, maxRows: 6, bodyColumns, scroll: { offset: 0, bodyRows: 6 }, view: {} },
+    props: { hasSurvey: false, isCollapsed: false, isWorking, maxRows: 6, bodyColumns, scroll: { offset: 0, bodyRows: 6 }, view: {} },
   })
 const inspect = ($: Engine, args: string) =>
   $.command.run({ command: 'inspect', args, origin: { kind: 'composer' }, presentation: PRESENTATION })

@@ -13,7 +13,7 @@ const STEP_USAGE: TurnUsage = { input_tokens: 10, output_tokens: 100, cache_read
 const DAY_KEY = `cost:${localDate(NOW)}:s1`
 
 const band = (isWorking: boolean) =>
-  ({ hasSurvey: false, isWorking, maxRows: 6, bodyColumns: 120, scroll: { offset: 0, bodyRows: 6 }, view: {} })
+  ({ hasSurvey: false, isCollapsed: false, isWorking, maxRows: 6, bodyColumns: 120, scroll: { offset: 0, bodyRows: 6 }, view: {} })
 
 // A reading at this context percent and session cost, the 5h window at 20%
 function reading(ctx: number, usd: number): SessionUsage {

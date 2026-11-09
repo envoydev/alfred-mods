@@ -132,7 +132,7 @@ test('calm mode draws what no mode draws', () => {
 
 // The mounted band: a session started 5 minutes ago, one main step on Sonnet at medium effort
 const band = (isWorking: boolean) =>
-  ({ hasSurvey: false, isWorking, maxRows: 6, bodyColumns: 160, scroll: { offset: 0, bodyRows: 6 }, view: {} })
+  ({ hasSurvey: false, isCollapsed: false, isWorking, maxRows: 6, bodyColumns: 160, scroll: { offset: 0, bodyRows: 6 }, view: {} })
 const mount = ($: Engine, surface: RenderSurface, isWorking: boolean) =>
   $.ui.mount({ plugin: 'alfred-mods', surface, component: 'AbovePrompt', props: band(isWorking) })
 const READING: SessionUsage = {

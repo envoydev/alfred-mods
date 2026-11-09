@@ -10,7 +10,7 @@ import { PRESENTATION, SPINNER, START, engine, held, rows, stubAll } from './kit
 
 const SURFACES = ['terminal', 'desktop'] as const
 const PANE = { title: 'Inspect', isFocused: false, bodyColumns: 100, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 30 }, view: {} }
-const BAND = { hasSurvey: false, isWorking: false, maxRows: 6, bodyColumns: 120, scroll: { offset: 0, bodyRows: 6 }, view: {} }
+const BAND = { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 6, bodyColumns: 120, scroll: { offset: 0, bodyRows: 6 }, view: {} }
 const SUBSCRIPTION: SessionUsage = {
   startedAt: 0,
   context: { window: 200_000, tokens: 60_000, percent: 30 },

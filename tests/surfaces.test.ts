@@ -113,7 +113,7 @@ async function busy($: Engine, on: On): Promise<void> {
   await $.session.measure({ context: { tokens: 164_000, window: 200_000, percent: 82 }, rateLimits: READING.rateLimits, changed: ['context'] })
 }
 
-const BAND = { hasSurvey: false, isWorking: false, maxRows: 6, scroll: { offset: 0, bodyRows: 6 }, view: {} }
+const BAND = { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 6, scroll: { offset: 0, bodyRows: 6 }, view: {} }
 const PANE = { title: 'Inspect', isFocused: false, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 40 }, view: {} }
 const TABS = ['now', 'usage', 'agents', 'tools', 'cache', 'timeline', 'plan'] as const
 const ALL: RenderSurface[] = ['terminal', 'desktop', 'vscode', 'mobile']
