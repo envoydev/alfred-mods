@@ -42,6 +42,8 @@ export type BandInput = {
   // The /band setting: `full` adds the info line, the turn's tool count and today's cost; absent or `calm`, today's two
   // lines. `totals` and `stats` feed the info line's output speed and tool calls.
   mode?: BandMode
+  // The rows the band may take (the AbovePrompt site's `maxRows`); absent, as many as it draws
+  maxRows?: number
   totals?: Totals
   stats?: Record<string, ToolStat>
 }
@@ -335,26 +337,32 @@ export function statusText(o: { percent: number | null; newFailures: number; rec
 // the body's first line follows them while it fits what is left, else they take line 1 alone and the body keeps the
 // full width, so no gauge, reset or the cost drops for them
 export function bandLines(b: BandInput): Line[] {
+  const lines = bandRows(b, true)
+  // Short of rows, the info line goes first: the line under it holds the buttons, and a digit arms only those in view
+  return b.maxRows !== undefined && lines.length > b.maxRows ? bandRows(b, false) : lines
+}
+
+function bandRows(b: BandInput, withInfo: boolean): Line[] {
   const isNarrow = b.columns < 100
   const marks: Line[] = [b.rec !== undefined && b.rec.level !== 'off' ? [REC_MARK] : [], b.banner ?? []].filter(m => m.length > 0)
-  if (marks.length === 0) return bandBody(b, isNarrow)
+  if (marks.length === 0) return bandBody(b, isNarrow, withInfo)
   const sep: Seg = { text: ' │ ', tone: 'dim' }
   const alone: Line = marks.flatMap((m, i) => (i === 0 ? m : [sep, ...m]))
   const lead: Line = [...alone, sep]
   // Only line 1 shares its row with the marks: the lines under it are fitted to the band's whole width
-  const [first] = bandBody({ ...b, columns: b.columns - widthOf(lead) }, isNarrow)
+  const [first] = bandBody({ ...b, columns: b.columns - widthOf(lead) }, isNarrow, withInfo)
   if (first === undefined) return [alone]
-  const body = bandBody(b, isNarrow)
+  const body = bandBody(b, isNarrow, withInfo)
   return widthOf(lead) + widthOf(first) <= b.columns ? [[...lead, ...first], ...body.slice(1)] : [alone, ...body]
 }
 
-function bandBody(b: BandInput, isNarrow: boolean): Line[] {
+function bandBody(b: BandInput, isNarrow: boolean, withInfo: boolean): Line[] {
   const u = b.usage
   if (b.turns.length === 0 && u.percent === null) return []
   const invalid: Line = b.planInvalid ? [{ text: ' │ ', tone: 'dim' }, { text: 'plan file invalid', tone: 'warn' }] : []
   const gaugeLine = isNarrow ? narrowGauges(u, b.runway) : withToday(b, gauges(b), invalid)
   const line2 = [...gaugeLine, ...invalid]
-  const info: Line[] = b.mode === 'full' ? [infoLine(b)].filter(l => l.length > 0) : []
+  const info: Line[] = withInfo && b.mode === 'full' ? [infoLine(b)].filter(l => l.length > 0) : []
   const p = fiveHourPace(b)
   const isHot = (b.runway?.percent ?? u.percent ?? 0) >= 60 || u.windows.some(w => w.percentUsed >= 60) || (p !== null && p !== 'on-pace')
   const agentsRun = b.agents.some(r => isLive(r.status))

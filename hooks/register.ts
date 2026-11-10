@@ -1767,7 +1767,7 @@ export const register: Register = on => {
     const m = await read($, meta)
     const runway = runwayOf(st, u, m.model)
     const lines = bandLines({
-      now, columns: e.props.bodyColumns, isWorking: e.props.isWorking,
+      now, columns: e.props.bodyColumns, maxRows: e.props.maxRows, isWorking: e.props.isWorking,
       live: await read($, live), usage: u, meta: m, turns: await read($, turns),
       newFailures: (await read($, failures)).filter(f => f.isNew).length, pace: await read($, pace), agents: await read($, agents),
       cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score, rec: recOf(await read($, rec)),

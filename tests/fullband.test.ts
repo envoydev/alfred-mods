@@ -147,11 +147,29 @@ test("REC's mark and the banner narrow line 1 only: the lines under it keep the 
   }
 })
 
+// A bare digit arms only the buttons wholly inside the band's window (types, `maxRows`): short of rows, the info line
+// goes, so the line under it, with [Inspect], [Compact] or [Handoff], stays in view
+test('short of rows, the full band drops its info line and keeps the buttons in view', () => {
+  const inspect = (lines: Line[]): boolean => (lines[lines.length - 1] ?? []).some(s => 'button' in s && s.button.key === 'inspect')
+  const short = bandLines(input({ newFailures: 1, maxRows: 3 }))
+  expect(short).toHaveLength(3)
+  expect(inspect(short)).toBe(true)
+  expect(texts(short).includes(FULL)).toBe(false)
+  const tall = bandLines(input({ newFailures: 1, maxRows: 4 }))
+  expect(tall).toHaveLength(4)
+  expect(inspect(tall)).toBe(true)
+  expect(texts(tall).includes(FULL)).toBe(true)
+  // With REC's mark on a row of its own, the row count is the band's whole
+  const marked = bandLines(input({ columns: 128, newFailures: 1, maxRows: 4, rec: { level: 'on', words: 0 }, banner: [{ text: 'x'.repeat(120) }] }))
+  expect(marked).toHaveLength(4)
+  expect(inspect(marked)).toBe(true)
+})
+
 // The mounted band: a session started 5 minutes ago, one main step on Sonnet at medium effort
-const band = (isWorking: boolean) =>
-  ({ hasSurvey: false, isCollapsed: false, isWorking, maxRows: 6, bodyColumns: 160, scroll: { offset: 0, bodyRows: 6 }, view: {} })
-const mount = ($: Engine, surface: RenderSurface, isWorking: boolean) =>
-  $.ui.mount({ plugin: 'alfred-mods', surface, component: 'AbovePrompt', props: band(isWorking) })
+const band = (isWorking: boolean, maxRows = 6) =>
+  ({ hasSurvey: false, isCollapsed: false, isWorking, maxRows, bodyColumns: 160, scroll: { offset: 0, bodyRows: maxRows }, view: {} })
+const mount = ($: Engine, surface: RenderSurface, isWorking: boolean, maxRows = 6) =>
+  $.ui.mount({ plugin: 'alfred-mods', surface, component: 'AbovePrompt', props: band(isWorking, maxRows) })
 const READING: SessionUsage = {
   startedAt: NOW - 5 * 60_000, context: { window: 200_000, tokens: 20_000, percent: 10 },
   rateLimits: [{ kind: 'five_hour', percentUsed: 20, resetsAt: '2026-10-28T17:00:00Z' }], cost: { usd: 0.4 },
@@ -174,6 +192,16 @@ for (const surface of SURFACES) {
     const lines = await rows(await mount($, surface, true))
     expect(lines).toHaveLength(3)
     expect(lines[2]?.startsWith('Sonnet 5.5 ◑ medium │ 5m')).toBe(true)
+  })
+
+  test(`a running turn with two rows to draw in leaves out the info line (${surface})`, async ($, on) => {
+    stubAll(on, { band: 'full', usage: READING, now: NOW })
+    stepEngine(on, () => null)
+    engine(on)
+    await runningTurn($)
+    const lines = await rows(await mount($, surface, true, 2))
+    expect(lines).toHaveLength(2)
+    expect(lines.some(l => l.startsWith('Sonnet 5.5'))).toBe(false)
   })
 
   test(`with nothing stored, the band is full (${surface})`, async ($, on) => {
