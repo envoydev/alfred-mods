@@ -27,6 +27,9 @@ type Options = {
   // What a read of `settings:band` answers while the test stored none: 'calm' by default, the band every test before
   // /band was written for; 'unset' answers nothing, as a fresh install's store does. The key is never added to the store.
   band?: 'full' | 'calm' | 'unset'
+  // The same for `settings:quiet`: false (off) by default, the tool rows every test before /quiet was on by default
+  // was written for; 'unset' answers nothing, as a fresh install's store does
+  quiet?: 'on' | 'off' | 'unset'
 }
 
 export const gitResult = (stdout: string, exitCode = 0, stderr = ''): ProcessRunResult =>
@@ -167,6 +170,7 @@ export function stubAll(on: On, o: Options = {}): {
   on('store.get', async (_, e) => {
     if (o.holdStore?.until && e.key === o.holdStore.key) await o.holdStore.until
     if (e.key === 'settings:band' && !stored.has(e.key) && o.band !== 'unset') return { value: o.band ?? 'calm' }
+    if (e.key === 'settings:quiet' && !stored.has(e.key) && o.quiet !== 'unset') return { value: o.quiet === 'on' }
     return { value: stored.get(e.key) }
   })
   on('store.set', (_, e) => {

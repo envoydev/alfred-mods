@@ -83,9 +83,9 @@ It changes only when its text does, and clears once nothing needs you.
 - `/rec [on|strict|off|test|words]` masks what is on screen for a recording: `on` or a bare `/rec` turns it on, `strict`
   hides more, `off` turns it off, `test` checks the masker and `words` opens the private-words pane. See
   [Recording mode](#recording-mode).
-- `/quiet [on|off]` draws one line per tool call in place of the command and its output preview. A failure keeps up to
-  3 error lines, runs of read-only calls fold into one line, and a blocked call shows the rule's first sentence.
-  `/quiet off`, Ctrl+O or `[Show]` in the Tools tab bring the full rows back.
+- `/quiet [on|off]`, on by default, draws one line per tool call in place of the command and its output preview. A
+  failure keeps up to 3 error lines, runs of read-only calls fold into one line, and a blocked call shows the rule's
+  first sentence. `/quiet off`, Ctrl+O or `[Show]` in the Tools tab bring the full rows back.
 
   ```text
   ⏺ Bash · Show CI failure lines 1038-1042 · 30 lines ✓

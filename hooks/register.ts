@@ -877,9 +877,10 @@ const recOf = (r: RecState): { level: RecState['level']; words: number } => ({ l
 
 const OTHER_SESSIONS = 'Other open sessions follow within 30 s; run /rec in each one on screen.'
 
-// /quiet's stored setting into the quiet atom, at the same points as REC's: only `true` is on
+// /quiet's stored setting into the quiet atom, at the same points as REC's: only `false`, which /quiet off writes, is
+// off; absent, or anything another version or a hand wrote, is on
 async function loadQuiet($: EngineInterface): Promise<boolean> {
-  const isOn = (await $.store.get('settings:quiet')) === true
+  const isOn = (await $.store.get('settings:quiet')) !== false
   await update($, quiet, q => (q.isOn === isOn ? q : { isOn }))
   return isOn
 }
