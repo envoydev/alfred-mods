@@ -25,22 +25,42 @@ test('/quiet on and off set it and read it first', async ($, on) => {
   expect(state.get('quiet')).toEqual({ isOn: true })
 })
 
-test('bare /quiet prints the state and usage', async ($, on) => {
-  const { store } = stubAll(on)
-  engine(on)
-  await $.session.start(START)
-  expect(await quiet($, '')).toBe(`Compact tool rows: off\n${USAGE}`)
-  expect(store.get('settings:quiet')).toBe(undefined)
-  expect(await quiet($, 'maybe')).toBe(`Compact tool rows: off\n${USAGE}`)
-  expect(store.get('settings:quiet')).toBe(undefined)
-})
-
-test('a stored value other than true reads as off', async ($, on) => {
-  stubAll(on, { store: { 'settings:quiet': 'yes' } })
+test('bare /quiet prints the state and usage, on with nothing stored', async ($, on) => {
+  const { store } = stubAll(on, { quiet: 'unset' })
   const state = watchState(on)
   engine(on)
   await $.session.start(START)
-  expect(await quiet($, '')).toBe(`Compact tool rows: off\n${USAGE}`)
+  expect(state.get('quiet')).toEqual({ isOn: true })
+  expect(await quiet($, '')).toBe(`Compact tool rows: on\n${USAGE}`)
+  expect(await quiet($, 'maybe')).toBe(`Compact tool rows: on\n${USAGE}`)
+  expect(store.get('settings:quiet')).toBe(undefined)
+})
+
+test('on with nothing stored, /quiet off turns it off and stores it', async ($, on) => {
+  const { store } = stubAll(on, { quiet: 'unset' })
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  expect(await quiet($, 'off')).toBe('Compact tool rows: off')
+  expect(store.get('settings:quiet')).toBe(false)
+  expect(state.get('quiet')).toEqual({ isOn: false })
+})
+
+for (const value of ['yes', 'off', 0]) {
+  test(`a stored ${JSON.stringify(value)} reads as on: only false is off`, async ($, on) => {
+    stubAll(on, { store: { 'settings:quiet': value } })
+    const state = watchState(on)
+    engine(on)
+    await $.session.start(START)
+    expect(state.get('quiet')).toEqual({ isOn: true })
+  })
+}
+
+test('a test that stores nothing reads off, as every test before /quiet was on by default was written for', async ($, on) => {
+  stubAll(on)
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
   expect(state.get('quiet') ?? { isOn: false }).toEqual({ isOn: false })
 })
 

@@ -14,7 +14,7 @@ const R5 = when(Date.parse('2026-10-28T17:00:00Z'))
 const R7 = when(Date.parse('2026-10-31T09:00:00Z'))
 
 const band = (isWorking: boolean, bodyColumns = 120, hasSurvey = false) =>
-  ({ hasSurvey, isWorking, maxRows: 6, bodyColumns, scroll: { offset: 0, bodyRows: 6 }, view: {} })
+  ({ hasSurvey, isCollapsed: false, isWorking, maxRows: 6, bodyColumns, scroll: { offset: 0, bodyRows: 6 }, view: {} })
 
 const mount = ($: Engine, surface: RenderSurface, props: ReturnType<typeof band>) =>
   $.ui.mount({ plugin: 'alfred-mods', surface, component: 'AbovePrompt', props })

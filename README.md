@@ -36,6 +36,15 @@ gives up its Show and Copy buttons. A narrow pane, down to 24 columns, keeps the
 tool's column to keep its counts, and the Timeline leaves out the prompt's time to keep how long each turn took and
 its tokens.
 
+By default the band has an info line under its gauges: the model and effort, the session's time, the average output
+speed, the cache, the tool calls by tool and the times of your last prompt and Claude's reply, `Sonnet 5.5 ◑ medium │
+59m │ ≈133 tok/s avg │ cache warm 54m │ Bash ×5 · Grep ×1 │ you 22:47 · Claude 23:55`; while a turn runs, its first
+line counts the turn's tool calls, and the gauges add today's cost. Today's cost is the mod's own count on this
+machine: sessions it did not run in are not in it, so it can read lower than a status line's that counts every
+session. Items drop whole when the width runs out, and the whole info line goes when the band has fewer rows than it
+needs, as in fullscreen under a tall draft, so the line with its buttons stays in view. `/band calm` goes back to the
+two lines.
+
 An agent whose last step stopped at the output limit ends its Agents row with `⚠ max_tokens`, and its result reads
 `result (cut off): …`, as the report ends mid-way. The Timeline's `spend` is the session's spend while the turn ran,
 agents included (`spend, est.` on a plan, as the Usage tab marks cost); spend while no turn runs, such as an agent
@@ -54,6 +63,12 @@ counted apart on one line, `Other loops 2 · 1 active · out 41k`; their tool ca
 A call a hook blocked names the hook's script, `⊘ blocked by guard.js: …`, and the Tools tab counts blocks by script
 under `Blocked by hooks`.
 
+An administrator's managed plugin can send a failed call's `classic.PostToolUseFailure` past the plugins you install,
+and Claude Code then notes `alfred-mods: its classic.PostToolUseFailure hook was skipped`. The mod still counts a call
+that fails in auto mode as a new failure and reads an interrupt from its own tool hook. What it cannot tell then: with
+the permission dialog, a call you approved that then fails reads `denied by you`, and a classifier block whose
+`PermissionDenied` the plugin also skips counts as a new failure.
+
 While something needs you - recording mode on, the context at 60% or more, new failures - the mod pins one line under
 the prompt, `⚠ alfred-mods: ● REC · ctx 82% · ✗ 2 new`, which stays while the band is collapsed (Ctrl+X Ctrl+A).
 It changes only when its text does, and clears once nothing needs you.
@@ -70,9 +85,9 @@ It changes only when its text does, and clears once nothing needs you.
 - `/rec [on|strict|off|test|words]` masks what is on screen for a recording: `on` or a bare `/rec` turns it on, `strict`
   hides more, `off` turns it off, `test` checks the masker and `words` opens the private-words pane. See
   [Recording mode](#recording-mode).
-- `/quiet [on|off]` draws one line per tool call in place of the command and its output preview. A failure keeps up to
-  3 error lines, runs of read-only calls fold into one line, and a blocked call shows the rule's first sentence.
-  `/quiet off`, Ctrl+O or `[Show]` in the Tools tab bring the full rows back.
+- `/quiet [on|off]`, on by default, draws one line per tool call in place of the command and its output preview. A
+  failure keeps up to 3 error lines, runs of read-only calls fold into one line, and a blocked call shows the rule's
+  first sentence. `/quiet off`, Ctrl+O or `[Show]` in the Tools tab bring the full rows back.
 
   ```text
   ⏺ Bash · Show CI failure lines 1038-1042 · 30 lines ✓
@@ -81,7 +96,10 @@ It changes only when its text does, and clears once nothing needs you.
       FAIL tests/auth.test.ts
   ```
 
-Settings for all three apply to every session and project on the machine; other open sessions follow within 30
+- `/band [full|calm]` sets the band: `full` (the default) adds the turn's tool count, today's cost and the info line;
+  `calm` keeps its two lines. With no argument it prints the state.
+
+Settings for all four apply to every session and project on the machine; other open sessions follow within 30
 seconds.
 
 ## Handoff

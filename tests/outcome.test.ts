@@ -5,7 +5,7 @@ import type { CallFacts } from '../hooks/outcome.ts'
 import type { Failure } from '../types'
 
 // Each fixture is a Phase 0 shape (the brief's question 12)
-const base: CallFacts = { tool: 'Bash', checked: null, checkReason: null, asked: false, failedInTool: false, interrupted: false, classifierReason: null, hookDeny: null, result: null }
+const base: CallFacts = { tool: 'Bash', checked: null, checkReason: null, asked: false, failedInTool: false, interrupted: false, classifierReason: null, hookDeny: null, result: null, aborted: false, autoMode: false }
 
 test('a Bash exit is a new error with its first line', () => {
   expect(classify({ ...base, checked: 'allow', failedInTool: true, result: { isError: true, deny: null, text: 'Exit code 1\nboom' } }))
@@ -59,6 +59,26 @@ test('a classifier block is blocked once PermissionDenied names the call', () =>
 
 test('an ask that errors with no prompt and no PermissionDenied is refused', () => {
   expect(classify({ ...base, checked: 'ask', result: { isError: true, deny: null, text: 'no' } }).outcome).toBe('refused')
+})
+
+test('in auto mode, an ask that errors with no prompt, no failure event and no PermissionDenied is a new error', () => {
+  expect(classify({ ...base, checked: 'ask', autoMode: true, result: { isError: true, deny: null, text: 'Exit code 1' } }))
+    .toEqual({ outcome: 'error', reason: 'Exit code 1', isNew: true, by: null })
+})
+
+test('an aborted call with no failure event is interrupted and not new', () => {
+  expect(classify({ ...base, checked: 'allow', aborted: true, result: { isError: true, deny: null, text: 'Interrupted' } }))
+    .toEqual({ outcome: 'error', reason: 'interrupted', isNew: false, by: null })
+})
+
+test("the person's No stays denied when its dispatch aborted", () => {
+  expect(classify({ ...base, checked: 'ask', asked: true, aborted: true, result: { isError: true, deny: null, text: 'x' } }).outcome)
+    .toBe('denied')
+})
+
+test("a failure event's own flags win over the abort", () => {
+  expect(classify({ ...base, checked: 'allow', failedInTool: true, aborted: true, result: { isError: true, deny: null, text: 'Exit code 2' } }))
+    .toEqual({ outcome: 'error', reason: 'Exit code 2', isNew: true, by: null })
 })
 
 test('an interrupted call is an error that is not new', () => {

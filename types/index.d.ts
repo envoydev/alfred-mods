@@ -110,6 +110,9 @@ export type Level = 'off' | 'on' | 'strict'
 export type RecState = { level: Level; count: number; note: string | null }
 // /quiet: compact tool rows on or off, every session's from `settings:quiet`
 export type Quiet = { isOn: boolean }
+// /band: the full band with its info line, or calm, its two lines; every session's from `settings:band`
+export type BandMode = 'full' | 'calm'
+export type BandSetting = { mode: BandMode }
 // F8: the stored mode and threshold; `point`, the tokens where Claude Code compacts by itself; `handled`, the highest
 // step handled; `lastSave`, the last save's time and result; `alfred`, the stack's status file as last read
 export type HandoffMode = 'ask' | 'auto' | 'off'
@@ -146,6 +149,7 @@ declare module 'claude-code' {
       live: Shaped<Live>; usage: Shaped<Usage>; totals: Shaped<Totals>; meta: Shaped<Meta>
       view: Shaped<View>; pace: Shaped<Pace>; agents: Shaped<AgentRow[]>; cache: Shaped<Cache>; tick: number
       plans: Shaped<Plans>; credit: Shaped<Credit>; tasks: Shaped<TaskItem[]>; rec: Shaped<RecState>; quiet: Shaped<Quiet>; handoff: Shaped<Handoff>
+      band: Shaped<BandSetting>
       stack: Shaped<Stack>
       // Blocks per hook script this session (spec C6), so the failure list's cap loses no count
       blockers: Shaped<Record<string, number>>
