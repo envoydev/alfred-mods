@@ -49,8 +49,9 @@ export function stubAll(on: On, o: Options = {}): {
   statuses: (string | undefined)[]
   // `set` writes as another session would, beneath the mod
   store: { get(key: string): unknown; keys(): string[]; set(key: string, value: unknown): void }
-  // A test changes the session id mid-test, as a /clear does, through `session.id`
-  session: { id: string }
+  // A test changes the session id mid-test, as a /clear does, through `session.id`; `turns` is how many prompts the
+  // session's transcript holds, 1 right after a /clear (its own row) and more after a resume
+  session: { id: string; turns: number }
 } {
   const toasts: string[] = []
   const opened: string[] = []
@@ -66,8 +67,9 @@ export function stubAll(on: On, o: Options = {}): {
     usage.breakdowns++
     return usage.refuse ? { deny: 'test: usage refused' } : { value: usage.current }
   })
-  const session = { id: o.sessionId ?? 's1' }
+  const session = { id: o.sessionId ?? 's1', turns: 0 }
   on('session.id', () => ({ value: session.id }))
+  on('session.turns', () => ({ value: session.turns }))
   on('session.cwd', () => ({ value: o.cwd ?? '/w' }))
   on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('ui.open', (_, e) => {

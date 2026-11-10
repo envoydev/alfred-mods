@@ -63,11 +63,25 @@ counted apart on one line, `Other loops 2 · 1 active · out 41k`; their tool ca
 A call a hook blocked names the hook's script, `⊘ blocked by guard.js: …`, and the Tools tab counts blocks by script
 under `Blocked by hooks`.
 
-An administrator's managed plugin can send a failed call's `classic.PostToolUseFailure` past the plugins you install,
-and Claude Code then notes `alfred-mods: its classic.PostToolUseFailure hook was skipped`. The mod still counts a call
-that fails in auto mode as a new failure and reads an interrupt from its own tool hook. What it cannot tell then: with
-the permission dialog, a call you approved that then fails reads `denied by you`, and a classifier block whose
-`PermissionDenied` the plugin also skips counts as a new failure.
+An administrator's managed plugin can send events on past the plugins you install, and Claude Code then tells the
+model, once per event and conversation, `alfred-mods: its classic.SessionStart hook was skipped. "<plugin>" runs first
+and sent the event on past it.` One did so for six of the mod's hooks: `classic.SessionStart`, `classic.PostToolUse`,
+`classic.PermissionRequest`, `classic.PostToolUseFailure`, `classic.PermissionDenied` and `skill.prompt`. On such a
+machine, turn on the mod's option `Leave out hooks a managed plugin skips` (`leave_out_skipped_hooks`) in `/config`:
+the mod leaves those six hooks out, so the notices stop, and loses nothing, as they never ran there. A new install
+asks for it once; leave it off anywhere else. Either way the mod reads a `/clear`, a resume or a branch off the session
+id, so the band starts over within a second and the first prompt carries REC's note. A `/clear` after a saved handoff
+still fills the resume prompt, unless you send a prompt first; resuming a conversation of one prompt fills it too, into
+the empty box, never sent. What it cannot tell without those hooks:
+
+- outside auto mode, a call you were asked about reads `refused`, whether you denied it, it failed after you allowed
+  it, or another plugin's permission hook denied it;
+- a classifier block counts as a new failure;
+- a skill typed as `/name` is not counted;
+- time you spend at a permission prompt counts toward a plan step's time;
+- after a resume, the cache's rewrite cost (`rewrite ≈ $…`) is missing until you switch models.
+
+A call that fails in auto mode still counts as new, and an interrupt is read from the mod's own tool hook.
 
 While something needs you - recording mode on, the context at 60% or more, new failures - the mod pins one line under
 the prompt, `⚠ alfred-mods: ● REC · ctx 82% · ✗ 2 new`, which stays while the band is collapsed (Ctrl+X Ctrl+A).

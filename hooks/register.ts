@@ -136,6 +136,11 @@ const NO_FACTS: Omit<CallFacts, 'tool'> = {
 // auto mode; null until one arrives
 const modeMem = { mode: null as string | null }
 
+// The conversation the mod last started, by session id, and the start-over running. A /clear, a resume or a branch goes
+// on under a new id: classic.SessionStart starts it over, and where a managed plugin keeps that hook from the mod, the
+// tick or the next prompt does once it reads the new id. The id is null until session.start.
+const conversationMem = { id: null as string | null, starting: null as Promise<void> | null }
+
 function tally(stat: ToolStat | undefined, outcome: Outcome, by: 1 | -1): ToolStat {
   const t = stat ?? { calls: 0, ok: 0, failed: 0, stopped: 0 }
   return {
@@ -1167,6 +1172,68 @@ async function fillResume($: EngineInterface): Promise<void> {
   else toast($, TOASTS.fallback(at))
 }
 
+// A /clear, a resume or a branch starts the session over under a new id: Claude Code resets $.state itself, and the
+// mod writes its own start values too, so the reset is the mod's and testable. Each runs after the one before. `source`
+// is classic.SessionStart's, 'prompt' where a prompt found the new id, or null where the tick did: then a transcript of
+// one prompt at most, the /clear's own row (live, 2026-11-10), was a /clear. A resumed conversation of one prompt reads
+// as one too, and gets the resume prompt in an empty draft, never sent. A prompt that found the id has left the box,
+// which is not filled after it. No session.end hook tells them apart: a managed plugin that skips the mod's hooks may
+// skip that one too, and the mod hooks no event it did not hook before.
+function startOver($: EngineInterface, source: string | null, calls: Map<string, Call>, held: Held): Promise<void> {
+  const run = (conversationMem.starting ?? Promise.resolve()).catch(() => undefined).then(async () => {
+    conversationMem.id = await $.session.id()
+    const isClear = source === 'clear' || (source === null && (await $.session.turns()) <= 1)
+    // The new id's file may land after this read, from the stack's own SessionStart hook: for 10 s a read that finds
+    // no file keeps the last values (Phase 5 spec Choice 12). The window opens first, so a poll tick while the stores
+    // load is inside it
+    stackMem.keepUntil = (await $.clock.now()) + 10_000
+    stackMem.reread?.cancel()
+    stackMem.reread = null
+    held.close?.cancel()
+    held.close = null
+    calls.clear()
+    // A cleared or resumed conversation is told of REC again on its first prompt
+    noteMem.told = 'off'
+    // Its first reading steps afresh: a compaction's pending re-arm and the step saved at belong to the conversation
+    // before
+    handoffMem.rearm = false
+    handoffMem.savedStep = null
+    await resetAll($)
+    await loadRec($)
+    await loadQuiet($)
+    await loadBand($)
+    await loadHandoff($)
+    // This read, finding no file, reads once more at 2 s
+    if (!(await readStatus($, true))) {
+      stackMem.reread = $.clock.after(2000, () => {
+        stackMem.reread = null
+        readStatus($).catch(() => undefined)
+      })
+    }
+    if (isClear) await fillResume($)
+    const now = await $.clock.now()
+    await update($, plans, p => ({ ...p, since: now }))
+    await seedMine($)
+    scheduleReload($, held)
+    await baseline($, await takeUsage($, await todayUsd($, now)))
+  })
+  const starting: Promise<void> = run.finally(() => {
+    if (conversationMem.starting === starting) conversationMem.starting = null
+  })
+  conversationMem.starting = starting
+  return starting
+}
+
+// A new id that no classic.SessionStart reported, read at the tick (`by` null) and before a prompt (`by` 'prompt'):
+// started over once. A start-over already running answers for it, and is waited for.
+async function followConversation($: EngineInterface, by: 'prompt' | null, calls: Map<string, Call>, held: Held): Promise<void> {
+  if (conversationMem.starting !== null) return conversationMem.starting
+  if (conversationMem.id === null) return
+  const id = await $.session.id()
+  if (conversationMem.starting !== null) return conversationMem.starting
+  if (id !== conversationMem.id) await startOver($, by, calls, held)
+}
+
 // `f` in the ALFRED CODE section: the stack's resume prompt into an empty draft, never sent. A press from a frame drawn
 // before the prompt went away or the file stopped owning the full context fills nothing (Decision 7).
 async function fillStack($: EngineInterface): Promise<void> {
@@ -1232,7 +1299,11 @@ async function isNoColor($: EngineInterface): Promise<boolean> {
   return ((await $.env.get('NO_COLOR')) ?? '') !== ''
 }
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
+  // The person's word that a managed plugin sends these events on past the mod: Claude Code then tells the model, once
+  // per event and conversation, that the mod's hook was skipped. Left out, the hooks never join the chain; they never ran
+  // there anyway, and a new conversation is read off the session id.
+  const isLeftOut = options.leave_out_skipped_hooks === true
   // Keyed by call id, at most 100, the oldest dropped first
   const calls = new Map<string, Call>()
   const held: Held = {
@@ -1335,63 +1406,89 @@ export const register: Register = on => {
     return verdict
   }).catch(($, e, next) => next(e))
 
-  on('classic.PostToolUseFailure', ($, e, next) => {
-    const call = calls.get(e.tool_use_id)
-    if (call !== undefined) call.facts = { ...call.facts, failedInTool: true, interrupted: e.is_interrupt === true }
-    return next(e)
-  }).catch(($, e, next) => next(e))
-
-  // The tool's own time, without the permission prompt or hooks: a call the person was asked about waited the rest
-  on('classic.PostToolUse', async ($, e, next) => {
-    if (e.agent_id === undefined && typeof e.permission_mode === 'string') modeMem.mode = e.permission_mode
-    const call = calls.get(e.tool_use_id)
-    if (call !== undefined) {
-      call.durationMs = e.duration_ms ?? null
-      const ms = call.pendingMs
-      if (ms !== null && call.durationMs !== null) {
-        call.pendingMs = null
-        await addWait($, call.agentId ?? 'main', Math.max(0, ms - call.durationMs), await $.clock.now())
-      }
-    }
-    return next(e)
-  }).catch(($, e, next) => next(e))
-
   // The permission mode only: the prompt itself is never read or kept
   on('classic.UserPromptSubmit', ($, e, next) => {
     if (typeof e.permission_mode === 'string') modeMem.mode = e.permission_mode
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  // The person is asked only when no hook answered the request. It names no call id: it marks the newest unsettled
-  // call of the tool whose check said ask.
-  on('classic.PermissionRequest', async ($, e, next) => {
-    const answered = await next(e)
-    const call = [...calls.values()].reverse().find(c => !c.settled && c.facts.tool === e.tool_name && c.facts.checked === 'ask')
-    const decision = answered.decision
-    if (call !== undefined && decision === undefined) call.facts = { ...call.facts, asked: true }
-    if (call !== undefined && decision?.behavior === 'deny') call.facts = { ...call.facts, hookDeny: decision.message ?? '' }
-    return answered
-  }).catch(($, e, next) => next(e))
+  // The six hooks a managed plugin's notices named (2026-11-10), each of which it can send on past the mod. Left out
+  // with `leave_out_skipped_hooks`, as they never run there: Claude Code then has no skipped hook to tell the model of.
+  if (!isLeftOut) {
+    on('classic.PostToolUseFailure', ($, e, next) => {
+      const call = calls.get(e.tool_use_id)
+      if (call !== undefined) call.facts = { ...call.facts, failedInTool: true, interrupted: e.is_interrupt === true }
+      return next(e)
+    }).catch(($, e, next) => next(e))
 
-  // It can arrive after the call settled: the call is classified again, its row and counts replaced
-  on('classic.PermissionDenied', async ($, e, next) => {
-    const call = calls.get(e.tool_use_id)
-    if (call !== undefined) {
-      call.facts = { ...call.facts, classifierReason: e.reason }
-      if (call.settled) await settle($, e.tool_use_id, call)
-    }
-    return next(e)
-  }).catch(($, e, next) => next(e))
+    // The tool's own time, without the permission prompt or hooks: a call the person was asked about waited the rest
+    on('classic.PostToolUse', async ($, e, next) => {
+      if (e.agent_id === undefined && typeof e.permission_mode === 'string') modeMem.mode = e.permission_mode
+      const call = calls.get(e.tool_use_id)
+      if (call !== undefined) {
+        call.durationMs = e.duration_ms ?? null
+        const ms = call.pendingMs
+        if (ms !== null && call.durationMs !== null) {
+          call.pendingMs = null
+          await addWait($, call.agentId ?? 'main', Math.max(0, ms - call.durationMs), await $.clock.now())
+        }
+      }
+      return next(e)
+    }).catch(($, e, next) => next(e))
 
-  // A skill the person runs as /name raises no Skill call; one the model runs raises both, and counts once
-  on('skill.prompt', async ($, e, next) => {
-    const prompted = await next(e)
-    const key = `Skill: ${e.skill}`
-    if (![...calls.values()].some(c => !c.settled && c.key === key)) {
-      await update($, stats, s => ({ ...s, [key]: tally(s[key], 'ok', 1) }))
-    }
-    return prompted
-  }).catch(($, e, next) => next(e))
+    // The person is asked only when no hook answered the request. It names no call id: it marks the newest unsettled
+    // call of the tool whose check said ask.
+    on('classic.PermissionRequest', async ($, e, next) => {
+      const answered = await next(e)
+      const call = [...calls.values()].reverse().find(c => !c.settled && c.facts.tool === e.tool_name && c.facts.checked === 'ask')
+      const decision = answered.decision
+      if (call !== undefined && decision === undefined) call.facts = { ...call.facts, asked: true }
+      if (call !== undefined && decision?.behavior === 'deny') call.facts = { ...call.facts, hookDeny: decision.message ?? '' }
+      return answered
+    }).catch(($, e, next) => next(e))
+
+    // It can arrive after the call settled: the call is classified again, its row and counts replaced
+    on('classic.PermissionDenied', async ($, e, next) => {
+      const call = calls.get(e.tool_use_id)
+      if (call !== undefined) {
+        call.facts = { ...call.facts, classifierReason: e.reason }
+        if (call.settled) await settle($, e.tool_use_id, call)
+      }
+      return next(e)
+    }).catch(($, e, next) => next(e))
+
+    // A skill the person runs as /name raises no Skill call; one the model runs raises both, and counts once
+    on('skill.prompt', async ($, e, next) => {
+      const prompted = await next(e)
+      const key = `Skill: ${e.skill}`
+      if (![...calls.values()].some(c => !c.settled && c.key === key)) {
+        await update($, stats, s => ({ ...s, [key]: tally(s[key], 'ok', 1) }))
+      }
+      return prompted
+    }).catch(($, e, next) => next(e))
+
+    // A /clear, a resume or a branch starts over at once; a resumed one also takes the cache rate its event carries
+    on('classic.SessionStart', async ($, e, next) => {
+      if (typeof e.permission_mode === 'string') modeMem.mode = e.permission_mode
+      if (e.source === 'clear' || e.source === 'resume' || e.source === 'fork') {
+        await startOver($, e.source, calls, held)
+        const cost = e.estimated_cache_write_usd
+        const tokens = e.context_tokens ?? 0
+        if (e.source !== 'clear' && cost !== undefined && tokens > 0) {
+          const model = e.model ?? null
+          await update($, cache, c => takeRate(c, cost, tokens, model))
+        }
+      }
+      await readCacheConfig($, held)
+      if (e.source !== 'startup') return next(e)
+      // A start: the stack's own SessionStart hook, beneath, writes this session's file, so it is read once those hooks
+      // have run, not at the next poll. A compaction's rewrite waits for the poll: read here, it would step the handoff
+      // on the context from before the compaction
+      const result = await next(e)
+      await readStatus($).catch(() => undefined)
+      return result
+    }).catch(($, e, next) => next(e))
+  }
 
   on('session.start', async ($, e, next) => {
     const started = await next(e)
@@ -1407,9 +1504,11 @@ export const register: Register = on => {
     await loadHandoff($)
     await readStatus($)
     freshMem.at = -Infinity
-    // Moves the agent rows and redraws the running times once a second
+    conversationMem.id = await $.session.id()
+    // Starts over a conversation no classic.SessionStart reported, moves the agent rows and redraws the running times,
+    // once a second
     $.clock.every(1000, () => {
-      tickOnce($).catch(() => undefined)
+      followConversation($, null, calls, held).then(() => tickOnce($)).catch(() => undefined)
     })
     const now = await $.clock.now()
     await pruneCost($, now)
@@ -1434,64 +1533,13 @@ export const register: Register = on => {
     return started
   }).catch(($, e, next) => next(e))
 
-  // A /clear, a resume or a fork starts the session over under a new id: Claude Code resets $.state itself, and the
-  // mod writes its own start values too, so the reset is the mod's and testable
-  on('classic.SessionStart', async ($, e, next) => {
-    if (typeof e.permission_mode === 'string') modeMem.mode = e.permission_mode
-    if (e.source === 'clear' || e.source === 'resume' || e.source === 'fork') {
-      // The new id's file may land after this handler's read, from the stack's own SessionStart hook: for 10 s a read
-      // that finds no file keeps the last values (Phase 5 spec Choice 12). The window opens first, so a poll tick while
-      // the stores load is inside it
-      stackMem.keepUntil = (await $.clock.now()) + 10_000
-      stackMem.reread?.cancel()
-      stackMem.reread = null
-      held.close?.cancel()
-      held.close = null
-      calls.clear()
-      // A cleared or resumed conversation is told of REC again on its first prompt
-      noteMem.told = 'off'
-      // Its first reading steps afresh: a compaction's pending re-arm and the step saved at belong to the conversation before
-      handoffMem.rearm = false
-      handoffMem.savedStep = null
-      await resetAll($)
-      await loadRec($)
-      await loadQuiet($)
-      await loadBand($)
-      await loadHandoff($)
-      // This read, finding no file, reads once more at 2 s
-      if (!(await readStatus($, true))) {
-        stackMem.reread = $.clock.after(2000, () => {
-          stackMem.reread = null
-          readStatus($).catch(() => undefined)
-        })
-      }
-      if (e.source === 'clear') await fillResume($)
-      const now = await $.clock.now()
-      await update($, plans, p => ({ ...p, since: now }))
-      await seedMine($)
-      scheduleReload($, held)
-      await baseline($, await takeUsage($, await todayUsd($, now)))
-      const cost = e.estimated_cache_write_usd
-      const tokens = e.context_tokens ?? 0
-      if (e.source !== 'clear' && cost !== undefined && tokens > 0) {
-        const model = e.model ?? null
-        await update($, cache, c => takeRate(c, cost, tokens, model))
-      }
-    }
-    await readCacheConfig($, held)
-    if (e.source !== 'startup') return next(e)
-    // A start: the stack's own SessionStart hook, beneath, writes this session's file, so it is read once those hooks
-    // have run, not at the next poll. A compaction's rewrite waits for the poll: read here, it would step the handoff on
-    // the context from before the compaction
-    const result = await next(e)
-    await readStatus($).catch(() => undefined)
-    return result
-  }).catch(($, e, next) => next(e))
-
   // Your prompt, typed at the terminal or sent through Remote Control, waits for the turn that answers it: the engine
   // queues one typed during a turn, and a slash command may start no turn at all. It waits before `next`, as the
   // engine may start its turn before this hook resumes; a prompt dropped beneath leaves, one rewritten is re-keyed.
   on('prompt.submit', async ($, e, next) => {
+    // A conversation no classic.SessionStart reported starts over before its first prompt, which carries REC's note
+    // even when the start-over fails
+    await followConversation($, 'prompt', calls, held).catch(() => undefined)
     if (e.origin.kind !== 'composer' && e.origin.kind !== 'bridge') return next(e)
     const at = await $.clock.now()
     const key = fingerprint(e.text)
