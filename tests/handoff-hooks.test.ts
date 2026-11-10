@@ -453,6 +453,34 @@ test('a /clear within 2 hours fills the resume prompt once, only into an empty d
   expect(prompt.fills).toEqual([RESUME])
 })
 
+// A managed plugin may keep classic.SessionStart from the mod: the new id at the tick starts the conversation over, and
+// one whose transcript holds one prompt at most, the /clear's own row (live, 2026-11-10), was a /clear
+test('with no SessionStart seen, a resumed id fills nothing and a cleared one fills the resume prompt', { timeoutMs: 15_000 }, async ($, on) => {
+  const { prompt, clock, h, session } = await start($, on)
+  await handoff($, 'now')
+  await saved(clock, h)
+  session.id = 's-resumed'
+  session.turns = 4
+  await clock.advance(1000)
+  expect(prompt.fills).toEqual([])
+  session.id = 's-cleared'
+  session.turns = 1
+  await clock.advance(1000)
+  expect(prompt.fills).toEqual([RESUME])
+})
+
+// A prompt sent before the tick read the new id has left the box, which is not filled after it, whether or not the
+// transcript counts that prompt yet
+test('with no SessionStart seen, a prompt sent right after /clear fills nothing', { timeoutMs: 15_000 }, async ($, on) => {
+  const { prompt, clock, h, session } = await start($, on)
+  await handoff($, 'now')
+  await saved(clock, h)
+  session.id = 's-cleared'
+  session.turns = 1
+  await $.prompt.submit({ text: 'q', wait: false, origin: { kind: 'composer' } })
+  expect(prompt.fills).toEqual([])
+})
+
 test('a draft that is not empty gets the fallback toast', async ($, on) => {
   const { prompt, clock, toasts, h } = await start($, on, { draft: 'half typed' })
   await handoff($, 'now')
