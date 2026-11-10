@@ -7,5 +7,13 @@
   "repository": "https://github.com/envoydev/alfred-mods",
   "license": "MIT",
   "keywords": ["mod", "session", "context", "usage", "cost", "agents", "statusline"],
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "leave_out_skipped_hooks": {
+      "type": "boolean",
+      "title": "Leave out hooks a managed plugin skips",
+      "description": "Only where Claude Code notes 'alfred-mods: its ... hook was skipped': the mod leaves out those six hooks, which never run there, so the notices stop. Off elsewhere.",
+      "default": false
+    }
+  }
 }
