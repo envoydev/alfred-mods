@@ -13,11 +13,18 @@ export type CallFacts = {
   classifierReason: string | null
   hookDeny: string | null
   result: { isError: boolean; deny: string | null; text: string } | null
+  // The mod's own tool.call dispatch was abandoned when the call errored (types `Next.signal`): the person's Esc, or a
+  // hook above that settled first
+  aborted: boolean
+  // The session's last seen permission mode was 'auto' when the call started
+  autoMode: boolean
 }
 
 // The first rule that holds wins. Blocked, refused and interrupted calls never count as new: Claude recovers from
 // a block by itself, and an interrupt is the person's own act. `by` names the hook script that blocked the call, when
-// its reason names one (spec C6).
+// its reason names one (spec C6). A plugin in a tier above may keep classic.PostToolUseFailure from the mod, so two
+// rules stand without it: an abort read from the mod's own hook marks an interrupt, and in auto mode an `ask` nobody
+// saw was the classifier's allow, so its error is the tool's (a classifier block still arrives as PermissionDenied).
 export function classify(f: CallFacts): { outcome: Outcome; reason: string; isNew: boolean; by: string | null } {
   // Claude Code wraps an input error in a tag meant for the model
   const text = (f.result?.text ?? '').replace(/<\/?tool_use_error>/g, '')
@@ -31,7 +38,8 @@ export function classify(f: CallFacts): { outcome: Outcome; reason: string; isNe
   if (f.failedInTool && f.interrupted) return plain('error', 'interrupted', false)
   if (f.failedInTool) return plain('error', oneLine(text, 80) || 'failed', true)
   if (f.checked === 'ask' && f.asked) return plain('denied', 'denied by you', true)
-  if (f.checked === 'ask') return plain('refused', oneLine(text, 80) || 'refused', false)
+  if (f.aborted) return plain('error', 'interrupted', false)
+  if (f.checked === 'ask' && !f.autoMode) return plain('refused', oneLine(text, 80) || 'refused', false)
   // No check, an error, no failure: an input error or Claude Code's own refusal, shown as an error by the ruling
   return plain('error', oneLine(text, 80) || 'failed', true)
 }

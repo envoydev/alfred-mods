@@ -13,6 +13,7 @@ import {
 } from './cache.ts'
 import { baseCost, pruneCost, recordCost, todayUsd } from './cost.ts'
 import { drawLines, drawNote, drawWithInput } from './draw.tsx'
+import { localDate } from './forecast.ts'
 import { REC_HIDDEN, SPINNER_WORD, bandFailed, paneFailed } from './failsafe.ts'
 import { NO_PARTS, partsOf } from './parts.ts'
 import { clock, fingerprint, mins, oneLine, printable, tokens, usd, when } from './format.ts'
@@ -38,7 +39,7 @@ import { classify, fold, targetOf, toolKey } from './outcome.ts'
 import { LEVELS, REC_HELP, addWord, parseLevel, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec.ts'
 import type { CallFacts } from './outcome.ts'
 import type {
-  AgentRow, Cache, CacheConfig, Credit, Failure, Handoff, Live, Loop, Meta, Outcome, Pace, Plan, PlanChange, Level, Plans, Quiet, RecState, SaveResult, Scores, Stack, Tab, TaskItem, ToolStat, Totals, Turn, Usage, View,
+  AgentRow, Cache, CacheConfig, Credit, Failure, Handoff, Live, Loop, Meta, Outcome, Pace, Plan, PlanChange, Level, Plans, Quiet, BandSetting, BandMode, RecState, SaveResult, Scores, Stack, Tab, TaskItem, ToolStat, Totals, Turn, Usage, View,
   Watched, Window,
 } from '../types'
 
@@ -86,6 +87,9 @@ const INITIAL = {
   tasks: [] as TaskItem[],
   rec: { level: 'off', count: 0, note: null } as RecState,
   quiet: { isOn: false } as Quiet,
+  // Calm until session start reads the setting, which turns it full when nothing is stored: a test that never starts
+  // a session draws the band it was written for
+  band: { mode: 'calm' } as BandSetting,
   handoff: {
     mode: 'ask', threshold: 80, point: null, handled: null, isAskUp: false, lastSave: null, alfred: { state: 'none', reason: null },
   } as Handoff,
@@ -116,6 +120,7 @@ const credit = atom({ plugin: 'alfred-mods', key: 'credit' } as const, INITIAL.c
 const tasks = atom({ plugin: 'alfred-mods', key: 'tasks' } as const, INITIAL.tasks, { shape: 'tasks-1' })
 const rec = atom({ plugin: 'alfred-mods', key: 'rec' } as const, INITIAL.rec, { shape: 'rec-1' })
 const quiet = atom({ plugin: 'alfred-mods', key: 'quiet' } as const, INITIAL.quiet, { shape: 'quiet-1' })
+const bandSetting = atom({ plugin: 'alfred-mods', key: 'band' } as const, INITIAL.band, { shape: 'band-1' })
 const handoff = atom({ plugin: 'alfred-mods', key: 'handoff' } as const, INITIAL.handoff, { shape: 'handoff-1' })
 const stack = atom({ plugin: 'alfred-mods', key: 'stack' } as const, INITIAL.stack, { shape: 'stack-1' })
 const blockers = atom({ plugin: 'alfred-mods', key: 'blockers' } as const, INITIAL.blockers, { shape: 'blockers-1' })
@@ -124,7 +129,12 @@ const loops = atom({ plugin: 'alfred-mods', key: 'loops' } as const, INITIAL.loo
 
 const NO_FACTS: Omit<CallFacts, 'tool'> = {
   checked: null, checkReason: null, asked: false, failedInTool: false, interrupted: false, classifierReason: null, hookDeny: null, result: null,
+  aborted: false, autoMode: false,
 }
+
+// The session's permission mode as the classic events last reported it (`permission_mode`), for the failure rule in
+// auto mode; null until one arrives
+const modeMem = { mode: null as string | null }
 
 function tally(stat: ToolStat | undefined, outcome: Outcome, by: 1 | -1): ToolStat {
   const t = stat ?? { calls: 0, ok: 0, failed: 0, stopped: 0 }
@@ -247,13 +257,39 @@ const windowsOf = (limits: readonly SessionRateLimit[]): Window[] =>
 // The status line's figures now; today's cost is the store's, so it is only replaced when given
 async function takeUsage($: EngineInterface, today?: number | null): Promise<SessionUsage> {
   const reading = await $.session.usage()
+  await writeUsage($, reading, today)
+  return reading
+}
+
+// Today's cost as the store last gave it, with the session's cost at that reading and the local date it was for: a
+// step adds what the session spent since, so today's figure moves mid-turn with no store work (spec B). The store is
+// written at the turn's end, and read again by the tick once the date has turned.
+let todayMem: { cost: number; today: number; date: string } | null = null
+
+async function writeUsage($: EngineInterface, reading: SessionUsage, today?: number | null): Promise<void> {
   const at = await $.clock.now()
+  if (typeof today === 'number') todayMem = reading.cost === undefined ? null : { cost: reading.cost.usd, today, date: localDate(at) }
   await update($, usage, u => ({
     tokens: reading.context.tokens ?? null, window: reading.context.window, percent: reading.context.percent ?? null,
     startedAt: reading.startedAt, windows: windowsOf(reading.rateLimits), costUsd: reading.cost?.usd ?? null,
     todayUsd: today === undefined ? u.todayUsd : today, at,
   }))
-  return reading
+}
+
+// When the band's figures were last read mid-turn: the tick reads them at most this often while a turn runs or an
+// agent is live, since a foreground agent holds the main loop and no main step fires until it ends
+const freshMem = { at: -Infinity }
+const FRESH_EVERY_MS = 5000
+
+// A main-loop step's reading: the band's ctx and cost before the turn ends (session.measure fires after it)
+async function freshUsage($: EngineInterface): Promise<void> {
+  freshMem.at = await $.clock.now()
+  const reading = await $.session.usage()
+  const mem = todayMem
+  const isToday = mem !== null && mem.date === localDate(freshMem.at)
+  const today = isToday && reading.cost !== undefined ? mem.today + Math.max(0, reading.cost.usd - mem.cost) : undefined
+  await writeUsage($, reading, today)
+  await syncStatus($)
 }
 
 // A session first seen now takes its cost so far as the baseline: spend a /clear or a resume carries over
@@ -261,7 +297,11 @@ async function baseline($: EngineInterface, reading: SessionUsage): Promise<void
   if (reading.cost !== undefined) await baseCost($, await $.session.id(), reading.cost.usd, await $.clock.now())
 }
 
-// Once a second: the engine's list moves the live agent rows, and the clocks on screen redraw while anything runs
+// The clock's minute the last tick saw: the full band's info line shows the session's time, which moves while idle
+const tickMem = { minute: -1 }
+
+// Once a second: the engine's list moves the live agent rows, the band's figures are read every 5 seconds and the
+// clocks on screen redraw while anything runs, and the clocks redraw once a minute while the band is full
 async function tickOnce($: EngineInterface): Promise<void> {
   const rows = await read($, agents)
   const anyLive = rows.some(r => isLive(r.status))
@@ -273,7 +313,26 @@ async function tickOnce($: EngineInterface): Promise<void> {
     }
   }
   const isWarm = needsTick(await read($, cache), billingOf((await read($, usage)).windows), now)
-  if (anyLive || isWarm || (await read($, live)).turnId !== null) await update($, tick, n => n + 1)
+  const minute = Math.floor(now / 60_000)
+  const isNewMinute = minute !== tickMem.minute && (await read($, bandSetting)).mode === 'full'
+  tickMem.minute = minute
+  // Past local midnight, today's cost is the new date's in the store
+  if (todayMem !== null && todayMem.date !== localDate(now)) {
+    try {
+      await takeUsage($, await todayUsd($, now))
+    } catch {
+      // The next tick tries again
+    }
+  }
+  const isBusy = anyLive || (await read($, live)).turnId !== null
+  if (isBusy && now - freshMem.at >= FRESH_EVERY_MS) {
+    try {
+      await freshUsage($)
+    } catch {
+      // The band keeps its last figures until the next tick
+    }
+  }
+  if (isBusy || isWarm || isNewMinute) await update($, tick, n => n + 1)
   // A failure the pane marked seen, a /clear or a stack file read leaves the line as it was until here
   await syncStatus($)
 }
@@ -818,11 +877,19 @@ const recOf = (r: RecState): { level: RecState['level']; words: number } => ({ l
 
 const OTHER_SESSIONS = 'Other open sessions follow within 30 s; run /rec in each one on screen.'
 
-// /quiet's stored setting into the quiet atom, at the same points as REC's: only `true` is on
+// /quiet's stored setting into the quiet atom, at the same points as REC's: only `false`, which /quiet off writes, is
+// off; absent, or anything another version or a hand wrote, is on
 async function loadQuiet($: EngineInterface): Promise<boolean> {
-  const isOn = (await $.store.get('settings:quiet')) === true
+  const isOn = (await $.store.get('settings:quiet')) !== false
   await update($, quiet, q => (q.isOn === isOn ? q : { isOn }))
   return isOn
+}
+
+// Only the exact string 'calm' reads as calm: absent, or anything another version or a hand wrote, is full
+async function loadBand($: EngineInterface): Promise<BandMode> {
+  const mode: BandMode = (await $.store.get('settings:band')) === 'calm' ? 'calm' : 'full'
+  await update($, bandSetting, b => (b.mode === mode ? b : { mode }))
+  return mode
 }
 
 // F8's memory outside $.state: whether the stack stood F8 down, which outlives a /clear until a read of the new id's
@@ -1158,6 +1225,7 @@ function forecastOf(h: Handoff, u: Usage, runway: Runway | null): { at: number; 
 }
 
 const QUIET_USAGE = 'Usage: /quiet [on|off]'
+const BAND_USAGE = 'Usage: /band [full|calm]'
 const quietText = (isOn: boolean): string => `Compact tool rows: ${isOn ? 'on' : 'off'}`
 
 async function isNoColor($: EngineInterface): Promise<boolean> {
@@ -1209,6 +1277,7 @@ export const register: Register = on => {
     call.key = toolKey(e.tool, input)
     call.target = targetOf(e.tool, input, await $.session.cwd())
     call.agentId = e.agentId ?? null
+    call.facts = { ...call.facts, autoMode: modeMem.mode === 'auto' }
     const startedAt = await $.clock.now()
     call.startedAt = startedAt
     if (call.agentId === null) {
@@ -1223,7 +1292,11 @@ export const register: Register = on => {
     const ran = await next(e)
     const text = ran.text ?? (typeof ran.result === 'string' ? ran.result : '')
     if (ran.isError === true && text !== '') keepError(e.tool_use_id, text)
-    call.facts = { ...call.facts, result: { isError: ran.isError === true || ran.deny !== undefined, deny: ran.deny ?? null, text } }
+    call.facts = {
+      ...call.facts,
+      result: { isError: ran.isError === true || ran.deny !== undefined, deny: ran.deny ?? null, text },
+      aborted: ran.isError === true && next.signal.aborted,
+    }
     await settle($, e.tool_use_id, call)
     const endedAt = await $.clock.now()
     const ms = endedAt - startedAt
@@ -1270,6 +1343,7 @@ export const register: Register = on => {
 
   // The tool's own time, without the permission prompt or hooks: a call the person was asked about waited the rest
   on('classic.PostToolUse', async ($, e, next) => {
+    if (e.agent_id === undefined && typeof e.permission_mode === 'string') modeMem.mode = e.permission_mode
     const call = calls.get(e.tool_use_id)
     if (call !== undefined) {
       call.durationMs = e.duration_ms ?? null
@@ -1279,6 +1353,12 @@ export const register: Register = on => {
         await addWait($, call.agentId ?? 'main', Math.max(0, ms - call.durationMs), await $.clock.now())
       }
     }
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // The permission mode only: the prompt itself is never read or kept
+  on('classic.UserPromptSubmit', ($, e, next) => {
+    if (typeof e.permission_mode === 'string') modeMem.mode = e.permission_mode
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -1318,12 +1398,15 @@ export const register: Register = on => {
     await $.command.register({ name: 'inspect', description: 'Session metrics, agents, tool failures, cache, the timeline and the plan in a pane', argumentHint: '[now|usage|agents|tools|cache|timeline|plan [name]]' })
     await $.command.register({ name: 'rec', description: 'Recording mode: hide keys, emails, phones and your private words on screen', argumentHint: '[on|strict|off|test|words]' })
     await $.command.register({ name: 'quiet', description: 'Compact tool rows: one line per tool call', argumentHint: '[on|off]' })
+    await $.command.register({ name: 'band', description: 'The band above the prompt: full with its info line, or calm, its two lines', argumentHint: '[full|calm]' })
     await $.command.register({ name: 'auto-handoff', description: 'Save a handoff before the context fills: ask, save by itself, or off', argumentHint: '[ask|auto|off|at <percent>|now]' })
     recMem.home = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE')) ?? null
     await loadRec($)
     await loadQuiet($)
+    await loadBand($)
     await loadHandoff($)
     await readStatus($)
+    freshMem.at = -Infinity
     // Moves the agent rows and redraws the running times once a second
     $.clock.every(1000, () => {
       tickOnce($).catch(() => undefined)
@@ -1344,6 +1427,7 @@ export const register: Register = on => {
       queueReload($, held)
       loadRec($).catch(() => undefined)
       loadQuiet($).catch(() => undefined)
+      loadBand($).catch(() => undefined)
       loadHandoff($).then(() => readStatus($)).catch(() => undefined)
     })
     scheduleReload($, held)
@@ -1353,6 +1437,7 @@ export const register: Register = on => {
   // A /clear, a resume or a fork starts the session over under a new id: Claude Code resets $.state itself, and the
   // mod writes its own start values too, so the reset is the mod's and testable
   on('classic.SessionStart', async ($, e, next) => {
+    if (typeof e.permission_mode === 'string') modeMem.mode = e.permission_mode
     if (e.source === 'clear' || e.source === 'resume' || e.source === 'fork') {
       // The new id's file may land after this handler's read, from the stack's own SessionStart hook: for 10 s a read
       // that finds no file keeps the last values (Phase 5 spec Choice 12). The window opens first, so a poll tick while
@@ -1371,6 +1456,7 @@ export const register: Register = on => {
       await resetAll($)
       await loadRec($)
       await loadQuiet($)
+      await loadBand($)
       await loadHandoff($)
       // This read, finding no file, reads once more at 2 s
       if (!(await readStatus($, true))) {
@@ -1490,6 +1576,11 @@ export const register: Register = on => {
       }
     } catch {
       // The step's figures are lost; the step itself stands
+    }
+    try {
+      await freshUsage($)
+    } catch {
+      // The band keeps its last figures; the step itself stands
     }
     return step
   })
@@ -1655,6 +1746,15 @@ export const register: Register = on => {
     return { text: quietText(isOn) }
   })
 
+  on('command.run', { command: 'band' }, async ($, e) => {
+    const word = e.args.trim().toLowerCase()
+    const stored = await loadBand($)
+    if (word !== 'full' && word !== 'calm') return { text: `Band: ${stored}\n${BAND_USAGE}` }
+    if (word !== stored) await $.store.set('settings:band', word)
+    await loadBand($)
+    return { text: `Band: ${word}` }
+  })
+
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
     // Read so the running times redraw each second while a turn runs
@@ -1667,11 +1767,12 @@ export const register: Register = on => {
     const m = await read($, meta)
     const runway = runwayOf(st, u, m.model)
     const lines = bandLines({
-      now, columns: e.props.bodyColumns, isWorking: e.props.isWorking,
+      now, columns: e.props.bodyColumns, maxRows: e.props.maxRows, isWorking: e.props.isWorking,
       live: await read($, live), usage: u, meta: m, turns: await read($, turns),
       newFailures: (await read($, failures)).filter(f => f.isNew).length, pace: await read($, pace), agents: await read($, agents),
       cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score, rec: recOf(await read($, rec)),
       forecast: forecastOf(h, u, runway), handoffAsk: h.isAskUp ? h.handled : null, runway, banner: bannerSegs(st),
+      mode: (await read($, bandSetting)).mode, totals: await read($, totals), stats: await read($, stats),
     })
     if (lines.length === 0) return next(e)
     const press = { inspect: () => inspectFromBand($), compact: () => compactNow($, held), handoff: () => saveNow($) }

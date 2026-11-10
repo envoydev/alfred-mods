@@ -302,7 +302,7 @@ const MARKER = '<!-- session-inspector handoff v1 -->'
 const SAVED = `Handoff saved to ${PATH} - /clear fills a resume prompt`
 const RESUME = 'Read .claude/session-inspector/HANDOFF.md, check that the branch it names is checked out, and continue from its Next section.'
 const PANE = { title: 'Inspect', isFocused: true, bodyColumns: 120, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 40 }, view: {} }
-const BAND = { hasSurvey: false, isWorking: false, maxRows: 6, bodyColumns: 120, scroll: { offset: 0, bodyRows: 6 }, view: {} }
+const BAND = { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 6, bodyColumns: 120, scroll: { offset: 0, bodyRows: 6 }, view: {} }
 const pane = ($: Engine, surface: RenderSurface = 'terminal') =>
   $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'inspect', props: PANE })
 const band = ($: Engine, surface: RenderSurface = 'terminal') =>

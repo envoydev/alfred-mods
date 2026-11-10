@@ -2,13 +2,13 @@
 // appears only when a threshold is crossed, something failed or a turn runs.
 import { actionOf, isLive } from './agents.ts'
 import { billingOf, cacheView, minutes } from './cache.ts'
-import { bar, clock, duration, elapsed, fitLine, toneOf, tokens, usd, when, widthOf } from './format.ts'
+import { bar, clock, duration, elapsed, fitLine, mins, modelParts, modelText, toneOf, tokens, usd, when, widthOf } from './format.ts'
 import { pace, turnsLeft } from './forecast.ts'
 import { narrowPlan, planLine, scoreSeg } from './planlines.ts'
 import type { PlanView, ScoresView } from './plan.ts'
 import type { Runway } from './stack.ts'
 
-import type { AgentRow, AgentStatus, Cache, Level, Live, Meta, Pace, Turn, Usage, Window } from '../types'
+import type { AgentRow, AgentStatus, BandMode, Cache, Level, Live, Meta, Pace, ToolStat, Totals, Turn, Usage, Window } from '../types'
 
 export type Tone = 'ok' | 'warn' | 'fail' | 'dim' | 'usage' | 'skill' | 'agents' | 'cache' | 'plan' | 'handoff' | 'opus' | 'sonnet' | 'haiku' | 'fable'
 export type Seg =
@@ -39,6 +39,13 @@ export type BandInput = {
   // Alfred Code's runway, which the ctx item measures against while it applies, and the mode banner that leads line 1
   runway?: Runway | null
   banner?: Seg[]
+  // The /band setting: `full` adds the info line, the turn's tool count and today's cost; absent or `calm`, today's two
+  // lines. `totals` and `stats` feed the info line's output speed and tool calls.
+  mode?: BandMode
+  // The rows the band may take (the AbovePrompt site's `maxRows`); absent, as many as it draws
+  maxRows?: number
+  totals?: Totals
+  stats?: Record<string, ToolStat>
 }
 
 const ORDER = ['five_hour', 'seven_day']
@@ -122,13 +129,87 @@ function narrowGauges(u: Usage, runway: Runway | null | undefined): Line {
   return out
 }
 
-// ' │ you 14:02 · Claude 14:05': the person's last prompt and Claude's last reply, the first `upTo` of them
-function times(b: BandInput, upTo = 2): Line {
-  const you = b.turns[b.turns.length - 1]?.promptAt ?? b.meta.lastPromptAt
-  const parts = [you === null ? null : `you ${clock(you)}`, b.meta.lastReplyAt === null ? null : `Claude ${clock(b.meta.lastReplyAt)}`]
+// 'you 14:02', 'Claude 14:05': the person's last prompt and Claude's last reply, the first `upTo` of them; with
+// `isLive`, the prompt is a running turn's while one runs
+function timeParts(b: BandInput, upTo = 2, isLive = false): string[] {
+  const you = (isLive ? b.live.promptAt : null) ?? b.turns[b.turns.length - 1]?.promptAt ?? b.meta.lastPromptAt
+  return [you === null ? null : `you ${clock(you)}`, b.meta.lastReplyAt === null ? null : `Claude ${clock(b.meta.lastReplyAt)}`]
     .filter((p): p is string => p !== null)
     .slice(0, upTo)
+}
+
+// ' │ you 14:02 · Claude 14:05'
+function times(b: BandInput, upTo = 2): Line {
+  const parts = timeParts(b, upTo)
   return parts.length === 0 ? [] : [{ text: ` │ ${parts.join(' · ')}`, tone: 'dim' }]
+}
+
+// One item of the info line: its forms, fullest first, and its keep rank, 1 going first when the width runs out
+type Item = { keep: number; forms: Line[] }
+
+const dimText = (text: string): Line => [{ text, tone: 'dim' }]
+
+// The info line's items in the approved mockup's order, each only when known: the model and effort, the session's
+// time, the average output speed, the cache, the tool calls by tool, the last prompt and reply
+function infoItems(b: BandInput): Item[] {
+  const items: Item[] = []
+  const model = b.meta.model
+  if (model !== null) {
+    const family = modelParts(model)?.family
+    const name: Seg = family === undefined ? { text: modelText(model, true) } : { text: modelText(model, true), tone: family }
+    items.push({ keep: 6, forms: [b.meta.effort === null ? [name] : [name, { text: ` ◑ ${b.meta.effort}`, tone: 'dim' }]] })
+  }
+  if (b.usage.startedAt !== null) items.push({ keep: 5, forms: [dimText(mins(b.now - b.usage.startedAt))] })
+  const t = b.totals
+  if (t !== undefined && t.stepMs > 0) items.push({ keep: 3, forms: [dimText(`≈${Math.round(t.stepOutput / (t.stepMs / 1000))} tok/s avg`)] })
+  if (b.cache.session.read + b.cache.session.write > 0) {
+    const v = cacheView(b.cache, billingOf(b.usage.windows), b.now, b.usage.tokens)
+    items.push({ keep: 4, forms: [dimText(v.leftMs === null ? 'cache cold' : `cache warm ${v.tier.isEstimate ? '≈' : ''}${minutes(v.leftMs)}`)] })
+  }
+  const used = Object.entries(b.stats ?? {})
+    .filter(([, s]) => s.calls > 0)
+    .sort(([ka, a], [kb, z]) => z.calls - a.calls || (ka < kb ? -1 : ka > kb ? 1 : 0))
+  if (used.length > 0) {
+    const forms: Line[] = []
+    for (let k = used.length; k >= 1; k--) {
+      const names = used.slice(0, k).map(([key, s]) => `${key} ×${s.calls}`).join(' · ')
+      forms.push(dimText(k < used.length ? `${names} +${used.length - k}` : names))
+    }
+    items.push({ keep: 2, forms })
+  }
+  // The running turn's prompt while one runs; the last turn's, as line 1 of the calm band shows it, otherwise
+  const parts = timeParts(b, 2, true)
+  if (parts.length > 0) items.push({ keep: 1, forms: parts.map((_, i) => dimText(parts.slice(0, parts.length - i).join(' · '))) })
+  return items
+}
+
+// The info line fitted to the width: while it is wider, the present item with the lowest keep takes its next form or
+// goes; nothing fitting, or nothing known, draws no line
+export function infoLine(b: BandInput): Line {
+  const items = infoItems(b)
+  const form = items.map(() => 0)
+  const shown = items.map(() => true)
+  for (;;) {
+    const kept = items.flatMap((item, i) => (shown[i] ? [item.forms[form[i] ?? 0] ?? []] : []))
+    const line: Line = kept.flatMap((l, i) => (i === 0 ? l : [{ text: ' │ ', tone: 'dim' as const }, ...l]))
+    if (widthOf(line) <= b.columns) return line
+    let lowest = -1
+    items.forEach((item, i) => {
+      if (shown[i] && (lowest === -1 || item.keep < (items[lowest]?.keep ?? Infinity))) lowest = i
+    })
+    const item = items[lowest]
+    if (item === undefined) return []
+    if ((form[lowest] ?? 0) < item.forms.length - 1) form[lowest] = (form[lowest] ?? 0) + 1
+    else shown[lowest] = false
+  }
+}
+
+// Line 2's cost with today's after it, `$1.29 · today $10.46`, in full mode while it fits beside what follows
+function withToday(b: BandInput, line: Line, after: Line): Line {
+  const u = b.usage
+  if (b.mode !== 'full' || u.todayUsd === null || u.costUsd === null) return line
+  const full = [...line, { text: ` · today ${usd(u.todayUsd)}` }]
+  return widthOf([...full, ...after]) <= b.columns ? full : line
 }
 
 // The gauges and as many times as fit the width, each dropped whole: Claude's first, then yours
@@ -148,7 +229,8 @@ function lastTurn(b: BandInput, isNarrow: boolean): Line {
   if (isNarrow) return line
   line.push({ text: ` · ${t.tools} ${t.tools === 1 ? 'tool' : 'tools'}` })
   if (t.failures > 0) line.push({ text: ` · ${t.failures} ✗`, tone: 'fail' })
-  return [...line, ...times(b)]
+  // In full mode the times are the info line's
+  return b.mode === 'full' ? line : [...line, ...times(b)]
 }
 
 const agentCount = (k: number): string => `${k} ${k === 1 ? 'agent' : 'agents'}`
@@ -170,8 +252,9 @@ export function working(b: BandInput, isNarrow: boolean): Line {
   if (b.plan !== null && isNarrow) return narrowPlan(b.plan, running.length)
   const n = b.meta.turnCount + 1
   const took = elapsed(b.now - (b.live.startedAt ?? b.now))
+  const count = b.mode === 'full' ? ` · ${b.live.tools} ${b.live.tools === 1 ? 'tool' : 'tools'}` : ''
   const head: Seg = b.isWorking
-    ? { text: isNarrow ? `⟳ Turn ${n} ${took}` : `⟳ Turn ${n} · ${took}`, bold: true }
+    ? { text: isNarrow ? `⟳ Turn ${n} ${took}` : `⟳ Turn ${n} · ${took}${count}`, bold: true }
     : { text: `⟳ ${agentCount(running.length)}`, bold: true }
   if (isNarrow) return b.isWorking && running.length > 0 ? [head, { text: ` · ${agentCount(running.length)}` }] : [head]
   const bash: Line = []
@@ -254,34 +337,44 @@ export function statusText(o: { percent: number | null; newFailures: number; rec
 // the body's first line follows them while it fits what is left, else they take line 1 alone and the body keeps the
 // full width, so no gauge, reset or the cost drops for them
 export function bandLines(b: BandInput): Line[] {
+  const lines = bandRows(b, true)
+  // Short of rows, the info line goes first: the line under it holds the buttons, and a digit arms only those in view
+  return b.maxRows !== undefined && lines.length > b.maxRows ? bandRows(b, false) : lines
+}
+
+function bandRows(b: BandInput, withInfo: boolean): Line[] {
   const isNarrow = b.columns < 100
   const marks: Line[] = [b.rec !== undefined && b.rec.level !== 'off' ? [REC_MARK] : [], b.banner ?? []].filter(m => m.length > 0)
-  if (marks.length === 0) return bandBody(b, isNarrow)
+  if (marks.length === 0) return bandBody(b, isNarrow, withInfo)
   const sep: Seg = { text: ' │ ', tone: 'dim' }
   const alone: Line = marks.flatMap((m, i) => (i === 0 ? m : [sep, ...m]))
   const lead: Line = [...alone, sep]
-  const [first, ...rest] = bandBody({ ...b, columns: b.columns - widthOf(lead) }, isNarrow)
+  // Only line 1 shares its row with the marks: the lines under it are fitted to the band's whole width
+  const [first] = bandBody({ ...b, columns: b.columns - widthOf(lead) }, isNarrow, withInfo)
   if (first === undefined) return [alone]
-  return widthOf(lead) + widthOf(first) <= b.columns ? [[...lead, ...first], ...rest] : [alone, ...bandBody(b, isNarrow)]
+  const body = bandBody(b, isNarrow, withInfo)
+  return widthOf(lead) + widthOf(first) <= b.columns ? [[...lead, ...first], ...body.slice(1)] : [alone, ...body]
 }
 
-function bandBody(b: BandInput, isNarrow: boolean): Line[] {
+function bandBody(b: BandInput, isNarrow: boolean, withInfo: boolean): Line[] {
   const u = b.usage
   if (b.turns.length === 0 && u.percent === null) return []
   const invalid: Line = b.planInvalid ? [{ text: ' │ ', tone: 'dim' }, { text: 'plan file invalid', tone: 'warn' }] : []
-  const gaugeLine = isNarrow ? narrowGauges(u, b.runway) : gauges(b)
+  const gaugeLine = isNarrow ? narrowGauges(u, b.runway) : withToday(b, gauges(b), invalid)
   const line2 = [...gaugeLine, ...invalid]
+  const info: Line[] = withInfo && b.mode === 'full' ? [infoLine(b)].filter(l => l.length > 0) : []
   const p = fiveHourPace(b)
   const isHot = (b.runway?.percent ?? u.percent ?? 0) >= 60 || u.windows.some(w => w.percentUsed >= 60) || (p !== null && p !== 'on-pace')
   const agentsRun = b.agents.some(r => isLive(r.status))
   const warning = cacheWarning(b, true)
   const ask = handoffAsk(b)
   if (!isHot && b.newFailures === 0 && !b.isWorking && !agentsRun && warning === null && ask === null) {
-    const calm = isNarrow ? gaugeLine : withTimes(b, gaugeLine)
-    return [[...calm.map(s => ('text' in s ? { text: s.text, tone: 'dim' as const } : s)), ...invalid]]
+    const calm = isNarrow || b.mode === 'full' ? gaugeLine : withTimes(b, gaugeLine)
+    const dim = (l: Line): Line => l.map(s => ('text' in s ? { text: s.text, tone: 'dim' as const } : s))
+    return [[...dim(calm), ...invalid], ...info.map(dim)]
   }
-  if (b.isWorking) return [working(b, isNarrow), line2]
-  const out = [agentsRun ? working(b, isNarrow) : withPlanTail(b, lastTurn(b, isNarrow)), line2].filter(l => l.length > 0)
+  if (b.isWorking) return [working(b, isNarrow), line2, ...info]
+  const out = [agentsRun ? working(b, isNarrow) : withPlanTail(b, lastTurn(b, isNarrow)), line2, ...info].filter(l => l.length > 0)
   const failed: Line = b.newFailures > 0
     ? [{ text: `✗ ${b.newFailures} new `, tone: 'fail' }, { button: { key: 'inspect', label: 'Inspect', hotkey: '1' } }]
     : []

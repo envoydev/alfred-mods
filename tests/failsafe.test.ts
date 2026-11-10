@@ -12,7 +12,7 @@ const KEY = KEYS[0]!.text
 const EMAIL = EMAILS[0]!.text
 const HOME = { HOME: '/Users/jane' }
 const PANE = { title: 'Inspect', isFocused: false, bodyColumns: 100, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 30 }, view: {} }
-const BAND = { hasSurvey: false, isWorking: false, maxRows: 6, bodyColumns: 120, scroll: { offset: 0, bodyRows: 6 }, view: {} }
+const BAND = { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 6, bodyColumns: 120, scroll: { offset: 0, bodyRows: 6 }, view: {} }
 const USE = { tool_use_id: 'c1', isRunning: false, isErrored: false, isInterrupted: false } as const
 const BASH_OUT = { stdout: `key ${KEY}`, stderr: '', interrupted: false, isImage: false, noOutputExpected: false }
 

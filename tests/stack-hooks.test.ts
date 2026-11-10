@@ -185,7 +185,7 @@ test('a throwing read after a used one clears the prompt and names unreadable', 
 
 // Task 4: the runway and the banner, drawn
 const SURFACES = ['terminal', 'desktop'] as const
-const BAND = (bodyColumns: number) => ({ hasSurvey: false, isWorking: false, maxRows: 6, bodyColumns, scroll: { offset: 0, bodyRows: 6 }, view: {} })
+const BAND = (bodyColumns: number) => ({ hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 6, bodyColumns, scroll: { offset: 0, bodyRows: 6 }, view: {} })
 const band = ($: Engine, surface: RenderSurface, columns = 120) =>
   $.ui.mount({ plugin: 'alfred-mods', surface, component: 'AbovePrompt', props: BAND(columns) })
 const PANE = { title: 'Inspect', isFocused: true, bodyColumns: 120, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 40 }, view: {} }
