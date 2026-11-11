@@ -4,7 +4,7 @@ import type { Engine } from 'claude-code/testing'
 
 import { PRESENTATION, START, engine, stubAll, watchState } from './kit.ts'
 
-const USAGE = 'Usage: /band [full|calm]'
+const USAGE = 'Usage: /band [full|calm|above|under|rows on|rows off]'
 
 const band = async ($: Engine, args: string): Promise<string> =>
   (await $.command.run({ command: 'band', args, origin: { kind: 'composer' }, presentation: PRESENTATION })).text ?? ''
@@ -22,7 +22,7 @@ test('/band calm and full set it and read it first', async ($, on) => {
   expect(state.get('band')).toEqual({ mode: 'full' })
   // Another session set it calm; this one has not polled yet, and its bare /band reads the store
   store.set('settings:band', 'calm')
-  expect(await band($, '')).toBe(`Band: calm\n${USAGE}`)
+  expect(await band($, '')).toBe(`Band: calm · above\n${USAGE}`)
   expect(state.get('band')).toEqual({ mode: 'calm' })
 })
 
@@ -32,8 +32,8 @@ test('bare /band prints the state and usage, full with nothing stored', async ($
   engine(on)
   await $.session.start(START)
   expect(state.get('band')).toEqual({ mode: 'full' })
-  expect(await band($, '')).toBe(`Band: full\n${USAGE}`)
-  expect(await band($, 'maybe')).toBe(`Band: full\n${USAGE}`)
+  expect(await band($, '')).toBe(`Band: full · above\n${USAGE}`)
+  expect(await band($, 'maybe')).toBe(`Band: full · above\n${USAGE}`)
   expect(store.get('settings:band')).toBe(undefined)
 })
 
@@ -73,4 +73,50 @@ test('a test that stores nothing reads calm, as every test before /band was writ
   engine(on)
   await $.session.start(START)
   expect(state.get('band') ?? { mode: 'calm' }).toEqual({ mode: 'calm' })
+})
+
+// The user's answer, 2026-11-11: 'Under, opt-in' - `/band under` moves the band under the input for every session, as
+// `/band calm` sets its mode; `/band above` deletes the key, so the store holds nothing for the default
+test('/band under stores under once, /band above deletes it', async ($, on) => {
+  const { store } = stubAll(on, { band: 'unset', store: { 'settings:band-tools': 'closed' } })
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  expect(await band($, 'under')).toBe('Band: under')
+  expect(store.get('settings:band-place')).toBe('under')
+  expect(state.get('band')).toEqual({ mode: 'full', isUnder: true })
+  expect(await band($, ' UNDER ')).toBe('Band: under')
+  expect(store.writes.filter(w => w === 'set settings:band-place')).toHaveLength(1)
+  expect(await band($, '')).toBe(`Band: full · under\n${USAGE}`)
+  expect(await band($, 'above')).toBe('Band: above')
+  expect(store.get('settings:band-place')).toBe(undefined)
+  expect(state.get('band')).toEqual({ mode: 'full' })
+  expect(await band($, 'above')).toBe('Band: above')
+  expect(store.writes.filter(w => w === 'delete settings:band-place')).toHaveLength(1)
+})
+
+// The user's option: under, '/band rows on|off' replaces the 't' toggle; the words write the toggle's own key
+test("/band rows off and on write the toggle's key once, /band rows prints it", async ($, on) => {
+  const { store } = stubAll(on, { band: 'unset', store: { 'settings:band-tools': 'closed' } })
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  expect(await band($, 'rows')).toBe('Rows: closed')
+  expect(await band($, 'rows on')).toBe('Rows: open')
+  expect(store.get('settings:band-tools')).toBe('open')
+  expect(state.get('band')).toEqual({ mode: 'full', isToolsOpen: true })
+  expect(await band($, 'rows ON')).toBe('Rows: open')
+  expect(store.writes.filter(w => w === 'set settings:band-tools')).toHaveLength(1)
+  expect(await band($, 'rows off')).toBe('Rows: closed')
+  expect(store.get('settings:band-tools')).toBe('closed')
+  expect(await band($, 'rows maybe')).toBe(`Band: full · above\n${USAGE}`)
+})
+
+test('a refused read of the place leaves the band above', async ($, on) => {
+  stubAll(on, { band: 'unset', store: { 'settings:band-tools': 'closed', 'settings:band-place': 'under' }, refuseStore: ['settings:band-place'] })
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  expect(state.get('band')).toEqual({ mode: 'full' })
+  expect(await band($, '')).toBe(`Band: full · above\n${USAGE}`)
 })

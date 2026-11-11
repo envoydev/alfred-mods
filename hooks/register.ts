@@ -7,12 +7,13 @@ import type {
 } from 'claude-code'
 
 import { actionOf, addLoopStep, isLive, newRow, refreshAgents, statusAt, upsertSpawn } from './agents.ts'
-import { bandLines, spinnerSuffix, statusText } from './band.ts'
+import { bandLines, spinnerSuffix, statusText, underRows } from './band.ts'
+import type { BandInput } from './band.ts'
 import {
   addRequest, afterCompact, billingOf, cacheView, idleOf, minutes, needsTick, pinOf, takeRate, takeSwitch, toastAt,
 } from './cache.ts'
 import { baseCost, pruneCost, recordCost, todayUsd } from './cost.ts'
-import { drawLines, drawNote, drawWithInput } from './draw.tsx'
+import { drawLines, drawNote, drawUnder, drawUnderNote, drawWithInput } from './draw.tsx'
 import { localDate } from './forecast.ts'
 import { REC_HIDDEN, SPINNER_WORD, bandFailed, paneFailed } from './failsafe.ts'
 import { NO_PARTS, linkedRules, partsOf, ruleName } from './parts.ts'
@@ -399,6 +400,11 @@ async function readStart($: EngineInterface): Promise<void> {
   }
   await readPlace($).catch(() => undefined)
   await seedWindows($).catch(() => undefined)
+  // Each session, and each start-over, proves its footer again before the site above passes (spec band-under U2)
+  bandMem.hasFooter = false
+  bandMem.columns = null
+  const statusLine = await $.settings.read({ key: 'statusLine' }).catch(() => null)
+  bandMem.hasStatusLine = statusLine !== null && statusLine !== undefined
   // The rules row's always-on rules (spec 2026-11-11, D4), from a breakdown read on a timer: the start waits on nothing
   readBreakdownSoon($)
 }
@@ -474,7 +480,11 @@ const statusMem = { last: null as string | undefined | null }
 // Whether the band is in view, as its last render found it (spec 2026-11-11, D6): it drew lines, `isCollapsed` is
 // exactly false (a build before 2.1.321 hands none) and no survey covers it. One flag for the session, the last render
 // deciding; the one-second tick carries a change to the pinned line.
-const bandMem = { isShown: false }
+// `isUnder` mirrors the setting for the hooks' `.catch`, which cannot read state (spec 2026-11-11 band-under U1).
+// Under (U2): `columns`, the terminal site above's last `bodyColumns`; `hasFooter`, the terminal's footer hook has run
+// this session, so the site above may pass; `hasStatusLine`, a `statusLine` is set, which the fullscreen budget leaves
+// room for.
+const bandMem = { isShown: false, isUnder: false, columns: null as number | null, hasFooter: false, hasStatusLine: false }
 async function syncStatus($: EngineInterface): Promise<void> {
   const u = await read($, usage)
   const runway = runwayOf(await read($, stack), u, (await read($, meta)).model)
@@ -1021,20 +1031,68 @@ async function loadQuiet($: EngineInterface): Promise<boolean> {
 // Only the exact string 'calm' reads as calm: absent, or anything another version or a hand wrote, is full. The band's
 // detail rows likewise close only on the exact string 'closed' (spec 2026-11-11, D1): a fresh store, or anything
 // another version or a hand wrote, opens them.
+// The place likewise is under only on the exact string 'under' (spec 2026-11-11 band-under U1), and a read that throws
+// counts as absent, so a refused store leaves the band above.
 async function loadBand($: EngineInterface): Promise<BandMode> {
   const mode: BandMode = (await $.store.get('settings:band')) === 'calm' ? 'calm' : 'full'
   const isOpen = (await $.store.get('settings:band-tools')) !== 'closed'
-  const next: BandSetting = isOpen ? { mode, isToolsOpen: true } : { mode }
-  await update($, bandSetting, b => (b.mode === mode && (b.isToolsOpen === true) === isOpen ? b : next))
+  const isUnder = (await $.store.get('settings:band-place').catch(() => null)) === 'under'
+  bandMem.isUnder = isUnder
+  const next: BandSetting = { mode, ...(isOpen ? { isToolsOpen: true } : {}), ...(isUnder ? { isUnder: true } : {}) }
+  await update($, bandSetting, b =>
+    (b.mode === mode && (b.isToolsOpen === true) === isOpen && (b.isUnder === true) === isUnder ? b : next))
   return mode
 }
 
-// The band's toggle: the rows open or closed for every session, as /band's mode is
-async function toggleTools($: EngineInterface): Promise<void> {
-  const isOpen = (await read($, bandSetting)).isToolsOpen !== true
-  await $.store.set('settings:band-tools', isOpen ? 'open' : 'closed')
+// The band's rows open or closed for every session, as /band's mode is, written only on a change: the toggle's `t`
+// and click, and `/band rows on|off`
+async function setRows($: EngineInterface, isOpen: boolean): Promise<void> {
+  if (((await read($, bandSetting)).isToolsOpen === true) !== isOpen) await $.store.set('settings:band-tools', isOpen ? 'open' : 'closed')
   await loadBand($)
 }
+
+// The band's toggle
+async function toggleTools($: EngineInterface): Promise<void> {
+  await setRows($, (await read($, bandSetting)).isToolsOpen !== true)
+}
+
+// The band's lines from the session's state, for the site above or the footer (spec band-under U2): the same reads, the
+// place's own width, rows and turn
+async function bandInputOf(
+  $: EngineInterface, at: { columns: number; maxRows: number | undefined; isWorking: boolean; under?: BandInput['under']; isLeftOut: boolean },
+): Promise<BandInput> {
+  // Read so the running times redraw each second while a turn runs
+  await read($, tick)
+  const now = await $.clock.now()
+  const d = await planDraw($, now)
+  const u = await read($, usage)
+  const h = await read($, handoff)
+  const st = await read($, stack)
+  const m = await read($, meta)
+  const runway = runwayOf(st, u, m.model)
+  const setting = await read($, bandSetting)
+  const p = await read($, parts)
+  return {
+    now, columns: at.columns, ...(at.maxRows === undefined ? {} : { maxRows: at.maxRows }), isWorking: at.isWorking,
+    live: await read($, live), usage: u, meta: m, turns: await read($, turns),
+    newFailures: (await read($, failures)).filter(f => f.isNew).length, pace: await read($, pace), agents: await read($, agents),
+    cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score, rec: recOf(await read($, rec)),
+    forecast: forecastOf(h, u, runway), handoffAsk: h.isAskUp ? h.handled : null, runway, banner: bannerSegs(st),
+    mode: setting.mode, totals: await read($, totals), stats: await read($, stats),
+    isToolsOpen: setting.isToolsOpen === true, listing: p.skills ?? null,
+    rules: { always: p.rules ?? [], byPath: m.pathRules ?? [], isTracked: !at.isLeftOut },
+    ...(at.under === undefined ? {} : { under: at.under }),
+  }
+}
+
+// What the band's buttons do, above or under
+function bandPress($: EngineInterface, held: Held): Record<string, () => unknown> {
+  return { inspect: () => inspectFromBand($), compact: () => compactNow($, held), handoff: () => saveNow($), tools: () => toggleTools($) }
+}
+
+// Under the input on the terminal, once its footer has drawn, the site above is Claude Code's (spec band-under U2)
+const isPassingAbove = (surface: string): boolean => bandMem.isUnder && surface === 'terminal' && bandMem.hasFooter
+
 
 // A skill the main loop loaded: in its context from then on, until the conversation starts over
 async function addSkill($: EngineInterface, name: string): Promise<void> {
@@ -1439,7 +1497,7 @@ function forecastOf(h: Handoff, u: Usage, runway: Runway | null): { at: number; 
 }
 
 const QUIET_USAGE = 'Usage: /quiet [on|off]'
-const BAND_USAGE = 'Usage: /band [full|calm]'
+const BAND_USAGE = 'Usage: /band [full|calm|above|under|rows on|rows off]'
 const quietText = (isOn: boolean): string => `Compact tool rows: ${isOn ? 'on' : 'off'}`
 
 async function isNoColor($: EngineInterface): Promise<boolean> {
@@ -1673,7 +1731,7 @@ export const register: Register = (on, options) => {
     await $.command.register({ name: 'inspect', description: 'Session metrics, agents, tool failures, cache, the timeline and the plan in a pane', argumentHint: '[now|usage|agents|tools|cache|timeline|plan [name]]' })
     await $.command.register({ name: 'rec', description: 'Recording mode: hide keys, emails, phones and your private words on screen', argumentHint: '[on|strict|off|test|words]' })
     await $.command.register({ name: 'quiet', description: 'Compact tool rows: one line per tool call', argumentHint: '[on|off]' })
-    await $.command.register({ name: 'band', description: 'The band above the prompt: full with its info line, or calm, its two lines', argumentHint: '[full|calm]' })
+    await $.command.register({ name: 'band', description: 'The band above or under the prompt: full with its info line, or calm, its two lines', argumentHint: '[full|calm|above|under|rows on|rows off]' })
     await $.command.register({ name: 'auto-handoff', description: 'Save a handoff before the context fills: ask, save by itself, or off', argumentHint: '[ask|auto|off|at <percent>|now]' })
     recMem.home = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE')) ?? null
     await loadRec($)
@@ -1986,49 +2044,80 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', { command: 'band' }, async ($, e) => {
-    const word = e.args.trim().toLowerCase()
+    const [word = '', arg, ...rest] = e.args.trim().toLowerCase().split(/\s+/)
     const stored = await loadBand($)
-    if (word !== 'full' && word !== 'calm') return { text: `Band: ${stored}\n${BAND_USAGE}` }
+    const setting = await read($, bandSetting)
+    const isUnder = setting.isUnder === true
+    const usage = { text: `Band: ${stored} · ${isUnder ? 'under' : 'above'}\n${BAND_USAGE}` }
+    if (rest.length > 0) return usage
+    if (word === 'rows') {
+      const rows = (isOpen: boolean): string => `Rows: ${isOpen ? 'open' : 'closed'}`
+      if (arg === undefined) return { text: rows(setting.isToolsOpen === true) }
+      if (arg !== 'on' && arg !== 'off') return usage
+      await setRows($, arg === 'on')
+      return { text: rows(arg === 'on') }
+    }
+    if (arg !== undefined) return usage
+    if (word === 'under' || word === 'above') {
+      if (word === 'under' && !isUnder) await $.store.set('settings:band-place', 'under')
+      if (word === 'above' && isUnder) await $.store.delete('settings:band-place')
+      await loadBand($)
+      return { text: `Band: ${word}` }
+    }
+    if (word !== 'full' && word !== 'calm') return usage
     if (word !== stored) await $.store.set('settings:band', word)
     await loadBand($)
     return { text: `Band: ${word}` }
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    // Decided on module memory, so a person above meets no new read before the survey's check; the read keeps this
+    // hook drawn again on a later /band above. The width it lends the footer redraws it only on a change.
+    if (isPassingAbove(e.surface)) {
+      await read($, bandSetting)
+      if (bandMem.columns !== e.props.bodyColumns) {
+        bandMem.columns = e.props.bodyColumns
+        $.ui.invalidate('ui.render')
+      }
+      return next(e)
+    }
     if (e.props.hasSurvey) {
       bandMem.isShown = false
       return next(e)
     }
-    // Read so the running times redraw each second while a turn runs
-    await read($, tick)
-    const now = await $.clock.now()
-    const d = await planDraw($, now)
-    const u = await read($, usage)
-    const h = await read($, handoff)
-    const st = await read($, stack)
-    const m = await read($, meta)
-    const runway = runwayOf(st, u, m.model)
-    const setting = await read($, bandSetting)
-    const p = await read($, parts)
-    const lines = bandLines({
-      now, columns: e.props.bodyColumns, maxRows: e.props.maxRows, isWorking: e.props.isWorking,
-      live: await read($, live), usage: u, meta: m, turns: await read($, turns),
-      newFailures: (await read($, failures)).filter(f => f.isNew).length, pace: await read($, pace), agents: await read($, agents),
-      cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score, rec: recOf(await read($, rec)),
-      forecast: forecastOf(h, u, runway), handoffAsk: h.isAskUp ? h.handled : null, runway, banner: bannerSegs(st),
-      mode: setting.mode, totals: await read($, totals), stats: await read($, stats),
-      isToolsOpen: setting.isToolsOpen === true, listing: p.skills ?? null,
-      rules: { always: p.rules ?? [], byPath: m.pathRules ?? [], isTracked: !isLeftOut },
-    })
+    const lines = bandLines(await bandInputOf($, { columns: e.props.bodyColumns, maxRows: e.props.maxRows, isWorking: e.props.isWorking, isLeftOut }))
     bandMem.isShown = lines.length > 0 && e.props.isCollapsed === false
     if (lines.length === 0) return next(e)
-    const press = {
-      inspect: () => inspectFromBand($), compact: () => compactNow($, held), handoff: () => saveNow($), tools: () => toggleTools($),
-    }
-    return drawLines($, e, lines, { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
+    return drawLines($, e, lines, { noColor: await isNoColor($), press: bandPress($, held), columns: e.props.bodyColumns })
   }).catch(($, e, next) => {
+    if (isPassingAbove(e.surface)) return next(e)
     bandMem.isShown = false
     return drawNote($, e, bandFailed(next.error.kind))
+  })
+
+  // The band under the input, in Claude Code's footer on the terminal (spec band-under U2): Claude Code's own line first,
+  // then the band, at the site above's width and the rows the screen leaves; above, or elsewhere, the footer as it was
+  on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
+    const setting = await read($, bandSetting)
+    const v = e.viewport
+    if (setting.isUnder !== true || e.surface !== 'terminal' || v === undefined) return next(e)
+    if (!bandMem.hasFooter) {
+      bandMem.hasFooter = true
+      $.ui.invalidate('ui.render')
+    }
+    const columns = Math.min(v.columns - 5, bandMem.columns ?? Infinity)
+    const isPinned = typeof statusMem.last === 'string' && statusMem.last !== ''
+    const maxRows = underRows(v, { hasStatusLine: bandMem.hasStatusLine, isPinned })
+    const under = { buttons: v.isFullscreen === true ? 'click' as const : 'text' as const }
+    const lines = bandLines(await bandInputOf($, { columns, maxRows, isWorking: e.props.isWorking, under, isLeftOut }))
+    bandMem.isShown = lines.length > 0
+    const beneath = await next(e)
+    if (lines.length === 0) return beneath
+    return drawUnder($, e, beneath, lines, { noColor: await isNoColor($), press: bandPress($, held), columns })
+  }).catch(async ($, e, next) => {
+    if (!bandMem.isUnder || e.surface !== 'terminal') return next(e)
+    bandMem.isShown = false
+    return drawUnderNote($, e, await next(e), bandFailed(next.error.kind))
   })
 
   // The main loop's spinner adds its action, context and the agents running; an agent's spinner, that agent's

@@ -15,7 +15,8 @@ import type { AgentRow, AgentStatus, BandMode, Cache, Level, Live, Meta, Pace, S
 export type Tone = 'ok' | 'warn' | 'fail' | 'dim' | 'usage' | 'skill' | 'agents' | 'cache' | 'plan' | 'handoff' | 'opus' | 'sonnet' | 'haiku' | 'fable'
 export type Seg =
   // With a `width`, a table cell: that many cells wide, its text cut with '…' when longer, at its end with `align: 'end'`
-  | { text: string; tone?: Tone; bold?: boolean; width?: number; align?: 'start' | 'end' }
+  // `key` names a text that stands in for a button: the toggle's counts under the input, drawn as text (band-under U3)
+  | { text: string; tone?: Tone; bold?: boolean; width?: number; align?: 'start' | 'end'; key?: string }
   // A toned button draws its label bold in the colour of the feature it acts on; a plain one draws `<hotkey>: <label>`
   | { button: { key: string; label: string; hotkey?: string; tone?: Tone; plain?: boolean } }
   | { code: string }
@@ -55,6 +56,9 @@ export type BandInput = {
   // The rules row (spec 2026-11-11, D4): the always-on rules from the breakdown, the ones loaded by path, and whether
   // by-path loads are tracked (false with leave_out_skipped_hooks on); absent, none known and tracked
   rules?: RulesInput
+  // The band drawn under the input (spec 2026-11-11 band-under, U2 and U3): its action row after the gauges, and its
+  // buttons pressed by a click (fullscreen) or drawn as the commands that do their jobs (the main screen)
+  under?: { buttons: 'click' | 'text' }
 }
 export type RulesInput = { always: string[]; byPath: string[]; isTracked: boolean }
 
@@ -197,7 +201,24 @@ export function toggleForms(b: BandInput): Line[] {
   const all = parts(tools, skills, agentsPart, rules)
   const forms = [all, parts(tools, skills, agentsPart), parts(tools, skills), parts(tools)].filter(f => f.length > 0)
   const labels = [...new Set([...(all.length === 0 ? ['tools'] : forms.map(f => f.join(' · '))).map(l => `${l} ${arrow}`), arrow])]
+  if (b.under?.buttons === 'text') {
+    const texts = [...new Set(labels.map(l => l.replace(/ ?[▾▸]$/, '')).filter(l => l !== ''))]
+    return texts.map(text => [{ text, tone: 'dim' as const, key: 'tools' }])
+  }
+  if (b.under?.buttons === 'click') return labels.map(label => [{ button: { key: 'tools', label } }])
   return labels.map(label => [{ button: { key: 'tools', label, hotkey: 't' } }])
+}
+
+type ButtonSeg = Extract<Seg, { button: unknown }>['button']
+
+// A band button where it draws (spec 2026-11-11 band-under, U3): above, as it is; under in fullscreen, where a click
+// presses it, labelled with the command that does its job and with no hotkey; under on the main screen, where nothing
+// presses it, that command as dim text
+function underButton(b: BandInput, button: ButtonSeg, command: string): Seg {
+  if (b.under === undefined) return { button }
+  if (b.under.buttons === 'text') return { text: command, tone: 'dim' }
+  const { hotkey: _hotkey, plain: _plain, ...rest } = button
+  return { button: { ...rest, label: command } }
 }
 
 // The open rows (spec 2026-11-11, D2): every tool by name with its calls, then the skills the main chat loaded and how
@@ -513,13 +534,13 @@ export function cacheWarning(b: BandInput, hasHotkey: boolean): Line | null {
   const button = hasHotkey
     ? { key: 'compact', label: 'Compact', hotkey: '3', tone: 'cache' as const }
     : { key: 'compact', label: 'Compact', tone: 'cache' as const }
-  return [{ text: `⚠ cache cold in ${v.tier.isEstimate ? '≈' : ''}${minutes(v.leftMs ?? 0)} `, tone: 'warn' }, { button }]
+  return [{ text: `⚠ cache cold in ${v.tier.isEstimate ? '≈' : ''}${minutes(v.leftMs ?? 0)} `, tone: 'warn' }, underButton(b, button, '/compact')]
 }
 
 // F8's ask on line 3: the step the context passed, its violet button on hotkey 4
 function handoffAsk(b: BandInput): Line | null {
   if (b.handoffAsk === undefined || b.handoffAsk === null) return null
-  return [{ text: `⚠ ctx past ${b.handoffAsk}% `, tone: 'warn' }, { button: { key: 'handoff', label: 'Handoff', hotkey: '4', tone: 'handoff' } }]
+  return [{ text: `⚠ ctx past ${b.handoffAsk}% `, tone: 'warn' }, underButton(b, { key: 'handoff', label: 'Handoff', hotkey: '4', tone: 'handoff' }, '/auto-handoff now')]
 }
 
 // The idle line 1 with ' │ PLAN 3/5 · score 81 ▲13' while it fits
@@ -540,6 +561,14 @@ export function statusText(o: { percent: number | null; newFailures: number; rec
     o.newFailures > 0 ? `✗ ${o.newFailures} new` : null,
   ].filter((p): p is string => p !== null)
   return parts.length === 0 ? null : parts.join(' · ')
+}
+
+// The rows the band takes under the input (spec 2026-11-11 band-under, U2, F7): the main screen's whole height, as the
+// site above reports there; in fullscreen, half the screen less the prompt and the engine's footer line, less a status
+// line's two rows (claude-hud's default; the setting says nothing of the height) and the mod's pinned line
+export function underRows(v: { rows: number; isFullscreen?: boolean }, o: { hasStatusLine: boolean; isPinned: boolean }): number {
+  if (v.isFullscreen !== true) return v.rows
+  return Math.max(2, Math.floor(v.rows / 2) - 6 - (o.hasStatusLine ? 2 : 0) - (o.isPinned ? 1 : 0))
 }
 
 // A red '● REC' while REC is on, then Alfred Code's mode banner, lead line 1 in every state, never dropped for width:
@@ -585,7 +614,7 @@ function bandBody(b: BandInput, isNarrow: boolean, infoUpTo: number, toolRowsKep
   const line2 = [...gaugeLine, ...invalid]
   // The info line, then the open rows of tools under it, only while its toggle is in view to close them
   const head = infoUpTo > 0 && b.mode === 'full' ? infoRows(b, infoUpTo) : []
-  const hasToggle = head.some(row => row.some(s => 'button' in s && s.button.key === 'tools'))
+  const hasToggle = head.some(row => row.some(s => ('button' in s && s.button.key === 'tools') || ('text' in s && s.key === 'tools')))
   const plan: Line[] = head.length > 0 && isPlanKept ? planRow(b) : []
   const info: Line[] = head.length === 0 ? [] : [...plan, ...head, ...(b.isToolsOpen === true && hasToggle ? toolRows(b).slice(0, toolRowsKept) : [])]
   const p = fiveHourPace(b)
@@ -599,11 +628,15 @@ function bandBody(b: BandInput, isNarrow: boolean, infoUpTo: number, toolRowsKep
     return [[...dim(calm), ...invalid], ...info.map(dim)]
   }
   if (b.isWorking) return [working(b, isNarrow), line2, ...info]
-  const out = [agentsRun ? working(b, isNarrow) : withPlanTail(b, lastTurn(b, isNarrow)), line2, ...info].filter(l => l.length > 0)
   const failed: Line = b.newFailures > 0
-    ? [{ text: `✗ ${b.newFailures} new `, tone: 'fail' }, { button: { key: 'inspect', label: 'Inspect', hotkey: '1' } }]
+    ? [{ text: `✗ ${b.newFailures} new `, tone: 'fail' }, underButton(b, { key: 'inspect', label: 'Inspect', hotkey: '1' }, '/inspect')]
     : []
   const items = [warning, ask, failed].filter((l): l is Line => l !== null && l.length > 0)
-  if (items.length > 0) out.push(items.flatMap((l, i) => (i === 0 ? l : [{ text: '    ' }, ...l])))
-  return out
+  const joined: Line = items.flatMap((l, i) => (i === 0 ? l : [{ text: '    ' }, ...l]))
+  // Under the input (band-under U2), the action row follows the gauges, so a cut at the screen's edge takes the detail
+  // rows first; its commands are longer than the digits above, so the items take a row each when one row cannot hold them
+  const action: Line[] = items.length === 0 ? [] : b.under !== undefined && cellsOf(joined) > b.columns ? items : [joined]
+  const first = agentsRun ? working(b, isNarrow) : withPlanTail(b, lastTurn(b, isNarrow))
+  const out = b.under === undefined ? [first, line2, ...info, ...action] : [first, line2, ...action, ...info]
+  return out.filter(l => l.length > 0)
 }

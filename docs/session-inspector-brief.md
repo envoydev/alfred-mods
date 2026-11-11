@@ -223,6 +223,15 @@ rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ w
   toggle (the rules' count, then the agents', then the skills', then the tools', then the arrow; while open, after the
   cache), the output speed, the
   cache, the session's time, the model.
+- **Under the input, opt-in** (the user, 2026-11-11: 'Under, opt-in (Recommended)', after the owner's mock-up drew
+  the band there): `/band under` (`$.store` `settings:band-place` = `'under'`, deleted by `/band above`) draws the band
+  in a `PromptHint` hook on the terminal, composing Claude Code's own footer element first, then the band's lines at
+  the site above's width; the site above passes once the footer has drawn this session. No key arms the footer, so the
+  buttons name their commands - clicked in fullscreen, drawn as text on the main screen - `/band rows on|off` stands in
+  for `t`, and the action row follows the gauges, so a cut at the screen's edge takes the detail rows first. The
+  fullscreen budget is half the screen less 6 rows, 2 for a set `statusLine` and 1 for the pinned line. A Desktop tab
+  keeps the band above until its footer is probed. Design, probes and rulings: the machine-local spec
+  `docs/superpowers/specs/2026-11-11-band-under-design.md`. (agent)
 - **From the first second** (the user, 2026-11-11: the band shows its data as soon as Claude starts): the full band
   draws once the model or a stored window is known, before any prompt; calm still waits for the first reading.
   `session.start` (and each start-over) reads `$.session.model()`, `$.session.version()` (`CC 2.1.322`) and the place:

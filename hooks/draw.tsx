@@ -286,6 +286,21 @@ export function drawLines(
   return <Box flexDirection="column">{lines.flatMap(rows)}</Box>
 }
 
+// The band under the input (spec 2026-11-11 band-under, U2): Claude Code's own footer line first, kept live, then the
+// band's lines
+export function drawUnder(
+  $: EngineInterface, e: ResolveInput, beneath: RenderElement, lines: Line[], o: { noColor: boolean; press: Record<string, () => unknown>; columns: number },
+): RenderElement {
+  const { Box } = $.ui.resolve(e)
+  return <Box flexDirection="column">{beneath}{drawLines($, e, lines, o)}</Box>
+}
+
+// The footer's .catch while under: Claude Code's line, then the band's failure note, as `drawNote` draws it above
+export function drawUnderNote($: EngineInterface, e: ResolveInput, beneath: RenderElement, text: string): RenderElement {
+  const { Box, Text } = $.ui.resolve(e)
+  return <Box flexDirection="column">{beneath}<Text dimColor wrap="truncate-end">{text}</Text></Box>
+}
+
 // One dim line a draw hook's .catch draws in place of its tree. Not masked: the text is the mod's own, and the masker
 // may be what failed.
 export function drawNote($: EngineInterface, e: ResolveInput, text: string): RenderElement {
