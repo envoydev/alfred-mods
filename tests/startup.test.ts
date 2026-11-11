@@ -6,7 +6,7 @@ import type { RenderSurface, SessionUsage } from 'claude-code'
 
 import { PRESENTATION, START, SWITCH, engine, rows, stubAll, watchState } from './kit.ts'
 
-import { nextWindows } from '../hooks/startup.ts'
+import { folderOf, nextWindows } from '../hooks/startup.ts'
 import type { Meta, Usage } from '../types'
 
 const SURFACES = ['terminal', 'desktop'] as const
@@ -103,6 +103,101 @@ test('outside a repository the place is the folder alone', async ($, on) => {
   engine(on)
   await $.session.start(START)
   expect(metaOf(state).place).toEqual({ project: 'notes', branch: null })
+})
+
+// The user, 2026-11-11: the project the session started in, and the folder Claude works in now. A Bash `cd` moves
+// `$.session.cwd()` and leaves `$.session.root()` (live, 2.1.322), so the place reads both
+test('a Bash cd under the project shows as project ▸ folder after the call, with the branch of its repository', async ($, on) => {
+  const opts = { now: NOW, usage: NO_LIMITS, repo: { root: '/w' }, root: '/w', cwd: '/w', files: { '.git/HEAD': { text: 'ref: refs/heads/main\n', mtimeMs: 0 } } }
+  const kit = stubAll(on, opts)
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  expect(metaOf(state).place).toEqual({ project: 'w', branch: 'main' })
+  opts.cwd = '/w/src/app'
+  await $.tool.call({ tool: 'Bash', command: 'cd src/app' })
+  await kit.clock.advance(0)
+  expect(metaOf(state).place).toEqual({ project: 'w', folder: 'src/app', branch: 'main' })
+  // The 30-second poll re-reads the branch and keeps the folder
+  await kit.clock.advance(30_000)
+  expect(metaOf(state).place).toEqual({ project: 'w', folder: 'src/app', branch: 'main' })
+  opts.cwd = '/w'
+  await $.tool.call({ tool: 'Bash', command: 'cd ../..' })
+  await kit.clock.advance(0)
+  expect(metaOf(state).place).toEqual({ project: 'w', branch: 'main' })
+})
+
+test('a session started outside git, now in a repository under it, keeps the project and shows the folder', async ($, on) => {
+  stubAll(on, {
+    now: NOW, usage: NO_LIMITS, repo: null, root: '/home/u/Example', cwd: '/home/u/Example/Frontend',
+    files: { 'Frontend/.git/HEAD': { text: 'ref: refs/heads/develop\n', mtimeMs: 0 } },
+  })
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  expect(metaOf(state).place).toEqual({ project: 'Example', folder: 'Frontend', branch: 'develop' })
+})
+
+// A side agent's note the user passed on, 2026-11-11: Claude edits by full path without a `cd`, so the folder of the
+// last file the main thread edited or wrote is where it works, until a `cd` moves the working folder again
+test('an Edit by full path moves the folder to the file\'s, with that repository\'s branch, until a cd moves it', async ($, on) => {
+  const opts = {
+    now: NOW, usage: NO_LIMITS, repo: null, root: '/home/u/Example', cwd: '/home/u/Example',
+    files: { 'Frontend/.git/HEAD': { text: 'ref: refs/heads/develop\n', mtimeMs: 0 } },
+  }
+  const kit = stubAll(on, opts)
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  expect(metaOf(state).place).toEqual({ project: 'Example', branch: null })
+  await $.tool.call({ tool: 'Edit', file_path: '/home/u/Example/Frontend/src/app/app.ts', old_string: 'a', new_string: 'b' })
+  await kit.clock.advance(0)
+  expect(metaOf(state).place).toEqual({ project: 'Example', folder: 'Frontend/src/app', branch: 'develop' })
+  // A Bash call that stays in the working folder keeps the edit's folder
+  await $.tool.call({ tool: 'Bash', command: 'ls' })
+  await kit.clock.advance(0)
+  expect(metaOf(state).place).toEqual({ project: 'Example', folder: 'Frontend/src/app', branch: 'develop' })
+  // A cd is the later move
+  opts.cwd = '/home/u/Example/docs'
+  await $.tool.call({ tool: 'Bash', command: 'cd docs' })
+  await kit.clock.advance(0)
+  expect(metaOf(state).place).toEqual({ project: 'Example', folder: 'docs', branch: null })
+  await $.tool.call({ tool: 'Write', file_path: '/home/u/Example/README.md', content: 'x' })
+  await kit.clock.advance(0)
+  expect(metaOf(state).place).toEqual({ project: 'Example', branch: null })
+})
+
+test('a Read, a failed Edit or an agent\'s Edit leaves the folder where it is', async ($, on) => {
+  const kit = stubAll(on, {
+    now: NOW, usage: NO_LIMITS, repo: null, root: '/home/u/Example', cwd: '/home/u/Example',
+    files: { 'Frontend/.git/HEAD': { text: 'ref: refs/heads/develop\n', mtimeMs: 0 } },
+  })
+  const state = watchState(on)
+  engine(on, ['tool.call'])
+  on('tool.call', (_, e) => (e.tool === 'Edit' && e.agentId === undefined ? { isError: true as const, result: 'x', text: 'x' } : { result: 'ok', text: 'ok' }))
+  await $.session.start(START)
+  await $.tool.call({ tool: 'Read', file_path: '/home/u/Example/Frontend/src/app.ts' })
+  await $.tool.call({ tool: 'Edit', file_path: '/home/u/Example/Frontend/src/app.ts', old_string: 'a', new_string: 'b' })
+  await $.tool.call({ tool: 'Edit', file_path: '/home/u/Example/Frontend/src/app.ts', old_string: 'a', new_string: 'b', agentId: 'a1' })
+  await kit.clock.advance(0)
+  expect(metaOf(state).place).toEqual({ project: 'Example', branch: null })
+})
+
+test('a folder outside the project is named …/<its name>, never by a path above it', async ($, on) => {
+  stubAll(on, { now: NOW, usage: NO_LIMITS, repo: null, root: '/home/u/w', cwd: '/home/u/scratch' })
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  expect(metaOf(state).place).toEqual({ project: 'w', folder: '…/scratch', branch: null })
+})
+
+test('folderOf: inside the root its relative path, a Windows path folded by case; the root itself none', () => {
+  expect(folderOf('/w/src/app', '/w')).toBe('src/app')
+  expect(folderOf('/w', '/w')).toBeNull()
+  expect(folderOf('/w/', '/w')).toBeNull()
+  expect(folderOf('/wx', '/w')).toBe('…/wx')
+  expect(folderOf('C:\\Users\\u\\Example\\Frontend', 'c:\\users\\u\\example')).toBe('Frontend')
+  expect(folderOf('/', '/')).toBeNull()
 })
 
 test('with every read refused, the session starts as before', async ($, on) => {
@@ -209,9 +304,9 @@ for (const surface of SURFACES) {
     engine(on)
     await $.session.start(START)
     const lines = await rows(await mount($, surface))
-    expect(lines).toHaveLength(2)
     expect(lines[0]?.startsWith('ctx — │ 5h ▱▱▱▱▱ ≈15% (')).toBe(true)
-    expect(lines[1]).toBe('Sonnet 5.5 │ <1m │ w git:(main) │ CC 2.1.322')
+    // The detail rows open from the first draw (spec 2026-11-11, D1), the toggle naming what it opens
+    expect(lines.slice(1)).toEqual(['Sonnet 5.5 │ <1m │ tools ▾ │ w git:(main) │ CC 2.1.322', 'tools:   none', 'skills:  none loaded', 'agents:  none', 'rules:   none loaded'])
   })
 }
 

@@ -3,10 +3,10 @@
 // conversation by its session id, and its `leave_out_skipped_hooks` option leaves the six hooks out.
 import { expect, test } from 'claude-code/testing'
 import type { Engine, Plugin } from 'claude-code/testing'
-import type { On } from 'claude-code'
+import type { On, SessionUsage } from 'claude-code'
 
-import { PRESENTATION, START, engine, stubAll, watchState } from './kit.ts'
-import type { Turn } from '../types'
+import { PRESENTATION, START, engine, rows, stubAll, watchState } from './kit.ts'
+import type { Meta, Turn } from '../types'
 
 const ON = 'Screen recording is on (alfred-mods REC). Until told it is off, do not write secret values, API keys, tokens, passwords, email addresses or phone numbers in replies; refer to them by name, such as "the token in .env". Work on the task as usual.'
 
@@ -186,4 +186,33 @@ test('with leave_out_skipped_hooks on, a /clear starts over at the next tick', {
   expect(state.get('turns')).toEqual([])
   const ran = await $.command.run({ command: 'inspect', args: '', origin: { kind: 'composer' }, presentation: PRESENTATION })
   expect(ran.text).toBeDefined()
+})
+
+// Spec 2026-11-11, D4: the rules hook is left out with the six, on the safe side (assumption A1): the band's rules row
+// still lists the always-on rules from the breakdown, and says the by-path ones are not tracked
+const ALWAYS: SessionUsage = {
+  startedAt: 0, rateLimits: [],
+  context: {
+    window: 200_000, tokens: 20_000, percent: 10,
+    breakdown: {
+      categories: [], totalTokens: 0, maxTokens: 200_000, rawMaxTokens: 200_000, percentage: 0, gridRows: [], model: 'claude-opus-5-5',
+      memoryFiles: [{ path: '/w/.claude/rules/always.md', type: 'Project', tokens: 60 }], mcpTools: [], agents: [], isAutoCompactEnabled: true,
+    } as never,
+  },
+}
+const load = (file_path: string, load_reason: string) =>
+  ({ file_path, memory_type: 'Project', load_reason, globs: ['src/**/*.ts'], trigger_file_path: '/w/src/app.ts' }) as never
+const BAND = { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 12, bodyColumns: 160, scroll: { offset: 0, bodyRows: 12 }, view: {} }
+
+test('with leave_out_skipped_hooks on, a by-path load reaches no hook of the mod and the row says so', { options: { leave_out_skipped_hooks: true } }, async ($, on) => {
+  const { clock } = stubAll(on, { band: 'full', usage: ALWAYS })
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  await clock.advance(1)
+  await $.classic.InstructionsLoaded(load('/w/.claude/rules/web.md', 'path_glob_match'))
+  expect((state.get('meta') as Meta | undefined)?.pathRules).toBeUndefined()
+  const ui = await $.ui.mount({ plugin: 'alfred-mods', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+  expect(await rows(ui)).toContain('rules:   always.md │ 1 always-on · by path not tracked')
+  await ui.unmount()
 })

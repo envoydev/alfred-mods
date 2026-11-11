@@ -5,7 +5,7 @@ import { billingOf, cacheView, minutes } from './cache.ts'
 import { bar, clock, duration, elapsed, fitLine, mins, modelParts, modelText, toneOf, tokens, usd, when, widthOf } from './format.ts'
 import { pace, turnsLeft } from './forecast.ts'
 import { listedText, loadedTexts } from './parts.ts'
-import { narrowPlan, planLine, scoreSeg } from './planlines.ts'
+import { narrowPlan, planLine, planRowParts, scoreSeg } from './planlines.ts'
 import { storedMark } from './startup.ts'
 import type { PlanView, ScoresView } from './plan.ts'
 import type { Runway } from './stack.ts'
@@ -52,7 +52,11 @@ export type BandInput = {
   // the context's last breakdown, or null before one
   isToolsOpen?: boolean
   listing?: SkillListing | null
+  // The rules row (spec 2026-11-11, D4): the always-on rules from the breakdown, the ones loaded by path, and whether
+  // by-path loads are tracked (false with leave_out_skipped_hooks on); absent, none known and tracked
+  rules?: RulesInput
 }
+export type RulesInput = { always: string[]; byPath: string[]; isTracked: boolean }
 
 const ORDER = ['five_hour', 'seven_day']
 const LABEL: Record<string, string> = { five_hour: '5h', seven_day: '7d' }
@@ -171,24 +175,33 @@ function toolsByCalls(stats: Record<string, ToolStat> | undefined): [string, Too
     .sort(([ka, a], [kb, z]) => z.calls - a.calls || (ka < kb ? -1 : ka > kb ? 1 : 0))
 }
 
-// The info line's toggle of the rows under it: the tool calls and the main chat's skills it opens, the skills' count
-// going first when the width runs out, then both. A letter, never a digit: a bare digit in an empty prompt presses a
-// band button in place of typing. Null while it has nothing to open.
-function toggleForms(b: BandInput): Line[] {
+// The info line's toggle of the rows under it (spec 2026-11-11, D5): the tool calls, the main chat's skills, the agents
+// dispatched (and how many run) and the rules it opens, each only above 0; short of width its forms drop the rules,
+// then the agents, then the skills, then all but the arrow. A letter, never a digit: a bare digit in an empty prompt
+// presses a band button in place of typing. None while closed with nothing to open.
+export function toggleForms(b: BandInput): Line[] {
   const isOpen = b.isToolsOpen === true
+  const count = (n: number, one: string): string | null => (n === 0 ? null : `${n} ${one}${n === 1 ? '' : 's'}`)
   const calls = toolsByCalls(b.stats).reduce((n, [, s]) => n + s.calls, 0)
-  const loaded = Object.keys(b.meta.skills ?? {}).length
-  if (calls === 0 && loaded === 0 && !isOpen) return []
-  const toolsPart = calls === 0 ? null : `${calls} ${calls === 1 ? 'tool' : 'tools'}`
-  const skillsPart = loaded === 0 ? null : `${loaded} ${loaded === 1 ? 'skill' : 'skills'}`
+  const dispatched = Object.values(b.meta.agentTypes ?? {}).reduce((n, k) => n + k, 0)
+  const running = b.agents.filter(r => isLive(r.status)).length
+  const drawn = rulesDrawn(b.rules ?? NO_RULES)
+  const tools = count(calls, 'tool')
+  const skills = count(Object.keys(b.meta.skills ?? {}).length, 'skill')
+  const agents = count(dispatched, 'agent')
+  const rules = count(drawn.always.length + drawn.byPath.length, 'rule')
+  if (tools === null && skills === null && agents === null && rules === null && !isOpen) return []
   const arrow = isOpen ? '▾' : '▸'
-  const both = [toolsPart, skillsPart].filter((p): p is string => p !== null)
-  const labels = [`${both.length === 0 ? 'tools' : both.join(' · ')} ${arrow}`, ...(both.length === 2 ? [`${toolsPart} ${arrow}`] : []), arrow]
+  const parts = (...of: (string | null)[]): string[] => of.filter((p): p is string => p !== null)
+  const agentsPart = agents === null ? null : running > 0 ? `${agents} (${running} ◐)` : agents
+  const all = parts(tools, skills, agentsPart, rules)
+  const forms = [all, parts(tools, skills, agentsPart), parts(tools, skills), parts(tools)].filter(f => f.length > 0)
+  const labels = [...new Set([...(all.length === 0 ? ['tools'] : forms.map(f => f.join(' · '))).map(l => `${l} ${arrow}`), arrow])]
   return labels.map(label => [{ button: { key: 'tools', label, hotkey: 't' } }])
 }
 
-// The open rows: every tool by name with its calls, then the skills the main chat loaded and how many the listing
-// carries, each under its label, as many to a row as the width holds
+// The open rows (spec 2026-11-11, D2): every tool by name with its calls, then the skills the main chat loaded and how
+// many the listing carries, each under its label, as many to a row as the width holds, joined by ' │ '
 export function toolRows(b: BandInput): Line[] {
   const used = toolsByCalls(b.stats)
   const tools: Seg[] = used.length === 0 ? [{ text: 'none', tone: 'dim' }] : used.map(([key, s]) => ({ text: `${key} ×${s.calls}` }))
@@ -196,10 +209,80 @@ export function toolRows(b: BandInput): Line[] {
   if (b.listing !== undefined && b.listing !== null) skills.push({ text: listedText(b.listing), tone: 'dim' })
   const label = (text: string): Seg => ({ text: text.padEnd(ROW_LABEL), tone: 'dim' })
   const under: Seg = { text: ' '.repeat(ROW_LABEL) }
-  return [...wrapRows(label('tools'), under, tools, b.columns), ...wrapRows(label('skills'), under, skills, b.columns)]
+  const row = (name: string, items: Line[]): Line[] => wrapRows(label(name), under, items, b.columns, ROW_JOIN)
+  const one = (segs: Seg[]): Line[] => segs.map(s => [s])
+  return [
+    ...row('tools:', one(tools)), ...row('skills:', one(skills)),
+    ...row('agents:', agentSegs(b.agents, b.meta.agentTypes, b.meta.isResumed === true)),
+    ...row('rules:', ruleSegs(b.rules ?? NO_RULES, b.meta.isResumed === true)),
+  ]
 }
 
-const ROW_LABEL = 8
+const NO_RULES: RulesInput = { always: [], byPath: [], isTracked: true }
+
+// The rules drawn, each name once, an always-on name winning: the always-on ones, then the by-path ones not among them
+export function rulesDrawn(r: RulesInput): { always: string[]; byPath: string[] } {
+  const always = [...new Set(r.always)]
+  return { always, byPath: [...new Set(r.byPath)].filter(n => !always.includes(n)) }
+}
+
+// The rules row's items (spec 2026-11-11, D4): the always-on rules plain, the by-path ones violet, then how many of
+// each; untracked (the option on), by path is not known; after a resume, the by-path ones loaded before are unseen
+export function ruleSegs(r: RulesInput, isResumed: boolean): Line[] {
+  const { always, byPath } = rulesDrawn(r)
+  if (r.isTracked && always.length + byPath.length === 0) return [[{ text: 'none loaded', tone: 'dim' }]]
+  const summary = r.isTracked
+    ? `${always.length} always-on · ${byPath.length} by path${isResumed ? ' since resume' : ''}`
+    : `${always.length} always-on · by path not tracked`
+  return [
+    ...always.map((text): Line => [{ text }]), ...byPath.map((text): Line => [{ text, tone: 'handoff' }]),
+    [{ text: summary, tone: 'dim' }],
+  ]
+}
+
+// The agents row's items (spec 2026-11-11, D3): each type in the order of its first dispatch, its glyph and dispatches -
+// ◐ while a kept row of it runs, ✗ once one failed or was killed, else ✓ - then how many run; after a resume, counted
+// from it. A type whose rows were all dropped (at most 50 kept) reads ✓.
+export function agentSegs(rows: AgentRow[], types: Record<string, number> | undefined, isResumed: boolean): Line[] {
+  const names = Object.keys(types ?? {})
+  if (names.length === 0) return [[{ text: isResumed ? 'none seen since resume' : 'none', tone: 'dim' }]]
+  const items = names.map((type): Line => {
+    const of = rows.filter(r => r.type === type)
+    const glyph: Seg = of.some(r => isLive(r.status))
+      ? { text: '◐ ', tone: 'warn' }
+      : of.some(r => r.status === 'failed' || r.status === 'killed') ? { text: '✗ ', tone: 'fail' } : { text: '✓ ', tone: 'ok' }
+    return [glyph, { text: `${type} ×${types?.[type] ?? 0}` }]
+  })
+  const running = rows.filter(r => isLive(r.status)).length
+  const since: Line[] = isResumed ? [[{ text: 'since resume', tone: 'dim' }]] : []
+  return [...items, ...since, [{ text: `${running} running`, tone: running > 0 ? 'warn' : 'dim' }]]
+}
+
+// The labels' width, so the items of every row line up, and the band rows' joiner, as the owner's target draws them
+// A folder past `max` cells: its last parts that fit after '…/', or its last part cut
+function fitFolder(folder: string, max: number): string {
+  if (widthOf([{ text: folder }]) <= max) return folder
+  const parts = folder.split('/')
+  let kept = parts.slice(-1)
+  for (let i = parts.length - 2; i >= 0; i--) {
+    const more = [parts[i] ?? '', ...kept]
+    if (widthOf([{ text: `…/${more.join('/')}` }]) > max) break
+    kept = more
+  }
+  return `…/${fitLine(kept.join('/'), max - 2)}`
+}
+
+// '…/<last part>' for a folder of several parts, else the folder
+const lastPart = (folder: string): string => (folder.includes('/') ? `…/${folder.split('/').pop() ?? ''}` : folder)
+
+const ROW_LABEL = 9
+export const ROW_JOIN = ' │ '
+
+// The full band's plan row, above the info line (the owner's target, 2026-11-11): none in calm mode or with no plan
+function planRow(b: BandInput): Line[] {
+  if (b.mode !== 'full' || b.plan === null) return []
+  return [[{ text: 'plan:'.padEnd(ROW_LABEL), tone: 'dim' }, ...planRowParts(b.plan, b.columns - ROW_LABEL)]]
+}
 
 // The skills loaded in the main chat; after a resume or a branch, counted from it, since the ones loaded before are in
 // the context but never seen (a side agent's note, 2026-11-11)
@@ -210,27 +293,29 @@ export function skillSegs(skills: Record<string, number> | undefined, isResumed:
   return [...loaded.map((text): Seg => ({ text, tone: 'skill' })), ...since]
 }
 
-// Items after a label, joined by ' · ' while they fit; a row that wraps starts with `under`, as wide as the label, so
-// its items line up under the first. An item wider than a row has one to itself, and the draw cuts it.
-export function wrapRows(label: Seg, under: Seg, items: Seg[], columns: number): Line[] {
+// Items after a label, joined by `joiner` (dim) while they fit; a row that wraps starts with `under`, as wide as the
+// label, so its items line up under the first. An item is a line of its own segments, so a glyph can carry a tone its
+// name does not; one wider than a row has the row to itself, and the draw cuts it.
+export function wrapRows(label: Seg, under: Seg, items: Line[], columns: number, joiner: string): Line[] {
   const lead = cellsOf([label])
+  const gap = widthOf([{ text: joiner }])
   const rows: Line[] = []
   let row: Line = [label]
   let used = lead
   let count = 0
   for (const item of items) {
-    const w = widthOf([item])
-    if (count > 0 && used + 3 + w > columns) {
+    const w = widthOf(item)
+    if (count > 0 && used + gap + w > columns) {
       rows.push(row)
       row = [under]
       used = lead
       count = 0
     }
     if (count > 0) {
-      row.push({ text: ' · ', tone: 'dim' })
-      used += 3
+      row.push({ text: joiner, tone: 'dim' })
+      used += gap
     }
-    row.push(item)
+    row.push(...item)
     used += w
     count++
   }
@@ -267,10 +352,15 @@ function infoItems(b: BandInput): Item[] {
   const parts = timeParts(b, 2, true)
   if (parts.length > 0) items.push({ keep: 1, forms: parts.map((_, i) => dimText(parts.slice(0, parts.length - i).join(' · '))) })
   // Where the session runs and Claude Code's version, from the first second; the first to go when the width runs out
+  // 'project ▸ folder git:(branch)': the session's project, then the folder Claude works in when it is not the project's
+  // root (the user, 2026-11-11), past 40 cells its last parts after '…/', and narrower its last part alone
   const place = b.meta.place
   if (place !== undefined) {
     const branch: Line = place.branch === null ? [] : [{ text: ` git:(${place.branch})`, tone: 'dim' }]
-    items.push({ keep: 0.8, forms: [[{ text: place.project, tone: 'dim' }, ...branch]] })
+    const at = (folder: string | null): Line => [{ text: folder === null ? place.project : `${place.project} ▸ ${folder}`, tone: 'dim' }, ...branch]
+    const folder = place.folder
+    const forms = folder === undefined ? [at(null)] : [...new Set([fitFolder(folder, 40), lastPart(folder)])].map(at)
+    items.push({ keep: 0.8, forms })
   }
   if (b.meta.version !== undefined) items.push({ keep: 0.5, forms: [dimText(`CC ${b.meta.version}`)] })
   return items
@@ -350,10 +440,11 @@ function lastTurn(b: BandInput, isNarrow: boolean): Line {
 
 const agentCount = (k: number): string => `${k} ${k === 1 ? 'agent' : 'agents'}`
 
-// ' │ PLAN 3/5 · score 81 ▲13', each part only when known, for an idle line 1 that needs you
+// ' │ PLAN 3/5 · score 81 ▲13', each part only when known, for an idle line 1 that needs you; the full band's plan has
+// its own row, so there only the score
 function planTail(b: BandInput): Line {
   const parts: Line[] = []
-  if (b.plan !== null) parts.push([{ text: 'PLAN', tone: 'plan' }, { text: ` ${b.plan.finished}/${b.plan.total}` }])
+  if (b.plan !== null && b.mode !== 'full') parts.push([{ text: 'PLAN', tone: 'plan' }, { text: ` ${b.plan.finished}/${b.plan.total}` }])
   if (b.score !== null) parts.push(scoreSeg(b.score))
   if (parts.length === 0) return []
   return [{ text: ' │ ', tone: 'dim' }, ...parts.flatMap((p, i) => (i === 0 ? p : [{ text: ' · ' }, ...p]))]
@@ -364,7 +455,9 @@ function planTail(b: BandInput): Line {
 // step, then its title is cut.
 export function working(b: BandInput, isNarrow: boolean): Line {
   const running = b.agents.filter(r => isLive(r.status))
-  if (b.plan !== null && isNarrow) return narrowPlan(b.plan, running.length)
+  // The full band's plan has its own row, so line 1 keeps the turn there
+  const plan = b.mode === 'full' ? null : b.plan
+  if (plan !== null && isNarrow) return narrowPlan(plan, running.length)
   const n = b.meta.turnCount + 1
   const took = elapsed(b.now - (b.live.startedAt ?? b.now))
   const count = b.mode === 'full' ? ` · ${b.live.tools} ${b.live.tools === 1 ? 'tool' : 'tools'}` : ''
@@ -384,13 +477,13 @@ export function working(b: BandInput, isNarrow: boolean): Line {
     const rest = parts.length - kept
     return [...parts.slice(0, kept), ...(rest > 0 ? [{ text: ` +${agentCount(rest)}`, tone: 'dim' as const }] : [])]
   }
-  const lead: Line = b.plan === null ? [head] : planLine(b.plan, Infinity)
+  const lead: Line = plan === null ? [head] : planLine(plan, Infinity)
   for (let kept = parts.length; kept >= 0; kept--) {
     const line: Line = [...lead, ...folded(kept), ...bash]
     if (widthOf(line) <= b.columns) return line
   }
-  if (b.plan === null) return [head, ...folded(0), ...bash]
-  return [...planLine(b.plan, b.columns - widthOf(folded(0))), ...folded(0)]
+  if (plan === null) return [head, ...folded(0), ...bash]
+  return [...planLine(plan, b.columns - widthOf(folded(0))), ...folded(0)]
 }
 
 // What the spinner adds after the engine's suffix: an agent's action and context on that agent's spinner; on the main
@@ -438,11 +531,12 @@ function withPlanTail(b: BandInput, line: Line): Line {
 export const REC_MARK: Seg = { text: '● REC', tone: 'fail', bold: true }
 
 // The status line under the prompt (spec D2), which stays while the band is collapsed: what needs the person, short
-// and in the band's order - REC, the context once the band turns hot at 60, the new failures - or null for none
-export function statusText(o: { percent: number | null; newFailures: number; recLevel: Level }): string | null {
+// and in the band's order - REC, the context once the band turns hot at 60, the new failures - or null for none. While
+// the band is in view it shows REC and the context itself, so the line leaves them out (spec 2026-11-11, D6).
+export function statusText(o: { percent: number | null; newFailures: number; recLevel: Level; isBandShown: boolean }): string | null {
   const parts = [
-    o.recLevel === 'off' ? null : '● REC',
-    o.percent !== null && Math.round(o.percent) >= 60 ? `ctx ${pct(o.percent)}` : null,
+    o.recLevel === 'off' || o.isBandShown ? null : '● REC',
+    !o.isBandShown && o.percent !== null && Math.round(o.percent) >= 60 ? `ctx ${pct(o.percent)}` : null,
     o.newFailures > 0 ? `✗ ${o.newFailures} new` : null,
   ].filter((p): p is string => p !== null)
   return parts.length === 0 ? null : parts.join(' · ')
@@ -453,33 +547,35 @@ export function statusText(o: { percent: number | null; newFailures: number; rec
 // full width, so no gauge, reset or the cost drops for them
 export function bandLines(b: BandInput): Line[] {
   const max = b.maxRows
-  if (max === undefined) return bandRows(b, 2, Infinity)
+  if (max === undefined) return bandRows(b, 2, Infinity, true)
   // Short of rows, the info line's second row gives way first, then the open rows of tools, from the last, then the
-  // info line: the line under them holds the buttons, and a digit arms only those in view
+  // plan row, then the info line: the line under them holds the buttons, and a digit arms only those in view
   for (const upTo of [2, 1]) {
-    const lines = bandRows(b, upTo, Infinity)
+    const lines = bandRows(b, upTo, Infinity, true)
     if (lines.length <= max) return lines
   }
-  const core = bandRows(b, 1, 0)
-  return core.length > max ? bandRows(b, 0, 0) : bandRows(b, 1, max - core.length)
+  const core = bandRows(b, 1, 0, true)
+  if (core.length <= max) return bandRows(b, 1, max - core.length, true)
+  const bare = bandRows(b, 1, 0, false)
+  return bare.length > max ? bandRows(b, 0, 0, false) : bare
 }
 
-// `infoUpTo`: the rows the info line may take, none for 0
-function bandRows(b: BandInput, infoUpTo: number, toolRowsKept: number): Line[] {
+// `infoUpTo`: the rows the info line may take, none for 0; `isPlanKept`: the full band's plan row stays
+function bandRows(b: BandInput, infoUpTo: number, toolRowsKept: number, isPlanKept: boolean): Line[] {
   const isNarrow = b.columns < 100
   const marks: Line[] = [b.rec !== undefined && b.rec.level !== 'off' ? [REC_MARK] : [], b.banner ?? []].filter(m => m.length > 0)
-  if (marks.length === 0) return bandBody(b, isNarrow, infoUpTo, toolRowsKept)
+  if (marks.length === 0) return bandBody(b, isNarrow, infoUpTo, toolRowsKept, isPlanKept)
   const sep: Seg = { text: ' │ ', tone: 'dim' }
   const alone: Line = marks.flatMap((m, i) => (i === 0 ? m : [sep, ...m]))
   const lead: Line = [...alone, sep]
   // Only line 1 shares its row with the marks: the lines under it are fitted to the band's whole width
-  const [first] = bandBody({ ...b, columns: b.columns - widthOf(lead) }, isNarrow, infoUpTo, toolRowsKept)
+  const [first] = bandBody({ ...b, columns: b.columns - widthOf(lead) }, isNarrow, infoUpTo, toolRowsKept, isPlanKept)
   if (first === undefined) return [alone]
-  const body = bandBody(b, isNarrow, infoUpTo, toolRowsKept)
+  const body = bandBody(b, isNarrow, infoUpTo, toolRowsKept, isPlanKept)
   return widthOf(lead) + widthOf(first) <= b.columns ? [[...lead, ...first], ...body.slice(1)] : [alone, ...body]
 }
 
-function bandBody(b: BandInput, isNarrow: boolean, infoUpTo: number, toolRowsKept: number): Line[] {
+function bandBody(b: BandInput, isNarrow: boolean, infoUpTo: number, toolRowsKept: number, isPlanKept: boolean): Line[] {
   const u = b.usage
   // Before the first reading the calm band waits; the full band draws once the model or a stored window is known
   const isFullKnown = b.mode === 'full' && (b.meta.model !== null || u.windows.length > 0)
@@ -490,7 +586,8 @@ function bandBody(b: BandInput, isNarrow: boolean, infoUpTo: number, toolRowsKep
   // The info line, then the open rows of tools under it, only while its toggle is in view to close them
   const head = infoUpTo > 0 && b.mode === 'full' ? infoRows(b, infoUpTo) : []
   const hasToggle = head.some(row => row.some(s => 'button' in s && s.button.key === 'tools'))
-  const info: Line[] = head.length === 0 ? [] : [...head, ...(b.isToolsOpen === true && hasToggle ? toolRows(b).slice(0, toolRowsKept) : [])]
+  const plan: Line[] = head.length > 0 && isPlanKept ? planRow(b) : []
+  const info: Line[] = head.length === 0 ? [] : [...plan, ...head, ...(b.isToolsOpen === true && hasToggle ? toolRows(b).slice(0, toolRowsKept) : [])]
   const p = fiveHourPace(b)
   const isHot = (b.runway?.percent ?? u.percent ?? 0) >= 60 || u.windows.some(w => w.percentUsed >= 60) || (p !== null && p !== 'on-pace')
   const agentsRun = b.agents.some(r => isLive(r.status))

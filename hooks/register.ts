@@ -15,7 +15,7 @@ import { baseCost, pruneCost, recordCost, todayUsd } from './cost.ts'
 import { drawLines, drawNote, drawWithInput } from './draw.tsx'
 import { localDate } from './forecast.ts'
 import { REC_HIDDEN, SPINNER_WORD, bandFailed, paneFailed } from './failsafe.ts'
-import { NO_PARTS, partsOf } from './parts.ts'
+import { NO_PARTS, linkedRules, partsOf, ruleName } from './parts.ts'
 import { clock, fingerprint, mins, oneLine, printable, tokens, usd, when } from './format.ts'
 import { mask, maskForFile, maskSpans, recLevel, setRec, toast } from './mask.ts'
 import { maskDeep, maskDialog, maskResult, neutralDialog, resultLines } from './sites.ts'
@@ -37,7 +37,7 @@ import type { Close } from './steptime.ts'
 import { agentsLines, cacheLines, nowLines, tabBar, timelineLines, toolsLines, usageLines } from './tabs.ts'
 import { classify, fold, targetOf, toolKey } from './outcome.ts'
 import { LEVELS, REC_HELP, addWord, parseLevel, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec.ts'
-import { baseName, dropPassed, gitDirOf, headBranch, nextWindows, parentOf, storedWindows } from './startup.ts'
+import { baseName, dropPassed, folderOf, gitDirOf, headBranch, nextWindows, parentOf, storedWindows } from './startup.ts'
 import type { CallFacts } from './outcome.ts'
 import type {
   AgentRow, Cache, CacheConfig, Credit, Failure, Handoff, Live, Loop, Meta, Outcome, Pace, Plan, PlanChange, Level, Plans, Quiet, BandSetting, BandMode, RecState, SaveResult, Scores, Stack, Tab, TaskItem, ToolStat, Totals, Turn, Usage, View,
@@ -308,9 +308,10 @@ async function seedWindows($: EngineInterface): Promise<void> {
   if (stored !== null) await update($, usage, u => ({ ...u, windows: stored.windows, windowsAt: stored.at }))
 }
 
-// The HEAD file the place was read from, so the 30-second poll reads that one file for a checkout
-// and the folder it was read for: a move to another folder (a worktree, /cd) reads the place again
-const placeMem = { head: null as string | null, cwd: null as string | null }
+// The HEAD file the place was read from, so the 30-second poll reads that one file for a checkout; the working folder
+// it was read with, as a move to another (a `cd`, a worktree, /cd) reads the place again; and the folder it shows, the
+// working folder or the folder of the file the main thread last edited or wrote
+const placeMem = { head: null as string | null, cwd: null as string | null, at: null as string | null }
 
 async function readText($: EngineInterface, path: string): Promise<string | null> {
   try {
@@ -338,21 +339,37 @@ async function findHead($: EngineInterface, cwd: string): Promise<{ dir: string;
 }
 
 const setPlace = (place: NonNullable<Meta['place']>) => (m: Meta): Meta =>
-  m.place?.project === place.project && m.place.branch === place.branch ? m : { ...m, place }
+  m.place?.project === place.project && m.place.folder === place.folder && m.place.branch === place.branch ? m : { ...m, place }
 
-// The project and branch: outside a repository the working folder alone; a refused read leaves no place
-async function readPlace($: EngineInterface): Promise<void> {
+// The session's project, the folder Claude works in when it is not the project's root, and the branch of the repository
+// holding that folder (the user, 2026-11-11): a Bash `cd` moves `$.session.cwd()` and leaves `$.session.root()`. With no
+// root read, the project is the repository's folder or the working folder, as before. A refused read leaves no place.
+async function readPlace($: EngineInterface, edited?: string): Promise<void> {
   const repo = await $.session.repo()
   const cwd = await $.session.cwd()
+  const root = await $.session.root().catch(() => null)
+  const at = edited ?? cwd
   placeMem.head = null
   placeMem.cwd = cwd
-  if (repo === null) {
-    await update($, meta, setPlace({ project: baseName(cwd), branch: null }))
+  placeMem.at = at
+  const folder = root === null ? null : folderOf(at, root)
+  const shown = folder === null ? {} : { folder }
+  if (repo === null && folder === null) {
+    await update($, meta, setPlace({ project: baseName(root ?? cwd), branch: null }))
     return
   }
-  const found = await findHead($, cwd)
+  const found = await findHead($, at)
   placeMem.head = found?.head ?? null
-  await update($, meta, setPlace({ project: baseName(found?.dir ?? repo.root), branch: found?.branch ?? null }))
+  const project = root === null ? baseName(found?.dir ?? repo?.root ?? cwd) : baseName(root)
+  await update($, meta, setPlace({ project, ...shown, branch: found?.branch ?? null }))
+}
+
+// A side agent's note the user passed on (2026-11-11): Claude edits by full path without a `cd`, so the folder of the
+// file the main thread edited or wrote is where it works, until a `cd` moves the working folder again
+async function editPlace($: EngineInterface, file: string): Promise<void> {
+  const path = /^([\\/]|[A-Za-z]:)/.test(file) ? file : joinPath(await $.session.cwd(), file)
+  const dir = parentOf(path)
+  if (dir !== null && dir !== placeMem.at) await readPlace($, dir)
 }
 
 // A checkout since: the poll reads the HEAD file the place came from
@@ -361,12 +378,12 @@ async function pollPlace($: EngineInterface): Promise<void> {
   const head = placeMem.head
   if (head === null) return
   const text = await readText($, head)
-  const project = (await read($, meta)).place?.project
-  if (text !== null && project !== undefined) await update($, meta, setPlace({ project, branch: headBranch(text) }))
+  const place = (await read($, meta)).place
+  if (text !== null && place !== undefined) await update($, meta, setPlace({ ...place, branch: headBranch(text) }))
 }
 
-// What the band shows before the first reply: the model, Claude Code's version, the place and the stored windows. Each
-// read stands alone: a refusal leaves its value as it was.
+// What the band shows before the first reply: the model, Claude Code's version, the place, the stored windows and the
+// context's parts. Each read stands alone: a refusal leaves its value as it was.
 async function readStart($: EngineInterface): Promise<void> {
   try {
     const model = await $.session.model()
@@ -382,6 +399,8 @@ async function readStart($: EngineInterface): Promise<void> {
   }
   await readPlace($).catch(() => undefined)
   await seedWindows($).catch(() => undefined)
+  // The rules row's always-on rules (spec 2026-11-11, D4), from a breakdown read on a timer: the start waits on nothing
+  readBreakdownSoon($)
 }
 
 // When the band's figures were last read mid-turn: the tick reads them at most this often while a turn runs or an
@@ -452,12 +471,16 @@ async function tickOnce($: EngineInterface): Promise<void> {
 // it applies. `last` is null until the module's first call, which is always sent: a line an earlier copy of the mod
 // pinned before a reload is cleared or replaced at once.
 const statusMem = { last: null as string | undefined | null }
+// Whether the band is in view, as its last render found it (spec 2026-11-11, D6): it drew lines, `isCollapsed` is
+// exactly false (a build before 2.1.321 hands none) and no survey covers it. One flag for the session, the last render
+// deciding; the one-second tick carries a change to the pinned line.
+const bandMem = { isShown: false }
 async function syncStatus($: EngineInterface): Promise<void> {
   const u = await read($, usage)
   const runway = runwayOf(await read($, stack), u, (await read($, meta)).model)
   const raw = statusText({
     percent: runway?.percent ?? u.percent, newFailures: (await read($, failures)).filter(f => f.isNew).length,
-    recLevel: (await read($, rec)).level,
+    recLevel: (await read($, rec)).level, isBandShown: bandMem.isShown,
   })
   const text = raw === null ? undefined : mask(raw)
   if (text === statusMem.last) return
@@ -995,11 +1018,12 @@ async function loadQuiet($: EngineInterface): Promise<boolean> {
   return isOn
 }
 
-// Only the exact string 'calm' reads as calm: absent, or anything another version or a hand wrote, is full. The rows
-// of every tool and the skills likewise: only 'open' opens them.
+// Only the exact string 'calm' reads as calm: absent, or anything another version or a hand wrote, is full. The band's
+// detail rows likewise close only on the exact string 'closed' (spec 2026-11-11, D1): a fresh store, or anything
+// another version or a hand wrote, opens them.
 async function loadBand($: EngineInterface): Promise<BandMode> {
   const mode: BandMode = (await $.store.get('settings:band')) === 'calm' ? 'calm' : 'full'
-  const isOpen = (await $.store.get('settings:band-tools')) === 'open'
+  const isOpen = (await $.store.get('settings:band-tools')) !== 'closed'
   const next: BandSetting = isOpen ? { mode, isToolsOpen: true } : { mode }
   await update($, bandSetting, b => (b.mode === mode && (b.isToolsOpen === true) === isOpen ? b : next))
   return mode
@@ -1119,7 +1143,8 @@ async function readBreakdown($: EngineInterface): Promise<SessionContextBreakdow
   }
   if (b === undefined) return null
   const now = await $.clock.now()
-  const next = partsOf(b, await $.session.cwd(), now)
+  const cwd = await $.session.cwd()
+  const next = partsOf(b, cwd, now, await linkedRules($, b, cwd))
   partsMem.lastAt = now
   await update($, parts, () => next)
   return b
@@ -1424,7 +1449,8 @@ async function isNoColor($: EngineInterface): Promise<boolean> {
 export const register: Register = (on, options) => {
   // The person's word that a managed plugin sends these events on past the mod: Claude Code then tells the model, once
   // per event and conversation, that the mod's hook was skipped. Left out, the hooks never join the chain; they never ran
-  // there anyway, and a new conversation is read off the session id.
+  // there anyway, and a new conversation is read off the session id. The rules hook goes with the six on the safe side
+  // (spec 2026-11-11, D4, A1): such a plugin may skip it too, and the rules row then says by path is not tracked.
   const isLeftOut = options.leave_out_skipped_hooks === true
   // Keyed by call id, at most 100, the oldest dropped first
   const calls = new Map<string, Call>()
@@ -1455,6 +1481,9 @@ export const register: Register = (on, options) => {
         id, parentId: e.parentAgentId ?? null, type: e.subagentType, description: e.description, prompt: e.prompt,
         isTeammate: e.isTeammate === true, model: spawned.model,
       }, now)
+      // A dispatch is a new row: a resume of a kept one runs that row again (upsertSpawn's own test)
+      const isKnown = e.resume !== undefined && (await read($, agents)).some(r => r.id === id)
+      if (!isKnown) await update($, meta, m => ({ ...m, agentTypes: { ...m.agentTypes, [row.type]: (m.agentTypes?.[row.type] ?? 0) + 1 } }))
       await update($, agents, rows => upsertSpawn(rows, row, e.resume !== undefined))
       await addMark($, markOf(row))
       // Its first step came before its spawn resolved: the loop is this agent's
@@ -1483,6 +1512,15 @@ export const register: Register = (on, options) => {
     const isWait = isAllWait(e.tool, call.agentId === null)
     if (isWait) await update($, credit, c => openWait(c, loop, e.tool_use_id, startedAt))
     const ran = await next(e)
+    // A `cd` in the main loop's Bash, or a file it edited or wrote, moves the folder Claude works in: the place is read
+    // again off the hook
+    const isEdit = ['Edit', 'Write', 'NotebookEdit'].includes(e.tool) && ran.isError !== true && ran.deny === undefined
+    const edited = isEdit ? String(input.file_path ?? input.notebook_path ?? '') : ''
+    if (call.agentId === null && (e.tool === 'Bash' || edited !== '')) {
+      $.clock.after(0, () => {
+        (edited === '' ? pollPlace($) : editPlace($, edited)).catch(() => undefined)
+      })
+    }
     const text = ran.text ?? (typeof ran.result === 'string' ? ran.result : '')
     if (ran.isError === true && text !== '') keepError(e.tool_use_id, text)
     call.facts = {
@@ -1617,6 +1655,16 @@ export const register: Register = (on, options) => {
       const result = await next(e)
       await readStatus($).catch(() => undefined)
       return result
+    }).catch(($, e, next) => next(e))
+
+    // A rule the main context loaded by path (spec 2026-11-11, D4): a match of its `paths:` globs, or a nested folder's
+    // rules. A subagent's load is in its own context; a start-up or compaction load is the breakdown's to list. Only a
+    // rule's frontmatter matches by path, so that file is a rule wherever a link under `.claude/rules/` lands it.
+    on('classic.InstructionsLoaded', async ($, e, next) => {
+      const byPath = e.load_reason === 'path_glob_match' ? baseName(e.file_path) : e.load_reason === 'nested_traversal' ? ruleName(e.file_path, e.memory_type) : null
+      const name = e.agent_id === undefined ? byPath : null
+      if (name !== null) await update($, meta, m => (m.pathRules?.includes(name) === true ? m : { ...m, pathRules: [...(m.pathRules ?? []), name] }))
+      return next(e)
     }).catch(($, e, next) => next(e))
   }
 
@@ -1947,7 +1995,10 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.props.hasSurvey) return next(e)
+    if (e.props.hasSurvey) {
+      bandMem.isShown = false
+      return next(e)
+    }
     // Read so the running times redraw each second while a turn runs
     await read($, tick)
     const now = await $.clock.now()
@@ -1958,6 +2009,7 @@ export const register: Register = (on, options) => {
     const m = await read($, meta)
     const runway = runwayOf(st, u, m.model)
     const setting = await read($, bandSetting)
+    const p = await read($, parts)
     const lines = bandLines({
       now, columns: e.props.bodyColumns, maxRows: e.props.maxRows, isWorking: e.props.isWorking,
       live: await read($, live), usage: u, meta: m, turns: await read($, turns),
@@ -1965,14 +2017,19 @@ export const register: Register = (on, options) => {
       cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score, rec: recOf(await read($, rec)),
       forecast: forecastOf(h, u, runway), handoffAsk: h.isAskUp ? h.handled : null, runway, banner: bannerSegs(st),
       mode: setting.mode, totals: await read($, totals), stats: await read($, stats),
-      isToolsOpen: setting.isToolsOpen === true, listing: (await read($, parts)).skills ?? null,
+      isToolsOpen: setting.isToolsOpen === true, listing: p.skills ?? null,
+      rules: { always: p.rules ?? [], byPath: m.pathRules ?? [], isTracked: !isLeftOut },
     })
+    bandMem.isShown = lines.length > 0 && e.props.isCollapsed === false
     if (lines.length === 0) return next(e)
     const press = {
       inspect: () => inspectFromBand($), compact: () => compactNow($, held), handoff: () => saveNow($), tools: () => toggleTools($),
     }
     return drawLines($, e, lines, { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
-  }).catch(($, e, next) => drawNote($, e, bandFailed(next.error.kind)))
+  }).catch(($, e, next) => {
+    bandMem.isShown = false
+    return drawNote($, e, bandFailed(next.error.kind))
+  })
 
   // The main loop's spinner adds its action, context and the agents running; an agent's spinner, that agent's
   on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
