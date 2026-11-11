@@ -55,19 +55,19 @@ lists the skills loaded into the main chat's context this conversation, by Claud
 subagent's Skill calls are on its Agents row, and a skill that runs forked is in its own subagent, never listed here),
 then how many skills the context's listing carries, of the session's. `agents:` lists each agent type in the order it
 was first dispatched, with how many times: `◐` while one of it runs, `✗` once one failed or was stopped, else `✓`,
-then how many run. `rules:` lists the rule files in the main context: those loaded at start (from `.claude/rules/` and
-your own rules folder), then those loaded by path, when Claude reads, writes or edits a file their `paths:` match, in
-violet while the band is coloured, then how many of each; a compaction keeps them. A resumed or branched conversation
-still holds the skills, agents and by-path rules from before it, which no mods API lists, so those rows count from the
-resume: `none seen since resume`, or what came since with `since resume`. A click on the toggle, or `t` with the band
-focused (ctrl+x tab), closes the rows for every session until opened again. The rows show while the toggle is in view:
-at a narrow width, which drops the toggle, they close with it. Today's cost is the mod's own count on this machine:
-sessions it did not run in are not in it, so it can read lower than a status line's that counts every session. When
-the width runs out, the info line wraps onto a second row between items, and items drop whole only when two rows
-cannot hold them (the version first, then the project and branch, then the times); when the band has fewer rows than
-it needs, as in fullscreen under a tall draft, that second row goes first, then the open rows from the last (`rules:`,
-`agents:`, `skills:`, `tools:`), then the whole info line, so the line with its buttons stays in view. `/band calm`
-goes back to the two lines.
+then how many run. `rules:` lists the rule files in the main context: those loaded at start (from `.claude/rules/`, a
+link there named by the file it reaches, and your own rules folder), then those loaded by path, when Claude reads,
+writes or edits a file their `paths:` match, in violet while the band is coloured, then how many of each; a compaction
+keeps them. A resumed or branched conversation still holds the skills, agents and by-path rules from before it, which no
+mods API lists, so those rows count from the resume: `none seen since resume`, or what came since with `since resume`. A
+click on the toggle, or `t` with the band focused (ctrl+x tab), closes the rows for every session until opened again.
+The rows show while the toggle is in view: at a narrow width, which drops the toggle, they close with it. Today's cost
+is the mod's own count on this machine: sessions it did not run in are not in it, so it can read lower than a status
+line's that counts every session. When the width runs out, the info line wraps onto a second row between items, and
+items drop whole only when two rows cannot hold them (the version first, then the project and branch, then the times);
+when the band has fewer rows than it needs, as in fullscreen under a tall draft, that second row goes first, then the
+open rows from the last (`rules:`, `agents:`, `skills:`, `tools:`), then the whole info line, so the line with its
+buttons stays in view. `/band calm` goes back to the two lines.
 
 The full band draws from the session's first second, before any prompt: the model, the session's time, the project
 and branch (read from git's own `HEAD` file, and again every 30 seconds for a checkout or a move to another folder)

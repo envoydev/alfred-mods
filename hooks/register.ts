@@ -15,7 +15,7 @@ import { baseCost, pruneCost, recordCost, todayUsd } from './cost.ts'
 import { drawLines, drawNote, drawWithInput } from './draw.tsx'
 import { localDate } from './forecast.ts'
 import { REC_HIDDEN, SPINNER_WORD, bandFailed, paneFailed } from './failsafe.ts'
-import { NO_PARTS, partsOf, ruleName } from './parts.ts'
+import { NO_PARTS, linkedRules, partsOf, ruleName } from './parts.ts'
 import { clock, fingerprint, mins, oneLine, printable, tokens, usd, when } from './format.ts'
 import { mask, maskForFile, maskSpans, recLevel, setRec, toast } from './mask.ts'
 import { maskDeep, maskDialog, maskResult, neutralDialog, resultLines } from './sites.ts'
@@ -1126,7 +1126,8 @@ async function readBreakdown($: EngineInterface): Promise<SessionContextBreakdow
   }
   if (b === undefined) return null
   const now = await $.clock.now()
-  const next = partsOf(b, await $.session.cwd(), now)
+  const cwd = await $.session.cwd()
+  const next = partsOf(b, cwd, now, await linkedRules($, b, cwd))
   partsMem.lastAt = now
   await update($, parts, () => next)
   return b
@@ -1631,10 +1632,11 @@ export const register: Register = (on, options) => {
     }).catch(($, e, next) => next(e))
 
     // A rule the main context loaded by path (spec 2026-11-11, D4): a match of its `paths:` globs, or a nested folder's
-    // rules. A subagent's load is in its own context; a start-up or compaction load is the breakdown's to list.
+    // rules. A subagent's load is in its own context; a start-up or compaction load is the breakdown's to list. Only a
+    // rule's frontmatter matches by path, so that file is a rule wherever a link under `.claude/rules/` lands it.
     on('classic.InstructionsLoaded', async ($, e, next) => {
-      const isByPath = e.load_reason === 'path_glob_match' || e.load_reason === 'nested_traversal'
-      const name = e.agent_id === undefined && isByPath ? ruleName(e.file_path, e.memory_type) : null
+      const byPath = e.load_reason === 'path_glob_match' ? baseName(e.file_path) : e.load_reason === 'nested_traversal' ? ruleName(e.file_path, e.memory_type) : null
+      const name = e.agent_id === undefined ? byPath : null
       if (name !== null) await update($, meta, m => (m.pathRules?.includes(name) === true ? m : { ...m, pathRules: [...(m.pathRules ?? []), name] }))
       return next(e)
     }).catch(($, e, next) => next(e))

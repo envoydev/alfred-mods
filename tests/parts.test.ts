@@ -234,3 +234,40 @@ test('the breakdown is read at start off the start hook, so the rules are known 
   expect(kit.usage.breakdowns).toBe(atStart + 1)
   expect((state.get('parts') as Parts).rules).toEqual(['always.md'])
 })
+
+// The breakdown names a rule reached through a link by where the link lands, never the link (live, 2026-11-11): a link
+// anywhere under the project's `.claude/rules/`, to a folder or a file, makes what it reaches a rule; an import is not
+const LINKED = { text: 'x', mtimeMs: 0 }
+test("a rule reached through a link under .claude/rules is kept by its target's name; an import is not", async ($, on) => {
+  stubAll(on, {
+    usage: reading(breakdown({ memoryFiles: [
+      { path: '/w/CLAUDE.md', type: 'Project', tokens: 900 },
+      { path: '/w/docs/notes.md', type: 'Project', tokens: 30 },
+      { path: '/shared/rules/team.md', type: 'Project', tokens: 40 },
+      { path: '/shared/house.md', type: 'Project', tokens: 20 },
+      { path: '/shared/deep/nested.md', type: 'Project', tokens: 20 },
+      { path: '/w/.claude/rules/always.md', type: 'Project', tokens: 60 },
+    ] })),
+    files: { 'docs/notes.md': LINKED, '/shared/rules/team.md': LINKED, '/shared/house.md': LINKED, '/shared/deep/nested.md': LINKED, '.claude/rules/always.md': LINKED },
+    links: { '.claude/rules/shared': '/shared/rules', '.claude/rules/house.md': '/shared/house.md', '.claude/rules/team/deep': '/shared/deep' },
+  })
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  await measure($)
+  expect((state.get('parts') as Parts).rules).toEqual(['team.md', 'house.md', 'nested.md', 'always.md'])
+})
+
+test('with every memory file a CLAUDE.md, a rule by its folder or the auto memory, no folder is listed', async ($, on) => {
+  const kit = stubAll(on, { usage: reading(breakdown({ memoryFiles: [
+    ...RULE_FILES,
+    { path: '/w/CLAUDE.local.md', type: 'Local', tokens: 10 },
+    { path: '/home/u/.claude/projects/p/memory/MEMORY.md', type: 'AutoMem', tokens: 10 },
+  ] })) })
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  await measure($)
+  expect((state.get('parts') as Parts).rules).toEqual(['user-pref.md', 'always.md'])
+  expect(kit.files.lists.filter(d => d.endsWith('/.claude/rules'))).toEqual([])
+})

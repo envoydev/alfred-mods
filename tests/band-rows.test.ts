@@ -190,6 +190,18 @@ test('a by-path load on the main thread is listed once, in load order', async ($
   expect(metaOf(state).pathRules).toEqual(['web.md', 'nested.md'])
 })
 
+// A rule reached through a link loads under the path the link lands on, outside any rules folder (live, 2026-11-11);
+// only a rule's `paths:` frontmatter makes a path match, so any file it names is a rule
+test("a by-path rule reached through a link is listed by its target's name", async ($, on) => {
+  stubAll(on)
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  await $.classic.InstructionsLoaded(load('/shared/rules/scoped.md', 'path_glob_match'))
+  await $.classic.InstructionsLoaded(load('/shared/notes/CLAUDE.md', 'nested_traversal'))
+  expect(metaOf(state).pathRules).toEqual(['scoped.md'])
+})
+
 test("a subagent's load, a start-up or compaction reload, an include and a non-rule file are not listed", async ($, on) => {
   stubAll(on)
   const state = watchState(on)

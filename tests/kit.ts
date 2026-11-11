@@ -19,6 +19,9 @@ type Options = {
   agents?: AgentInfo[]; preSwitch?: ClassicResult; settings?: Record<string, unknown>
   // The project's files by the path the mod passes, such as `.claude/session-inspector/plans/p.json`
   files?: Record<string, FileStub>
+  // Symbolic links by the path the mod passes, such as `.claude/rules/shared`, each to the absolute path it lands on:
+  // a folder when a file lies under that path, else a file
+  links?: Record<string, string>
   // The files the SessionStart hooks beneath the mod write, as the stack's own hook writes its status file
   writtenBeneath?: Record<string, FileStub>
   // What `git status` answers, or a reason that rejects the call; the prompt box's draft; what `prompt.fill` answers,
@@ -43,7 +46,7 @@ export type FileStub = { text: string; mtimeMs: number; size?: number }
 
 export function stubAll(on: On, o: Options = {}): {
   clock: MockClock; toasts: string[]; opened: string[]; copied: string[]; usage: { current: SessionUsage; breakdowns: number; refuse: boolean; fail: boolean }; panes: UiPane[]
-  listed: { current: AgentInfo[]; calls: number }; files: { current: Record<string, FileStub>; reads: string[]; writes: string[]; exists: string[] }
+  listed: { current: AgentInfo[]; calls: number }; files: { current: Record<string, FileStub>; reads: string[]; writes: string[]; exists: string[]; lists: string[] }
   // `git.current` and `git.calls`; the draft a test types and the texts the mod filled
   git: { current: ProcessRunResult | string; calls: number; argv: readonly string[] | null; timeoutMs: number | null }; prompt: { draft: string; fills: string[] }
   // Each `$.ui.invalidate` event the mod raised, in order
@@ -95,18 +98,40 @@ export function stubAll(on: On, o: Options = {}): {
   // A test changes the files mid-test through `files.current`; a folder with no file in it is missing. The kit hands a
   // hook the path resolved against the mod's folder, with Windows' separators on Windows, so a stub matches its end
   // after `\` reads as `/`; `{ deny }` rejects the mod's call.
-  const files = { current: { ...(o.files ?? {}) }, reads: [] as string[], writes: [] as string[], exists: [] as string[] }
+  const files = { current: { ...(o.files ?? {}) }, reads: [] as string[], writes: [] as string[], exists: [] as string[], lists: [] as string[] }
+  const links = o.links ?? {}
   const slashed = (path: string): string => path.replace(/\\/g, '/')
   const at = (full: string, path: string): boolean => slashed(full) === path || slashed(full).endsWith(`/${path}`)
   on('fs.list', (_, e) => {
     const dir = slashed(e.path).replace(/\/$/, '')
-    const inDir = Object.entries(files.current).filter(([path]) => at(dir, path.slice(0, path.lastIndexOf('/'))))
-    if (inDir.length === 0) return { deny: `ENOENT: no such directory, ${e.path}` }
+    files.lists.push(dir)
+    const parentOf = (path: string): string => path.slice(0, path.lastIndexOf('/'))
+    const inDir = Object.entries(files.current).filter(([path]) => at(dir, parentOf(path)))
+    const linksIn = Object.keys(links).filter(path => at(dir, parentOf(path)))
+    // A folder holding a file or link at any depth below is listed as a folder
+    const folders = (path: string): string[] => (path.includes('/') ? [parentOf(path), ...folders(parentOf(path))].filter(f => f.includes('/')) : [])
+    const dirsIn = [...new Set([...Object.keys(files.current), ...Object.keys(links)].flatMap(path => folders(path).filter(f => at(dir, parentOf(f)))))]
+    if (inDir.length === 0 && linksIn.length === 0 && dirsIn.length === 0) return { deny: `ENOENT: no such directory, ${e.path}` }
     return {
-      value: inDir.map(([path, f]) => ({
-        name: path.slice(path.lastIndexOf('/') + 1), kind: 'file' as const, size: f.size ?? f.text.length, mtimeMs: f.mtimeMs, isLink: false,
-      })),
+      value: [
+        ...dirsIn.map(path => ({ name: path.slice(path.lastIndexOf('/') + 1), kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false })),
+        ...inDir.map(([path, f]) => ({
+          name: path.slice(path.lastIndexOf('/') + 1), kind: 'file' as const, size: f.size ?? f.text.length, mtimeMs: f.mtimeMs, isLink: false,
+        })),
+        ...linksIn.map(path => ({ name: path.slice(path.lastIndexOf('/') + 1), kind: 'other' as const, size: 0, mtimeMs: 0, isLink: true })),
+      ],
     }
+  })
+  // A link stats as what it leads to, with `realPath` its target when asked; a file as itself, its path its real one
+  on('fs.stat', (_, e) => {
+    const link = Object.entries(links).find(([path]) => at(e.path, path))
+    if (link !== undefined) {
+      const isDir = Object.keys(files.current).some(path => path.startsWith(`${link[1]}/`))
+      return { value: { kind: isDir ? 'dir' as const : 'file' as const, size: 0, mtimeMs: 0, isLink: true, ...(e.resolve ? { realPath: link[1] } : {}) } }
+    }
+    const found = Object.entries(files.current).find(([path]) => at(e.path, path))
+    if (found === undefined) return { deny: `ENOENT: no such file, ${e.path}` }
+    return { value: { kind: 'file' as const, size: found[1].size ?? found[1].text.length, mtimeMs: found[1].mtimeMs, isLink: false, ...(e.resolve ? { realPath: slashed(e.path) } : {}) } }
   })
   // A read rejects over 4 MiB, as Claude Code's does (types, `$.fs.read`)
   on('fs.read', (_, e) => {
