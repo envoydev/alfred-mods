@@ -75,6 +75,16 @@ when the band has fewer rows than it needs, as in fullscreen under a tall draft,
 open rows from the last (`rules:`, `agents:`, `skills:`, `tools:`), then the plan row, then the whole info line, so the
 line with its buttons stays in view. `/band calm` goes back to the two lines.
 
+`/band under` draws the band under the input instead, below Claude Code's own mode line, for every session; `/band
+above` puts it back. Under the input is the terminal's only (a Desktop tab keeps the band above), and it takes no keys,
+so each button becomes the command that does its job: in fullscreen a click presses it, `[ /inspect ]`, `[ /compact ]`,
+`[ /auto-handoff now ]`; on the main screen (`CLAUDE_CODE_NO_FLICKER=0`), where nothing takes a click, it is that
+command as text; and `/band rows on` and `/band rows off` open and close the rows in place of `t` (they work above too).
+There the action row comes right after the gauges. In fullscreen the room under the input is about half the screen,
+less the prompt, two rows when a status line is set and one for the mod's pinned line; whatever else takes room, a
+draft of several lines or a taller status line, cuts the band at the screen's edge from its last row, `rules:` first.
+It was built on Claude Code 2.1.322.
+
 The full band draws from the session's first second, before any prompt: the model, the session's time, the project
 and branch (read from git's own `HEAD` file, and again every 30 seconds for a checkout or a move to another folder)
 and the version, with the 5h and 7d windows the last turn on this machine stored, marked `≈15%` until this session's
@@ -155,8 +165,10 @@ such as claude-hud's, is not replaced: it draws under the prompt, below this lin
       FAIL tests/auth.test.ts
   ```
 
-- `/band [full|calm]` sets the band: `full` (the default) adds the turn's tool count, today's cost and the info line
-  with its toggle of the tools and skills rows; `calm` keeps its two lines. With no argument it prints the state.
+- `/band [full|calm|above|under|rows on|rows off]` sets the band: `full` (the default) adds the turn's tool count,
+  today's cost and the info line with its toggle of the detail rows; `calm` keeps its two lines; `under` draws it under
+  the input on the terminal and `above` (the default) above it; `rows on` and `rows off` open and close the detail rows.
+  With no argument it prints the state, `Band: full · above`.
 
 Settings for all four apply to every session and project on the machine; other open sessions follow within 30
 seconds.
