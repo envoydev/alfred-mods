@@ -38,7 +38,7 @@ import type { Close } from './steptime.ts'
 import { agentsLines, cacheLines, nowLines, tabBar, timelineLines, toolsLines, usageLines } from './tabs.ts'
 import { classify, fold, targetOf, toolKey } from './outcome.ts'
 import { LEVELS, REC_HELP, addWord, parseLevel, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec.ts'
-import { DEFAULTS, SOURCES, holdRec, holdToast, legacyOf, resolve } from './settings.ts'
+import { DEFAULTS, SOURCES, holdRec, holdToast, legacyOf, resolve, skippedToast } from './settings.ts'
 import type { From, Resolved, Source, Values } from './settings.ts'
 import { baseName, dropPassed, folderOf, gitDirOf, headBranch, nextWindows, parentOf, storedWindows } from './startup.ts'
 import type { CallFacts } from './outcome.ts'
@@ -1016,6 +1016,13 @@ async function loadSettingsNow($: EngineInterface, isStart: boolean): Promise<vo
   })
   const r = resolve(layers, legacy)
   settingsMem.resolved = r
+  // A skipped value is told once (S3): each skip the last told set did not hold, when the set changes
+  const skippedKey = r.skipped.map(k => `${k.field}@${k.source}`).sort().join(',')
+  if (skippedKey !== settingsMem.skippedKey) {
+    const told = new Set(settingsMem.skippedKey.split(','))
+    for (const skip of r.skipped) if (!told.has(`${skip.field}@${skip.source}`)) toast($, skippedToast(skip, r))
+    settingsMem.skippedKey = skippedKey
+  }
   // REC's hold (S3), told once per hold; a level that changes after the session's first read is told as /rec told it
   const before = settingsMem.rec
   const held = holdRec(before, { level: r.values.rec, from: r.from.rec })

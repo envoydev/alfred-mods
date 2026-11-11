@@ -208,3 +208,37 @@ test('the session\'s first read toasts nothing, REC on included', async ($, on) 
   expect(rec().level).toBe('on')
   expect(toasts).toEqual([])
 })
+
+// S3: a skipped value is told once, when the set of skipped fields changes, and never quoted
+const BAND_SKIP = 'alfred-mods: "band" in .claude/settings.local.json takes "full" or "calm" - using "full" from the default'
+const REC_SKIP = 'alfred-mods: "rec" in .claude/settings.local.json takes "off", "on" or "strict" - using "off" from the default'
+
+test('a bad value toasts once', async ($, on) => {
+  const { toasts, clock, sources } = await start($, on, { sources: { local: mod({ band: 'compact' }) } })
+  expect(toasts).toEqual([BAND_SKIP])
+  await clock.advance(30_000)
+  expect(toasts).toEqual([BAND_SKIP])
+  sources.local['alfred-mods'] = { band: 'compact', rec: 'yes' }
+  await clock.advance(30_000)
+  expect(toasts).toEqual([BAND_SKIP, REC_SKIP])
+  expect(toasts.some(t => t.includes('compact') || t.includes('yes'))).toBe(false)
+})
+
+test('two ConfigChanges in one tick toast once', async ($, on) => {
+  const { toasts, clock, sources } = await start($, on)
+  sources.local['alfred-mods'] = { band: 'calm' }
+  await $.classic.ConfigChange({ source: 'local_settings' })
+  sources.local['alfred-mods'] = { band: 'compact' }
+  await $.classic.ConfigChange({ source: 'local_settings' })
+  await clock.advance(0)
+  expect(toasts).toEqual([BAND_SKIP])
+})
+
+test('a run starts with no skip told', async ($, on) => {
+  const { toasts, clock } = await start($, on, { sources: { local: mod({ band: 'compact' }) } })
+  expect(toasts).toEqual([BAND_SKIP])
+  await $.session.start(START)
+  expect(toasts).toEqual([BAND_SKIP, BAND_SKIP])
+  await clock.advance(30_000)
+  expect(toasts).toEqual([BAND_SKIP, BAND_SKIP])
+})
