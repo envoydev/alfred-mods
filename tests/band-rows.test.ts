@@ -5,8 +5,9 @@ import type { Engine } from 'claude-code/testing'
 import type { On, SessionUsage } from 'claude-code'
 
 import { newRow } from '../hooks/agents.ts'
-import { agentSegs, ruleSegs, toggleForms, toolRows } from '../hooks/band.ts'
+import { agentSegs, bandLines, ruleSegs, toggleForms, toolRows } from '../hooks/band.ts'
 import type { BandInput, Line } from '../hooks/band.ts'
+import { widthOf } from '../hooks/format.ts'
 import { SPAWN, START, engine, rows, stubAll, watchState } from './kit.ts'
 
 import type { AgentRow, AgentStatus, Cache, Meta, ToolStat, Turn } from '../types'
@@ -268,4 +269,51 @@ test('a part at 0 is left out; with none, tools; closed and empty, no toggle', (
   expect(labels(rulesOnly)).toEqual(['2 rules ▾', '▾'])
   expect(labels(input({ isToolsOpen: true, stats: {} }))).toEqual(['tools ▾', '▾'])
   expect(labels(input({ stats: {} }))).toEqual([])
+})
+
+// Spec 2026-11-11, D7 and the owner's proof: short of rows, the second info row goes first, then the open rows from the
+// last; the four rows draw at 24, 48 and 100 columns under a two-row info line that holds the toggle
+const open = (o: Partial<BandInput> = {}) => input({
+  isToolsOpen: true, agents: TARGET_AGENTS, rules: { always: ['a.md', 'b.md', 'c.md'], byPath: ['d.md', 'e.md'], isTracked: true },
+  meta: { ...input().meta, agentTypes: TARGET_TYPES }, ...o,
+})
+const ROW = /^(tools|skills|agents|rules):/
+const labelsOf = (lines: Line[]): string[] => texts(lines).filter(l => ROW.test(l)).map(l => l.slice(0, l.indexOf(':')))
+const tools = (lines: Line[]) => lines.flat().find(s => 'button' in s && s.button.key === 'tools')
+
+test('short of rows, the second info row goes first, then rules:, then agents:', () => {
+  const all = bandLines(open({ columns: 100 }))
+  // A live agent: line 1, the gauges, two info rows, four rows
+  expect(all).toHaveLength(8)
+  expect(labelsOf(bandLines(open({ columns: 100, maxRows: 7 })))).toEqual(['tools', 'skills', 'agents', 'rules'])
+  expect(bandLines(open({ columns: 100, maxRows: 7 }))).toHaveLength(7)
+  expect(labelsOf(bandLines(open({ columns: 100, maxRows: 6 })))).toEqual(['tools', 'skills', 'agents'])
+  expect(labelsOf(bandLines(open({ columns: 100, maxRows: 5 })))).toEqual(['tools', 'skills'])
+})
+
+for (const columns of [24, 48, 100]) {
+  test(`at ${columns} columns the four rows draw under a two-row info line that holds the toggle`, () => {
+    const lines = bandLines(open({ columns }))
+    expect(tools(lines)).toBeDefined()
+    expect([...new Set(labelsOf(lines))]).toEqual(['tools', 'skills', 'agents', 'rules'])
+  })
+}
+
+test('at 24 columns, a maxRows that forces the one-row info line drops the toggle and every row', () => {
+  const lines = bandLines(open({ columns: 24, maxRows: 3 }))
+  expect(tools(lines)).toBeUndefined()
+  expect(labelsOf(lines)).toEqual([])
+})
+
+test('a name wider than the band at 24 columns is cut by the draw; no drawn row is wider', { timeoutMs: 15_000 }, async ($, on) => {
+  stubAll(on, { band: 'full', usage: ALWAYS, now: NOW })
+  engine(on, ['agent.spawn'])
+  spawns(on)
+  await $.session.start(START)
+  await spawn($, 'alfred-code:web-angular-solution-designer')
+  const ui = await $.ui.mount({ plugin: 'alfred-mods', surface: 'terminal', component: 'AbovePrompt', props: { ...BAND, bodyColumns: 24, maxRows: 20 } })
+  const drawn = await rows(ui)
+  for (const row of drawn) expect(widthOf([{ text: row }])).toBeLessThanOrEqual(24)
+  expect(drawn.some(l => l.startsWith('agents:'))).toBe(true)
+  await ui.unmount()
 })
