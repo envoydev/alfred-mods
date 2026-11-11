@@ -501,11 +501,12 @@ function withPlanTail(b: BandInput, line: Line): Line {
 export const REC_MARK: Seg = { text: '● REC', tone: 'fail', bold: true }
 
 // The status line under the prompt (spec D2), which stays while the band is collapsed: what needs the person, short
-// and in the band's order - REC, the context once the band turns hot at 60, the new failures - or null for none
-export function statusText(o: { percent: number | null; newFailures: number; recLevel: Level }): string | null {
+// and in the band's order - REC, the context once the band turns hot at 60, the new failures - or null for none. While
+// the band is in view it shows REC and the context itself, so the line leaves them out (spec 2026-11-11, D6).
+export function statusText(o: { percent: number | null; newFailures: number; recLevel: Level; isBandShown: boolean }): string | null {
   const parts = [
-    o.recLevel === 'off' ? null : '● REC',
-    o.percent !== null && Math.round(o.percent) >= 60 ? `ctx ${pct(o.percent)}` : null,
+    o.recLevel === 'off' || o.isBandShown ? null : '● REC',
+    !o.isBandShown && o.percent !== null && Math.round(o.percent) >= 60 ? `ctx ${pct(o.percent)}` : null,
     o.newFailures > 0 ? `✗ ${o.newFailures} new` : null,
   ].filter((p): p is string => p !== null)
   return parts.length === 0 ? null : parts.join(' · ')

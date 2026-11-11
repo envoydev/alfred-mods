@@ -454,12 +454,16 @@ async function tickOnce($: EngineInterface): Promise<void> {
 // it applies. `last` is null until the module's first call, which is always sent: a line an earlier copy of the mod
 // pinned before a reload is cleared or replaced at once.
 const statusMem = { last: null as string | undefined | null }
+// Whether the band is in view, as its last render found it (spec 2026-11-11, D6): it drew lines, `isCollapsed` is
+// exactly false (a build before 2.1.321 hands none) and no survey covers it. One flag for the session, the last render
+// deciding; the one-second tick carries a change to the pinned line.
+const bandMem = { isShown: false }
 async function syncStatus($: EngineInterface): Promise<void> {
   const u = await read($, usage)
   const runway = runwayOf(await read($, stack), u, (await read($, meta)).model)
   const raw = statusText({
     percent: runway?.percent ?? u.percent, newFailures: (await read($, failures)).filter(f => f.isNew).length,
-    recLevel: (await read($, rec)).level,
+    recLevel: (await read($, rec)).level, isBandShown: bandMem.isShown,
   })
   const text = raw === null ? undefined : mask(raw)
   if (text === statusMem.last) return
@@ -1963,7 +1967,10 @@ export const register: Register = (on, options) => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.props.hasSurvey) return next(e)
+    if (e.props.hasSurvey) {
+      bandMem.isShown = false
+      return next(e)
+    }
     // Read so the running times redraw each second while a turn runs
     await read($, tick)
     const now = await $.clock.now()
@@ -1985,12 +1992,16 @@ export const register: Register = (on, options) => {
       isToolsOpen: setting.isToolsOpen === true, listing: p.skills ?? null,
       rules: { always: p.rules ?? [], byPath: m.pathRules ?? [], isTracked: !isLeftOut },
     })
+    bandMem.isShown = lines.length > 0 && e.props.isCollapsed === false
     if (lines.length === 0) return next(e)
     const press = {
       inspect: () => inspectFromBand($), compact: () => compactNow($, held), handoff: () => saveNow($), tools: () => toggleTools($),
     }
     return drawLines($, e, lines, { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
-  }).catch(($, e, next) => drawNote($, e, bandFailed(next.error.kind)))
+  }).catch(($, e, next) => {
+    bandMem.isShown = false
+    return drawNote($, e, bandFailed(next.error.kind))
+  })
 
   // The main loop's spinner adds its action, context and the agents running; an agent's spinner, that agent's
   on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
