@@ -635,7 +635,7 @@ function bandBody(b: BandInput, isNarrow: boolean, infoUpTo: number, toolRowsKep
   const joined: Line = items.flatMap((l, i) => (i === 0 ? l : [{ text: '    ' }, ...l]))
   // Under the input (band-under U2), the action row follows the gauges, so a cut at the screen's edge takes the detail
   // rows first; its commands are longer than the digits above, so the items take a row each when one row cannot hold them
-  const action: Line[] = items.length === 0 ? [] : b.under !== undefined && widthOf(joined) > b.columns ? items : [joined]
+  const action: Line[] = items.length === 0 ? [] : b.under !== undefined && cellsOf(joined) > b.columns ? items : [joined]
   const first = agentsRun ? working(b, isNarrow) : withPlanTail(b, lastTurn(b, isNarrow))
   const out = b.under === undefined ? [first, line2, ...info, ...action] : [first, line2, ...action, ...info]
   return out.filter(l => l.length > 0)

@@ -95,10 +95,12 @@ test('the width follows the site above, and redraws once per change', async ($, 
   const low = await footer($, 'terminal', { columns: 130, rows: 40, isFullscreen: false })
   expect((await rows(low)).every(r => [...r].length <= 125)).toBe(true)
   const wide = await rows(low)
-  const high = await above($, 'terminal', { ...ABOVE, bodyColumns: 14 })
+  // A new width asks for one redraw; the same width again asks for none
   const count = invalidates.length
+  const high = await above($, 'terminal', { ...ABOVE, bodyColumns: 14 })
+  expect(invalidates.length).toBe(count + 1)
   await high.redraw({ ...ABOVE, bodyColumns: 14 })
-  expect(invalidates.length).toBe(count)
+  expect(invalidates.length).toBe(count + 1)
   await low.redraw()
   const narrow = await rows(low)
   expect(narrow.every(r => [...r].length <= 14)).toBe(true)
@@ -128,6 +130,29 @@ test('fullscreen at 20 rows draws at most 4 band rows, dropping the open rows fr
   expect(drawn).toHaveLength(4)
   expect(drawn.some(r => r.startsWith('tools:'))).toBe(true)
   expect(drawn.some(r => r.startsWith('rules:'))).toBe(false)
+  await low.unmount()
+})
+
+// The status line is read at session start (spec Rows: '12 with a statusLine set' at 40, here 4 of 6 at 24)
+test('fullscreen at 24 rows draws 6 band rows, 4 with a status line set', async ($, on) => {
+  stubAll(on, { band: 'full', store: UNDER })
+  engineSites(on)
+  engine(on)
+  await $.session.start(START)
+  await measure($, 40)
+  const low = await footer($, 'terminal', { columns: 130, rows: 24, isFullscreen: true })
+  expect(await rows(low)).toHaveLength(6)
+  await low.unmount()
+})
+
+test('a status line set leaves the band two rows fewer in fullscreen', async ($, on) => {
+  stubAll(on, { band: 'full', store: UNDER, settings: { statusLine: { type: 'command', command: 'printf hud' } } })
+  engineSites(on)
+  engine(on)
+  await $.session.start(START)
+  await measure($, 40)
+  const low = await footer($, 'terminal', { columns: 130, rows: 24, isFullscreen: true })
+  expect(await rows(low)).toHaveLength(4)
   await low.unmount()
 })
 

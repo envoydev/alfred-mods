@@ -5,7 +5,7 @@ import type { Engine } from 'claude-code/testing'
 import type { On, SessionUsage } from 'claude-code'
 
 import { newRow } from '../hooks/agents.ts'
-import { agentSegs, bandLines, ruleSegs, toggleForms, toolRows } from '../hooks/band.ts'
+import { agentSegs, bandLines, cellsOf, ruleSegs, toggleForms, toolRows } from '../hooks/band.ts'
 import type { BandInput, Line } from '../hooks/band.ts'
 import { widthOf } from '../hooks/format.ts'
 import { SPAWN, START, engine, rows, stubAll, watchState } from './kit.ts'
@@ -457,6 +457,16 @@ test('main screen under at 48 columns, every row the place changes fits', () => 
   const gauges = textOf(above[1] ?? [])
   for (const l of lines.filter(l => textOf(l) !== gauges)) expect(widthOf(l)).toBeLessThanOrEqual(48)
   expect(lines.map(textOf).join('\n')).toContain('/inspect')
+})
+
+// Fullscreen, the commands are buttons: the action row is measured with them, so none is cut at the edge
+test('fullscreen under at 48 columns, the action row splits with its buttons counted', () => {
+  const lines = bandLines(input({ columns: 48, newFailures: 1, handoffAsk: 80, isToolsOpen: true, under: { buttons: 'click' } }))
+  const above = bandLines(input({ columns: 48, newFailures: 1, handoffAsk: 80, isToolsOpen: true }))
+  const gauges = textOf(above[1] ?? [])
+  for (const l of lines.filter(l => textOf(l) !== gauges)) expect(cellsOf(l)).toBeLessThanOrEqual(48)
+  const inspect = lines.find(l => l.some(s => 'button' in s && s.button.key === 'inspect'))
+  expect(inspect === undefined ? '' : textOf(inspect)).toBe('✗ 1 new [/inspect]')
 })
 
 test('above, the buttons keep their hotkeys', () => {
