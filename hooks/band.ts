@@ -175,19 +175,28 @@ function toolsByCalls(stats: Record<string, ToolStat> | undefined): [string, Too
     .sort(([ka, a], [kb, z]) => z.calls - a.calls || (ka < kb ? -1 : ka > kb ? 1 : 0))
 }
 
-// The info line's toggle of the rows under it: the tool calls and the main chat's skills it opens, the skills' count
-// going first when the width runs out, then both. A letter, never a digit: a bare digit in an empty prompt presses a
-// band button in place of typing. Null while it has nothing to open.
-function toggleForms(b: BandInput): Line[] {
+// The info line's toggle of the rows under it (spec 2026-11-11, D5): the tool calls, the main chat's skills, the agents
+// dispatched (and how many run) and the rules it opens, each only above 0; short of width its forms drop the rules,
+// then the agents, then the skills, then all but the arrow. A letter, never a digit: a bare digit in an empty prompt
+// presses a band button in place of typing. None while closed with nothing to open.
+export function toggleForms(b: BandInput): Line[] {
   const isOpen = b.isToolsOpen === true
+  const count = (n: number, one: string): string | null => (n === 0 ? null : `${n} ${one}${n === 1 ? '' : 's'}`)
   const calls = toolsByCalls(b.stats).reduce((n, [, s]) => n + s.calls, 0)
-  const loaded = Object.keys(b.meta.skills ?? {}).length
-  if (calls === 0 && loaded === 0 && !isOpen) return []
-  const toolsPart = calls === 0 ? null : `${calls} ${calls === 1 ? 'tool' : 'tools'}`
-  const skillsPart = loaded === 0 ? null : `${loaded} ${loaded === 1 ? 'skill' : 'skills'}`
+  const dispatched = Object.values(b.meta.agentTypes ?? {}).reduce((n, k) => n + k, 0)
+  const running = b.agents.filter(r => isLive(r.status)).length
+  const drawn = rulesDrawn(b.rules ?? NO_RULES)
+  const tools = count(calls, 'tool')
+  const skills = count(Object.keys(b.meta.skills ?? {}).length, 'skill')
+  const agents = count(dispatched, 'agent')
+  const rules = count(drawn.always.length + drawn.byPath.length, 'rule')
+  if (tools === null && skills === null && agents === null && rules === null && !isOpen) return []
   const arrow = isOpen ? '▾' : '▸'
-  const both = [toolsPart, skillsPart].filter((p): p is string => p !== null)
-  const labels = [`${both.length === 0 ? 'tools' : both.join(' · ')} ${arrow}`, ...(both.length === 2 ? [`${toolsPart} ${arrow}`] : []), arrow]
+  const parts = (...of: (string | null)[]): string[] => of.filter((p): p is string => p !== null)
+  const agentsPart = agents === null ? null : running > 0 ? `${agents} (${running} ◐)` : agents
+  const all = parts(tools, skills, agentsPart, rules)
+  const forms = [all, parts(tools, skills, agentsPart), parts(tools, skills), parts(tools)].filter(f => f.length > 0)
+  const labels = [...new Set([...(all.length === 0 ? ['tools'] : forms.map(f => f.join(' · '))).map(l => `${l} ${arrow}`), arrow])]
   return labels.map(label => [{ button: { key: 'tools', label, hotkey: 't' } }])
 }
 

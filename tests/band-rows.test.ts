@@ -5,7 +5,7 @@ import type { Engine } from 'claude-code/testing'
 import type { On, SessionUsage } from 'claude-code'
 
 import { newRow } from '../hooks/agents.ts'
-import { agentSegs, ruleSegs, toolRows } from '../hooks/band.ts'
+import { agentSegs, ruleSegs, toggleForms, toolRows } from '../hooks/band.ts'
 import type { BandInput, Line } from '../hooks/band.ts'
 import { SPAWN, START, engine, rows, stubAll, watchState } from './kit.ts'
 
@@ -239,4 +239,33 @@ test('the band draws the rules row from the parts and the loads', async ($, on) 
   const ui = await $.ui.mount({ plugin: 'alfred-mods', surface: 'terminal', component: 'AbovePrompt', props: BAND })
   expect(await rows(ui)).toContain('rules:   always.md │ web.md │ 1 always-on · 1 by path')
   await ui.unmount()
+})
+
+// Spec 2026-11-11, D5: the toggle counts the tools, skills, agents and rules it opens
+const labels = (b: BandInput): string[] => toggleForms(b).map(l => (l[0] !== undefined && 'button' in l[0] ? l[0].button.label : ''))
+const TARGET = input({
+  isToolsOpen: true, stats: TARGET_STATS, agents: TARGET_AGENTS, rules: TARGET_RULES,
+  meta: { ...input().meta, skills: { 'superpowers:brainstorming': 1, 'solve-task': 2 }, agentTypes: TARGET_TYPES },
+})
+
+test('the toggle counts all four, and its forms drop rules, then agents, then skills, then all but the arrow', () => {
+  expect(labels(TARGET)).toEqual([
+    '45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ▾', '45 tools · 2 skills · 4 agents (1 ◐) ▾', '45 tools · 2 skills ▾', '45 tools ▾', '▾',
+  ])
+  for (const form of toggleForms(TARGET)) expect(form).toEqual([{ button: { key: 'tools', label: expect.any(String), hotkey: 't' } }])
+})
+
+test('(k ◐) only while agents run; singular forms', () => {
+  const one = input({
+    isToolsOpen: true, stats: { Bash: stat(1) }, agents: [agent('a1', 'Explore', 'completed')],
+    rules: { always: ['a.md'], byPath: [], isTracked: true }, meta: { ...input().meta, skills: { x: 1 }, agentTypes: { Explore: 1 } },
+  })
+  expect(labels(one)[0]).toBe('1 tool · 1 skill · 1 agent · 1 rule ▾')
+})
+
+test('a part at 0 is left out; with none, tools; closed and empty, no toggle', () => {
+  const rulesOnly = input({ isToolsOpen: true, stats: {}, rules: { always: ['a.md', 'b.md'], byPath: [], isTracked: true } })
+  expect(labels(rulesOnly)).toEqual(['2 rules ▾', '▾'])
+  expect(labels(input({ isToolsOpen: true, stats: {} }))).toEqual(['tools ▾', '▾'])
+  expect(labels(input({ stats: {} }))).toEqual([])
 })
