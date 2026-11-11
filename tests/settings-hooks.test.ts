@@ -424,6 +424,14 @@ test('/rec on says when the user file cannot be read', async ($, on) => {
   expect(files.writes).toEqual([])
 })
 
+// A refused existence check is no proof the file is missing: making it then would overwrite the person's whole file
+test('/rec on never makes the file when its existence check is refused', async ($, on) => {
+  const { files } = await start($, on, { env: HOME, files: { [USER]: { text: USER_TEXT, mtimeMs: 0 } }, refuseExists: [USER] })
+  expect(await run($, 'rec', 'on')).toBe('Nothing was written: ~/.claude/settings.json could not be read. Set "rec": "on" under "alfred-mods" in ~/.claude/settings.json by hand.')
+  expect(files.writes).toEqual([])
+  expect(fileAt(files, USER)).toBe(USER_TEXT)
+})
+
 test('/auto-handoff auto says when the user file cannot be written', async ($, on) => {
   const { files } = await start($, on, { env: HOME, files: { [USER]: { text: USER_TEXT, mtimeMs: 0 } }, refuseWrite: [USER] })
   expect(await run($, 'auto-handoff', 'auto')).toBe('Nothing was written: ~/.claude/settings.json refused the write. Set "handoff": "auto" under "alfred-mods" in ~/.claude/settings.json by hand.')

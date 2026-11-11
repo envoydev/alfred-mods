@@ -1141,8 +1141,9 @@ async function setField<F extends Field>($: EngineInterface, field: F, value: Va
   await loadSettings($)
   const path = await userSettingsPath($)
   if (path === null) return byHand('no home folder was found')
-  const isThere = await $.fs.exists(path).catch(() => false)
-  const text = isThere ? await $.fs.read(path).catch(() => undefined) : null
+  // A refused check is no proof the file is missing: only a check that answers false makes the file
+  const isThere = await $.fs.exists(path).catch(() => undefined)
+  const text = isThere === false ? null : isThere === true ? await $.fs.read(path).catch(() => undefined) : undefined
   if (text === undefined) return byHand(`${user} could not be read`)
   const next = writeField(text, field, value)
   if ('why' in next) return byHand(next.why === 'parse' ? `${user} does not parse as JSON` : `"alfred-mods" in ${user} is not an object`)
