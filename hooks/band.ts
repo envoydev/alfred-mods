@@ -55,6 +55,9 @@ export type BandInput = {
   // The rules row (spec 2026-11-11, D4): the always-on rules from the breakdown, the ones loaded by path, and whether
   // by-path loads are tracked (false with leave_out_skipped_hooks on); absent, none known and tracked
   rules?: RulesInput
+  // The band drawn under the input (spec 2026-11-11 band-under, U2 and U3): its action row after the gauges, and its
+  // buttons pressed by a click (fullscreen) or drawn as the commands that do their jobs (the main screen)
+  under?: { buttons: 'click' | 'text' }
 }
 export type RulesInput = { always: string[]; byPath: string[]; isTracked: boolean }
 
@@ -540,6 +543,14 @@ export function statusText(o: { percent: number | null; newFailures: number; rec
     o.newFailures > 0 ? `✗ ${o.newFailures} new` : null,
   ].filter((p): p is string => p !== null)
   return parts.length === 0 ? null : parts.join(' · ')
+}
+
+// The rows the band takes under the input (spec 2026-11-11 band-under, U2, F7): the main screen's whole height, as the
+// site above reports there; in fullscreen, half the screen less the prompt and the engine's footer line, less a status
+// line's two rows (claude-hud's default; the setting says nothing of the height) and the mod's pinned line
+export function underRows(v: { rows: number; isFullscreen?: boolean }, o: { hasStatusLine: boolean; isPinned: boolean }): number {
+  if (v.isFullscreen !== true) return v.rows
+  return Math.max(2, Math.floor(v.rows / 2) - 6 - (o.hasStatusLine ? 2 : 0) - (o.isPinned ? 1 : 0))
 }
 
 // A red '● REC' while REC is on, then Alfred Code's mode banner, lead line 1 in every state, never dropped for width:

@@ -101,7 +101,11 @@ export function stubAll(on: On, o: Options = {}): {
     listed.calls++
     return { value: listed.current }
   })
-  on('settings.read', () => ({ value: (o.settings ?? {}) as Settings }))
+  // A key's read answers that key's value; a read with no key, the whole object
+  on('settings.read', (_, e) => {
+    const key = e !== undefined && 'key' in e && typeof e.key === 'string' ? e.key : null
+    return { value: (key === null ? (o.settings ?? {}) : o.settings?.[key]) as Settings }
+  })
   // A test changes the files mid-test through `files.current`; a folder with no file in it is missing. The kit hands a
   // hook the path resolved against the mod's folder, with Windows' separators on Windows, so a stub matches its end
   // after `\` reads as `/`; `{ deny }` rejects the mod's call.
@@ -382,6 +386,7 @@ export function engineSites(on: On): { asked: unknown[] } {
     return { type: 'engine', ref: 0 } as RenderElement
   })
   on('ui.render', { component: 'Spinner' }, json)
+  on('ui.render', { component: 'PromptHint' }, json)
   return { asked }
 }
 
