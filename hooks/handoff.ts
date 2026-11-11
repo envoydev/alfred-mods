@@ -9,7 +9,7 @@ import type { Line, Seg } from './band.ts'
 import type { Runway } from './stack.ts'
 import { clock, duration, mins, modelText, tokens, usd } from './format.ts'
 
-const MODES: HandoffMode[] = ['ask', 'auto', 'off']
+export const MODES: HandoffMode[] = ['ask', 'auto', 'off']
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
