@@ -209,9 +209,9 @@ for (const surface of SURFACES) {
     engine(on)
     await $.session.start(START)
     const lines = await rows(await mount($, surface))
-    expect(lines).toHaveLength(2)
     expect(lines[0]?.startsWith('ctx — │ 5h ▱▱▱▱▱ ≈15% (')).toBe(true)
-    expect(lines[1]).toBe('Sonnet 5.5 │ <1m │ w git:(main) │ CC 2.1.322')
+    // The detail rows open from the first draw (spec 2026-11-11, D1), the toggle naming what it opens
+    expect(lines.slice(1)).toEqual(['Sonnet 5.5 │ <1m │ tools ▾ │ w git:(main) │ CC 2.1.322', 'tools:   none', 'skills:  none loaded'])
   })
 }
 

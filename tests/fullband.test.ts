@@ -346,7 +346,7 @@ async function runningTurn($: Engine): Promise<void> {
 
 for (const surface of SURFACES) {
   test(`a running turn draws three lines, the third the info line (${surface})`, async ($, on) => {
-    stubAll(on, { band: 'full', usage: READING, now: NOW })
+    stubAll(on, { band: 'full', usage: READING, now: NOW, store: { 'settings:band-tools': 'closed' } })
     stepEngine(on, () => null)
     engine(on)
     await runningTurn($)
@@ -366,7 +366,7 @@ for (const surface of SURFACES) {
   })
 
   test(`with nothing stored, the band is full (${surface})`, async ($, on) => {
-    stubAll(on, { band: 'unset', usage: READING, now: NOW })
+    stubAll(on, { band: 'unset', usage: READING, now: NOW, store: { 'settings:band-tools': 'closed' } })
     stepEngine(on, () => null)
     engine(on)
     await runningTurn($)

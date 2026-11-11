@@ -995,11 +995,12 @@ async function loadQuiet($: EngineInterface): Promise<boolean> {
   return isOn
 }
 
-// Only the exact string 'calm' reads as calm: absent, or anything another version or a hand wrote, is full. The rows
-// of every tool and the skills likewise: only 'open' opens them.
+// Only the exact string 'calm' reads as calm: absent, or anything another version or a hand wrote, is full. The band's
+// detail rows likewise close only on the exact string 'closed' (spec 2026-11-11, D1): a fresh store, or anything
+// another version or a hand wrote, opens them.
 async function loadBand($: EngineInterface): Promise<BandMode> {
   const mode: BandMode = (await $.store.get('settings:band')) === 'calm' ? 'calm' : 'full'
-  const isOpen = (await $.store.get('settings:band-tools')) === 'open'
+  const isOpen = (await $.store.get('settings:band-tools')) !== 'closed'
   const next: BandSetting = isOpen ? { mode, isToolsOpen: true } : { mode }
   await update($, bandSetting, b => (b.mode === mode && (b.isToolsOpen === true) === isOpen ? b : next))
   return mode

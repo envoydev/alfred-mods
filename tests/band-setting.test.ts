@@ -10,7 +10,7 @@ const band = async ($: Engine, args: string): Promise<string> =>
   (await $.command.run({ command: 'band', args, origin: { kind: 'composer' }, presentation: PRESENTATION })).text ?? ''
 
 test('/band calm and full set it and read it first', async ($, on) => {
-  const { store } = stubAll(on, { band: 'unset' })
+  const { store } = stubAll(on, { band: 'unset', store: { 'settings:band-tools': 'closed' } })
   const state = watchState(on)
   engine(on)
   await $.session.start(START)
@@ -27,7 +27,7 @@ test('/band calm and full set it and read it first', async ($, on) => {
 })
 
 test('bare /band prints the state and usage, full with nothing stored', async ($, on) => {
-  const { store } = stubAll(on, { band: 'unset' })
+  const { store } = stubAll(on, { band: 'unset', store: { 'settings:band-tools': 'closed' } })
   const state = watchState(on)
   engine(on)
   await $.session.start(START)
@@ -39,7 +39,7 @@ test('bare /band prints the state and usage, full with nothing stored', async ($
 
 for (const value of [true, 'CALM', 'off']) {
   test(`a stored ${JSON.stringify(value)} reads as full`, async ($, on) => {
-    stubAll(on, { store: { 'settings:band': value } })
+    stubAll(on, { store: { 'settings:band': value, 'settings:band-tools': 'closed' } })
     const state = watchState(on)
     engine(on)
     await $.session.start(START)
@@ -48,7 +48,7 @@ for (const value of [true, 'CALM', 'off']) {
 }
 
 test('another session picks it up on its poll', async ($, on) => {
-  const { clock, store } = stubAll(on, { band: 'unset' })
+  const { clock, store } = stubAll(on, { band: 'unset', store: { 'settings:band-tools': 'closed' } })
   const state = watchState(on)
   engine(on)
   await $.session.start(START)
@@ -58,7 +58,7 @@ test('another session picks it up on its poll', async ($, on) => {
 })
 
 test('/band calm, then /clear: calm holds', async ($, on) => {
-  stubAll(on, { band: 'unset' })
+  stubAll(on, { band: 'unset', store: { 'settings:band-tools': 'closed' } })
   const state = watchState(on)
   engine(on)
   await $.session.start(START)
@@ -68,7 +68,7 @@ test('/band calm, then /clear: calm holds', async ($, on) => {
 })
 
 test('a test that stores nothing reads calm, as every test before /band was written for', async ($, on) => {
-  stubAll(on)
+  stubAll(on, { store: { 'settings:band-tools': 'closed' } })
   const state = watchState(on)
   engine(on)
   await $.session.start(START)
