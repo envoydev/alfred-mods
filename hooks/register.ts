@@ -308,9 +308,10 @@ async function seedWindows($: EngineInterface): Promise<void> {
   if (stored !== null) await update($, usage, u => ({ ...u, windows: stored.windows, windowsAt: stored.at }))
 }
 
-// The HEAD file the place was read from, so the 30-second poll reads that one file for a checkout
-// and the folder it was read for: a move to another folder (a worktree, /cd) reads the place again
-const placeMem = { head: null as string | null, cwd: null as string | null }
+// The HEAD file the place was read from, so the 30-second poll reads that one file for a checkout; the working folder
+// it was read with, as a move to another (a `cd`, a worktree, /cd) reads the place again; and the folder it shows, the
+// working folder or the folder of the file the main thread last edited or wrote
+const placeMem = { head: null as string | null, cwd: null as string | null, at: null as string | null }
 
 async function readText($: EngineInterface, path: string): Promise<string | null> {
   try {
@@ -343,22 +344,32 @@ const setPlace = (place: NonNullable<Meta['place']>) => (m: Meta): Meta =>
 // The session's project, the folder Claude works in when it is not the project's root, and the branch of the repository
 // holding that folder (the user, 2026-11-11): a Bash `cd` moves `$.session.cwd()` and leaves `$.session.root()`. With no
 // root read, the project is the repository's folder or the working folder, as before. A refused read leaves no place.
-async function readPlace($: EngineInterface): Promise<void> {
+async function readPlace($: EngineInterface, edited?: string): Promise<void> {
   const repo = await $.session.repo()
   const cwd = await $.session.cwd()
   const root = await $.session.root().catch(() => null)
+  const at = edited ?? cwd
   placeMem.head = null
   placeMem.cwd = cwd
-  const folder = root === null ? null : folderOf(cwd, root)
-  const at = folder === null ? {} : { folder }
+  placeMem.at = at
+  const folder = root === null ? null : folderOf(at, root)
+  const shown = folder === null ? {} : { folder }
   if (repo === null && folder === null) {
     await update($, meta, setPlace({ project: baseName(root ?? cwd), branch: null }))
     return
   }
-  const found = await findHead($, cwd)
+  const found = await findHead($, at)
   placeMem.head = found?.head ?? null
   const project = root === null ? baseName(found?.dir ?? repo?.root ?? cwd) : baseName(root)
-  await update($, meta, setPlace({ project, ...at, branch: found?.branch ?? null }))
+  await update($, meta, setPlace({ project, ...shown, branch: found?.branch ?? null }))
+}
+
+// A side agent's note the user passed on (2026-11-11): Claude edits by full path without a `cd`, so the folder of the
+// file the main thread edited or wrote is where it works, until a `cd` moves the working folder again
+async function editPlace($: EngineInterface, file: string): Promise<void> {
+  const path = /^([\\/]|[A-Za-z]:)/.test(file) ? file : joinPath(await $.session.cwd(), file)
+  const dir = parentOf(path)
+  if (dir !== null && dir !== placeMem.at) await readPlace($, dir)
 }
 
 // A checkout since: the poll reads the HEAD file the place came from
@@ -367,8 +378,8 @@ async function pollPlace($: EngineInterface): Promise<void> {
   const head = placeMem.head
   if (head === null) return
   const text = await readText($, head)
-  const project = (await read($, meta)).place?.project
-  if (text !== null && project !== undefined) await update($, meta, setPlace({ project, branch: headBranch(text) }))
+  const place = (await read($, meta)).place
+  if (text !== null && place !== undefined) await update($, meta, setPlace({ ...place, branch: headBranch(text) }))
 }
 
 // What the band shows before the first reply: the model, Claude Code's version, the place, the stored windows and the
@@ -1501,10 +1512,13 @@ export const register: Register = (on, options) => {
     const isWait = isAllWait(e.tool, call.agentId === null)
     if (isWait) await update($, credit, c => openWait(c, loop, e.tool_use_id, startedAt))
     const ran = await next(e)
-    // A `cd` in the main loop's Bash moves the folder Claude works in: the place is read again off the hook
-    if (e.tool === 'Bash' && call.agentId === null) {
+    // A `cd` in the main loop's Bash, or a file it edited or wrote, moves the folder Claude works in: the place is read
+    // again off the hook
+    const isEdit = ['Edit', 'Write', 'NotebookEdit'].includes(e.tool) && ran.isError !== true && ran.deny === undefined
+    const edited = isEdit ? String(input.file_path ?? input.notebook_path ?? '') : ''
+    if (call.agentId === null && (e.tool === 'Bash' || edited !== '')) {
       $.clock.after(0, () => {
-        pollPlace($).catch(() => undefined)
+        (edited === '' ? pollPlace($) : editPlace($, edited)).catch(() => undefined)
       })
     }
     const text = ran.text ?? (typeof ran.result === 'string' ? ran.result : '')

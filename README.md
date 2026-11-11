@@ -41,9 +41,10 @@ speed, the cache, a toggle that counts what the rows under it list, the times of
 the project with its branch and Claude Code's version, `Sonnet 5.5 ◑ medium │ 59m │ ≈133 tok/s avg │ cache warm 54m │
 [ 45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ▾ ] │ you 22:47 · Claude 23:55 │ alfred-mods git:(main) │ CC
 2.1.322`; while a turn runs, its first line counts the turn's tool calls, and the gauges add today's cost. The project
-is the folder the session started in, and the folder Claude works in follows it when a Bash `cd` moves away,
-`alfred-mods ▸ hooks git:(main)` (a folder outside the project shows as `…/<name>`); it is re-read after each Bash call
-and every 30 s. While a plan
+is the folder the session started in, and the folder Claude works in follows it: where a Bash `cd` went, or the folder
+of the last file Claude edited or wrote, whichever came last, `alfred-mods ▸ hooks git:(main)` with that folder's
+branch (a folder outside the project shows as `…/<name>`); it is re-read after each Bash call, edit and write, and
+every 30 s. While a plan
 runs, a row above the info line shows it, `plan:    Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update interceptor`: its title,
 bar, steps done and the step in progress (the Plan tab has the percent and the times). Four rows under the info line
 are open from the first draw:

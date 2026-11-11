@@ -229,12 +229,14 @@ rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ w
   the project is the name of `$.session.root()`, the folder the session started in (a `/cd` or a worktree move changes
   it, a shell `cd` does not); the folder is `$.session.cwd()` relative to it, or `…/<name>` outside it, and none when
   the two are the same (the user, 2026-11-11: 'I want to see current folder where claude code is working right now
-  and to see what project session is started'); the branch is the `HEAD` file's of the folder holding `.git` at or
-  above `cwd` (a worktree's `.git` file names its git folder), or a detached commit's first 7 characters, as
+  and to see what project session is started'), or the folder of the file the main thread last edited or wrote
+  (`Edit`, `Write`, `NotebookEdit`, not failed), whichever came last, since Claude edits by full path without a `cd`
+  (a side agent's note the user passed on, 2026-11-11); the branch is the `HEAD` file's of the folder holding `.git`
+  at or above that folder (a worktree's `.git` file names its git folder), or a detached commit's first 7 characters, as
   `alfred-mods ▸ hooks git:(main)`; with no root, the repo folder's name or the working folder's, as before. The
   folder keeps its last parts after `…/` within 40 cells, and narrows to `…/<last>` before the place drops whole. The
-  30 s poll re-reads that `HEAD`, or the whole place when `$.session.cwd()` moved, and a main-thread Bash call
-  re-reads it at once after it ends, so a `cd` shows within the turn. No git process runs. A `/model` switch (`classic.PostModelSwitch`) names the new model at
+  30 s poll re-reads that `HEAD`, or the whole place when `$.session.cwd()` moved, and a main-thread Bash call, edit
+  or write re-reads it at once after it ends, so a move shows within the turn. No git process runs. A `/model` switch (`classic.PostModelSwitch`) names the new model at
   once. Each turn's `session.measure` with windows stores them in `$.store` `usage:windows` (`{ at, windows }`, only
   when a percent as shown, a kind or a reset changed: every write rewrites the file the machine's sessions share); a
   session with none of its own shows the stored ones whose reset is ahead, each marked `≈`, in the band and the Usage
