@@ -1,5 +1,5 @@
 // The band's detail rows (spec: docs/superpowers/specs/2026-11-11-band-detail-rows-design.md): `tools:`, `skills:`,
-// `agents:` and `rules:` under the info line, open by default, items joined by ' │ '; the toggle counts all four
+// `agents:` and `rules:` under the info line, open by default, items joined by ' │ '; usage: counts all four
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, SessionUsage } from 'claude-code'
@@ -7,6 +7,7 @@ import type { On, SessionUsage } from 'claude-code'
 import { newRow } from '../hooks/agents.ts'
 import { agentSegs, bandLines, cellsOf, ruleSegs, toggleForms, toolRows } from '../hooks/band.ts'
 import type { BandInput, Line } from '../hooks/band.ts'
+import { drawLines } from '../hooks/draw.tsx'
 import { widthOf } from '../hooks/format.ts'
 import { SPAWN, START, engine, rows, stubAll, watchState } from './kit.ts'
 import { FIVE, FIVE_OVERHEAD, FIVE_TIMES, NOW as PLAN_NOW, planOf } from './plans.ts'
@@ -256,18 +257,16 @@ test('the band draws the rules row from the parts and the loads', async ($, on) 
   await ui.unmount()
 })
 
-// Spec 2026-11-11, D5: the toggle counts the tools, skills, agents and rules it opens
-const labels = (b: BandInput): string[] => toggleForms(b).map(l => (l[0] !== undefined && 'button' in l[0] ? l[0].button.label : ''))
+// Spec 2026-11-11, D5, and settings-values S6: usage: counts the tools, skills, agents and rules the rows list, as text
+const labels = (b: BandInput): string[] => toggleForms(b).map(text)
 const TARGET = input({
   isToolsOpen: true, stats: TARGET_STATS, agents: TARGET_AGENTS, rules: TARGET_RULES,
   meta: { ...input().meta, skills: { 'superpowers:brainstorming': 1, 'solve-task': 2 }, agentTypes: TARGET_TYPES },
 })
 
-test('the toggle counts all four, and its forms drop rules, then agents, then skills, then all but the arrow', () => {
-  expect(labels(TARGET)).toEqual([
-    '45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ▾', '45 tools · 2 skills · 4 agents (1 ◐) ▾', '45 tools · 2 skills ▾', '45 tools ▾', '▾',
-  ])
-  for (const form of toggleForms(TARGET)) expect(form).toEqual([{ button: { key: 'tools', label: expect.any(String), hotkey: 't' } }])
+test('the counts take all four, and their forms drop rules, then agents, then skills', () => {
+  expect(labels(TARGET)).toEqual(['45 tools · 2 skills · 4 agents (1 ◐) · 5 rules', '45 tools · 2 skills · 4 agents (1 ◐)', '45 tools · 2 skills', '45 tools'])
+  for (const form of toggleForms(TARGET)) expect(form).toEqual([{ text: expect.any(String), tone: 'dim' }])
 })
 
 test('(k ◐) only while agents run; singular forms', () => {
@@ -275,47 +274,49 @@ test('(k ◐) only while agents run; singular forms', () => {
     isToolsOpen: true, stats: { Bash: stat(1) }, agents: [agent('a1', 'Explore', 'completed')],
     rules: { always: ['a.md'], byPath: [], isTracked: true }, meta: { ...input().meta, skills: { x: 1 }, agentTypes: { Explore: 1 } },
   })
-  expect(labels(one)[0]).toBe('1 tool · 1 skill · 1 agent · 1 rule ▾')
+  expect(labels(one)[0]).toBe('1 tool · 1 skill · 1 agent · 1 rule')
 })
 
-test('a part at 0 is left out; with none, tools; closed and empty, no toggle', () => {
+test('a part at 0 is left out; with none, no counts, open or closed', () => {
   const rulesOnly = input({ isToolsOpen: true, stats: {}, rules: { always: ['a.md', 'b.md'], byPath: [], isTracked: true } })
-  expect(labels(rulesOnly)).toEqual(['2 rules ▾', '▾'])
-  expect(labels(input({ isToolsOpen: true, stats: {} }))).toEqual(['tools ▾', '▾'])
+  expect(labels(rulesOnly)).toEqual(['2 rules'])
+  expect(labels(input({ isToolsOpen: true, stats: {} }))).toEqual([])
   expect(labels(input({ stats: {} }))).toEqual([])
 })
 
-// Spec 2026-11-11, D7 and the owner's proof: short of rows, the second info row goes first, then the open rows from the
-// last; the four rows draw at 24, 48 and 100 columns under a two-row info line that holds the toggle
+// Spec 2026-11-11, D7, and settings-values S6: short of rows, the second info row goes first, then the open rows from
+// the last; the four rows draw at 24, 48 and 100 columns under usage:
 const open = (o: Partial<BandInput> = {}) => input({
   isToolsOpen: true, agents: TARGET_AGENTS, rules: { always: ['a.md', 'b.md', 'c.md'], byPath: ['d.md', 'e.md'], isTracked: true },
   meta: { ...input().meta, agentTypes: TARGET_TYPES }, ...o,
 })
 const ROW = /^(tools|skills|agents|rules):/
 const labelsOf = (lines: Line[]): string[] => texts(lines).filter(l => ROW.test(l)).map(l => l.slice(0, l.indexOf(':')))
-const tools = (lines: Line[]) => lines.flat().find(s => 'button' in s && s.button.key === 'tools')
 
 test('short of rows, the second info row goes first, then rules:, then agents:', () => {
-  const all = bandLines(open({ columns: 100 }))
-  // A live agent: line 1, the gauges, two info rows, four rows
-  expect(all).toHaveLength(8)
-  expect(labelsOf(bandLines(open({ columns: 100, maxRows: 7 })))).toEqual(['tools', 'skills', 'agents', 'rules'])
-  expect(bandLines(open({ columns: 100, maxRows: 7 }))).toHaveLength(7)
-  expect(labelsOf(bandLines(open({ columns: 100, maxRows: 6 })))).toEqual(['tools', 'skills', 'agents'])
-  expect(labelsOf(bandLines(open({ columns: 100, maxRows: 5 })))).toEqual(['tools', 'skills'])
+  // At 98 columns the version takes a second info row
+  const at = (maxRows?: number) => bandLines(open({ columns: 98, meta: { ...open().meta, version: '2.1.322' }, ...(maxRows === undefined ? {} : { maxRows }) }))
+  // A live agent: line 1, the gauges, two info rows, usage:, four rows
+  expect(at()).toHaveLength(9)
+  expect(texts(at())).toContain('CC 2.1.322')
+  expect(texts(at(8))).not.toContain('CC 2.1.322')
+  expect(labelsOf(at(8))).toEqual(['tools', 'skills', 'agents', 'rules'])
+  expect(at(8)).toHaveLength(8)
+  expect(labelsOf(at(7))).toEqual(['tools', 'skills', 'agents'])
+  expect(labelsOf(at(6))).toEqual(['tools', 'skills'])
 })
 
 for (const columns of [24, 48, 100]) {
-  test(`at ${columns} columns the four rows draw under a two-row info line that holds the toggle`, () => {
+  test(`at ${columns} columns the four rows draw under usage:`, () => {
     const lines = bandLines(open({ columns }))
-    expect(tools(lines)).toBeDefined()
+    expect(usageOf(lines)).toBeDefined()
     expect([...new Set(labelsOf(lines))]).toEqual(['tools', 'skills', 'agents', 'rules'])
   })
 }
 
-test('at 24 columns, a maxRows that forces the one-row info line drops the toggle and every row', () => {
+test('at 24 columns, 3 rows drop usage: and every row', () => {
   const lines = bandLines(open({ columns: 24, maxRows: 3 }))
-  expect(tools(lines)).toBeUndefined()
+  expect(usageOf(lines)).toBeUndefined()
   expect(labelsOf(lines)).toEqual([])
 })
 
@@ -332,17 +333,18 @@ test('a name wider than the band at 24 columns is cut by the draw; no drawn row 
   await ui.unmount()
 })
 
-// The owner's target, 2026-11-11 (the user's answer): in full mode the plan has a row of its own above the info line,
+// The owner's target, 2026-11-11 (the user's answer): in full mode the plan has a row of its own, under the info line
+// and the project row (settings-values S6),
 // 'plan:' and the rows' label width, its title, bar and count, then the first running step; line 1 no longer carries it
 const planNamed = (changes: Parameters<typeof planOf>[0] = {}) => planView(planOf(changes), FIVE_TIMES, FIVE_OVERHEAD, {}, PLAN_NOW)
 const planRowOf = (lines: Line[]): string | undefined => texts(lines).find(l => l.startsWith('plan:'))
 const WORKING = { isWorking: true, live: { turnId: 't2', startedAt: NOW - 30_000, tools: 3, failures: 0, running: [], promptAt: NOW - 30_000 } }
 
-test('the plan row is the target shape, above the info line, and line 1 keeps the turn', () => {
+test('the plan row is the target shape, under the info line, and line 1 keeps the turn', () => {
   const lines = texts(bandLines(input({ plan: planNamed(), isToolsOpen: true, ...WORKING })))
   const at = lines.findIndex(l => l.startsWith('plan:'))
   expect(lines[at]).toBe('plan:    Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update interceptor')
-  expect(lines[at + 1]?.startsWith('Sonnet 5.5')).toBe(true)
+  expect(lines[at - 1]?.startsWith('Sonnet 5.5')).toBe(true)
   expect(lines[0]).toBe('⟳ Turn 2 · 0:30 · 3 tools')
 })
 
@@ -371,12 +373,13 @@ test('the plan row shows with the rows closed, and dims with the band while calm
   for (const seg of row) if ('text' in seg) expect(seg.tone).toBe('dim')
 })
 
-test('short of rows, the plan row goes after the tool rows and before the info line', () => {
+test('short of rows, the plan row goes after usage: and before the info line', () => {
   const b = (maxRows?: number) => bandLines(open({ columns: 100, plan: planNamed(), ...(maxRows === undefined ? {} : { maxRows }) }))
   expect(b()).toHaveLength(9)
+  expect(usageOf(b(5))).toBeDefined()
+  expect(labelsOf(b(5))).toEqual([])
   expect(planRowOf(b(4))).toBeDefined()
-  expect(labelsOf(b(4))).toEqual([])
-  expect(tools(b(4))).toBeDefined()
+  expect(usageOf(b(4))).toBeUndefined()
   expect(planRowOf(b(3))).toBeUndefined()
   expect(b(3)).toHaveLength(3)
 })
@@ -389,23 +392,25 @@ for (const columns of [24, 48, 100]) {
   })
 }
 
-// The user, 2026-11-11: the place reads 'project ▸ folder git:(branch)'; a folder past 40 cells keeps its last parts
-// after '…/', and a narrower form keeps only its last part
+// The user, 2026-11-11 (settings-values S6): the place is a row, 'project: <project> │ git:(<branch>) │ folder: <folder>';
+// a folder past 40 cells keeps its last parts after '…/', a narrower form only its last part, then none
 const placed = (place: NonNullable<BandInput['meta']['place']>, columns = 200) =>
   texts(bandLines(input({ columns, meta: { ...input().meta, place } }))).join('\n')
 
-test('the place shows the session project, then the folder Claude works in, then the branch', () => {
-  expect(placed({ project: 'Example', folder: 'Frontend', branch: 'develop' })).toContain('Example ▸ Frontend git:(develop)')
-  expect(placed({ project: 'frontend', branch: 'develop' })).toContain('frontend git:(develop)')
-  expect(placed({ project: 'frontend', branch: 'develop' })).not.toContain('frontend ▸')
+test('the project row shows the session project, the branch, then the folder Claude works in', () => {
+  expect(placed({ project: 'Example', folder: 'Frontend', branch: 'develop' })).toContain('project: Example │ git:(develop) │ folder: Frontend')
+  expect(placed({ project: 'frontend', branch: 'develop' })).toContain('project: frontend │ git:(develop)')
+  expect(placed({ project: 'frontend', branch: 'develop' })).not.toContain('folder:')
   const deep = placed({ project: 'w', folder: 'packages/web-client/src/app/features/billing/invoices', branch: 'main' })
-  expect(deep).toContain('w ▸ …/src/app/features/billing/invoices git:(main)')
+  expect(deep).toContain('project: w │ git:(main) │ folder: …/src/app/features/billing/invoices')
 })
 
-test("narrow, the place keeps the folder's last part before it drops whole", () => {
+test("narrow, the project row keeps the folder's last part, then drops the folder", () => {
   const place = { project: 'Example', folder: 'Frontend/src/app', branch: 'develop' }
-  expect(placed(place, 100)).toContain('Example ▸ Frontend/src/app git:(develop)')
-  expect(placed(place, 74)).toContain('Example ▸ …/app git:(develop)')
+  expect(placed(place, 100)).toContain('project: Example │ git:(develop) │ folder: Frontend/src/app')
+  expect(placed(place, 58)).toContain('project: Example │ git:(develop) │ folder: …/app')
+  expect(placed(place, 47)).toContain('project: Example │ git:(develop)')
+  expect(placed(place, 47)).not.toContain('folder:')
 })
 
 
@@ -428,7 +433,7 @@ test('fullscreen under, the buttons name their commands and take no hotkey', () 
   expect(buttons.every(b => b.hotkey === undefined)).toBe(true)
   expect(buttons.find(b => b.key === 'inspect')?.label).toBe('/inspect')
   expect(buttons.find(b => b.key === 'handoff')?.label).toBe('/auto-handoff now')
-  expect(buttons.find(b => b.key === 'tools')?.label).toMatch(/tools/)
+  expect(buttons.some(b => b.key === 'tools')).toBe(false)
 })
 
 test('main screen under, the buttons are commands', () => {
@@ -437,12 +442,10 @@ test('main screen under, the buttons are commands', () => {
   const texts = lines.map(textOf)
   expect(texts.some(t => t.includes('✗ 1 new /inspect'))).toBe(true)
   expect(texts.some(t => t.includes('/auto-handoff now'))).toBe(true)
-  const info = texts.find(t => t.includes('tools') && t.includes('│'))
-  expect(info).toBeDefined()
-  expect(info).not.toMatch(/[▾▸[]/)
+  expect(texts.find(t => t.startsWith('usage:'))).toBe('usage:   [ 19 tools ]')
 })
 
-test('main screen under, the open rows still draw under the toggle as text', () => {
+test('main screen under, the open rows still draw under usage:', () => {
   const open = bandLines(input({ isToolsOpen: true, under: { buttons: 'text' } }))
   expect(open.some(l => textOf(l).startsWith('tools:'))).toBe(true)
   const closed = bandLines(input({ under: { buttons: 'text' } }))
@@ -472,5 +475,141 @@ test('fullscreen under at 48 columns, the action row splits with its buttons cou
 test('above, the buttons keep their hotkeys', () => {
   const buttons = buttonsOf(bandLines(input({ newFailures: 1 })))
   expect(buttons.find(b => b.key === 'inspect')?.hotkey).toBe('1')
-  expect(buttons.find(b => b.key === 'tools')?.hotkey).toBe('t')
+  expect(buttons.some(b => b.key === 'tools')).toBe(false)
+})
+
+// Spec 2026-11-11 settings-values, S6: the user's sample, row for row - the info line ends with the version, then the
+// project row, plan:, usage: as text, and the detail rows
+const USER_ORDER = input({
+  columns: 150, isToolsOpen: true, plan: planNamed(), stats: TARGET_STATS, agents: TARGET_AGENTS, rules: TARGET_RULES,
+  listing: { listed: 57, total: 60, tokens: 3200 },
+  meta: {
+    ...input().meta, place: { project: 'my-app', folder: '.claude', branch: 'develop' }, version: '2.1.322',
+    skills: { 'superpowers:brainstorming': 1, 'solve-task': 2 }, agentTypes: TARGET_TYPES,
+  },
+})
+const usageOf = (lines: Line[]): Line | undefined => lines.find(l => text(l).startsWith('usage:'))
+const labelOf = (l: string): string => l.slice(0, l.indexOf(':'))
+
+test("the full band's rows in the user's order", () => {
+  const lines = texts(bandLines(USER_ORDER))
+  expect(lines.findIndex(l => l.startsWith('Sonnet 5.5'))).toBe(2)
+  expect(lines.slice(3)).toEqual([
+    'project: my-app │ git:(develop) │ folder: .claude',
+    'plan:    Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update interceptor',
+    'usage:   [ 45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ]',
+    'tools:   Bash ×32 │ AskUserQuestion ×4 │ Read ×4 │ Write ×4 │ Grep ×1',
+    'skills:  superpowers:brainstorming ×1 │ solve-task ×2 │ 57 of 60 listed',
+    'agents:  ◐ alfred-code:web-angular-verifier ×1 │ ✓ Explore ×2 │ ✓ general-purpose ×1 │ 1 running',
+    'rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ web-angular.md │ typescript.md │ 3 always-on · 2 by path',
+  ])
+})
+
+test('the info line ends with the version, and the place and the toggle have left it', () => {
+  const info = texts(bandLines(USER_ORDER))[2] ?? ''
+  expect(info.endsWith(' │ CC 2.1.322')).toBe(true)
+  expect(info).not.toContain('my-app')
+  expect(info).not.toMatch(/tools|[▾▸]/)
+})
+
+const projectRow = (place: NonNullable<BandInput['meta']['place']>, columns = 150): string | undefined =>
+  texts(bandLines(input({ columns, meta: { ...input().meta, place } }))).find(l => l.startsWith('project:'))
+
+test('project: without git: outside a repository', () => {
+  expect(projectRow({ project: 'my-app', folder: '.claude', branch: null })).toBe('project: my-app │ folder: .claude')
+})
+
+test('project: without folder: at the root', () => {
+  expect(projectRow({ project: 'my-app', branch: 'develop' })).toBe('project: my-app │ git:(develop)')
+})
+
+test('usage: is text in every place, with no button', () => {
+  for (const under of [undefined, { buttons: 'click' as const }, { buttons: 'text' as const }]) {
+    const lines = bandLines(under === undefined ? USER_ORDER : { ...USER_ORDER, under })
+    const row = usageOf(lines) ?? []
+    expect(text(row)).toBe('usage:   [ 45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ]')
+    expect(row.some(s => 'button' in s)).toBe(false)
+    expect(lines.flat().some(s => 'button' in s && s.button.key === 'tools')).toBe(false)
+  }
+})
+
+test('short of width, usage: drops the rules, then the agents, then the skills', () => {
+  const at = (columns: number): string => text(usageOf(bandLines({ ...USER_ORDER, columns })) ?? [])
+  expect(at(100)).toBe('usage:   [ 45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ]')
+  expect(at(55)).toBe('usage:   [ 45 tools · 2 skills · 4 agents (1 ◐) ]')
+  expect(at(48)).toBe('usage:   [ 45 tools · 2 skills ]')
+  expect(at(24)).toBe('usage:   [ 45 tools ]')
+})
+
+test('the detail rows draw however short usage: gets', () => {
+  const lines = bandLines({ ...USER_ORDER, columns: 48 })
+  expect(text(usageOf(lines) ?? [])).toBe('usage:   [ 45 tools · 2 skills ]')
+  expect([...new Set(labelsOf(lines))]).toEqual(['tools', 'skills', 'agents', 'rules'])
+})
+
+test('4 rows free with a plan keep line 1, the gauges, the info line and plan:', () => {
+  const lines = texts(bandLines({ ...USER_ORDER, maxRows: 4 }))
+  expect(lines).toHaveLength(4)
+  expect(lines[2]?.endsWith(' │ CC 2.1.322')).toBe(true)
+  expect(lines[3]).toBe('plan:    Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update interceptor')
+})
+
+test('short of rows, the project row goes first, then the detail rows from the last, then usage:, then plan:', () => {
+  const at = (maxRows: number): string[] => texts(bandLines({ ...USER_ORDER, maxRows })).slice(3).map(labelOf)
+  expect(at(10)).toEqual(['project', 'plan', 'usage', 'tools', 'skills', 'agents', 'rules'])
+  expect(at(9)).toEqual(['plan', 'usage', 'tools', 'skills', 'agents', 'rules'])
+  expect(at(6)).toEqual(['plan', 'usage', 'tools'])
+  expect(at(5)).toEqual(['plan', 'usage'])
+  expect(at(4)).toEqual(['plan'])
+  expect(texts(bandLines({ ...USER_ORDER, maxRows: 3 }))).toHaveLength(3)
+})
+
+test('the calm band draws none of rows 2 to 6', () => {
+  const lines = texts(bandLines({ ...USER_ORDER, mode: 'calm' }))
+  expect(lines.length).toBeLessThanOrEqual(2)
+  expect(lines.some(l => /^(project|plan|usage|tools|skills|agents|rules):/.test(l) || l.includes('CC 2.1.322'))).toBe(false)
+})
+
+test("the project and usage rows' tones", () => {
+  const lines = bandLines(USER_ORDER)
+  expect(lines.find(l => text(l).startsWith('project:'))).toEqual([
+    { text: 'project: ', tone: 'dim' }, { text: 'my-app' },
+    { text: ' │ ', tone: 'dim' }, { text: 'git:(', tone: 'git' }, { text: 'develop', tone: 'branch' }, { text: ')', tone: 'git' },
+    { text: ' │ ', tone: 'dim' }, { text: 'folder: ', tone: 'dim' }, { text: '.claude' },
+  ])
+  expect(usageOf(lines)).toEqual([{ text: 'usage:   ', tone: 'dim' }, { text: '[ 45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ]', tone: 'counts' }])
+})
+
+for (const noColor of [false, true]) {
+  test(`the project and usage rows draw ${noColor ? 'no colour under NO_COLOR' : 'purple, yellow and aqua'}`, async ($, on) => {
+    const lines = bandLines(USER_ORDER).filter(l => /^(project|usage):/.test(text(l)))
+    on('ui.render', { component: 'Pane', requestId: 'rows' }, (h$, e) => drawLines(h$, e, lines, { noColor, press: {}, columns: 150 }))
+    const ui = await $.ui.mount({
+      plugin: 'alfred-mods', surface: 'desktop', component: 'Pane', requestId: 'rows',
+      props: { title: 'rows', isFocused: false, bodyColumns: 150, placement: 'dock', scroll: { offset: 0, bodyRows: 10 }, view: {} },
+    })
+    const colorOf = async (re: RegExp): Promise<unknown> =>
+      (await ui.findAll({ type: 'Text', text: re })).reverse().find(el => el.props.color !== undefined)?.props.color
+    expect(lines).toHaveLength(2)
+    if (noColor) {
+      expect(JSON.stringify(await ui.drawn())).not.toMatch(/"(color|dimColor)"/)
+      return
+    }
+    expect(await colorOf(/^git:\($/)).toBe('#c084fc')
+    expect(await colorOf(/^develop$/)).toBe('#eab308')
+    expect(await colorOf(/^\[ 45 tools/)).toBe('#66d9e8')
+    expect(await colorOf(/^\.claude$/)).toBeUndefined()
+  })
+}
+
+// The user's colours hold in the band's quiet state too: the toggle, a button, kept its aqua while the rest dimmed
+test('idle and healthy, the band dims but the project and usage rows keep their colours', () => {
+  const lines = bandLines(input({ stats: TARGET_STATS, meta: { ...input().meta, place: { project: 'my-app', folder: '.claude', branch: 'develop' } } }))
+  expect(texts(lines).slice(2)).toEqual(['project: my-app │ git:(develop) │ folder: .claude', 'usage:   [ 45 tools ]'])
+  for (const l of lines.slice(0, 2)) for (const s of l) if ('text' in s) expect(s.tone).toBe('dim')
+  const project = lines[2] ?? []
+  expect(project.find(s => 'text' in s && s.text === 'my-app')).toEqual({ text: 'my-app' })
+  expect(project.find(s => 'text' in s && s.text === 'develop')).toEqual({ text: 'develop', tone: 'branch' })
+  expect(project.find(s => 'text' in s && s.text === '.claude')).toEqual({ text: '.claude' })
+  expect(usageOf(lines)?.[1]).toEqual({ text: '[ 45 tools ]', tone: 'counts' })
 })

@@ -17,6 +17,8 @@ const show = (text: string): string => mask(printable(text))
 const COLOR: Record<Exclude<Tone, 'dim'>, string> = {
   ok: 'success', warn: 'warning', fail: 'error', usage: '#60a5fa', skill: '#65a30d', agents: '#f472b6', cache: '#22d3ee',
   opus: '#ff8c1a', sonnet: '#3d9bff', haiku: '#19c3a6', fable: '#d16bff', plan: '#ca8a04', handoff: '#a78bfa',
+  // The project row's git:( ) and branch, and the usage row's counts (the user, 2026-11-11)
+  git: '#c084fc', branch: '#eab308', counts: '#66d9e8',
 }
 
 // With NO_COLOR set, no colour at all: the glyphs carry the meaning

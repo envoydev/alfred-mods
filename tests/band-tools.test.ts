@@ -36,7 +36,7 @@ const isOpen = (lines: string[]): boolean => lines.some(l => l.startsWith('tools
 for (const surface of SURFACES) {
   // Spec 2026-11-11, D1: the rows start open; settings-values S2: "bandRows" closes and opens them, and the toggle
   // writes nothing
-  test(`a fresh store opens the rows; "bandRows" false closes them and true opens them again (${surface})`, async ($, on) => {
+  test(`a fresh store opens the rows; "bandRows" false closes them and true opens them again; no button toggles them (${surface})`, async ($, on) => {
     const kit = stubAll(on, { band: 'full', usage: READING, now: NOW })
     stepEngine(on, () => null)
     engine(on)
@@ -52,7 +52,9 @@ for (const surface of SURFACES) {
     expect(open).toContain('tools:   Bash ×1 │ Context7:query-docs ×1')
     expect(open).toContain('skills:  none loaded')
 
-    await ui.press({ key: 'tools' })
+    // usage: is text now (spec settings-values, S6): no tools button to press, and nothing written
+    expect(open).toContain('usage:   [ 2 tools ]')
+    expect(await ui.press({ key: 'tools' }).then(() => true, () => false)).toBe(false)
     expect(isOpen(await rows(ui))).toBe(true)
     expect(kit.store.writes.filter(w => w.endsWith('settings:band-tools'))).toEqual([])
     await ui.unmount()
