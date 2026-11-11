@@ -63,7 +63,7 @@ export function parseStatus(text: string, session: string): { state: 'stood-down
 }
 
 export const HANDOFF_PATH = '.claude/session-inspector/HANDOFF.md'
-export const HANDOFF_USAGE = 'Usage: /auto-handoff [now]. The mode is the "handoff" field of "alfred-mods" in a settings file ("ask", "auto" or "off"), the first ask "handoffAt" (10 to 95).'
+export const HANDOFF_USAGE = 'Usage: /auto-handoff [ask|auto|off|at <percent>|now]. The mode is the "handoff" field of "alfred-mods" in a settings file ("ask", "auto" or "off"), the first ask "handoffAt" (10 to 95); ask, auto, off and at <percent> set them in ~/.claude/settings.json.'
 
 // The status path for a session id; an id that could leave the folder has none
 export function statusPath(id: string): string | null {

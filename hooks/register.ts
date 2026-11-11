@@ -23,7 +23,7 @@ import { maskDeep, maskDialog, maskResult, neutralDialog, resultLines } from './
 import { DROPS_RESULT, callLine, emptyPreview, groupLines } from './compact.ts'
 import type { CompactCall } from './compact.ts'
 import {
-  FOREIGN, HANDOFF_PATH, HANDOFF_USAGE, MARKER, RESUME_PROMPT, TOASTS, gitPart, handoffText, nextStep,
+  FOREIGN, HANDOFF_PATH, HANDOFF_USAGE, MARKER, MODES, RESUME_PROMPT, TOASTS, gitPart, handoffText, nextStep,
   parseStatus, percentOf, statusPath, stepUnder, stepsOf, windowThreshold,
 } from './handoff.ts'
 import type { HandoffView, PlanPart, SaveInput, ScoresPart } from './handoff.ts'
@@ -37,8 +37,8 @@ import { closeOf, closeSlices, closeWait, isAllWait, liveSpans, mineOf, openWait
 import type { Close } from './steptime.ts'
 import { agentsLines, cacheLines, nowLines, tabBar, timelineLines, toolsLines, usageLines } from './tabs.ts'
 import { classify, fold, targetOf, toolKey } from './outcome.ts'
-import { REC_HELP, addWord, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec.ts'
-import { DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast } from './settings.ts'
+import { LEVELS, REC_HELP, addWord, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec.ts'
+import { DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast, writeField } from './settings.ts'
 import type { Field, From, Resolved, Source, Values } from './settings.ts'
 import { baseName, dropPassed, folderOf, gitDirOf, headBranch, nextWindows, parentOf, storedWindows } from './startup.ts'
 import type { CallFacts } from './outcome.ts'
@@ -1122,6 +1122,38 @@ const recOf = (r: RecState): { level: RecState['level']; words: number } => ({ l
 // A source's name in the commands' answers: an earlier command's choice is named for its command (S7)
 const sourceName = (from: From, command: '/rec' | '/auto-handoff'): string => (from === 'legacy' ? `an earlier ${command}` : nameOf(from))
 
+// The user settings file Claude Code reads: settings.json in CLAUDE_CONFIG_DIR when set, else in ~/.claude; null with no
+// home to find it from
+async function userSettingsPath($: EngineInterface): Promise<string | null> {
+  const dir = (await $.env.get('CLAUDE_CONFIG_DIR')) ?? ''
+  if (dir !== '') return `${dir.replace(/[\\/]+$/, '')}/settings.json`
+  const home = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE')) ?? ''
+  return home === '' ? null : `${home.replace(/[\\/]+$/, '')}/.claude/settings.json`
+}
+
+// The one write of /rec on|strict|off and /auto-handoff ask|auto|off|at <percent> (the user's ruling, 2026-11-12): the
+// field into the user file, every other key kept. The files are read first, so the answer names a higher file that
+// still comes first; Claude Code's ConfigChange then brings the change in, as it does an edit by hand.
+async function setField<F extends Field>($: EngineInterface, field: F, value: Values[F]): Promise<string> {
+  const user = nameOf('user')
+  const shown = `"${field}": ${JSON.stringify(value)}`
+  const byHand = (why: string): string => `Nothing was written: ${why}. Set ${shown} under "alfred-mods" in ${user} by hand.`
+  await loadSettings($)
+  const path = await userSettingsPath($)
+  if (path === null) return byHand('no home folder was found')
+  const isThere = await $.fs.exists(path).catch(() => false)
+  const text = isThere ? await $.fs.read(path).catch(() => undefined) : null
+  if (text === undefined) return byHand(`${user} could not be read`)
+  const next = writeField(text, field, value)
+  if ('why' in next) return byHand(next.why === 'parse' ? `${user} does not parse as JSON` : `"alfred-mods" in ${user} is not an object`)
+  const isWritten = await $.fs.write(path, next.text).then(() => true, () => false)
+  if (!isWritten) return byHand(`${user} refused the write`)
+  const r = settingsMem.resolved
+  const from = r?.from[field]
+  const isFirst = r !== null && r !== undefined && (from === 'policy' || from === 'flag' || from === 'local' || from === 'project')
+  return `Set ${shown} in ${user}.${isFirst ? ` ${nameOf(from)} gives ${JSON.stringify(r.values[field])}, which comes first.` : ''}`
+}
+
 // "quiet" into the quiet atom
 async function loadQuiet($: EngineInterface): Promise<boolean> {
   const isOn = settingsNow().quiet
@@ -1818,8 +1850,8 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
     await $.command.register({ name: 'inspect', description: 'Session metrics, agents, tool failures, cache, the timeline and the plan in a pane', argumentHint: '[now|usage|agents|tools|cache|timeline|plan [name]]' })
-    await $.command.register({ name: 'rec', description: 'Recording mode, set by "rec" in settings: show the level, test it, or edit your private words', argumentHint: '[test|words]' })
-    await $.command.register({ name: 'auto-handoff', description: 'Save a handoff now, or show the handoff mode the settings give', argumentHint: '[now]' })
+    await $.command.register({ name: 'rec', description: 'Recording mode: set "rec" in ~/.claude/settings.json, show the level, test it, or edit your private words', argumentHint: '[on|strict|off|test|words]' })
+    await $.command.register({ name: 'auto-handoff', description: 'Save a handoff now, set the handoff mode or first ask in ~/.claude/settings.json, or show them', argumentHint: '[ask|auto|off|at <percent>|now]' })
     recMem.home = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE')) ?? null
     await loadSettings($, true)
     await readStatus($)
@@ -2064,10 +2096,13 @@ export const register: Register = (on, options) => {
     return { text: opened.isPlaced ? 'Opened the inspect pane.' : `The inspect pane is open but not drawn: ${opened.reason}.` }
   })
 
-  // '/rec [test|words]': the level is a settings value (S5); every form but words reads the files first, so a session
-  // that has not polled answers with the level in force, never its own copy
+  // '/rec [on|strict|off|test|words]': the level is a settings value (S5) that on, strict and off write into the user
+  // file (the user's ruling, 2026-11-12); every form but words reads the files first, so a session that has not polled
+  // answers with the level in force, never its own copy
   on('command.run', { command: 'rec' }, async ($, e) => {
     const word = e.args.trim().toLowerCase()
+    const target = LEVELS.find(l => l === word)
+    if (target !== undefined) return { text: mask(await setField($, 'rec', target)) }
     if (word === 'words') {
       const opened = await $.ui.open({ id: 'rec', title: 'REC words', focus: true })
       return { text: opened.isPlaced ? 'Opened the REC words pane.' : `The REC words pane is open but not drawn: ${opened.reason}.` }
@@ -2079,12 +2114,24 @@ export const register: Register = (on, options) => {
     return { text: mask(`${recStatus(level, recMem.words.length)} - from ${from}\n${REC_HELP}`) }
   })
 
-  // '/auto-handoff [now]': the mode and the first ask are settings values (S5); any form but now reads the files first
+  // '/auto-handoff [ask|auto|off|at <percent>|now]': the mode and the first ask are settings values (S5) that ask, auto,
+  // off and at <percent> write into the user file (the user's ruling, 2026-11-12); a bare form reads the files first
   // and prints the state with each value's source, and while Alfred Code owns the handoff, its state alone
   on('command.run', { command: 'auto-handoff' }, async ($, e) => {
-    if (e.args.trim().toLowerCase() === 'now') {
+    const args = e.args.trim().toLowerCase()
+    if (args === 'now') {
       await saveNow($)
       return { text: `Saving a handoff to ${HANDOFF_PATH}.` }
+    }
+    const mode = MODES.find(m => m === args)
+    if (mode !== undefined) return { text: mask(await setField($, 'handoff', mode)) }
+    // 'at 70', as 0.7 took it, or a bare '70'
+    const at = /^(?:at(?:\s+(.*))?|(\d.*))$/.exec(args)
+    if (at !== null) {
+      const word = at[1] ?? at[2] ?? ''
+      const percent = /^\d+$/.test(word) ? Number(word) : NaN
+      if (!(percent >= 10 && percent <= 95)) return { text: `The first ask takes a whole number from 10 to 95.\n${HANDOFF_USAGE}` }
+      return { text: mask(await setField($, 'handoffAt', percent)) }
     }
     await loadSettings($)
     const state = await handoffState($)

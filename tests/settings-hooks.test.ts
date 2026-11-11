@@ -351,29 +351,9 @@ test('/band and /quiet are not registered', async ($, on) => {
   expect(await run($, 'quiet', 'off').catch(() => null)).toBe(null)
 })
 
-test('/rec on writes nothing and prints the help', async ($, on) => {
-  const { store } = await start($, on, { sources: { user: mod({ rec: 'on' }) } })
-  const writes = store.writes.length
-  const text = `${recStatus('on', 0)} - from ~/.claude/settings.json\n${REC_HELP}`
-  expect(await run($, 'rec', 'on')).toBe(text)
-  expect(await run($, 'rec', 'off')).toBe(text)
-  expect(await run($, 'rec', '')).toBe(text)
-  expect(store.writes.slice(writes)).toEqual([])
-})
-
 test('/rec names an earlier /rec as the source of a stored level', async ($, on) => {
   await start($, on, { store: { 'settings:rec': 'on' } })
   expect(await run($, 'rec', '')).toBe(`${recStatus('on', 0)} - from an earlier /rec\n${REC_HELP}`)
-})
-
-test('/auto-handoff off writes nothing', async ($, on) => {
-  const { store } = await start($, on, { sources: { project: mod({ handoff: 'auto' }), user: mod({ handoffAt: 70 }) } })
-  const writes = store.writes.length
-  const text = (await run($, 'auto-handoff', 'off')).split('\n')
-  expect(text[0]).toMatch(/^Handoff: auto at 70% · .* · mode from \.claude\/settings\.json · first ask from ~\/\.claude\/settings\.json$/)
-  expect(text.slice(1).join('\n')).toBe(HANDOFF_USAGE)
-  expect(await run($, 'auto-handoff', '')).toBe(text.join('\n'))
-  expect(store.writes.slice(writes)).toEqual([])
 })
 
 test('/auto-handoff names an earlier /auto-handoff and the default', async ($, on) => {
@@ -388,4 +368,96 @@ test('/rec reads the files first', async ($, on) => {
   expect(rec().level).toBe('on')
   expect(await run($, 'auto-handoff', '')).toMatch(/^Handoff: off /)
   expect(handoff().mode).toBe('off')
+})
+
+// The user's ruling, 2026-11-12: /rec on|strict|off and /auto-handoff ask|auto|off|at <percent> write their field into
+// the user file, the rest of it kept; Claude Code's ConfigChange then brings the change in as for an edit by hand
+const HOME = { HOME: '/home/u' }
+const USER = '/home/u/.claude/settings.json'
+const USER_TEXT = '{\n  "theme": "dark",\n  "alfred-mods": {\n    "rec": "off"\n  }\n}\n'
+const fileAt = (files: { current: Record<string, FileStub> }, path: string): string | undefined =>
+  Object.entries(files.current).find(([key]) => key === path || key.endsWith(path))?.[1].text
+
+test('/rec on, strict and off write "rec" in the user file', async ($, on) => {
+  const { files, store } = await start($, on, { env: HOME, files: { [USER]: { text: USER_TEXT, mtimeMs: 0 } } })
+  const writes = store.writes.length
+  expect(await run($, 'rec', 'on')).toBe('Set "rec": "on" in ~/.claude/settings.json.')
+  expect(fileAt(files, USER)).toBe('{\n  "theme": "dark",\n  "alfred-mods": {\n    "rec": "on"\n  }\n}\n')
+  expect(await run($, 'rec', 'STRICT')).toBe('Set "rec": "strict" in ~/.claude/settings.json.')
+  expect(fileAt(files, USER)).toContain('"rec": "strict"')
+  expect(await run($, 'rec', 'off')).toBe('Set "rec": "off" in ~/.claude/settings.json.')
+  expect(fileAt(files, USER)).toBe(USER_TEXT)
+  expect(store.writes.slice(writes)).toEqual([])
+})
+
+test('/rec on writes under CLAUDE_CONFIG_DIR when it is set', async ($, on) => {
+  const { files } = await start($, on, { env: { ...HOME, CLAUDE_CONFIG_DIR: '/cfg' }, files: { [USER]: { text: USER_TEXT, mtimeMs: 0 } } })
+  expect(await run($, 'rec', 'on')).toBe('Set "rec": "on" in ~/.claude/settings.json.')
+  expect(fileAt(files, '/cfg/settings.json')).toBe('{\n  "alfred-mods": {\n    "rec": "on"\n  }\n}\n')
+  expect(fileAt(files, USER)).toBe(USER_TEXT)
+})
+
+test('/rec on makes a missing user file', async ($, on) => {
+  const { files } = await start($, on, { env: HOME })
+  expect(await run($, 'rec', 'on')).toBe('Set "rec": "on" in ~/.claude/settings.json.')
+  expect(fileAt(files, USER)).toBe('{\n  "alfred-mods": {\n    "rec": "on"\n  }\n}\n')
+})
+
+test('/rec on leaves alone a user file it cannot keep', async ($, on) => {
+  const broken = '{ "theme": '
+  const { files } = await start($, on, { env: HOME, files: { [USER]: { text: broken, mtimeMs: 0 } } })
+  expect(await run($, 'rec', 'on')).toBe('Nothing was written: ~/.claude/settings.json does not parse as JSON. Set "rec": "on" under "alfred-mods" in ~/.claude/settings.json by hand.')
+  files.current[USER] = { text: '{ "alfred-mods": "on" }', mtimeMs: 0 }
+  expect(await run($, 'rec', 'on')).toBe('Nothing was written: "alfred-mods" in ~/.claude/settings.json is not an object. Set "rec": "on" under "alfred-mods" in ~/.claude/settings.json by hand.')
+  expect(files.writes).toEqual([])
+})
+
+test('/rec on says when no home is found', async ($, on) => {
+  const { files } = await start($, on, { files: { [USER]: { text: USER_TEXT, mtimeMs: 0 } } })
+  expect(await run($, 'rec', 'on')).toBe('Nothing was written: no home folder was found. Set "rec": "on" under "alfred-mods" in ~/.claude/settings.json by hand.')
+  expect(files.writes).toEqual([])
+})
+
+test('/rec on says when the user file cannot be read', async ($, on) => {
+  const { files } = await start($, on, { env: HOME, files: { [USER]: { text: USER_TEXT, mtimeMs: 0, size: 5 * 1024 * 1024 } } })
+  expect(await run($, 'rec', 'on')).toBe('Nothing was written: ~/.claude/settings.json could not be read. Set "rec": "on" under "alfred-mods" in ~/.claude/settings.json by hand.')
+  expect(files.writes).toEqual([])
+})
+
+test('/auto-handoff auto says when the user file cannot be written', async ($, on) => {
+  const { files } = await start($, on, { env: HOME, files: { [USER]: { text: USER_TEXT, mtimeMs: 0 } }, refuseWrite: [USER] })
+  expect(await run($, 'auto-handoff', 'auto')).toBe('Nothing was written: ~/.claude/settings.json refused the write. Set "handoff": "auto" under "alfred-mods" in ~/.claude/settings.json by hand.')
+  expect(fileAt(files, USER)).toBe(USER_TEXT)
+})
+
+test('/rec on names a higher file that comes first', async ($, on) => {
+  await start($, on, { env: HOME, files: { [USER]: { text: USER_TEXT, mtimeMs: 0 } }, sources: { local: mod({ rec: 'off' }) } })
+  expect(await run($, 'rec', 'on')).toBe('Set "rec": "on" in ~/.claude/settings.json. .claude/settings.local.json gives "off", which comes first.')
+})
+
+test('/auto-handoff ask, auto, off and at <percent> write their field in the user file', async ($, on) => {
+  const { files, store } = await start($, on, { env: HOME, files: { [USER]: { text: USER_TEXT, mtimeMs: 0 } } })
+  const writes = store.writes.length
+  expect(await run($, 'auto-handoff', 'auto')).toBe('Set "handoff": "auto" in ~/.claude/settings.json.')
+  expect(await run($, 'auto-handoff', 'at 70')).toBe('Set "handoffAt": 70 in ~/.claude/settings.json.')
+  expect(fileAt(files, USER)).toBe('{\n  "theme": "dark",\n  "alfred-mods": {\n    "rec": "off",\n    "handoff": "auto",\n    "handoffAt": 70\n  }\n}\n')
+  expect(await run($, 'auto-handoff', '95')).toBe('Set "handoffAt": 95 in ~/.claude/settings.json.')
+  expect(await run($, 'auto-handoff', 'Off')).toBe('Set "handoff": "off" in ~/.claude/settings.json.')
+  expect(await run($, 'auto-handoff', 'ask')).toBe('Set "handoff": "ask" in ~/.claude/settings.json.')
+  expect(store.writes.slice(writes)).toEqual([])
+})
+
+test('/auto-handoff at a percent outside 10 to 95 writes nothing', async ($, on) => {
+  const { files } = await start($, on, { env: HOME, files: { [USER]: { text: USER_TEXT, mtimeMs: 0 } } })
+  for (const args of ['at 100', 'at 9', 'at 80.5', '5', 'at']) {
+    expect((await run($, 'auto-handoff', args)).split('\n')).toEqual(['The first ask takes a whole number from 10 to 95.', HANDOFF_USAGE])
+  }
+  expect(files.writes).toEqual([])
+})
+
+test('a word /rec and /auto-handoff do not take prints the state and the help', async ($, on) => {
+  const { files } = await start($, on, { env: HOME, files: { [USER]: { text: USER_TEXT, mtimeMs: 0 } }, sources: { user: mod({ rec: 'on' }) } })
+  expect(await run($, 'rec', 'loud')).toBe(`${recStatus('on', 0)} - from ~/.claude/settings.json\n${REC_HELP}`)
+  expect((await run($, 'auto-handoff', 'never')).split('\n').slice(1).join('\n')).toBe(HANDOFF_USAGE)
+  expect(files.writes).toEqual([])
 })

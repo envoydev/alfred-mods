@@ -125,3 +125,27 @@ export function movedToast(kept: Partial<Values>): string {
   const fields = FIELDS.filter(f => kept[f] !== undefined).map(f => `"${f}": ${JSON.stringify(kept[f])}`).join(', ')
   return `Add "alfred-mods": { ${fields} } to ~/.claude/settings.json - the choices your earlier commands made`
 }
+
+// One field of "alfred-mods" set in a settings file's text, for /rec on|strict|off and /auto-handoff ask|auto|off|at
+// (the user's ruling, 2026-11-12): every other key kept in its order, in the file's own indent, line ends and last
+// newline; null or blank text makes the file. A file that is not one JSON object, or whose "alfred-mods" is not an
+// object, is never rewritten: 'parse' or 'key' says which.
+export function writeField<F extends Field>(text: string | null, field: F, value: Values[F]): { text: string } | { why: 'parse' | 'key' } {
+  const isBlank = text === null || text.trim() === ''
+  let parsed: unknown = {}
+  if (!isBlank) {
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      return { why: 'parse' }
+    }
+  }
+  if (!isRecord(parsed)) return { why: 'parse' }
+  const block = parsed['alfred-mods']
+  if (block !== undefined && !isRecord(block)) return { why: 'key' }
+  const indent = isBlank ? '  ' : (/\n([ \t]+)\S/.exec(text)?.[1] ?? '  ')
+  const out = JSON.stringify({ ...parsed, 'alfred-mods': { ...block, [field]: value } }, null, indent)
+  const isCrlf = !isBlank && text.includes('\r\n')
+  const last = isBlank || /\n$/.test(text) ? '\n' : ''
+  return { text: (out + last).replace(/\n/g, isCrlf ? '\r\n' : '\n') }
+}

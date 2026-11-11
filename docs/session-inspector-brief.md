@@ -242,7 +242,12 @@ rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ w
   its level mid-session when only a lower file would lower it, so a typo cannot unmask a recording. The values are read
   at start, after a start-over, every 30 s and after `classic.ConfigChange` (from `$.clock.after(0, ...)`, as a read in
   the hook answers the old value). `/band` and `/quiet` are removed; `/rec` keeps `test` and `words`, `/auto-handoff`
-  keeps `now`, and their bare forms name the file each value comes from. The band's rows follow the user's message the
+  keeps `now`, and their bare forms name the file each value comes from. The commands that set a field write it
+  (the user, 2026-11-12: 'make for rec on off have an affect for global settings.json and each command if have setting
+  in settings json must have an affect on it'): `/rec on|strict|off` sets `rec` and `/auto-handoff ask|auto|off|at
+  <percent>` sets `handoff` or `handoffAt` under `"alfred-mods"` in the user file (`$CLAUDE_CONFIG_DIR/settings.json`,
+  else `~/.claude/settings.json`), every other key, the indent and the line ends kept; a file that does not parse, or
+  whose `"alfred-mods"` is not an object, is never rewritten. `classic.ConfigChange` brings the change in. The band's rows follow the user's message the
   same day: the info line ends with `CC <version>`, then `project: <project> │ git:(<branch>) │ folder: <folder>`,
   `plan:`, `usage:   [ 45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ]` as text, then the detail rows; the toggle and
   its `t` are gone. Design, probes and rulings: the machine-local spec

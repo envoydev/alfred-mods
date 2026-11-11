@@ -270,9 +270,10 @@ open session; a bare `/rec` or `/auto-handoff` reads the files again at once. A 
 
 ### From 0.7
 
-- `/band` and `/quiet` are gone; typed, they are an unknown command. `/rec` and `/auto-handoff` keep their actions
-  ([Commands](#commands)).
-- A switch is a file edit now: no click or `t` on the band's toggle, and no one-word `/rec on` before a recording.
+- `/band` and `/quiet` are gone; typed, they are an unknown command. `/rec` and `/auto-handoff` keep their actions,
+  and their switches now write your user file ([Commands](#commands)).
+- A switch is a settings value now: no click or `t` on the band's toggle. `/rec on` and `/auto-handoff auto` still
+  work, by setting the field in `~/.claude/settings.json`.
 - Your earlier choices are kept. The mod reads what `/band`, the toggle, `/quiet`, `/rec` and `/auto-handoff` stored,
   as one layer under your user file, and the first session after the update shows, once and for 30 seconds, the line
   to paste: `Add "alfred-mods": { "bandRows": false, "rec": "strict" } to ~/.claude/settings.json - the choices your
@@ -287,12 +288,20 @@ open session; a bare `/rec` or `/auto-handoff` reads the files again at once. A 
 - `/inspect [now|usage|agents|tools|cache|timeline|plan [name]]` opens the pane on a tab, Now when none is named.
   `/inspect plan <name>` pins the plan file `<name>.json`; `/inspect plan` alone returns to the newest. In the pane,
   `n`, `u`, `a`, `t`, `k`, `l` and `p` switch tabs.
-- `/rec [test|words]`: a bare `/rec` reads the settings files again and prints the level, the file it comes from, the
-  private-word count and the help; `test` checks the masker and `words` opens the private-words pane. The level is the
-  `"rec"` field ([Settings](#settings), [Recording mode](#recording-mode)).
-- `/auto-handoff [now]`: `now` saves a handoff at once, in any mode; a bare `/auto-handoff` reads the settings files
-  again and prints the mode, the first ask and the file each comes from. The mode is the `"handoff"` field and the
-  first ask `"handoffAt"` ([Handoff](#handoff)).
+- `/rec [on|strict|off|test|words]`: `on`, `strict` and `off` set the `"rec"` field in your user file; a bare `/rec`
+  reads the settings files again and prints the level, the file it comes from, the private-word count and the help;
+  `test` checks the masker and `words` opens the private-words pane ([Settings](#settings),
+  [Recording mode](#recording-mode)).
+- `/auto-handoff [ask|auto|off|at <percent>|now]`: `ask`, `auto` and `off` set the `"handoff"` field, and `at 70` (or
+  `70`) sets `"handoffAt"`, a whole number from 10 to 95, in your user file; `now` saves a handoff at once, in any
+  mode; a bare `/auto-handoff` reads the settings files again and prints the mode, the first ask and the file each
+  comes from ([Handoff](#handoff)).
+
+A command that sets a field writes that one field under `"alfred-mods"` in `~/.claude/settings.json` (in
+`$CLAUDE_CONFIG_DIR` when that is set) and leaves every other key, the file's indent and its line ends as they were.
+The band follows within seconds, as for an edit by hand. If a project or local file gives the same field, it still
+comes first, and the command says so. A file that does not parse as JSON, or whose `"alfred-mods"` is not an object,
+is never rewritten: the command says why, and you set the field by hand.
 
 The band's buttons and the pane's keys are actions and stay; every switch is a settings value ([Settings](#settings)).
 
@@ -358,7 +367,8 @@ session`. The file is the stack's: the mod never writes it and reads nothing els
 ## Recording mode
 
 Recording mode masks what the mod and Claude Code's message rows draw, for a screen recording or a shared screen.
-`"rec": "on"` or `"strict"` in a settings file turns it on, and `"rec": "off"` turns it off ([Settings](#settings)).
+`"rec": "on"` or `"strict"` in a settings file turns it on, and `"rec": "off"` turns it off; `/rec on`, `/rec strict`
+and `/rec off` set it in your user file ([Settings](#settings), [Commands](#commands)).
 
 | Level    | Hides                                                                    |
 |----------|--------------------------------------------------------------------------|

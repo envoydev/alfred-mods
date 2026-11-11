@@ -96,14 +96,13 @@ test('"handoffAt" 9, 96, 8.5 and "70" are skipped, told once, and 70 takes', asy
   expect(kit.store.get('settings:handoff')).toBe(undefined)
 })
 
-test('/auto-handoff with any word but now prints the state, the source of each value and the usage line', async ($, on) => {
+test('/auto-handoff with no word, or one it does not take, prints the state, the source of each value and the usage line', async ($, on) => {
   const { store } = await start($, on)
   const SOURCES = ' · mode from the default · first ask from the default'
   expect(await handoff($, '')).toBe(`Handoff: ask at 80% · ctx –${SOURCES}\n${USAGE}`)
   await at($, 62)
   expect(await handoff($, '')).toBe(`Handoff: ask at 80% · ctx 62%${SOURCES}\n${USAGE}`)
   expect(await handoff($, 'loud')).toBe(`Handoff: ask at 80% · ctx 62%${SOURCES}\n${USAGE}`)
-  expect(await handoff($, 'off')).toBe(`Handoff: ask at 80% · ctx 62%${SOURCES}\n${USAGE}`)
   expect(store.get('settings:handoff')).toBe(undefined)
 })
 
