@@ -20,7 +20,7 @@ in [the session-inspector brief](docs/session-inspector-brief.md).
 - **On Claude Code alone:** model and effort, context used out of the window, the 5-hour and weekly limits, session and
   daily cost, output speed as an average over the session (`≈70 tok/s avg` in the Usage tab), failed and denied tool
   calls with their reasons, running subagents, cache expiry, plan progress, a handoff prompt of its own, an on-screen
-  mask for recordings (`"rec"`) and compact tool rows (`"quiet"`), in one band and an `/inspect` pane.
+  mask for recordings (`/rec`) and compact tool rows (`"quiet"`), in one band and an `/inspect` pane.
 - **With Alfred Code:** where the stack publishes its status file, the stack handles a full context and the mod's
   handoff stands down ([Handoff](#handoff)), and the mod shows the stack's mode banner, the context runway measured
   against the stack's resume trigger, and an ALFRED CODE section whose `f` fills the stack's ready resume prompt
@@ -179,7 +179,7 @@ repo, and open it.
    dialog.
 4. Save. The session redraws at once, and other open sessions within 30 seconds.
 
-Four ready blocks, each for the `"alfred-mods"` line of the file named:
+Three ready blocks, each for the `"alfred-mods"` line of the file named:
 
 - **The band under the input, in every project:** `~/.claude/settings.json`
 
@@ -191,12 +191,6 @@ Four ready blocks, each for the `"alfred-mods"` line of the file named:
 
   ```json
   "alfred-mods": { "bandRows": false }
-  ```
-
-- **REC on for a recording:** `~/.claude/settings.json`, then `"off"` when you stop
-
-  ```json
-  "alfred-mods": { "rec": "on" }
   ```
 
 - **The handoff saving by itself from 70%:** either file
@@ -213,9 +207,11 @@ Four ready blocks, each for the `"alfred-mods"` line of the file named:
 | `bandPlace` | `"above"`, `"under"`         | `"above"` | the band above the input, or under it (the terminal only)          |
 | `bandRows`  | `true`, `false`              | `true`    | the `tools:`, `skills:`, `agents:` and `rules:` rows open or closed |
 | `quiet`     | `true`, `false`              | `true`    | one line per tool call in place of the command and its output      |
-| `rec`       | `"off"`, `"on"`, `"strict"`  | `"off"`   | [Recording mode](#recording-mode): what is masked on screen        |
 | `handoff`   | `"ask"`, `"auto"`, `"off"`   | `"ask"`   | how a [handoff](#handoff) is saved before the context fills        |
 | `handoffAt` | a whole number from 10 to 95 | `80`      | the context percent where the handoff first asks or saves          |
+
+REC is not a setting: `/rec` turns it on and off ([Recording mode](#recording-mode)), and a `"rec"` in a settings file
+is ignored.
 
 With `quiet`, a failure keeps up to 3 error lines, runs of read-only calls fold into one line, and a blocked call
 shows the rule's first sentence; `"quiet": false`, Ctrl+O or `[Show]` in the Tools tab bring the full rows back.
@@ -239,9 +235,9 @@ Each field on its own takes the first valid value in this order:
 6. a choice you made with a command before 0.8.0 ([From 0.7](#from-07));
 7. the default.
 
-So with `"alfred-mods": { "bandPlace": "under", "rec": "on" }` in your user file and `"alfred-mods": { "bandRows":
-false }` in one project's local file, that project draws the band under the input with REC on and the rows closed,
-and every other project the same with the rows open.
+So with `"alfred-mods": { "bandPlace": "under", "quiet": false }` in your user file and `"alfred-mods": { "bandRows":
+false }` in one project's local file, that project draws the band under the input with full tool rows and the band's
+rows closed, and every other project the same with the rows open.
 
 - A value of the wrong type, or outside its field's values, is skipped as if absent, and a toast says so once. It
   names the file, the values the field takes and the value in use, never the bad value: `"band" in
@@ -249,35 +245,24 @@ and every other project the same with the rows open.
 - A field name the mod does not know is ignored, and an `"alfred-mods"` that is not an object gives that file no
   fields.
 - `.claude/settings.json` is often committed, so a field there applies to everyone who works in the project. Keep your
-  own choices, such as `rec` and `bandPlace`, in your user file or the local one.
-
-### REC holds
-
-One exception to the order, for REC alone: mid-session, REC never goes down because a file stopped giving it. A file
-that does not parse reads as absent, the same as one whose `"rec"` was removed, so a typo made while editing any field
-would otherwise unmask a running recording. When the file that set the level gives no `"rec"` any more, REC keeps its
-level and a toast says so once: `REC stays on: .claude/settings.local.json no longer gives "rec" - fix the file, or set
-"rec": "off" in it`. A value REC does not take in that file holds it the same way. `"rec": "off"` in that file, or in
-one above it, turns REC off at once; otherwise the hold lasts until the next `claude` run. Raising REC, and every other field,
-follow the files at once.
+  own choices, such as `bandPlace` and `quiet`, in your user file or the local one.
 
 ### When a change shows
 
 At once in the session whose settings file changed, as Claude Code tells the mod, and within 30 seconds in every other
-open session; a bare `/rec` or `/auto-handoff` reads the files again at once. A change of `rec` shows REC's toast,
-`● REC on · hiding …` or `REC off`; the other fields redraw what they decide, with no toast. With
-`leave_out_skipped_hooks` on, every change takes up to 30 seconds, REC included.
+open session; a bare `/auto-handoff` reads the files again at once. A change redraws what its field decides, with no
+toast. With `leave_out_skipped_hooks` on, every change takes up to 30 seconds.
 
 ### From 0.7
 
-- `/band` and `/quiet` are gone; typed, they are an unknown command. `/rec` and `/auto-handoff` keep their actions
-  ([Commands](#commands)).
-- A switch is a file edit now: no click or `t` on the band's toggle, and no one-word `/rec on` before a recording.
-- Your earlier choices are kept. The mod reads what `/band`, the toggle, `/quiet`, `/rec` and `/auto-handoff` stored,
+- `/band` and `/quiet` are gone; typed, they are an unknown command. `/rec` works as before, and `/auto-handoff` keeps
+  `now` ([Commands](#commands)).
+- A switch is a file edit now: no click or `t` on the band's toggle. REC stays where `/rec` left it.
+- Your earlier choices are kept. The mod reads what `/band`, the toggle, `/quiet` and `/auto-handoff` stored,
   as one layer under your user file, and the first session after the update shows, once and for 30 seconds, the line
-  to paste: `Add "alfred-mods": { "bandRows": false, "rec": "strict" } to ~/.claude/settings.json - the choices your
-  earlier commands made`. A toast shows about 120 characters, so with several choices kept its end is cut: `/rec` and
-  `/auto-handoff` name where their values come from, and the band shows the rest. Once your user file sets a field, the
+  to paste: `Add "alfred-mods": { "bandRows": false, "quiet": false } to ~/.claude/settings.json - the choices your
+  earlier commands made`. A toast shows about 120 characters, so with several choices kept its end is cut:
+  `/auto-handoff` names where its values come from, and the band shows the rest. Once your user file sets a field, the
   stored choice for it is deleted; a project's file overrides it in that project and keeps it for the others.
 - Going back to 0.7.0 brings the commands back on the stored choices: each one your user file has not replaced is still
   there, and a replaced one reads its default.
@@ -287,9 +272,9 @@ open session; a bare `/rec` or `/auto-handoff` reads the files again at once. A 
 - `/inspect [now|usage|agents|tools|cache|timeline|plan [name]]` opens the pane on a tab, Now when none is named.
   `/inspect plan <name>` pins the plan file `<name>.json`; `/inspect plan` alone returns to the newest. In the pane,
   `n`, `u`, `a`, `t`, `k`, `l` and `p` switch tabs.
-- `/rec [test|words]`: a bare `/rec` reads the settings files again and prints the level, the file it comes from, the
-  private-word count and the help; `test` checks the masker and `words` opens the private-words pane. The level is the
-  `"rec"` field ([Settings](#settings), [Recording mode](#recording-mode)).
+- `/rec [on|strict|off|test|words]` masks what is on screen for a recording: `on` or a bare `/rec` turns it on, `strict`
+  hides more, `off` turns it off, `test` checks the masker and `words` opens the private-words pane. See
+  [Recording mode](#recording-mode).
 - `/auto-handoff [now]`: `now` saves a handoff at once, in any mode; a bare `/auto-handoff` reads the settings files
   again and prints the mode, the first ask and the file each comes from. The mode is the `"handoff"` field and the
   first ask `"handoffAt"` ([Handoff](#handoff)).
@@ -357,16 +342,16 @@ session`. The file is the stack's: the mod never writes it and reads nothing els
 
 ## Recording mode
 
-Recording mode masks what the mod and Claude Code's message rows draw, for a screen recording or a shared screen.
-`"rec": "on"` or `"strict"` in a settings file turns it on, and `"rec": "off"` turns it off ([Settings](#settings)).
+`/rec` masks what the mod and Claude Code's message rows draw, for a screen recording or a shared screen. It is no
+settings value: nothing turns it on by itself, so turn it on before you record.
 
 | Level    | Hides                                                                    |
 |----------|--------------------------------------------------------------------------|
 | `on`     | keys, emails, phone numbers and your private words                       |
 | `strict` | the same, plus your local user name, home folder paths and dollar amounts |
 
-- **It holds** across sessions and restarts while a settings file gives it. Mid-session it never goes down because a
-  file stopped giving it, a typo included ([REC holds](#rec-holds)). A red `● REC` leads the band while it is on.
+- **It holds** across sessions and restarts until `/rec off`. A bare `/rec` never turns it off or down, so typing it
+  to start a recording never unmasks one. A red `● REC` leads the band while it is on.
 - **Where it masks:** the band, every pane tab, toasts, the spinner, the mod's own command output, Claude's messages,
   command output, tool rows (each call drawn as its own row while REC is on) and Claude's question dialogs. Masked
   values read `‹key›`, `‹email›`, `‹phone›` and `‹private›`. Only the drawing changes: the stored messages and what
@@ -401,8 +386,7 @@ What REC cannot hide:
   option descriptions are masked.
 - A private key's middle lines in a diff that does not show its BEGIN line. A diff that shows it draws every line of
   the key as `‹key›`.
-- Other open sessions, for up to 30 seconds after a change; run `/rec` in each session that will be on screen, which
-  reads the files at once.
+- Other open sessions, for up to 30 seconds after a change; run `/rec` in each session that will be on screen.
 - Rows drawn before REC went on: on the terminal's main screen they stay in scrollback, so turn REC on before
   recording starts, then clear the terminal or start a new session.
 - Files on disk and the transcript. HANDOFF.md gets only its key, email and phone masking.

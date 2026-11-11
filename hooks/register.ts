@@ -37,8 +37,8 @@ import { closeOf, closeSlices, closeWait, isAllWait, liveSpans, mineOf, openWait
 import type { Close } from './steptime.ts'
 import { agentsLines, cacheLines, nowLines, tabBar, timelineLines, toolsLines, usageLines } from './tabs.ts'
 import { classify, fold, targetOf, toolKey } from './outcome.ts'
-import { REC_HELP, addWord, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec.ts'
-import { DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast } from './settings.ts'
+import { LEVELS, REC_HELP, addWord, parseLevel, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec.ts'
+import { DEFAULTS, FIELDS, SOURCES, legacyOf, movedToast, nameOf, resolve, skippedToast } from './settings.ts'
 import type { Field, From, Resolved, Source, Values } from './settings.ts'
 import { baseName, dropPassed, folderOf, gitDirOf, headBranch, nextWindows, parentOf, storedWindows } from './startup.ts'
 import type { CallFacts } from './outcome.ts'
@@ -981,10 +981,10 @@ function keepError(id: string, text: string): void {
 
 // The mod's switches, from the "alfred-mods" key of each settings file and the old commands' store keys (spec
 // 2026-11-11 settings-values, S1-S4 and S7): read at the start, on the poll, after a /clear and after each change, one
-// run at a time as the status file's reads are. `rec`, the level in force and the source that set it; `skippedKey`,
-// the skipped values last told; `isHoldTold`, whether REC's hold was told. A new claude run starts them over.
+// run at a time as the status file's reads are. `skippedKey`, the skipped values last told, which a new claude run
+// starts over. REC is no settings value: /rec stores it, and loadRec reads it with the rest (the user's ruling, 2026-11-12)
 const settingsMem = {
-  resolved: null as Resolved | null, rec: null as { level: Level; from: From } | null, skippedKey: '', isHoldTold: false,
+  resolved: null as Resolved | null, skippedKey: '',
   reading: Promise.resolve() as Promise<void>,
 }
 
@@ -999,11 +999,7 @@ function loadSettings($: EngineInterface, isStart = false): Promise<void> {
 // Each source read on its own, so a file that does not parse falls to the files below rather than taking the rest
 // with it (S1); a refused read, or a store key that throws, counts as absent
 async function loadSettingsNow($: EngineInterface, isStart: boolean): Promise<void> {
-  if (isStart) {
-    settingsMem.rec = null
-    settingsMem.skippedKey = ''
-    settingsMem.isHoldTold = false
-  }
+  if (isStart) settingsMem.skippedKey = ''
   const layers: Partial<Record<Source, unknown>> = {}
   for (const source of SOURCES) layers[source] = await $.settings.read({ key: 'alfred-mods', source }).catch(() => undefined)
   const rawHandoff = await $.store.get('settings:handoff').catch(() => null)
@@ -1012,33 +1008,21 @@ async function loadSettingsNow($: EngineInterface, isStart: boolean): Promise<vo
     place: await $.store.get('settings:band-place').catch(() => null),
     tools: await $.store.get('settings:band-tools').catch(() => null),
     quiet: await $.store.get('settings:quiet').catch(() => null),
-    rec: await $.store.get('settings:rec').catch(() => null),
     handoff: rawHandoff,
   })
   const r = resolve(layers, legacy)
   settingsMem.resolved = r
   await retireOld($, r, legacy, rawHandoff)
   if (isStart) await tellMoved($, r)
-  const before = settingsMem.rec
-  const held = holdRec(before, { level: r.values.rec, from: r.from.rec })
-  // A skipped value is told once (S3): each skip the last told set did not hold, when the set changes. While REC holds,
-  // its skip is the hold's to tell: a skip toast would name a level REC is not at
-  const skips = r.skipped.filter(k => !(held.isHeld && k.field === 'rec'))
-  const skippedKey = skips.map(k => `${k.field}@${k.source}`).sort().join(',')
+  // A skipped value is told once (S3): each skip the last told set did not hold, when the set changes
+  const skippedKey = r.skipped.map(k => `${k.field}@${k.source}`).sort().join(',')
   if (skippedKey !== settingsMem.skippedKey) {
     const told = new Set(settingsMem.skippedKey.split(','))
-    for (const skip of skips) if (!told.has(`${skip.field}@${skip.source}`)) toast($, skippedToast(skip, r))
+    for (const skip of r.skipped) if (!told.has(`${skip.field}@${skip.source}`)) toast($, skippedToast(skip, r))
     settingsMem.skippedKey = skippedKey
   }
-  // REC's hold (S3), told once per hold; a level that changes after the session's first read is told as /rec told it
-  settingsMem.rec = { level: held.level, from: held.from }
-  if (!held.isHeld) settingsMem.isHoldTold = false
-  else if (!settingsMem.isHoldTold) {
-    settingsMem.isHoldTold = true
-    toast($, holdToast(held.level, held.from))
-  }
+  // REC's level and words, as /rec stored them: another session's /rec arrives here with the poll
   await loadRec($)
-  if (before !== null && before.level !== held.level) toast($, recStatus(held.level, recMem.words.length))
   await loadQuiet($)
   await loadBand($)
   await loadHandoff($)
@@ -1046,7 +1030,7 @@ async function loadSettingsNow($: EngineInterface, isStart: boolean): Promise<vo
 
 // The old commands' store keys, by the field each held (S7); `settings:handoff` holds two, retired field by field
 const OLD_KEYS: Partial<Record<Field, string>> = {
-  band: 'settings:band', bandPlace: 'settings:band-place', bandRows: 'settings:band-tools', quiet: 'settings:quiet', rec: 'settings:rec',
+  band: 'settings:band', bandPlace: 'settings:band-place', bandRows: 'settings:band-tools', quiet: 'settings:quiet',
 }
 
 // S7: a field the user's own file sets, machine-wide as the store is, drops its old value; a project or local value
@@ -1080,8 +1064,8 @@ async function tellMoved($: EngineInterface, r: Resolved): Promise<void> {
 // The level in force and the stored words into the masker and the rec atom: a word set in one session reaches every
 // session within 30 seconds
 async function loadRec($: EngineInterface, note: string | null = null): Promise<void> {
-  const level = settingsMem.rec?.level ?? 'off'
-  // A refused read keeps the words REC had, so the fields after REC still settle (the review's #4)
+  // A refused read keeps the level and the words REC had, so the fields after REC still settle (the review's #4)
+  const level = await $.store.get('settings:rec').then(parseLevel, () => recLevel())
   const words = await $.store.get('rec:words').then(parseWords, () => recMem.words)
   recMem.words = words
   // Recompiled and every site redrawn only on a change: a word swapped for another keeps the atom's count, and rows a
@@ -1095,6 +1079,8 @@ async function loadRec($: EngineInterface, note: string | null = null): Promise<
   await update($, rec, r => (r.level === level && r.count === words.length && r.note === note ? r : { level, count: words.length, note }))
   await syncStatus($)
 }
+
+const OTHER_SESSIONS = 'Other open sessions follow within 30 s; run /rec in each one on screen.'
 
 // Whether a site masks: mask.ts's level, which a /clear, a resume or a fork leaves as it was while the atom is reset;
 // the atom is read so the site redraws when REC changes
@@ -1120,7 +1106,7 @@ async function removeRecWord($: EngineInterface, word: string): Promise<void> {
 const recOf = (r: RecState): { level: RecState['level']; words: number } => ({ level: r.level, words: r.count })
 
 // A source's name in the commands' answers: an earlier command's choice is named for its command (S7)
-const sourceName = (from: From, command: '/rec' | '/auto-handoff'): string => (from === 'legacy' ? `an earlier ${command}` : nameOf(from))
+const sourceName = (from: From, command: '/auto-handoff'): string => (from === 'legacy' ? `an earlier ${command}` : nameOf(from))
 
 // "quiet" into the quiet atom
 async function loadQuiet($: EngineInterface): Promise<boolean> {
@@ -1818,7 +1804,7 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
     await $.command.register({ name: 'inspect', description: 'Session metrics, agents, tool failures, cache, the timeline and the plan in a pane', argumentHint: '[now|usage|agents|tools|cache|timeline|plan [name]]' })
-    await $.command.register({ name: 'rec', description: 'Recording mode, set by "rec" in settings: show the level, test it, or edit your private words', argumentHint: '[test|words]' })
+    await $.command.register({ name: 'rec', description: 'Recording mode: hide keys, emails, phones and your private words on screen', argumentHint: '[on|strict|off|test|words]' })
     await $.command.register({ name: 'auto-handoff', description: 'Save a handoff now, or show the handoff mode the settings give', argumentHint: '[now]' })
     recMem.home = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE')) ?? null
     await loadSettings($, true)
@@ -2064,19 +2050,27 @@ export const register: Register = (on, options) => {
     return { text: opened.isPlaced ? 'Opened the inspect pane.' : `The inspect pane is open but not drawn: ${opened.reason}.` }
   })
 
-  // '/rec [test|words]': the level is a settings value (S5); every form but words reads the files first, so a session
-  // that has not polled answers with the level in force, never its own copy
+  // '/rec [on|strict|off|test|words]': REC's level, stored per machine as in 0.7, no settings value (the user's ruling,
+  // 2026-11-12); bare /rec turns it on, or prints a level already on
   on('command.run', { command: 'rec' }, async ($, e) => {
     const word = e.args.trim().toLowerCase()
+    const stored = parseLevel(await $.store.get('settings:rec'))
+    if (word === 'test') {
+      await loadRec($)
+      return { text: mask(recTest(stored === 'off' ? 'on' : stored, recMem.words, recMem.home)) }
+    }
     if (word === 'words') {
       const opened = await $.ui.open({ id: 'rec', title: 'REC words', focus: true })
       return { text: opened.isPlaced ? 'Opened the REC words pane.' : `The REC words pane is open but not drawn: ${opened.reason}.` }
     }
-    await loadSettings($)
-    const level = settingsMem.rec?.level ?? 'off'
-    if (word === 'test') return { text: mask(recTest(level === 'off' ? 'on' : level, recMem.words, recMem.home)) }
-    const from = sourceName(settingsMem.rec?.from ?? 'default', '/rec')
-    return { text: mask(`${recStatus(level, recMem.words.length)} - from ${from}\n${REC_HELP}`) }
+    const target = word === '' ? (stored === 'off' ? 'on' : stored) : LEVELS.find(l => l === word)
+    if (target === undefined) return { text: mask(REC_HELP) }
+    const before = recLevel()
+    if (target !== stored) await $.store.set('settings:rec', target)
+    await loadRec($)
+    const status = recStatus(target, recMem.words.length)
+    if (target !== before) toast($, status)
+    return { text: mask(target === stored ? status : `${status}\n${OTHER_SESSIONS}`) }
   })
 
   // '/auto-handoff [now]': the mode and the first ask are settings values (S5); any form but now reads the files first

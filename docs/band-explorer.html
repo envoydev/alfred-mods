@@ -114,7 +114,7 @@ table.settings select:focus-visible { outline: 2px solid var(--accent); outline-
     <h1>alfred-mods Band Explorer</h1>
     <p class="muted">How the alfred-mods band looks with its switches moved into settings files: the mod reads them from an <code>"alfred-mods"</code> key in <code>~/.claude/settings.json</code>, <code>.claude/settings.json</code> and <code>.claude/settings.local.json</code>, the local file first. Every band row and the pinned line are drawn by the mod's own code, bundled into this page, so a change to a setting, a number or a list redraws them as a session would.</p>
     <p class="note">This page shows alfred-mods 0.8.0. Open it in a browser, offline too (the fonts then fall back to the system's): change a setting, and the band redraws as a session would.</p>
-    <div class="legend"><span><b>Exact</b>: every band row, how it wraps, what it drops when short of room, and the pinned line's text, from the mod's own code; the settings' order and toasts, as the mod settles them</span><span><b>Sketched</b>: the frame around the band (the transcript, the prompt box, Claude Code's own footer line) and the band's width, taken as the terminal's less 4 columns above and less 5 under</span><span><b>Default</b>: no file sets anything - above the input, full, detail rows open, compact tool rows, REC off, handoff ask from 80%</span></div>
+    <div class="legend"><span><b>Exact</b>: every band row, how it wraps, what it drops when short of room, and the pinned line's text, from the mod's own code; the settings' order and toasts, as the mod settles them</span><span><b>Sketched</b>: the frame around the band (the transcript, the prompt box, Claude Code's own footer line) and the band's width, taken as the terminal's less 4 columns above and less 5 under</span><span><b>Default</b>: no file sets anything - above the input, full, detail rows open, compact tool rows, handoff ask from 80%; REC off until /rec turns it on</span></div>
   </header>
 
   <section class="live" aria-label="Live terminal">
@@ -124,12 +124,12 @@ table.settings select:focus-visible { outline: 2px solid var(--accent); outline-
 
   <section class="panel" aria-label="Settings">
     <div class="row" style="justify-content:space-between"><h2>Settings - the mod's switches</h2><button type="button" id="resetSettings">Clear every file</button></div>
-    <p class="muted">Each field is a value under <code>"alfred-mods"</code> in a settings file. Pick one per file, or leave it unset: for each field the mod takes the highest file with a valid value - <code>.claude/settings.local.json</code>, then <code>.claude/settings.json</code>, then <code>~/.claude/settings.json</code>, then a choice an earlier command stored, then the default. A bad value is skipped as if absent. Mid-session REC never falls because a file went quiet: it holds until that file says a lower level, or the next <code>claude</code> run. A change to any file redraws the band within seconds.</p>
+    <p class="muted">Each field is a value under <code>"alfred-mods"</code> in a settings file. Pick one per file, or leave it unset: for each field the mod takes the highest file with a valid value - <code>.claude/settings.local.json</code>, then <code>.claude/settings.json</code>, then <code>~/.claude/settings.json</code>, then a choice an earlier command stored, then the default. A bad value is skipped as if absent. A change to any file redraws the band within seconds. REC is not here: <code>/rec</code> turns it on and off, and the session's checkboxes above preview it.</p>
     <div class="table-scroll"><table class="settings" id="settingsTable"></table></div>
     <div class="toasts" id="settingsToasts"></div>
     <div class="group-title">What each file holds</div>
     <div class="files" id="settingsFiles"></div>
-    <p class="note"><b>Keep the JSON valid.</b> Claude Code reads a settings file whole or not at all: one that does not parse is skipped entirely - its permission rules included, not only <code>"alfred-mods"</code>. At a session's start it stops on a 'Settings Error' dialog; mid-session the file drops out with no warning - which is why REC holds its level when the file that set it goes quiet.</p>
+    <p class="note"><b>Keep the JSON valid.</b> Claude Code reads a settings file whole or not at all: one that does not parse is skipped entirely - its permission rules included, not only <code>"alfred-mods"</code>. At a session's start it stops on a 'Settings Error' dialog; mid-session the file drops out with no warning, and its fields fall to the files below.</p>
   </section>
 
   <section class="panel" aria-label="Situation">
@@ -2095,6 +2095,8 @@ return { bandLines: __m['band.ts'].bandLines, statusText: __m['band.ts'].statusT
 })();
 
 // The explorer's numbers and switches as the band's input, the way hooks/register.ts' bandInputOf builds it, and the
+// REC's level from the page's two checkboxes, /rec on and /rec strict: REC is no settings value (the user, 2026-11-12)
+const recOf = m => (m.recStrict ? 'strict' : m.rec ? 'on' : 'off')
 // band's lines drawn as the terminal draws them. Needs BandCore (bundled from the mod's hooks/).
 const BandAdapter = (() => {
   const MIN = 60_000
@@ -2213,7 +2215,7 @@ const BandAdapter = (() => {
         ratePerToken: null, rateModel: null, lastAt: m.fresh ? null : now - Math.max(0, 60 - num(d.cacheMin)) * MIN,
         last: { read: 1000, write: 0, input: 10 }, session: m.fresh ? { read: 0, write: 0, input: 0 } : { read: 1000, write: 0, input: 10 }, toastedFor: null,
       },
-      plan, planInvalid: false, score: null, ...(m.recLevel && m.recLevel !== 'off' ? { rec: { level: m.recLevel, words: 0 } } : m.rec && !m.recLevel ? { rec: { level: 'on', words: 0 } } : {}),
+      plan, planInvalid: false, score: null, ...(recOf(m) === 'off' ? {} : { rec: { level: recOf(m), words: 0 } }),
       forecast: runway && runway.at !== null ? { at: runway.at, label: `${num(d.trigger)}k` } : { at: askAt, label: `${askAt}%` },
       handoffAsk: !m.fresh && handoffMode === 'ask' && !runway && ask >= askAt ? Math.min(95, askAt + Math.floor((ask - askAt) / 5) * 5) : null,
       runway, banner, mode: m.calm ? 'calm' : 'full',
@@ -2273,7 +2275,8 @@ const BandAdapter = (() => {
 })()
 
 // The mod's settings as the settings-values spec reads them (S2 the fields, S3 the order and the skipped-value
-// toast, S7 the old commands' layer): each field from the highest source with a valid value
+// toast, S7 the old commands' layer): each field from the highest source with a valid value. REC is no field: /rec
+// sets it, so the page draws it from a checkbox beside the session's situation (the user, 2026-11-12)
 const BandSettings = (() => {
   const steps = []
   for (let n = 10; n <= 95; n += 5) steps.push(n)
@@ -2282,7 +2285,6 @@ const BandSettings = (() => {
     { key: 'bandPlace', values: ['above', 'under'], def: 'above', bad: 'below', what: 'above the input, or under it (the terminal only)' },
     { key: 'bandRows', values: [true, false], def: true, bad: 'no', what: 'the tools, skills, agents and rules rows open' },
     { key: 'quiet', values: [true, false], def: true, bad: 'on', what: 'one line per tool call in the transcript' },
-    { key: 'rec', values: ['off', 'on', 'strict'], def: 'off', bad: 'yes', what: 'mask the screen for a recording' },
     { key: 'handoff', values: ['ask', 'auto', 'off'], def: 'ask', bad: 'never', what: 'save a handoff before the context fills' },
     { key: 'handoffAt', values: steps, def: 80, bad: 100, what: 'the context percent the handoff starts at' },
   ]
@@ -2342,7 +2344,7 @@ const BandSettings = (() => {
   // The resolved values as the band's switches (the explorer's modes)
   const asModes = v => ({
     calm: v.band === 'calm', under: v.bandPlace === 'under', rowsOpen: v.bandRows === true, quiet: v.quiet === true,
-    rec: v.rec !== 'off', recLevel: v.rec, handoff: v.handoff, handoffOff: v.handoff === 'off', handoffAt: v.handoffAt,
+    handoff: v.handoff, handoffOff: v.handoff === 'off', handoffAt: v.handoffAt,
   })
   return { FIELDS, FILES, NAME, isValid, show, resolve, fileText, oneLine, asModes }
 })()
@@ -2363,11 +2365,11 @@ const BAND_DATA0 = {
 // The session's situation: what is happening, not what the settings say
 const BAND_MODES0 = {
   running: true, fullscreen: false, statusLine: false, alfred: true, autoRun: false, scorer: true, runway: false,
-  plan: false, fresh: false, collapsed: false, cols: 150, rows: 12, termRows: 40
+  plan: false, fresh: false, collapsed: false, rec: false, recStrict: false, cols: 150, rows: 12, termRows: 40
 }
 const BAND_BASE = {
   running: false, fullscreen: false, statusLine: false, alfred: false, autoRun: false, scorer: false, runway: false,
-  plan: false, fresh: false, collapsed: false, rows: 12, termRows: 40
+  plan: false, fresh: false, collapsed: false, rec: false, recStrict: false, rows: 12, termRows: 40
 }
 // No settings file sets anything: every field takes its default
 const BAND_CFG0 = { user: {}, project: {}, local: {}, legacy: {} }
@@ -2383,9 +2385,9 @@ const BAND_PRESETS = [
   ['A plan in progress', 'The plan row sits under the project row, above usage: - the title, the steps done and the step in progress.', { running: true, plan: true }],
   ['Context past 80%', 'Between turns the handoff ask takes the last row: 4, or a click, saves a handoff. It asks again every 5 points, up to 95.', {}, d => ({ ctxUsed: Math.ceil(Number(d.window) * 0.82), agents: noRun(d.agents) })],
   ['Handoff from 70%', 'The user file moves the first ask to 70%; it asks again every 5 points up to 95. "handoff": "auto" would save with no ask, "off" never.', {}, d => ({ ctxUsed: Math.ceil(Number(d.window) * 0.72), agents: noRun(d.agents) }), { user: { handoffAt: 70 } }],
-  ['Recording', 'A red ● REC leads line 1. The pinned line under the prompt leaves REC and ctx out while the band shows them.', { running: true }, null, { user: { rec: 'on' } }],
-  ['REC from a project file', 'A committed .claude/settings.json says "on" over a user file saying "off": the order holds for REC as for every field. Mid-session REC never falls because a file went quiet - a typo drops the whole file - so it holds until that file says a lower level or the next claude run.', { running: true }, null, { user: { rec: 'off' }, project: { rec: 'on' } }],
-  ['Band collapsed', 'Ctrl+X Ctrl+A hides the band above the input. The pinned line then carries REC, and ctx from 60%, since nothing else shows them.', { collapsed: true }, d => ({ ctxUsed: Math.ceil(Number(d.window) * 0.7), agents: noRun(d.agents) }), { user: { rec: 'on' } }],
+  ['Recording', '/rec on (or a bare /rec) turns REC on before a recording: a red ● REC leads line 1, and keys, emails and phones are masked. It is no settings value - nothing turns it on by itself. The pinned line under the prompt leaves REC and ctx out while the band shows them.', { running: true, rec: true }],
+  ['REC strict', '/rec strict also hides your account name, home folder paths and dollar amounts. It holds across sessions until /rec off. This page draws the ● REC mark, not the masking itself: /rec test shows that in a session.', { running: true, recStrict: true }],
+  ['Band collapsed', 'Ctrl+X Ctrl+A hides the band above the input. The pinned line then carries REC, and ctx from 60%, since nothing else shows them.', { collapsed: true, rec: true }, d => ({ ctxUsed: Math.ceil(Number(d.window) * 0.7), agents: noRun(d.agents) })],
   ['Tool failures', 'Between turns, ✗ 2 new and Inspect take the last row, and the pinned line says it too. /inspect lists the reasons.', {}, d => ({ failures: 2, agents: noRun(d.agents) })],
   ['Claude works in another folder', "The project row follows Claude's last cd or the last file it edited: the project, the branch of the repository holding the folder, then the folder; at the project's root the folder is left out.", { running: true }, () => ({ folder: 'src/app/auth' })],
   ['Terminal 100 columns wide', 'Under 100 columns the gauges take their narrow form and line 1 shortens. The info line breaks between items onto a second row, the version giving way first; the project row shortens its folder.', { running: true, cols: 100 }],
@@ -2396,7 +2398,7 @@ const BAND_PRESETS = [
   ['Under the input, fullscreen', "On the terminal only. Claude Code's own mode line stays the footer's first row - it draws it first whatever order a mod gives - and the band follows it, the action row right after the gauges; each button names its command and is pressed by a click.", { fullscreen: true }, d => ({ failures: 1, agents: noRun(d.agents) }), { user: { bandPlace: 'under' } }],
   ['Under the input, main screen', 'The main screen takes no clicks, so each button is its command as text to type.', {}, d => ({ failures: 1, agents: noRun(d.agents) }), { user: { bandPlace: 'under' } }],
   ['Under, fullscreen, a 24-row window', 'Fullscreen gives everything under the input about half the window. Less the prompt and Claude Code\'s own footer line, 6 band rows remain here; the rest give way in the band\'s order, the project row first.', { fullscreen: true, termRows: 24, running: true }, null, { user: { bandPlace: 'under' } }],
-  ['Choices from the old commands', 'Someone who ran /rec strict and /band rows off on 0.7 keeps both after the update. One toast gives the line to paste, and each old choice retires once the user file sets that field.', { running: true }, null, { legacy: { rec: 'strict', bandRows: false } }],
+  ['Choices from the old commands', 'Someone who closed the band\'s rows and ran /quiet off on 0.7 keeps both after the update. One toast gives the line to paste, and each old choice retires once the user file sets that field. A /rec level stays where /rec left it.', { running: true }, null, { legacy: { quiet: false, bandRows: false } }],
   ['First second of a session', 'Before the first reply: ctx waits (ctx —), and 5h and 7d carry the values an earlier session stored, marked ≈.', { fresh: true }, () => ({ agents: '' })]
 ]
 
@@ -2419,7 +2421,8 @@ const FIELDS = [
 const SWITCHES = [
   ['running','A turn is running'],['fullscreen','Fullscreen (CLAUDE_CODE_NO_FLICKER=1)'],
   ['alfred','Alfred Code is installed'],['autoRun','auto-run on'],['scorer','scorer on'],['runway','Runway: fresh session at the trigger'],
-  ['plan','A plan file exists'],['fresh','First second of the session'],['collapsed','Band collapsed (Ctrl+X Ctrl+A, above only)']
+  ['plan','A plan file exists'],['fresh','First second of the session'],['collapsed','Band collapsed (Ctrl+X Ctrl+A, above only)'],
+  ['rec','REC on (/rec on - a command, not a setting)'],['recStrict','REC strict (/rec strict: also the account, home paths and $)']
 ];
 // The four sources the page edits, each the "alfred-mods" fields it sets
 const SOURCES = ['legacy', 'user', 'project', 'local'];
