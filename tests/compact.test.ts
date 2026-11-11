@@ -6,12 +6,11 @@ import type { Line } from '../hooks/band.ts'
 import { callLine, groupLines } from '../hooks/compact.ts'
 import type { CompactCall } from '../hooks/compact.ts'
 import { KEYS } from '../hooks/samples.ts'
-import { PRESENTATION, START, engine, rows, stubAll } from './kit.ts'
+import { START, engine, rows, setUser, stubAll } from './kit.ts'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const KEY = KEYS[0]!
 
-const command = ($: Engine, name: string, args: string) => $.command.run({ command: name, args, origin: { kind: 'composer' }, presentation: PRESENTATION })
 const text = (lines: Line[]): string[] => lines.map(l => l.map(s => ('text' in s ? s.text : '')).join(''))
 
 const CALL: CompactCall = { tool: 'Bash', input: {}, output: undefined, isErrored: false, isInterrupted: false, outcome: null, reason: null }
@@ -210,9 +209,9 @@ for (const surface of SURFACES) {
     expect((await draw($, surface, 'ToolGroup', group)).props).toEqual(group)
   })
 
-  test(`/quiet on, then /clear: the first tool row is compact (${surface})`, async ($, on) => {
-    await start($, on, {})
-    await command($, 'quiet', 'on')
+  test(`"quiet": true, then /clear: the first tool row is compact (${surface})`, async ($, on) => {
+    const kit = await start($, on, {})
+    await setUser($, kit, { quiet: true })
     await $.classic.SessionStart({ source: 'clear' })
     expect((await draw($, surface, 'ToolUse', BASH_USE)).lines).toEqual(['⏺ Bash · List files · 2 lines ✓'])
   })

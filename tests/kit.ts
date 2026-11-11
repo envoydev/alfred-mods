@@ -74,6 +74,8 @@ export function stubAll(on: On, o: Options = {}): {
   session: { id: string; turns: number }
   // Each settings file by source, which a test changes mid-test, as an edit would: `sources.local['alfred-mods'] = ...`
   sources: Record<SettingsSource, Record<string, unknown>>
+  // The names of the commands the mod registered, in order
+  registered: string[]
 } {
   const toasts: string[] = []
   const opened: string[] = []
@@ -97,7 +99,11 @@ export function stubAll(on: On, o: Options = {}): {
   on('session.model', () => (o.model === undefined ? { deny: 'test: no model' } : { value: o.model }))
   on('session.version', () => (o.version === undefined ? { deny: 'test: no version' } : { value: { version: o.version } }))
   on('session.repo', () => (o.repo === undefined ? { deny: 'test: no repo' } : { value: (o.repo === null ? null : { remote: null, internal: false, ...o.repo }) as never }))
-  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  const registered: string[] = []
+  on('command.register', (_, e) => {
+    registered.push(e.name)
+    return { value: { command: e.name } }
+  })
   on('ui.open', (_, e) => {
     opened.push(e.id)
     const isPlaced = o.unplaced === undefined
@@ -263,7 +269,7 @@ export function stubAll(on: On, o: Options = {}): {
     writes,
   }
   mock.env(on, o.env ?? {})
-  return { clock, toasts, opened, copied, usage, panes, listed, files, store, session, git, prompt, invalidates, statuses, sources }
+  return { clock, toasts, opened, copied, usage, panes, listed, files, store, session, git, prompt, invalidates, statuses, sources, registered }
 }
 
 // Claude Code's own answers to the events a session raises, for a test that drives a whole turn. A test hooks an
@@ -281,6 +287,17 @@ export function engine(on: On, except: string[] = []): void {
 }
 
 export const START = { cwd: '/w', surface: 'terminal', isInteractive: true } as const
+
+// A person's edit to their user settings file mid-session: the fields merged under "alfred-mods", then Claude Code's
+// ConfigChange and the clock's next tick, when the mod reads the files again (spec settings-values S4)
+export async function setUser(
+  $: Engine, kit: { sources: Record<SettingsSource, Record<string, unknown>>; clock: MockClock }, fields: Record<string, unknown>,
+): Promise<void> {
+  const before = kit.sources.user['alfred-mods']
+  kit.sources.user['alfred-mods'] = { ...(typeof before === 'object' && before !== null ? before : {}), ...fields }
+  await $.classic.ConfigChange({ source: 'user_settings' })
+  await kit.clock.advance(0)
+}
 export const SPAWN = {
   tool_use_id: 'sp1', prompt: 'look', description: 'a look', subagentType: 'general-purpose',
   provider: { plugin: 'claude-code', tier: 'core' }, parentModel: 'claude-sonnet-5-5', background: false, fork: false,

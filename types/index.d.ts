@@ -126,12 +126,12 @@ export type TaskItem = { id: string; subject: string; status: 'pending' | 'in_pr
 export type Level = 'off' | 'on' | 'strict'
 // What surfaces redraw on: the level, the word count and the pane's last refusal, never the words themselves
 export type RecState = { level: Level; count: number; note: string | null }
-// /quiet: compact tool rows on or off, every session's from `settings:quiet`
+// "quiet": compact tool rows on or off, from the settings files (spec settings-values S2)
 export type Quiet = { isOn: boolean }
-// /band: the full band with its info line, or calm, its two lines; every session's from `settings:band`
+// "band": the full band with its info line, or calm, its two lines, from the settings files
 export type BandMode = 'full' | 'calm'
-// `isToolsOpen`: the full band's rows of every tool and the skills are open (`settings:band-tools`); `isUnder`: the band
-// draws under the input on the terminal (`settings:band-place`, spec 2026-11-11 band-under U1), set only while under
+// `isToolsOpen`: the full band's detail rows are open ("bandRows"); `isUnder`: the band draws under the input on the
+// terminal ("bandPlace": "under", spec 2026-11-11 band-under U1), set only while under
 export type BandSetting = { mode: BandMode; isToolsOpen?: boolean; isUnder?: boolean }
 // F8: the stored mode and threshold; `point`, the tokens where Claude Code compacts by itself; `handled`, the highest
 // step handled; `lastSave`, the last save's time and result; `alfred`, the stack's status file as last read

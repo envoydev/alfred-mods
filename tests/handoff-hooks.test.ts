@@ -3,14 +3,14 @@ import type { Engine, MockClock } from 'claude-code/testing'
 import type { On, RenderSurface, SessionUsage } from 'claude-code'
 
 import { clock as clockText } from '../hooks/format.ts'
+import { HANDOFF_USAGE as USAGE } from '../hooks/handoff.ts'
 import { KEYS } from '../hooks/samples.ts'
 import type { Handoff, Meta } from '../types'
-import { NO_READING, PRESENTATION, SPAWN, START, engine, gitResult, rows, step, stepEngine, stubAll, watchState } from './kit.ts'
+import { NO_READING, PRESENTATION, SPAWN, START, engine, gitResult, rows, setUser, step, stepEngine, stubAll, watchState } from './kit.ts'
 import type { FileStub } from './kit.ts'
 import { PLAN_JSON, SCORES_JSON } from './plans.ts'
 
 const STATUS = '.claude/session-inspector/status/s1.json'
-const USAGE = 'Usage: /auto-handoff [ask|auto|off|at <percent>|now]'
 const ASK = (step: number) => `Context past ${step}%: press 4 or run /auto-handoff now to save a handoff`
 const status = (o: object = {}): FileStub => ({ text: JSON.stringify({ schema: 1, session: 's1', fullContext: 'fresh-session', ...o }), mtimeMs: 1 })
 
@@ -84,23 +84,27 @@ test('off asks and saves nothing', async ($, on) => {
   expect(toasts).toEqual([])
 })
 
-test('at 9, at 96 and at 8.5 are refused', async ($, on) => {
-  const { store } = await start($, on)
-  for (const bad of ['at 9', 'at 96', 'at 8.5', 'at', 'at x']) {
-    expect(await handoff($, bad)).toBe('Threshold must be a whole percent from 10 to 95.')
+test('"handoffAt" 9, 96, 8.5 and "70" are skipped, told once, and 70 takes', async ($, on) => {
+  const kit = await start($, on)
+  for (const bad of [9, 96, 8.5, '70']) {
+    await setUser($, kit, { handoffAt: bad })
+    expect(kit.h().threshold).toBe(80)
   }
-  expect(store.get('settings:handoff')).toBe(undefined)
-  expect(await handoff($, 'at 70')).toBe('Handoff: ask at 70% · ctx –')
-  expect(store.get('settings:handoff')).toEqual({ mode: 'ask', threshold: 70 })
+  expect(kit.toasts).toEqual(['alfred-mods: "handoffAt" in ~/.claude/settings.json takes a whole number from 10 to 95 - using 80 from the default'])
+  await setUser($, kit, { handoffAt: 70 })
+  expect((await handoff($, '')).split('\n')[0]).toBe('Handoff: ask at 70% · ctx – · mode from the default · first ask from ~/.claude/settings.json')
+  expect(kit.store.get('settings:handoff')).toBe(undefined)
 })
 
-test('a bare /auto-handoff prints the state and the usage line, and anything else the usage line', async ($, on) => {
-  await start($, on)
-  expect(await handoff($, '')).toBe(`Handoff: ask at 80% · ctx –\n${USAGE}`)
+test('/auto-handoff with any word but now prints the state, the source of each value and the usage line', async ($, on) => {
+  const { store } = await start($, on)
+  const SOURCES = ' · mode from the default · first ask from the default'
+  expect(await handoff($, '')).toBe(`Handoff: ask at 80% · ctx –${SOURCES}\n${USAGE}`)
   await at($, 62)
-  expect(await handoff($, '')).toBe(`Handoff: ask at 80% · ctx 62%\n${USAGE}`)
-  expect(await handoff($, 'loud')).toBe(USAGE)
-  expect(await handoff($, 'off')).toBe('Handoff: off · ctx 62%')
+  expect(await handoff($, '')).toBe(`Handoff: ask at 80% · ctx 62%${SOURCES}\n${USAGE}`)
+  expect(await handoff($, 'loud')).toBe(`Handoff: ask at 80% · ctx 62%${SOURCES}\n${USAGE}`)
+  expect(await handoff($, 'off')).toBe(`Handoff: ask at 80% · ctx 62%${SOURCES}\n${USAGE}`)
+  expect(store.get('settings:handoff')).toBe(undefined)
 })
 
 test('on a 1M window with autoCompactThreshold 390,000, 312k tokens asks at the point', async ($, on) => {
@@ -247,12 +251,11 @@ test('a file that appears mid-session takes an ask down', async ($, on) => {
   expect(h()).toMatchObject({ isAskUp: false, alfred: { state: 'stood-down' } })
 })
 
-test('/auto-handoff at 70 in a session whose copy says ask while the store says auto stores auto at 70', async ($, on) => {
-  const { store, h } = await start($, on)
+test('a session that has not read a file change yet: bare /auto-handoff reads it first', async ($, on) => {
+  const { sources, h } = await start($, on)
   expect(h()?.mode ?? 'ask').toBe('ask')
-  store.set('settings:handoff', { mode: 'auto', threshold: 80 })
-  await handoff($, 'at 70')
-  expect(store.get('settings:handoff')).toEqual({ mode: 'auto', threshold: 70 })
+  sources.user['alfred-mods'] = { handoff: 'auto', handoffAt: 70 }
+  expect((await handoff($, '')).split('\n')[0]).toBe('Handoff: auto at 70% · ctx – · mode from ~/.claude/settings.json · first ask from ~/.claude/settings.json')
   expect(h()).toMatchObject({ mode: 'auto', threshold: 70 })
 })
 
@@ -264,9 +267,10 @@ test('a new session after /auto-handoff auto saves at its first step', async ($,
   expect(h().handled).toBe(85)
 })
 
-test('/auto-handoff auto, then /clear: the next reading past the threshold saves', async ($, on) => {
-  const { clock, h } = await start($, on)
-  await handoff($, 'auto')
+test('"handoff": "auto", then /clear: the next reading past the threshold saves', async ($, on) => {
+  const kit = await start($, on)
+  const { clock, h } = kit
+  await setUser($, kit, { handoff: 'auto' })
   await $.classic.SessionStart({ source: 'clear' })
   expect(h()).toMatchObject({ mode: 'auto', handled: null, lastSave: null })
   await at($, 81)
@@ -387,16 +391,17 @@ test('a HANDOFF.md the mod cannot read, such as one over 4 MiB, is left alone', 
   expect(writesOf(files)).toBe(0)
 })
 
-test('an ask up, then /auto-handoff off or auto, takes the ask off the band', async ($, on) => {
-  const { h } = await start($, on)
+test('an ask up, then "handoff": "off" or "auto", takes the ask off the band', async ($, on) => {
+  const kit = await start($, on)
+  const { h } = kit
   for (const mode of ['off', 'auto']) {
-    await handoff($, 'ask')
+    await setUser($, kit, { handoff: 'ask' })
     await at($, 50)
     await $.session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'summary', toolUses: [] }] })
     await at($, 50)
     await at($, 82)
     expect(h().isAskUp).toBe(true)
-    await handoff($, mode)
+    await setUser($, kit, { handoff: mode })
     expect(h().isAskUp).toBe(false)
     const lines = await rows(await band($))
     expect(lines.some(l => l.includes('ctx past'))).toBe(false)

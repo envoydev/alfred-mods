@@ -5,7 +5,9 @@ import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import type { BandSetting, Handoff, Quiet, RecState, Stack } from '../types'
-import { START, engine, stubAll, watchState } from './kit.ts'
+import { HANDOFF_USAGE } from '../hooks/handoff.ts'
+import { REC_HELP, recStatus } from '../hooks/rec.ts'
+import { PRESENTATION, START, engine, stubAll, watchState } from './kit.ts'
 import type { FileStub } from './kit.ts'
 
 const STATUS = '.claude/session-inspector/status/s1.json'
@@ -299,4 +301,55 @@ test('a refused delete is tried again', async ($, on) => {
   await clock.advance(30_000)
   expect(store.get('settings:rec')).toBe(undefined)
   expect(toasts).toEqual([])
+})
+
+// S5: the commands keep only their actions; a switch is a settings value
+const run = async ($: Engine, command: string, args: string): Promise<string> =>
+  (await $.command.run({ command, args, origin: { kind: 'composer' }, presentation: PRESENTATION })).text ?? ''
+
+test('/band and /quiet are not registered', async ($, on) => {
+  const { registered } = await start($, on)
+  expect(registered).toEqual(['inspect', 'rec', 'auto-handoff'])
+  // No hook of the mod answers them, so nothing beneath the plugins does either
+  expect(await run($, 'band', 'calm').catch(() => null)).toBe(null)
+  expect(await run($, 'quiet', 'off').catch(() => null)).toBe(null)
+})
+
+test('/rec on writes nothing and prints the help', async ($, on) => {
+  const { store } = await start($, on, { sources: { user: mod({ rec: 'on' }) } })
+  const writes = store.writes.length
+  const text = `${recStatus('on', 0)} - from ~/.claude/settings.json\n${REC_HELP}`
+  expect(await run($, 'rec', 'on')).toBe(text)
+  expect(await run($, 'rec', 'off')).toBe(text)
+  expect(await run($, 'rec', '')).toBe(text)
+  expect(store.writes.slice(writes)).toEqual([])
+})
+
+test('/rec names an earlier /rec as the source of a stored level', async ($, on) => {
+  await start($, on, { store: { 'settings:rec': 'on' } })
+  expect(await run($, 'rec', '')).toBe(`${recStatus('on', 0)} - from an earlier /rec\n${REC_HELP}`)
+})
+
+test('/auto-handoff off writes nothing', async ($, on) => {
+  const { store } = await start($, on, { sources: { project: mod({ handoff: 'auto' }), user: mod({ handoffAt: 70 }) } })
+  const writes = store.writes.length
+  const text = (await run($, 'auto-handoff', 'off')).split('\n')
+  expect(text[0]).toMatch(/^Handoff: auto at 70% · .* · mode from \.claude\/settings\.json · first ask from ~\/\.claude\/settings\.json$/)
+  expect(text.slice(1).join('\n')).toBe(HANDOFF_USAGE)
+  expect(await run($, 'auto-handoff', '')).toBe(text.join('\n'))
+  expect(store.writes.slice(writes)).toEqual([])
+})
+
+test('/auto-handoff names an earlier /auto-handoff and the default', async ($, on) => {
+  await start($, on, { store: { 'settings:handoff': { mode: 'off' } } })
+  expect((await run($, 'auto-handoff', '')).split('\n')[0]).toMatch(/^Handoff: off · .* · mode from an earlier \/auto-handoff · first ask from the default$/)
+})
+
+test('/rec reads the files first', async ($, on) => {
+  const { rec, handoff, sources } = await start($, on)
+  sources.user['alfred-mods'] = { rec: 'on', handoff: 'off' }
+  expect(await run($, 'rec', '')).toMatch(/^● REC on /)
+  expect(rec().level).toBe('on')
+  expect(await run($, 'auto-handoff', '')).toMatch(/^Handoff: off /)
+  expect(handoff().mode).toBe('off')
 })

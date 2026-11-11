@@ -4,7 +4,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, RenderSurface, SessionContextBreakdown, SessionUsage } from 'claude-code'
 
-import { PRESENTATION, START, engine, rows, step, stepEngine, stubAll, watchState } from './kit.ts'
+import { PRESENTATION, START, engine, rows, setUser, step, stepEngine, stubAll, watchState } from './kit.ts'
 import { tokens } from '../hooks/format.ts'
 
 import type { Meta, Parts } from '../types'
@@ -34,26 +34,27 @@ async function oneTurn($: Engine): Promise<void> {
 const isOpen = (lines: string[]): boolean => lines.some(l => l.startsWith('tools:   '))
 
 for (const surface of SURFACES) {
-  // Spec 2026-11-11, D1: the rows start open; the toggle closes them, and only a stored 'closed' keeps them closed
-  test(`a fresh store opens the rows; the toggle closes them for every session, and opens them again (${surface})`, async ($, on) => {
-    const { store } = stubAll(on, { band: 'full', usage: READING, now: NOW })
+  // Spec 2026-11-11, D1: the rows start open; settings-values S2: "bandRows" closes and opens them, and the toggle
+  // writes nothing
+  test(`a fresh store opens the rows; "bandRows" false closes them and true opens them again (${surface})`, async ($, on) => {
+    const kit = stubAll(on, { band: 'full', usage: READING, now: NOW })
     stepEngine(on, () => null)
     engine(on)
     await oneTurn($)
     const ui = await mount($, surface)
     expect(isOpen(await rows(ui))).toBe(true)
-    expect((await ui.find({ key: 'tools' }))?.props).toMatchObject({ hotkey: 't' })
-    expect((await ui.find({ key: 'tools' }))?.props.plain).toBeUndefined()
 
-    await ui.press({ key: 'tools' })
+    await setUser($, kit, { bandRows: false })
     expect(isOpen(await rows(ui))).toBe(false)
-    expect(store.get('settings:band-tools')).toBe('closed')
 
-    await ui.press({ key: 'tools' })
+    await setUser($, kit, { bandRows: true })
     const open = await rows(ui)
     expect(open).toContain('tools:   Bash ×1 │ Context7:query-docs ×1')
     expect(open).toContain('skills:  none loaded')
-    expect(store.get('settings:band-tools')).toBe('open')
+
+    await ui.press({ key: 'tools' })
+    expect(isOpen(await rows(ui))).toBe(true)
+    expect(kit.store.writes.filter(w => w.endsWith('settings:band-tools'))).toEqual([])
     await ui.unmount()
   })
 

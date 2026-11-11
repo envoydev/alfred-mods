@@ -42,7 +42,7 @@ export type BandInput = {
   // Alfred Code's runway, which the ctx item measures against while it applies, and the mode banner that leads line 1
   runway?: Runway | null
   banner?: Seg[]
-  // The /band setting: `full` adds the info line, the turn's tool count and today's cost; absent or `calm`, today's two
+  // The "band" setting: `full` adds the info line, the turn's tool count and today's cost; absent or `calm`, today's two
   // lines. `totals` and `stats` feed the info line's output speed and tool calls.
   mode?: BandMode
   // The rows the band may take (the AbovePrompt site's `maxRows`); absent, as many as it draws
