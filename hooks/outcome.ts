@@ -73,11 +73,12 @@ export function blockerOf(text: string): string | null {
   return name !== '' && [...name].length <= 40 && !/\p{C}/u.test(name) ? name : null
 }
 
-// The Tools table's row: a skill by its name, an MCP tool by its server, anything else by the tool's name.
+// The Tools table's row: a skill by its name, an MCP tool as `<server>:<tool>` (a claude.ai connector's or a plugin's
+// server without that prefix), anything else by the tool's name.
 export function toolKey(tool: string, input: Record<string, unknown>): string {
   if (tool === 'Skill') return `Skill: ${String(input.skill ?? '')}`
-  const mcp = /^mcp__(.+?)__/.exec(tool)
-  return mcp ? `mcp: ${mcp[1]}` : tool
+  const mcp = /^mcp__(.+?)__(.+)$/.exec(tool)
+  return mcp ? `${(mcp[1] ?? '').replace(/^(claude_ai|plugin)_/, '')}:${mcp[2] ?? ''}` : tool
 }
 
 function relative(path: string, cwd: string): string {

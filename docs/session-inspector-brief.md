@@ -95,7 +95,7 @@ Ten features, F1 to F10. The probe must settle every Medium row before the verdi
 | ID | Feature | Shows | Data source | Confidence |
 | --- | --- | --- | --- | --- |
 | F1 | Session metrics | Model and effort; context tokens, window and %; 5h and weekly % with reset times, plus any other window kind by name; session duration; session cost; today's cost across sessions; output tok/s as an average (`≈70 tok/s avg`: output over the main loop's request time, a throughput, not a decode speed); total tokens in, out, cache read, cache write; compactions; account plan and email | `$.session.usage()`, `session.measure`, `$.store`, `turn.step`, `session.compact`, the global config file (`$CLAUDE_CONFIG_DIR/.claude.json` when set, else `~/.claude.json`) via `$.fs.read` | High; Medium for tok/s, token totals, account (agent) |
-| F2 | Tools and skills | Calls per tool, skill and MCP server; outcome ok, error, denied or blocked (refused by a guard hook or one of Claude Code's own rules); last 10 failures with time, target and reason | `tool.call` after `await next(e)`, `tool.check`, `skill.prompt`, `classic.PostToolUseFailure` (an error the tool raises while it runs has one; an input error and a refusal raised before `tool.check` have none, and look alike); calls of the main loop and of agents seen at `agent.spawn` only | High, but a refusal raised before the check shows as an error (agent) |
+| F2 | Tools and skills | Calls per tool, skill and MCP tool (`<server>:<tool>`, since 2026-11-11); outcome ok, error, denied or blocked (refused by a guard hook or one of Claude Code's own rules); last 10 failures with time, target and reason | `tool.call` after `await next(e)`, `tool.check`, `skill.prompt`, `classic.PostToolUseFailure` (an error the tool raises while it runs has one; an input error and a refusal raised before `tool.check` have none, and look alike); calls of the main loop and of agents seen at `agent.spawn` only | High, but a refusal raised before the check shows as an error (agent) |
 | F3 | Agents | Type, model, task, status, elapsed; current action; final report; effort, context used out of window, tools and skills per agent with failures | `agent.spawn` (its result's `agentId`), `$.agent.list()`, `tool.call` and `tool.check` (`e.agentId`), `tool.call` on the Agent and Skill tools, `turn.step` and `turn.complete` (`e.agentId`) | High for the first three groups; Medium for the per-agent group (agent) |
 | F4 | Cache | TTL tier (5 min or 1 h); expiry clock time; hit rate for the last request and the session; cached tokens; rewrite cost if it goes cold; toast at 5 min left; \[Compact\] button | `turn.step` usage, `classic.PreModelSwitch` (`cache_ttl`, at a model switch only), deck price table | Medium; the tier and rate are known only after a model switch (agent) |
 | F5 | Timeline | Per turn: your prompt time, Claude's reply time, duration, tokens in and out, tool calls, failures; in the band, the time of your last prompt and Claude's last reply | `prompt.submit`, `turn.start`, `turn.complete`, `$.clock.now()`; a turn's calls and failures are the `tool.call`s with no `agentId` inside it, as agents run in the background | High (agent) |
@@ -210,12 +210,42 @@ ctx ▰▱▱▱▱ 30% │ 5h ▱▱▱▱▱ 15% (28.10 16:15) │ 7d 40% (31.
 ```text
 ⟳ Turn 10 · 8:04 · 18 tools │ Bash ▸ write answers.json 0:14
 ctx ▱▱▱▱▱ 15% ≈163 turns │ 5h ▰▱▱▱▱ 34% (10.11 00:50) on pace │ 7d 21% (16.11 03:00) │ $1.29 · today $10.46
-Sonnet 5.5 ◑ medium │ 59m │ ≈133 tok/s avg │ cache warm 54m │ AskUserQuestion ×13 · Bash ×5 · Grep ×1 │ you 22:47 · Claude 23:55
+Sonnet 5.5 ◑ medium │ 59m │ ≈133 tok/s avg │ cache warm 54m │ [ 19 tools · 2 skills ▸ ] │ you 22:47 · Claude 23:55
+tools   AskUserQuestion ×13 · Bash ×5 · Grep ×1
+skills  superpowers:brainstorming ×1 · solve-task ×2 · 57 of 60 listed
 ```
 
 - **The info line** sits under the gauges and above the needs-you line in every state, dim but for the model. As the
-  width runs out its items go in this order: the times (Claude's first), the tools (one name at a time, then all),
-  the output speed, the cache, the session's time, the model. Idle and healthy, the band is the gauge line and the info
+  width runs out it wraps onto a second row between items (a side agent's note the user passed on, 2026-11-11: every
+  item, as claude-hud spreads them over its lines); past two rows its items go in this order: the version, the project and branch, the times (Claude's first), the
+  toggle (the skills' count, then the tools', then the arrow; while open, after the cache), the output speed, the
+  cache, the session's time, the model.
+- **From the first second** (the user, 2026-11-11: the band shows its data as soon as Claude starts): the full band
+  draws once the model or a stored window is known, before any prompt; calm still waits for the first reading.
+  `session.start` (and each start-over) reads `$.session.model()`, `$.session.version()` (`CC 2.1.322`) and the place:
+  `$.session.repo()` null is the working folder's name alone; else the folder holding `.git` at or above the working
+  folder (a worktree's `.git` file names its git folder) and its `HEAD` file's branch, or a detached commit's first 7
+  characters, as `alfred-mods git:(main)`; the 30 s poll re-reads that `HEAD`, or the whole place when
+  `$.session.cwd()` moved. No git process runs. A `/model` switch (`classic.PostModelSwitch`) names the new model at
+  once. Each turn's `session.measure` with windows stores them in `$.store` `usage:windows` (`{ at, windows }`, only
+  when a percent as shown, a kind or a reset changed: every write rewrites the file the machine's sessions share); a
+  session with none of its own shows the stored ones whose reset is ahead, each marked `≈`, in the band and the Usage
+  tab, and the tick drops each as its reset passes. The first reading after a request decides: its windows, or none
+  off a subscription, where a stored plan window would price the cache on the wrong tier. Left out: ctx before the first request and the effort before the first reply (no `$.http.fetch` or
+  `$.model` call), and RAM or the account, which the mods API does not give.
+- **The tools toggle** (the user, 2026-11-11: every tool by name, and the skills in context, collapsed and expandable):
+  `[ <calls> tools · <k> skills ▸ ]`, the session's tool calls (Skill calls apart, agents' included) and the skills the
+  main loop loaded; a letter hotkey `t`, never a digit, as a bare digit in an empty prompt presses a band button. Open
+  (`settings:band-tools` = `open`, for every session), rows under the info line: `tools` every tool by calls with its
+  count, an MCP tool as `<server>:<tool>`; `skills` each skill loaded into the main context, in the order loaded, then
+  the listing's `57 of 60 listed` from the last breakdown; drawn only while the toggle is in view. A skill is in the
+  main context from a main-loop Skill call that ended ok, or a `skill.prompt` with no Skill call behind it while no main
+  turn runs (a `/name`); one mid-turn with none is a subagent's preload, and a `context: fork` skill is never in it. Short of rows, the info line's second row goes first, then the open rows, from the last, then the info line. A /clear
+  empties the skills; the list outlives a compaction, as the mod has no word of what one drops. A resume or a branch
+  (`classic.SessionStart`, a start-over that is not a /clear, or a process whose first `$.state` holds no reading while
+  `$.session.turns()` is above 0) sets `meta.isResumed`: the context holds skills loaded before, which no API lists,
+  so the row reads `none seen since resume`, or the skills since with `since resume` after them. Where a managed plugin
+  skips `skill.prompt`, a `/name` is missing from the list (README). Idle and healthy, the band is the gauge line and the info
   line, both dim, the times on the info line only. Today's cost follows the session's while line 2 fits, never on the
   narrow form; it is the mod's own count (F1 note).
 
@@ -310,7 +340,7 @@ Read                       24   24   0   0
 Edit                        9    8   1   0
 Bash                        9    5   1   3
 Skill: plan-builder         2    2   0   0
-mcp: context7               3    3   0   0
+context7:get_docs           3    3   0   0
 Blocked by hooks  guard.js ×2 · shell-guards.js ×1
 
 Last failures and blocks

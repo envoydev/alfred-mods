@@ -5,7 +5,7 @@ import type { SessionContextBreakdown } from 'claude-code'
 
 import { clock, tokens } from './format.ts'
 import type { Line } from './band.ts'
-import type { Parts } from '../types'
+import type { Parts, SkillListing } from '../types'
 
 export const NO_PARTS: Parts = { at: null, categories: [], plugins: [], memory: { files: 0, tokens: 0, top: [] } }
 
@@ -54,7 +54,9 @@ export function partsOf(b: SessionContextBreakdown, cwd: string, at: number): Pa
     p.skillTokens += s.tokens
   }
   const files = (b.memoryFiles ?? []).map(f => ({ name: memoryName(f.path, f.type, cwd), tokens: f.tokens }))
+  const listing = b.skills === undefined ? {} : { skills: { listed: b.skills.includedSkills, total: b.skills.totalSkills, tokens: b.skills.tokens } }
   return {
+    ...listing,
     at,
     categories: (b.categories ?? []).filter(c => c.kind === 'used').map(c => ({ name: c.name, tokens: c.tokens })),
     plugins: [...plugins.values()].sort((x, y) => y.agentTokens + y.skillTokens - (x.agentTokens + x.skillTokens) || x.name.localeCompare(y.name)),
@@ -66,8 +68,9 @@ export function partsOf(b: SessionContextBreakdown, cwd: string, at: number): Pa
   }
 }
 
-// The section's label column: 'In context' fills the tab's 10 cells, so its three rows take 12, as spec C1 draws them
-const LABEL = 12
+// The section's label column: 'In context' fills the tab's 10 cells, so its rows take 12, as spec C1 draws them
+export const PARTS_LABEL = 12
+const LABEL = PARTS_LABEL
 
 // The Usage tab's rows after Tokens; none before a breakdown
 export function partsLines(p: Parts): Line[] {
@@ -90,3 +93,10 @@ export function partsLines(p: Parts): Line[] {
   }
   return out
 }
+
+// '57 of 60 listed', or '60 listed' when the listing carries every skill
+export const listedText = (l: SkillListing): string => (l.listed === l.total ? `${l.total} listed` : `${l.listed} of ${l.total} listed`)
+
+// The skills the main loop loaded, as 'solve-task ×2', first loaded first
+export const loadedTexts = (skills: Record<string, number> | undefined): string[] =>
+  Object.entries(skills ?? {}).map(([name, n]) => `${name} ×${n}`)
