@@ -1,24 +1,24 @@
 // The mod's switches as values under one "alfred-mods" key in Claude Code's settings files (spec 2026-11-11
 // settings-values, S1-S3): each field read per file, the first valid value in the order policy, flag, local, project,
-// user, then an earlier command's choice, then the default. Pure: register.ts reads the files and the store.
-import type { HandoffMode, Level } from '../types'
+// user, then an earlier command's choice, then the default. Pure: register.ts reads the files and the store. REC is no
+// field: /rec sets it, per machine (the user's ruling, 2026-11-12), so a file's "rec" is an unknown field, ignored.
+import type { HandoffMode } from '../types'
 import { MODES, isThreshold } from './handoff.ts'
-import { LEVELS } from './rec.ts'
 
-export type Field = 'band' | 'bandPlace' | 'bandRows' | 'quiet' | 'rec' | 'handoff' | 'handoffAt'
+export type Field = 'band' | 'bandPlace' | 'bandRows' | 'quiet' | 'handoff' | 'handoffAt'
 export type Source = 'policy' | 'flag' | 'local' | 'project' | 'user'
 export type From = Source | 'legacy' | 'default'
 export type Values = {
-  band: 'full' | 'calm'; bandPlace: 'above' | 'under'; bandRows: boolean; quiet: boolean; rec: Level
+  band: 'full' | 'calm'; bandPlace: 'above' | 'under'; bandRows: boolean; quiet: boolean
   handoff: HandoffMode; handoffAt: number
 }
 export type Skip = { field: Field; source: Source }
 // `userFields`: the fields the user's own file gives a valid value, the ones whose old store key retires (S7)
 export type Resolved = { values: Values; from: Record<Field, From>; skipped: Skip[]; userFields: Field[] }
 
-export const FIELDS: readonly Field[] = ['band', 'bandPlace', 'bandRows', 'quiet', 'rec', 'handoff', 'handoffAt']
+export const FIELDS: readonly Field[] = ['band', 'bandPlace', 'bandRows', 'quiet', 'handoff', 'handoffAt']
 export const SOURCES: readonly Source[] = ['policy', 'flag', 'local', 'project', 'user']
-export const DEFAULTS: Values = { band: 'full', bandPlace: 'above', bandRows: true, quiet: true, rec: 'off', handoff: 'ask', handoffAt: 80 }
+export const DEFAULTS: Values = { band: 'full', bandPlace: 'above', bandRows: true, quiet: true, handoff: 'ask', handoffAt: 80 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const isBool = (v: unknown): v is boolean => typeof v === 'boolean'
@@ -29,7 +29,6 @@ const RULES: Record<Field, { isValid: (v: unknown) => boolean; takes: string }> 
   bandPlace: { isValid: v => v === 'above' || v === 'under', takes: '"above" or "under"' },
   bandRows: { isValid: isBool, takes: 'true or false' },
   quiet: { isValid: isBool, takes: 'true or false' },
-  rec: { isValid: v => LEVELS.some(l => l === v), takes: '"off", "on" or "strict"' },
   handoff: { isValid: v => MODES.some(m => m === v), takes: '"ask", "auto" or "off"' },
   handoffAt: { isValid: isThreshold, takes: 'a whole number from 10 to 95' }
 }
@@ -84,39 +83,18 @@ export function skippedToast(skip: Skip, r: Resolved): string {
 
 // The old commands' store keys as an earlier command's choices (S7): only the values those commands wrote, so a fresh
 // store, or anything another version or a hand wrote, gives no field
-export function legacyOf(raw: { band: unknown; place: unknown; tools: unknown; quiet: unknown; rec: unknown; handoff: unknown }): Partial<Values> {
+export function legacyOf(raw: { band: unknown; place: unknown; tools: unknown; quiet: unknown; handoff: unknown }): Partial<Values> {
   const out: Partial<Values> = {}
   if (raw.band === 'calm' || raw.band === 'full') out.band = raw.band
   if (raw.place === 'under') out.bandPlace = 'under'
   if (raw.tools === 'open' || raw.tools === 'closed') out.bandRows = raw.tools === 'open'
   if (isBool(raw.quiet)) out.quiet = raw.quiet
-  const level = LEVELS.find(l => l === raw.rec)
-  if (level !== undefined) out.rec = level
   if (isRecord(raw.handoff)) {
     const mode = MODES.find(m => m === (raw.handoff as Record<string, unknown>).mode)
     if (mode !== undefined) out.handoff = mode
     if (isThreshold(raw.handoff.threshold)) out.handoffAt = raw.handoff.threshold
   }
   return out
-}
-
-// The order a hold compares sources in, highest first
-const ORDER: readonly From[] = ['policy', 'flag', 'local', 'project', 'user', 'legacy', 'default']
-
-// S3's one departure, REC's hold: after the session's first read, a lower level lowers REC only when it comes from the
-// source that set the level in force, or one above it. From a lower source - the file that set it gives no valid "rec"
-// any more, which a typo that drops the whole file also does - the level in force holds.
-export function holdRec(inForce: { level: Level; from: From } | null, next: { level: Level; from: From }): { level: Level; from: From; isHeld: boolean } {
-  if (inForce === null || LEVELS.indexOf(next.level) >= LEVELS.indexOf(inForce.level) || ORDER.indexOf(next.from) <= ORDER.indexOf(inForce.from)) {
-    return { ...next, isHeld: false }
-  }
-  return { ...inForce, isHeld: true }
-}
-
-// S3's toast for a hold, once per hold. The toast box carries the mod's name and shows three 40-cell lines, so no
-// prefix and under 120 characters (the review's #1, Claude Code 2.1.322)
-export function holdToast(level: Level, from: From): string {
-  return `REC stays ${level}: ${nameOf(from)} no longer gives "rec" - fix the file, or set "rec": "off" in it`
 }
 
 // S7's toast, once per machine: the earlier commands' choices still in force, as the line to paste, in S2's order. The

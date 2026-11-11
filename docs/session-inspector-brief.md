@@ -234,15 +234,17 @@ rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ w
   `docs/superpowers/specs/2026-11-11-band-under-design.md`. (agent)
 - **Switches as settings values** (the user, 2026-11-11: 'Instead of enabling features by commands or toggling the data
   can we just have settings values in settings local json? ... like to have "alfred-mods": {}', and 'everything must be
-  based in hierchy, if local is not present then user'): the band's form, place and rows, the compact tool rows, REC's
-  level and the handoff's mode and first ask are seven fields of one `"alfred-mods"` key in Claude Code's settings
-  files (`band`, `bandPlace`, `bandRows`, `quiet`, `rec`, `handoff`, `handoffAt`). Each is read per file with
+  based in hierchy, if local is not present then user'): the band's form, place and rows, the compact tool rows and
+  the handoff's mode and first ask are six fields of one `"alfred-mods"` key in Claude Code's settings files (`band`,
+  `bandPlace`, `bandRows`, `quiet`, `handoff`, `handoffAt`). Each is read per file with
   `$.settings.read({ key, source })` and settled on its own, in the order policy, flag, local, project, user, then a
-  choice the old commands stored, then the default; a bad value is skipped and told once, never quoted. REC alone holds
-  its level mid-session when only a lower file would lower it, so a typo cannot unmask a recording. The values are read
+  choice the old commands stored, then the default; a bad value is skipped and told once, never quoted. REC is no field
+  (the user, 2026-11-12: 'remove rec from json settings ... but not in settings'): `/rec on|strict|off` sets it per
+  machine as in 0.7, a file's `"rec"` is ignored, and nothing turns it on by itself, as no mods API gives a recording or
+  microphone signal (the generated types of 2.1.322, read 2026-11-12). The values are read
   at start, after a start-over, every 30 s and after `classic.ConfigChange` (from `$.clock.after(0, ...)`, as a read in
-  the hook answers the old value). `/band` and `/quiet` are removed; `/rec` keeps `test` and `words`, `/auto-handoff`
-  keeps `now`, and their bare forms name the file each value comes from. The band's rows follow the user's message the
+  the hook answers the old value). `/band` and `/quiet` are removed; `/auto-handoff` keeps `now`, and its bare form
+  names the file each value comes from. The band's rows follow the user's message the
   same day: the info line ends with `CC <version>`, then `project: <project> │ git:(<branch>) │ folder: <folder>`,
   `plan:`, `usage:   [ 45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ]` as text, then the detail rows; the toggle and
   its `t` are gone. Design, probes and rulings: the machine-local spec

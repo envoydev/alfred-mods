@@ -6,7 +6,6 @@ import type { On } from 'claude-code'
 
 import type { BandSetting, Handoff, Quiet, RecState, Stack } from '../types'
 import { HANDOFF_USAGE } from '../hooks/handoff.ts'
-import { REC_HELP, recStatus } from '../hooks/rec.ts'
 import { PRESENTATION, START, engine, stubAll, watchState } from './kit.ts'
 import type { FileStub } from './kit.ts'
 
@@ -65,9 +64,17 @@ test('handoff and handoffAt reach the handoff state', async ($, on) => {
   expect(handoff()).toMatchObject({ mode: 'auto', threshold: 70 })
 })
 
-test('rec on masks', async ($, on) => {
-  const { rec } = await start($, on, { sources: { user: mod({ rec: 'on' }) } })
+// REC is the /rec command's, not a settings value (the user's ruling, 2026-11-12): a "rec" in any file is ignored, untold
+test('a "rec" in a settings file is ignored', async ($, on) => {
+  const { rec, toasts } = await start($, on, { sources: { user: mod({ rec: 'on' }), local: mod({ rec: 'strict' }), project: mod({ rec: 'yes' }) } })
+  expect(rec().level).toBe('off')
+  expect(toasts).toEqual([])
+})
+
+test('a /rec level is never retired by a file', async ($, on) => {
+  const { rec, store } = await start($, on, { store: { 'settings:rec': 'on' }, sources: { user: mod({ rec: 'off' }) } })
   expect(rec().level).toBe('on')
+  expect(store.get('settings:rec')).toBe('on')
 })
 
 test('a refused source counts as none', async ($, on) => {
@@ -104,7 +111,7 @@ test('the poll still reads the status file', async ($, on) => {
 // The review's #4: a refused read of REC's words keeps the words REC had, and every other field still settles
 test('a refused words read still settles every field', async ($, on) => {
   const { band, quiet, rec, handoff } = await start($, on, {
-    refuseStore: ['rec:words'], sources: { user: mod({ band: 'calm', quiet: false, rec: 'on', handoff: 'auto', handoffAt: 70 }) },
+    refuseStore: ['rec:words'], store: { 'settings:rec': 'on' }, sources: { user: mod({ band: 'calm', quiet: false, handoff: 'auto', handoffAt: 70 }) },
   })
   expect(band().mode).toBe('calm')
   expect(quiet()).toEqual({ isOn: false })
@@ -150,113 +157,26 @@ test('with leave_out_skipped_hooks no ConfigChange hook is registered', { option
   expect(band().mode).toBe('calm')
 })
 
-// S3's REC hold: a file that set REC and goes quiet (a typo drops it whole, F5) does not unmask a running recording
-const HOLD_LOCAL = 'REC stays on: .claude/settings.local.json no longer gives "rec" - fix the file, or set "rec": "off" in it'
-
-async function holding($: Engine, on: On) {
-  const kit = await start($, on, { sources: { local: mod({ rec: 'on' }), user: mod({ rec: 'off' }) } })
-  expect(kit.rec().level).toBe('on')
-  delete kit.sources.local['alfred-mods']
-  await $.classic.ConfigChange({ source: 'local_settings' })
-  await kit.clock.advance(0)
-  return kit
-}
-
-test('a local on over a user off holds when the local file goes quiet', async ($, on) => {
-  const { rec, toasts, clock } = await holding($, on)
-  expect(rec().level).toBe('on')
-  expect(toasts).toEqual([HOLD_LOCAL])
-  await $.classic.ConfigChange({ source: 'user_settings' })
-  await clock.advance(30_000)
-  expect(rec().level).toBe('on')
-  expect(toasts).toEqual([HOLD_LOCAL])
-})
-
-test('the file answering ends the hold', async ($, on) => {
-  const { rec, toasts, clock, sources } = await holding($, on)
-  sources.local['alfred-mods'] = { rec: 'off' }
-  await $.classic.ConfigChange({ source: 'local_settings' })
-  await clock.advance(0)
-  expect(rec().level).toBe('off')
-  expect(toasts).toEqual([HOLD_LOCAL, 'REC off'])
-})
-
-test('a higher file lowers at once', async ($, on) => {
-  const { rec, toasts, clock, sources } = await start($, on, { sources: { user: mod({ rec: 'on' }) } })
-  sources.local['alfred-mods'] = { rec: 'off' }
-  await $.classic.ConfigChange({ source: 'local_settings' })
-  await clock.advance(0)
-  expect(rec().level).toBe('off')
-  expect(toasts).toEqual(['REC off'])
-})
-
-// The review's #2: a bad "rec" in the file that set REC is that file going quiet, so the hold's toast alone tells it,
-// never a skip toast saying REC is off beside it; a file above it saying off ends the hold, and the bad value under
-// that file is never reached, so no skip is told
-test('a bad rec in the holding file toasts the hold alone', async ($, on) => {
-  const { rec, toasts, clock, sources } = await start($, on, { sources: { local: mod({ rec: 'on' }), user: mod({ rec: 'off' }) } })
-  sources.local['alfred-mods'] = { rec: 'of' }
-  await $.classic.ConfigChange({ source: 'local_settings' })
-  await clock.advance(0)
-  expect(rec().level).toBe('on')
-  expect(toasts).toEqual([HOLD_LOCAL])
-  sources.flag['alfred-mods'] = { rec: 'off' }
-  await clock.advance(30_000)
-  expect(rec().level).toBe('off')
-  expect(toasts).toEqual([HOLD_LOCAL, 'REC off'])
-})
-
-test('a project strict that goes quiet holds, and its off ends it', async ($, on) => {
-  const { rec, toasts, clock, sources } = await start($, on, { sources: { project: mod({ rec: 'strict' }), user: mod({ rec: 'on' }) } })
-  expect(rec().level).toBe('strict')
-  delete sources.project['alfred-mods']
+// Another session's /rec reaches this one with the poll, as in 0.7
+test('a level another session stored arrives with the poll', async ($, on) => {
+  const { rec, store, clock } = await start($, on)
+  store.set('settings:rec', 'strict')
   await clock.advance(30_000)
   expect(rec().level).toBe('strict')
-  expect(toasts).toEqual(['REC stays strict: .claude/settings.json no longer gives "rec" - fix the file, or set "rec": "off" in it'])
-  sources.project['alfred-mods'] = { rec: 'off' }
-  await clock.advance(30_000)
-  expect(rec().level).toBe('off')
-})
-
-test('a /clear keeps the hold', async ($, on) => {
-  const { rec } = await holding($, on)
-  await $.classic.SessionStart({ source: 'clear' })
-  expect(rec().level).toBe('on')
-})
-
-test('a new run ends the hold', async ($, on) => {
-  const { rec, toasts } = await holding($, on)
-  await $.session.start(START)
-  expect(rec().level).toBe('off')
-  expect(toasts).toEqual([HOLD_LOCAL])
-})
-
-test('a change found after the first read toasts REC\'s status', async ($, on) => {
-  const { toasts, clock, sources } = await start($, on)
-  expect(toasts).toEqual([])
-  sources.user['alfred-mods'] = { rec: 'on' }
-  await clock.advance(30_000)
-  expect(toasts).toEqual(['● REC on · hiding keys · emails · phones'])
-})
-
-test('the session\'s first read toasts nothing, REC on included', async ($, on) => {
-  const { rec, toasts } = await start($, on, { sources: { user: mod({ rec: 'on' }) } })
-  expect(rec().level).toBe('on')
-  expect(toasts).toEqual([])
 })
 
 // S3: a skipped value is told once, when the set of skipped fields changes, and never quoted
 const BAND_SKIP = '"band" in .claude/settings.local.json takes "full" or "calm" - using "full" from the default'
-const REC_SKIP = '"rec" in .claude/settings.local.json takes "off", "on" or "strict" - using "off" from the default'
+const QUIET_SKIP = '"quiet" in .claude/settings.local.json takes true or false - using true from the default'
 
 test('a bad value toasts once', async ($, on) => {
   const { toasts, clock, sources } = await start($, on, { sources: { local: mod({ band: 'compact' }) } })
   expect(toasts).toEqual([BAND_SKIP])
   await clock.advance(30_000)
   expect(toasts).toEqual([BAND_SKIP])
-  sources.local['alfred-mods'] = { band: 'compact', rec: 'yes' }
+  sources.local['alfred-mods'] = { band: 'compact', quiet: 'yes' }
   await clock.advance(30_000)
-  expect(toasts).toEqual([BAND_SKIP, REC_SKIP])
+  expect(toasts).toEqual([BAND_SKIP, QUIET_SKIP])
   expect(toasts.some(t => t.includes('compact') || t.includes('yes'))).toBe(false)
 })
 
@@ -280,16 +200,21 @@ test('a run starts with no skip told', async ($, on) => {
 })
 
 // S7: the old commands' choices, told once per machine and retired field by field when the user's file sets them
-const MOVED = 'Add "alfred-mods": { "bandRows": false, "rec": "strict" } to ~/.claude/settings.json - the choices your earlier commands made'
+const MOVED = 'Add "alfred-mods": { "bandRows": false, "quiet": false } to ~/.claude/settings.json - the choices your earlier commands made'
 
 test('the old choices toast once per machine', async ($, on) => {
-  const { toasts, toastMs, store } = await start($, on, { moved: 'unset', store: { 'settings:rec': 'strict', 'settings:band-tools': 'closed' } })
+  const { toasts, toastMs, store } = await start($, on, { moved: 'unset', store: { 'settings:quiet': false, 'settings:band-tools': 'closed' } })
   expect(toasts).toEqual([MOVED])
   // The review's #1: 30 s to copy the line, which the box shows first (Claude Code 2.1.322 draws three 40-cell lines)
   expect(toastMs).toEqual([30_000])
   expect(store.get('settings:moved')).toBe(true)
   await $.session.start(START)
   expect(toasts).toEqual([MOVED])
+})
+
+test('a /rec level is not in the toast', async ($, on) => {
+  const { toasts } = await start($, on, { moved: 'unset', store: { 'settings:rec': 'strict' } })
+  expect(toasts).toEqual([])
 })
 
 test('no toast when nothing differs from the default', async ($, on) => {
@@ -300,18 +225,18 @@ test('no toast when nothing differs from the default', async ($, on) => {
 
 test('a field a file sets is not in the toast', async ($, on) => {
   const { toasts } = await start($, on, {
-    moved: 'unset', store: { 'settings:rec': 'strict', 'settings:band-tools': 'closed' }, sources: { local: mod({ bandRows: true }) },
+    moved: 'unset', store: { 'settings:quiet': false, 'settings:band-tools': 'closed' }, sources: { local: mod({ bandRows: true }) },
   })
-  expect(toasts).toEqual(['Add "alfred-mods": { "rec": "strict" } to ~/.claude/settings.json - the choices your earlier commands made'])
+  expect(toasts).toEqual(['Add "alfred-mods": { "quiet": false } to ~/.claude/settings.json - the choices your earlier commands made'])
 })
 
 test('the user file retires a field', async ($, on) => {
-  const { store, rec, handoff } = await start($, on, {
-    store: { 'settings:rec': 'on', 'settings:handoff': { mode: 'auto', threshold: 70 } }, sources: { user: mod({ rec: 'strict', handoff: 'off' }) },
+  const { store, quiet, handoff } = await start($, on, {
+    store: { 'settings:quiet': false, 'settings:handoff': { mode: 'auto', threshold: 70 } }, sources: { user: mod({ quiet: true, handoff: 'off' }) },
   })
-  expect(store.get('settings:rec')).toBe(undefined)
+  expect(store.get('settings:quiet')).toBe(undefined)
   expect(store.get('settings:handoff')).toEqual({ threshold: 70 })
-  expect(rec().level).toBe('strict')
+  expect(quiet()).toEqual({ isOn: true })
   expect(handoff()).toMatchObject({ mode: 'off', threshold: 70 })
 })
 
@@ -323,23 +248,23 @@ test('settings:handoff goes once both its fields are retired', async ($, on) => 
 })
 
 test('a local file overrides without retiring', async ($, on) => {
-  const { store, rec } = await start($, on, { store: { 'settings:rec': 'on' }, sources: { local: mod({ rec: 'off' }) } })
-  expect(rec().level).toBe('off')
-  expect(store.get('settings:rec')).toBe('on')
+  const { store, quiet } = await start($, on, { store: { 'settings:quiet': false }, sources: { local: mod({ quiet: true }) } })
+  expect(quiet()).toEqual({ isOn: true })
+  expect(store.get('settings:quiet')).toBe(false)
 })
 
 test('a refused delete is tried again', async ($, on) => {
   const { store, toasts, clock } = await start($, on, {
-    refuseDelete: ['settings:rec'], store: { 'settings:rec': 'on' }, sources: { user: mod({ rec: 'on' }) },
+    refuseDelete: ['settings:quiet'], store: { 'settings:quiet': false }, sources: { user: mod({ quiet: false }) },
   })
-  expect(store.get('settings:rec')).toBe('on')
+  expect(store.get('settings:quiet')).toBe(false)
   expect(toasts).toEqual([])
   await clock.advance(30_000)
-  expect(store.get('settings:rec')).toBe(undefined)
+  expect(store.get('settings:quiet')).toBe(undefined)
   expect(toasts).toEqual([])
 })
 
-// S5: the commands keep only their actions; a switch is a settings value
+// S5: /auto-handoff keeps only its actions, its switches settings values; /rec sets REC (rec-hooks.test.ts)
 const run = async ($: Engine, command: string, args: string): Promise<string> =>
   (await $.command.run({ command, args, origin: { kind: 'composer' }, presentation: PRESENTATION })).text ?? ''
 
@@ -349,21 +274,6 @@ test('/band and /quiet are not registered', async ($, on) => {
   // No hook of the mod answers them, so nothing beneath the plugins does either
   expect(await run($, 'band', 'calm').catch(() => null)).toBe(null)
   expect(await run($, 'quiet', 'off').catch(() => null)).toBe(null)
-})
-
-test('/rec on writes nothing and prints the help', async ($, on) => {
-  const { store } = await start($, on, { sources: { user: mod({ rec: 'on' }) } })
-  const writes = store.writes.length
-  const text = `${recStatus('on', 0)} - from ~/.claude/settings.json\n${REC_HELP}`
-  expect(await run($, 'rec', 'on')).toBe(text)
-  expect(await run($, 'rec', 'off')).toBe(text)
-  expect(await run($, 'rec', '')).toBe(text)
-  expect(store.writes.slice(writes)).toEqual([])
-})
-
-test('/rec names an earlier /rec as the source of a stored level', async ($, on) => {
-  await start($, on, { store: { 'settings:rec': 'on' } })
-  expect(await run($, 'rec', '')).toBe(`${recStatus('on', 0)} - from an earlier /rec\n${REC_HELP}`)
 })
 
 test('/auto-handoff off writes nothing', async ($, on) => {
@@ -381,11 +291,9 @@ test('/auto-handoff names an earlier /auto-handoff and the default', async ($, o
   expect((await run($, 'auto-handoff', '')).split('\n')[0]).toMatch(/^Handoff: off · .* · mode from an earlier \/auto-handoff · first ask from the default$/)
 })
 
-test('/rec reads the files first', async ($, on) => {
-  const { rec, handoff, sources } = await start($, on)
-  sources.user['alfred-mods'] = { rec: 'on', handoff: 'off' }
-  expect(await run($, 'rec', '')).toMatch(/^● REC on /)
-  expect(rec().level).toBe('on')
+test('/auto-handoff reads the files first', async ($, on) => {
+  const { handoff, sources } = await start($, on)
+  sources.user['alfred-mods'] = { handoff: 'off' }
   expect(await run($, 'auto-handoff', '')).toMatch(/^Handoff: off /)
   expect(handoff().mode).toBe('off')
 })

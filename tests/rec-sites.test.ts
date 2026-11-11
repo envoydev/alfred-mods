@@ -5,7 +5,7 @@ import type { On, RenderPropsOf } from 'claude-code'
 import { compile, maskHits } from '../hooks/rec.ts'
 import { EMAILS, KEYS } from '../hooks/samples.ts'
 import { maskDeep, maskDialog, maskResult, resultLines } from '../hooks/sites.ts'
-import { SPINNER, START, engine, engineSites, rows, setUser, stubAll } from './kit.ts'
+import { PRESENTATION, SPINNER, START, engine, engineSites, rows, stubAll } from './kit.ts'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const EMAIL = EMAILS[0]!.text
@@ -13,15 +13,16 @@ const KEY = KEYS[0]!
 const PEM = KEYS.find(k => k.text.includes('BEGIN'))!.text.split('\n')
 const HOME = { HOME: '/Users/jane' }
 
+const rec = ($: Engine, args: string) => $.command.run({ command: 'rec', args, origin: { kind: 'composer' }, presentation: PRESENTATION })
+
 // The dialog's props as handed beneath the mod in the running test, newest last (engineSites)
 let asked: unknown[] = []
 
-async function start($: Engine, on: On, level: 'off' | 'on' | 'strict', words: string[] = []): Promise<ReturnType<typeof stubAll>> {
-  const kit = stubAll(on, { env: HOME, store: { 'settings:rec': level, 'rec:words': words } })
+async function start($: Engine, on: On, level: 'off' | 'on' | 'strict', words: string[] = []): Promise<void> {
+  stubAll(on, { env: HOME, store: { 'settings:rec': level, 'rec:words': words } })
   asked = engineSites(on).asked
   engine(on)
   await $.session.start(START)
-  return kit
 }
 
 // What a site drew: the props handed down as an object when Claude Code drew it, else the mod's own lines
@@ -43,14 +44,14 @@ const QUESTION = (header: string, labels: string[]) => ({
 
 for (const surface of SURFACES) {
   test(`UserMessage, AssistantMessage and CommandOutput text are masked when on and passed when off (${surface})`, async ($, on) => {
-    const kit = await start($, on, 'on')
+    await start($, on, 'on')
     const user = await draw($, surface, 'UserMessage', { text: `mail ${EMAIL}`, origin: { kind: 'composer' }, isExpanded: false })
     expect(user.props?.text).toBe('mail ‹email›')
     const said = await draw($, surface, 'AssistantMessage', { text: `Use ${KEY.text}`, isFirstOfReply: true })
     expect(said.props?.text).toBe(`Use ${KEY.masked}`)
     const out = await draw($, surface, 'CommandOutput', { command: 'cost', args: '', text: `billed to ${EMAIL}`, isErrored: false })
     expect(out.props).toEqual({ command: 'cost', args: '', text: 'billed to ‹email›', isErrored: false })
-    await setUser($, kit, { rec: 'off' })
+    await rec($, 'off')
     expect((await draw($, surface, 'UserMessage', { text: `mail ${EMAIL}`, origin: { kind: 'composer' }, isExpanded: false })).props?.text).toBe(`mail ${EMAIL}`)
   })
 
@@ -80,12 +81,12 @@ for (const surface of SURFACES) {
   })
 
   test(`a ToolGroup is drawn expanded while REC is on and quiet is off (${surface})`, async ($, on) => {
-    const kit = await start($, on, 'on')
+    await start($, on, 'on')
     const calls = [{ tool_use_id: 'g1', tool: 'Grep', input: { pattern: EMAIL }, isRunning: false, isErrored: false, isInterrupted: false }]
     const group = await draw($, surface, 'ToolGroup', { calls, isActive: false, isExpanded: false, isCallsOnly: true })
     expect(group.props?.isExpanded).toBe(true)
     expect(group.props?.calls).toEqual(calls)
-    await setUser($, kit, { rec: 'off' })
+    await rec($, 'off')
     expect((await draw($, surface, 'ToolGroup', { calls, isActive: false, isExpanded: false, isCallsOnly: true })).props?.isExpanded).toBe(false)
   })
 
