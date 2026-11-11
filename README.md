@@ -37,31 +37,37 @@ tool's column to keep its counts, and the Timeline leaves out the prompt's time 
 its tokens.
 
 By default the band has an info line under its gauges: the model and effort, the session's time, the average output
-speed, the cache, a toggle that counts the tool calls and the skills loaded, the times of your last prompt and
-Claude's reply, the project with its branch and Claude Code's version, `Sonnet 5.5 ◑ medium │ 59m │ ≈133 tok/s avg │
-cache warm 54m │ [ 30 tools · 2 skills ▸ ] │ you 22:47 · Claude 23:55 │ alfred-mods git:(main) │ CC 2.1.322`; while a
-turn runs, its first line counts the turn's tool calls, and the gauges add today's cost. A click
-on the toggle, or `t` with the band focused (ctrl+x tab), opens rows under the info line, kept open for every session
-until closed:
+speed, the cache, a toggle that counts what the rows under it list, the times of your last prompt and Claude's reply,
+the project with its branch and Claude Code's version, `Sonnet 5.5 ◑ medium │ 59m │ ≈133 tok/s avg │ cache warm 54m │
+[ 45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ▾ ] │ you 22:47 · Claude 23:55 │ alfred-mods git:(main) │ CC
+2.1.322`; while a turn runs, its first line counts the turn's tool calls, and the gauges add today's cost. Four rows
+under the info line are open from the first draw:
 
 ```text
-tools   Bash ×12 · Read ×8 · Edit ×5 · Context7:query-docs ×3 · Grep ×2
-skills  superpowers:brainstorming ×1 · solve-task ×2 · 57 of 60 listed
+tools:   Bash ×32 │ AskUserQuestion ×4 │ Read ×4 │ Write ×4 │ Grep ×1
+skills:  superpowers:brainstorming ×1 │ solve-task ×2 │ 57 of 60 listed
+agents:  ◐ alfred-code:web-angular-verifier ×1 │ ✓ Explore ×2 │ ✓ general-purpose ×1 │ 1 running
+rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ web-angular.md │ typescript.md │ 3 always-on · 2 by path
 ```
 
-`tools` lists every tool by name with its calls, agents' calls included, an MCP tool as `<server>:<tool>`. `skills`
-lists the skills loaded into the main chat's context this conversation, by Claude's Skill tool or by you as `/name`
-(a subagent's Skill calls are on its Agents row, and a skill that runs forked is in its own subagent, never listed
-here), then how many skills the context's listing carries, of the session's. A resumed or branched conversation
-still holds the skills loaded before it, which no mods API lists, so its row counts from the resume: `none seen since
-resume`, or the skills loaded since with `since resume` after them. The open rows show while the toggle is
-in view: at a narrow width, which drops the toggle, they close with it. Today's cost is the mod's own count on this
-machine: sessions it did not run in are not in it, so it can read lower than a status line's that counts every
-session. When the width runs out, the info line wraps onto a second row between items, and items drop whole only
-when two rows cannot hold them (the version first, then the project and branch, then the times); when the band has
-fewer rows than it needs, as in fullscreen under a tall draft, that second row goes first, then the open rows, then
-the whole info line, so the line with its buttons stays in view. `/band calm` goes back to the
-two lines.
+`tools:` lists every tool by name with its calls, agents' calls included, an MCP tool as `<server>:<tool>`. `skills:`
+lists the skills loaded into the main chat's context this conversation, by Claude's Skill tool or by you as `/name` (a
+subagent's Skill calls are on its Agents row, and a skill that runs forked is in its own subagent, never listed here),
+then how many skills the context's listing carries, of the session's. `agents:` lists each agent type in the order it
+was first dispatched, with how many times: `◐` while one of it runs, `✗` once one failed or was stopped, else `✓`,
+then how many run. `rules:` lists the rule files in the main context: those loaded at start (from `.claude/rules/` and
+your own rules folder), then those loaded by path, when Claude reads, writes or edits a file their `paths:` match, in
+violet while the band is coloured, then how many of each; a compaction keeps them. A resumed or branched conversation
+still holds the skills, agents and by-path rules from before it, which no mods API lists, so those rows count from the
+resume: `none seen since resume`, or what came since with `since resume`. A click on the toggle, or `t` with the band
+focused (ctrl+x tab), closes the rows for every session until opened again. The rows show while the toggle is in view:
+at a narrow width, which drops the toggle, they close with it. Today's cost is the mod's own count on this machine:
+sessions it did not run in are not in it, so it can read lower than a status line's that counts every session. When
+the width runs out, the info line wraps onto a second row between items, and items drop whole only when two rows
+cannot hold them (the version first, then the project and branch, then the times); when the band has fewer rows than
+it needs, as in fullscreen under a tall draft, that second row goes first, then the open rows from the last (`rules:`,
+`agents:`, `skills:`, `tools:`), then the whole info line, so the line with its buttons stays in view. `/band calm`
+goes back to the two lines.
 
 The full band draws from the session's first second, before any prompt: the model, the session's time, the project
 and branch (read from git's own `HEAD` file, and again every 30 seconds for a checkout or a move to another folder)
@@ -94,7 +100,8 @@ model, once per event and conversation, `alfred-mods: its classic.SessionStart h
 and sent the event on past it.` One did so for six of the mod's hooks: `classic.SessionStart`, `classic.PostToolUse`,
 `classic.PermissionRequest`, `classic.PostToolUseFailure`, `classic.PermissionDenied` and `skill.prompt`. On such a
 machine, turn on the mod's option `Leave out hooks a managed plugin skips` (`leave_out_skipped_hooks`) in `/config`:
-the mod leaves those six hooks out, so the notices stop, and loses nothing, as they never ran there. A new install
+the mod leaves those six hooks out, so the notices stop, and loses nothing, as they never ran there. It also leaves out
+the hook that sees a rule load by path, `classic.InstructionsLoaded`, which such a plugin may skip too. A new install
 asks for it once; leave it off anywhere else. Either way the mod reads a `/clear`, a resume or a branch off the session
 id, so the band starts over within a second and the first prompt carries REC's note. A `/clear` after a saved handoff
 still fills the resume prompt, unless you send a prompt first; resuming a conversation of one prompt fills it too, into
@@ -106,13 +113,18 @@ the empty box, never sent. What it cannot tell without those hooks:
 - a skill typed as `/name` is not counted, and is missing from the band's `skills` row and the Usage tab's `Skills`
   row; one Claude loads with its Skill tool is there;
 - time you spend at a permission prompt counts toward a plan step's time;
-- after a resume, the cache's rewrite cost (`rewrite ≈ $…`) is missing until you switch models.
+- after a resume, the cache's rewrite cost (`rewrite ≈ $…`) is missing until you switch models;
+- the band's `rules:` row lists only the rules loaded at start, and ends `by path not tracked`.
 
 A call that fails in auto mode still counts as new, and an interrupt is read from the mod's own tool hook.
 
 While something needs you - recording mode on, the context at 60% or more, new failures - the mod pins one line under
 the prompt, `⚠ alfred-mods: ● REC · ctx 82% · ✗ 2 new`, which stays while the band is collapsed (Ctrl+X Ctrl+A).
-It changes only when its text does, and clears once nothing needs you.
+While the band is in view it shows REC and the context itself, so from Claude Code 2.1.321, which tells the mod the
+band is collapsed, the line leaves them out then and keeps the new failures; collapsed, under a survey, where no band
+draws (`-p`, an SDK session) or on an earlier build, it shows all three. Where two surfaces draw one session, the one
+drawn last decides. It changes only when its text does, and clears once nothing needs you. A status line of your own,
+such as claude-hud's, is not replaced: it draws under the prompt, below this line, with the band above the prompt.
 
 ## Commands
 

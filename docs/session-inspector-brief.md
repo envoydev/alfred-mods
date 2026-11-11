@@ -61,7 +61,7 @@ A mod is a plugin whose JavaScript or TypeScript hooks run inside Claude Code, s
 
 - **Render sites:** `AbovePrompt` is the band (terminal and Desktop only), `Pane` is a side or inline pane, and `Spinner` (terminal, Desktop, VS Code) is the line that animates while a turn runs, its `e.requestId` 'the agent id for a spinner' (types). The probe saw one instance per session, the main loop's, even while a background agent ran (I, one `requestId` from I 10 to I 272), so a background agent draws no spinner of its own; a foreground agent's is not seen. `ToolUse`, `ToolResult` and `ToolGroup` draw on every surface; `InfoNotice` is the terminal's dim status line under the logo. (agent)
 - **Apps:** everything draws in the terminal and the Desktop Code tab, and in the VS Code extension from v2.1.299, except the band. A Desktop WSL session loads no plugins; Remote Control draws in the terminal on your machine. (agent)
-- **A collapsed band:** the person can collapse the band (ctrl+x ctrl+a, or `[-]`); the mod cannot tell, and no hotkey presses a button in it then, so nothing the person must answer lives only in the band. (agent)
+- **A collapsed band:** the person can collapse the band (ctrl+x ctrl+a, or `[-]`); no hotkey presses a button in it then, so nothing the person must answer lives only in the band. From Claude Code 2.1.321 the AbovePrompt props carry `isCollapsed`, so the mod can tell; it uses that only for the pinned line (spec 2026-11-11, D6), and every item that needs you still raises its toast or shows in the Now tab. (agent)
 - **Headless sessions:** in `claude -p` and cloud sessions hooks run but nothing draws.
 
 ## Decisions already made
@@ -111,7 +111,7 @@ Ten features, F1 to F10. The probe must settle every Medium row before the verdi
 - **F1 account:** read only `oauthAccount` from the global config file, which is `$CLAUDE_CONFIG_DIR/.claude.json` when that variable is set; `~/.claude.json` may then be a stale copy, as the isolated probe run wrote only the one in `CLAUDE_CONFIG_DIR`. A config signed in by token holds no `oauthAccount` at all. On any parse failure or a missing record, hide the field and don't show an error. (agent)
 - **F3 tree** (the user, 2026-10-28, from the deck's slides): the Agents tab draws the main loop as the root, `⟳ main chat · opus 5.5 · 9 tools`, and each agent under the one that started it, `└ ✓ Explore · haiku`, with `doing: "<task>"` beneath. In Alfred Code the task is the dispatch's `task:` line. Phase 2 first checks that an agent's spawn names the agent that started it; without that, every agent sits directly under the main loop. (agent)
 - **F2 under a managed plugin** (the user, 2026-11-10): a prepend-tier plugin may continue the chain below the user tier (types `Next.to`), so `classic.PostToolUseFailure` may never reach the mod. In auto mode (the last `permission_mode` seen), an `ask` call nobody was asked about that errors with no failure event is a new error; in other modes it stays `refused`. An errored call whose own `tool.call` dispatch aborted (`next.signal`: the person's Esc, or a hook above that settled first) is interrupted.
-- **Hooks a managed plugin skips** (the user, 2026-11-10, from session records under an organization's managed plugin): that plugin sent six events on past the mod, `classic.SessionStart`, `classic.PostToolUse`, `classic.PermissionRequest`, `classic.PostToolUseFailure`, `classic.PermissionDenied` and `skill.prompt`, and Claude Code told the model so once per event and conversation (binary 2.1.322: one task notification per session, event, plugin and skipping plugin, for a person's own plugin alone; no mods API turns it off). The mod reads a new conversation off `$.session.id()` at the one-second tick and before a prompt, so a `/clear`, a resume or a branch starts over without `classic.SessionStart`; one start-over runs at a time. Found at the tick, a transcript of one prompt at most was a `/clear` and gets the resume prompt (live, 2026-11-10: `$.session.turns()` reads 1 right after a `/clear`, its own row, and 2 after resuming a two-prompt conversation, which filled nothing; the binary counts user rows that are neither meta nor virtual, so the skip notices do not count); a resumed conversation of one prompt reads as a `/clear` and gets it in an empty draft, never sent. Found by a prompt, nothing is filled after it. No `session.end` hook tells them apart: the mod hooks no event it did not hook before, which that plugin might skip too. The `userConfig` boolean `leave_out_skipped_hooks`, off by default, leaves the six hooks out, so Claude Code has no skipped hook to report; the user chose it knowing that every new install shows the option once (the binary counts a field with only a default as unset).
+- **Hooks a managed plugin skips** (the user, 2026-11-10, from session records under an organization's managed plugin): that plugin sent six events on past the mod, `classic.SessionStart`, `classic.PostToolUse`, `classic.PermissionRequest`, `classic.PostToolUseFailure`, `classic.PermissionDenied` and `skill.prompt`, and Claude Code told the model so once per event and conversation (binary 2.1.322: one task notification per session, event, plugin and skipping plugin, for a person's own plugin alone; no mods API turns it off). The mod reads a new conversation off `$.session.id()` at the one-second tick and before a prompt, so a `/clear`, a resume or a branch starts over without `classic.SessionStart`; one start-over runs at a time. Found at the tick, a transcript of one prompt at most was a `/clear` and gets the resume prompt (live, 2026-11-10: `$.session.turns()` reads 1 right after a `/clear`, its own row, and 2 after resuming a two-prompt conversation, which filled nothing; the binary counts user rows that are neither meta nor virtual, so the skip notices do not count); a resumed conversation of one prompt reads as a `/clear` and gets it in an empty draft, never sent. Found by a prompt, nothing is filled after it. No `session.end` hook tells them apart: the mod hooks no event it did not hook before, which that plugin might skip too, with one exception: `classic.InstructionsLoaded` (the band's by-path rules, spec 2026-11-11, D4), left out with the six when the option is on, the rules row then ending `by path not tracked`. Assumption A1, unverified: such a plugin skips that event too; one session on that machine with the option off settles it (a skip note naming it, or none, in which case the hook moves outside the option). The `userConfig` boolean `leave_out_skipped_hooks`, off by default, leaves the six hooks out, so Claude Code has no skipped hook to report; the user chose it knowing that every new install shows the option once (the binary counts a field with only a default as unset).
 - **F2 and F3 skills line** (the user, 2026-10-28, from the deck's slides): `skills fired: watch ×1 · plugin-authoring ×4` closes the Agents tab and the Now tab's AGENTS section, from F2's skill counts. (agent)
 - **F4 cache has no size capacity:** what matters is time to expiry, hit rate and rewrite cost. Never show a cache fill bar; the reuse rate's bar is a ratio, so it takes the one bar.
 - **F4 hit rate:** cache read ÷ (cache read + cache write + uncached input) for each main-loop request. Subagent requests count in totals only.
@@ -148,7 +148,7 @@ Hooks only update the shared state. Every surface reads that state and passes it
 - **Room left:** line 2 holds the gauges. Context and 5h get bars because they move within a session; the 7d window and cost are numbers. Each window shows when it resets after its percent, as its day, month and clock in brackets, such as (31.10 09:00) (the user, 2026-10-28).
 - **Bars:** one bar everywhere, in the band and the pane: 5 cells of 20%, one character each, ▰ filled and ▱ empty, with no gaps, such as ▰▰▱▱▱ at 40% (the user, 2026-10-28). A cell fills only when its share is reached, the filled part takes the threshold colour and the empty part stays dim, so the shape reads without colour.
 - **Forecasts:** shown next to the gauges, marked ≈, and only after 3 data points: turns left until the handoff threshold (mean context growth over the last 5 turns), when the 5h or weekly limit runs out at the current pace compared with its reset time, as `full ≈15:40` and only once the readings span 5% of the window (15 minutes of 5h, 8.4 hours of a week; the user, 2026-10-28), and the plan's time left (remaining step estimates, calibrated by the actual time of finished steps).
-- **Actions, not just alerts:** line 3 appears only when something needs you, and each item carries its button: Handoff, Compact or Inspect. Band buttons get digit hotkeys, which fire when you type the digit alone into an empty prompt and pause, and not while the band is collapsed; every item that needs you also raises its toast or shows in the Now tab, since the mod cannot tell the band is collapsed. (agent)
+- **Actions, not just alerts:** line 3 appears only when something needs you, and each item carries its button: Handoff, Compact or Inspect. Band buttons get digit hotkeys, which fire when you type the digit alone into an empty prompt and pause, and not while the band is collapsed; every item that needs you also raises its toast or shows in the Now tab, since a collapsed band hides its buttons (the mod tells a collapsed band only from 2.1.321, and only for the pinned line). (agent)
 - **Failure inbox:** failed and denied calls count as new until you open the Now or Tools tab. Blocked calls never count as new, because Claude recovers from them by itself.
 - **Times fit or drop:** when the calm line passes the width, Claude's time drops first, then yours, each whole and never cut mid-word; every gauge, reset and the cost stay. The times still show on line 1 whenever a turn needs you, and in the Timeline. (the user, 2026-10-28)
 - **Narrow terminals, under 100 columns:** line 2 keeps the bars and resets with the 7d window as a bar too, and drops forecasts and cost; line 1 keeps only the plan step and the agent count.
@@ -210,15 +210,18 @@ ctx ▰▱▱▱▱ 30% │ 5h ▱▱▱▱▱ 15% (28.10 16:15) │ 7d 40% (31.
 ```text
 ⟳ Turn 10 · 8:04 · 18 tools │ Bash ▸ write answers.json 0:14
 ctx ▱▱▱▱▱ 15% ≈163 turns │ 5h ▰▱▱▱▱ 34% (10.11 00:50) on pace │ 7d 21% (16.11 03:00) │ $1.29 · today $10.46
-Sonnet 5.5 ◑ medium │ 59m │ ≈133 tok/s avg │ cache warm 54m │ [ 19 tools · 2 skills ▸ ] │ you 22:47 · Claude 23:55
-tools   AskUserQuestion ×13 · Bash ×5 · Grep ×1
-skills  superpowers:brainstorming ×1 · solve-task ×2 · 57 of 60 listed
+Sonnet 5.5 ◑ medium │ 59m │ ≈133 tok/s avg │ cache warm 54m │ [ 19 tools · 2 skills · 4 agents (1 ◐) · 5 rules ▾ ] │ you 22:47 · Claude 23:55
+tools:   AskUserQuestion ×13 │ Bash ×5 │ Grep ×1
+skills:  superpowers:brainstorming ×1 │ solve-task ×2 │ 57 of 60 listed
+agents:  ◐ alfred-code:web-angular-verifier ×1 │ ✓ Explore ×2 │ ✓ general-purpose ×1 │ 1 running
+rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ web-angular.md │ typescript.md │ 3 always-on · 2 by path
 ```
 
 - **The info line** sits under the gauges and above the needs-you line in every state, dim but for the model. As the
   width runs out it wraps onto a second row between items (a side agent's note the user passed on, 2026-11-11: every
   item, as claude-hud spreads them over its lines); past two rows its items go in this order: the version, the project and branch, the times (Claude's first), the
-  toggle (the skills' count, then the tools', then the arrow; while open, after the cache), the output speed, the
+  toggle (the rules' count, then the agents', then the skills', then the tools', then the arrow; while open, after the
+  cache), the output speed, the
   cache, the session's time, the model.
 - **From the first second** (the user, 2026-11-11: the band shows its data as soon as Claude starts): the full band
   draws once the model or a stored window is known, before any prompt; calm still waits for the first reading.
@@ -233,18 +236,26 @@ skills  superpowers:brainstorming ×1 · solve-task ×2 · 57 of 60 listed
   tab, and the tick drops each as its reset passes. The first reading after a request decides: its windows, or none
   off a subscription, where a stored plan window would price the cache on the wrong tier. Left out: ctx before the first request and the effort before the first reply (no `$.http.fetch` or
   `$.model` call), and RAM or the account, which the mods API does not give.
-- **The tools toggle** (the user, 2026-11-11: every tool by name, and the skills in context, collapsed and expandable):
-  `[ <calls> tools · <k> skills ▸ ]`, the session's tool calls (Skill calls apart, agents' included) and the skills the
-  main loop loaded; a letter hotkey `t`, never a digit, as a bare digit in an empty prompt presses a band button. Open
-  (`settings:band-tools` = `open`, for every session), rows under the info line: `tools` every tool by calls with its
-  count, an MCP tool as `<server>:<tool>`; `skills` each skill loaded into the main context, in the order loaded, then
-  the listing's `57 of 60 listed` from the last breakdown; drawn only while the toggle is in view. A skill is in the
+- **The tools toggle** (the user, 2026-11-11: every tool by name, the skills in context, the agents and the rules, open
+  by default; spec `2026-11-11-band-detail-rows-design.md`): `[ <calls> tools · <k> skills · <a> agents (<r> ◐) · <n>
+  rules ▾ ]`, the session's tool calls (Skill calls apart, agents' included), the skills the main loop loaded, the
+  agents dispatched with how many run, and the rules in the main context, each only above 0; a letter hotkey `t`, never
+  a digit, as a bare digit in an empty prompt presses a band button. Open unless `settings:band-tools` is exactly
+  `closed` (for every session), rows under the info line, labels padded to 9 cells and items joined by ` │ `:
+  `tools:` every tool by calls with its count, an MCP tool as `<server>:<tool>`; `skills:` each skill loaded into the
+  main context, in the order loaded, then the listing's `57 of 60 listed` from the last breakdown; `agents:` each type
+  in first-dispatch order (`meta.agentTypes`, a dispatch being a new agent row) with `◐` while one runs, `✗` once one
+  failed or was killed, else `✓`, then `<k> running`; `rules:` the rule files the start-up breakdown lists (read on a
+  timer at each start, `Parts.rules`), then those `classic.InstructionsLoaded` reports loaded by path on the main thread
+  (`meta.pathRules`, kept through a compaction, as Claude Code re-attaches them), violet, then `<a> always-on · <b> by
+  path`; drawn only while the toggle is in view. A skill is in the
   main context from a main-loop Skill call that ended ok, or a `skill.prompt` with no Skill call behind it while no main
-  turn runs (a `/name`); one mid-turn with none is a subagent's preload, and a `context: fork` skill is never in it. Short of rows, the info line's second row goes first, then the open rows, from the last, then the info line. A /clear
+  turn runs (a `/name`); one mid-turn with none is a subagent's preload, and a `context: fork` skill is never in it. Short of rows, the info line's second row goes first, then the open rows, from the last (`rules:` first), then the info line. A /clear
   empties the skills; the list outlives a compaction, as the mod has no word of what one drops. A resume or a branch
   (`classic.SessionStart`, a start-over that is not a /clear, or a process whose first `$.state` holds no reading while
   `$.session.turns()` is above 0) sets `meta.isResumed`: the context holds skills loaded before, which no API lists,
-  so the row reads `none seen since resume`, or the skills since with `since resume` after them. Where a managed plugin
+  so the row reads `none seen since resume`, or the skills since with `since resume` after them; the agents and by-path
+  rules rows count from it the same way. Where a managed plugin
   skips `skill.prompt`, a `/name` is missing from the list (README). Idle and healthy, the band is the gauge line and the info
   line, both dim, the times on the info line only. Today's cost follows the session's while line 2 fits, never on the
   narrow form; it is the mod's own count (F1 note).
@@ -1395,7 +1406,7 @@ No known blocker: the core features rest on documented events. The material risk
 | MATERIAL | Plan progress is only as accurate as the plan skill's writes | Claude skips a status update | Staleness age in amber; the rule in the plan skill |
 | MATERIAL | 'Fixed' and 'improved' are guesswork if the scorer renames findings or criteria | Scorer ignores the contract | Rule in the scorer skill; show a round with no matching ids as new findings |
 | MATERIAL | The mods API still changes between versions; fields changed from v2.1.287 to v2.1.312, the build checked here | A Claude Code update | Tests against the types for the installed build; minimum version in the README (agent) |
-| MATERIAL | The person can collapse the band, and the mod cannot tell | ctrl+x ctrl+a or `[-]` | Every item that needs you also raises a toast or shows in the Now tab (agent) |
+| MATERIAL | The person can collapse the band, hiding its buttons; before Claude Code 2.1.321 the mod cannot tell | ctrl+x ctrl+a or `[-]` | Every item that needs you also raises a toast or shows in the Now tab; from 2.1.321 the pinned line shows REC and ctx again while collapsed (agent) |
 | MATERIAL | The Desktop and VS Code checks of every phase need the real account | A phase's Desktop check | Run only on the user's word, else reported NOT RUN; the terminal checks run under an isolated config (agent) |
 | MATERIAL | Two homes for a full context: F8 Handoff and the stack's guard-fresh-session-start hook, which offers a fresh session before a heavy run on a full context | Both act as context nears its limit | With a valid status file, the stack owns handoff and F8 only shows the state (Phase 5's `f` in the ALFRED CODE section fills the stack's prompt); without one, F8's own handoff is the only one (agent) |
 | MATERIAL | Calls come from agents no `agent.spawn` announced, such as the engine-internal one auto mode ran a failing ToolSearch under (probe I 266) | Auto mode, background engine work | F2 and F3 count only the main loop and agents seen at `agent.spawn`; the Agents tab counts their loops apart as `Other loops`, while their tool calls stay uncounted (spec C3) (agent) |
