@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast } from '../hooks/settings.ts'
+import { DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast, writeField } from '../hooks/settings.ts'
 import type { Field, Resolved, Skip, Source, Values } from '../hooks/settings.ts'
 
 // A valid value for each field that differs from its default, and a second one that differs from both
@@ -191,4 +191,30 @@ test('holdToast names the level and the file', () => {
 test('movedToast gives the line to paste', () => {
   expect(movedToast({ rec: 'strict', bandRows: false })).toBe('Add "alfred-mods": { "bandRows": false, "rec": "strict" } to ~/.claude/settings.json - the choices your earlier commands made')
   expect(movedToast({ handoffAt: 70, band: 'calm' })).toBe('Add "alfred-mods": { "band": "calm", "handoffAt": 70 } to ~/.claude/settings.json - the choices your earlier commands made')
+})
+
+// /rec on|strict|off and /auto-handoff ask|auto|off|at <percent> write one field of the user file (the user's ruling,
+// 2026-11-12): the rest of the file is kept as it was, in its own indent, and a file it cannot keep is left alone
+test('writeField sets one field and keeps the rest', () => {
+  const text = '{\n  "theme": "dark",\n  "alfred-mods": {\n    "band": "full",\n    "rec": "off"\n  },\n  "model": "opus"\n}\n'
+  expect(writeField(text, 'rec', 'on')).toEqual({ text: '{\n  "theme": "dark",\n  "alfred-mods": {\n    "band": "full",\n    "rec": "on"\n  },\n  "model": "opus"\n}\n' })
+  expect(writeField(text, 'handoffAt', 70)).toEqual({ text: '{\n  "theme": "dark",\n  "alfred-mods": {\n    "band": "full",\n    "rec": "off",\n    "handoffAt": 70\n  },\n  "model": "opus"\n}\n' })
+})
+
+test('writeField adds the key, or makes the file', () => {
+  expect(writeField('{\n  "theme": "dark"\n}\n', 'handoff', 'auto')).toEqual({ text: '{\n  "theme": "dark",\n  "alfred-mods": {\n    "handoff": "auto"\n  }\n}\n' })
+  expect(writeField(null, 'rec', 'strict')).toEqual({ text: '{\n  "alfred-mods": {\n    "rec": "strict"\n  }\n}\n' })
+  expect(writeField('', 'rec', 'on')).toEqual({ text: '{\n  "alfred-mods": {\n    "rec": "on"\n  }\n}\n' })
+})
+
+test("writeField keeps the file's indent and its last newline", () => {
+  expect(writeField('{\n    "a": 1\n}', 'rec', 'on')).toEqual({ text: '{\n    "a": 1,\n    "alfred-mods": {\n        "rec": "on"\n    }\n}' })
+  expect(writeField('{\n\t"a": 1\n}\n', 'rec', 'on')).toEqual({ text: '{\n\t"a": 1,\n\t"alfred-mods": {\n\t\t"rec": "on"\n\t}\n}\n' })
+  expect(writeField('{"a":1}', 'rec', 'on')).toEqual({ text: '{\n  "a": 1,\n  "alfred-mods": {\n    "rec": "on"\n  }\n}' })
+  expect(writeField('{\r\n  "a": 1\r\n}\r\n', 'rec', 'on')).toEqual({ text: '{\r\n  "a": 1,\r\n  "alfred-mods": {\r\n    "rec": "on"\r\n  }\r\n}\r\n' })
+})
+
+test('writeField leaves alone a file it cannot keep', () => {
+  for (const text of ['{ "a": ', '[1]', '"on"', 'null', '{"a": 1} x']) expect(writeField(text, 'rec', 'on')).toEqual({ why: 'parse' })
+  for (const text of ['{"alfred-mods": "on"}', '{"alfred-mods": [1]}', '{"alfred-mods": null}']) expect(writeField(text, 'rec', 'on')).toEqual({ why: 'key' })
 })

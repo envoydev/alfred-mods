@@ -245,9 +245,9 @@ test('/rec help and an unknown argument print the usage and what REC cannot hide
   stubAll(on, { usage: SUBSCRIPTION, env: HOME })
   engine(on)
   await $.session.start(START)
-  for (const arg of ['help', 'bogus', 'on']) {
+  for (const arg of ['help', 'bogus']) {
     const text = await rec($, arg)
-    expect(text.startsWith('REC off - from the default\nUsage: /rec [test|words]')).toBe(true)
+    expect(text.startsWith('REC off - from the default\nUsage: /rec [on|strict|off|test|words]')).toBe(true)
     expect(text).toContain('REC cannot hide:')
     expect(text).toContain('what you type in the prompt box\n- a prompt the mod fills into the prompt box\n')
     expect(text).toContain('the option labels of a question Claude asks')

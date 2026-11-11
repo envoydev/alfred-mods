@@ -49,6 +49,8 @@ type Options = {
   moved?: 'told' | 'unset'
   // Store keys whose first delete is refused, as a store that fails once would
   refuseDelete?: string[]
+  // Paths whose writes, or whose existence checks, are refused, as a guard or a read-only disk would
+  refuseWrite?: string[]; refuseExists?: string[]
 }
 
 export const gitResult = (stdout: string, exitCode = 0, stderr = ''): ProcessRunResult =>
@@ -187,10 +189,12 @@ export function stubAll(on: On, o: Options = {}): {
   // Each path asked, so a test counts the reads of a missing file
   on('fs.exists', (_, e) => {
     files.exists.push(slashed(e.path))
+    if (o.refuseExists?.some(path => at(e.path, path)) === true) return { deny: `EACCES: check refused, ${e.path}` }
     return { value: Object.keys(files.current).some(path => at(e.path, path)) }
   })
   // A write lands at the path of a file the test gave, else at the path the mod passed
   on('fs.write', (_, e) => {
+    if (o.refuseWrite?.some(path => at(e.path, path)) === true) return { deny: `EACCES: write refused, ${e.path}` }
     const key = Object.keys(files.current).find(path => at(e.path, path)) ?? slashed(e.path)
     files.current[key] = { text: e.text, mtimeMs: o.now ?? 0 }
     files.writes.push(key)
