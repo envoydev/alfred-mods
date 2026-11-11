@@ -130,8 +130,9 @@ export type RecState = { level: Level; count: number; note: string | null }
 export type Quiet = { isOn: boolean }
 // /band: the full band with its info line, or calm, its two lines; every session's from `settings:band`
 export type BandMode = 'full' | 'calm'
-// `isToolsOpen`: the full band's rows of every tool and the skills are open (`settings:band-tools`)
-export type BandSetting = { mode: BandMode; isToolsOpen?: boolean }
+// `isToolsOpen`: the full band's rows of every tool and the skills are open (`settings:band-tools`); `isUnder`: the band
+// draws under the input on the terminal (`settings:band-place`, spec 2026-11-11 band-under U1), set only while under
+export type BandSetting = { mode: BandMode; isToolsOpen?: boolean; isUnder?: boolean }
 // F8: the stored mode and threshold; `point`, the tokens where Claude Code compacts by itself; `handled`, the highest
 // step handled; `lastSave`, the last save's time and result; `alfred`, the stack's status file as last read
 export type HandoffMode = 'ask' | 'auto' | 'off'

@@ -474,7 +474,8 @@ const statusMem = { last: null as string | undefined | null }
 // Whether the band is in view, as its last render found it (spec 2026-11-11, D6): it drew lines, `isCollapsed` is
 // exactly false (a build before 2.1.321 hands none) and no survey covers it. One flag for the session, the last render
 // deciding; the one-second tick carries a change to the pinned line.
-const bandMem = { isShown: false }
+// `isUnder` mirrors the setting for the hooks' `.catch`, which cannot read state (spec 2026-11-11 band-under U1)
+const bandMem = { isShown: false, isUnder: false }
 async function syncStatus($: EngineInterface): Promise<void> {
   const u = await read($, usage)
   const runway = runwayOf(await read($, stack), u, (await read($, meta)).model)
@@ -1021,19 +1022,29 @@ async function loadQuiet($: EngineInterface): Promise<boolean> {
 // Only the exact string 'calm' reads as calm: absent, or anything another version or a hand wrote, is full. The band's
 // detail rows likewise close only on the exact string 'closed' (spec 2026-11-11, D1): a fresh store, or anything
 // another version or a hand wrote, opens them.
+// The place likewise is under only on the exact string 'under' (spec 2026-11-11 band-under U1), and a read that throws
+// counts as absent, so a refused store leaves the band above.
 async function loadBand($: EngineInterface): Promise<BandMode> {
   const mode: BandMode = (await $.store.get('settings:band')) === 'calm' ? 'calm' : 'full'
   const isOpen = (await $.store.get('settings:band-tools')) !== 'closed'
-  const next: BandSetting = isOpen ? { mode, isToolsOpen: true } : { mode }
-  await update($, bandSetting, b => (b.mode === mode && (b.isToolsOpen === true) === isOpen ? b : next))
+  const isUnder = (await $.store.get('settings:band-place').catch(() => null)) === 'under'
+  bandMem.isUnder = isUnder
+  const next: BandSetting = { mode, ...(isOpen ? { isToolsOpen: true } : {}), ...(isUnder ? { isUnder: true } : {}) }
+  await update($, bandSetting, b =>
+    (b.mode === mode && (b.isToolsOpen === true) === isOpen && (b.isUnder === true) === isUnder ? b : next))
   return mode
 }
 
-// The band's toggle: the rows open or closed for every session, as /band's mode is
-async function toggleTools($: EngineInterface): Promise<void> {
-  const isOpen = (await read($, bandSetting)).isToolsOpen !== true
-  await $.store.set('settings:band-tools', isOpen ? 'open' : 'closed')
+// The band's rows open or closed for every session, as /band's mode is, written only on a change: the toggle's `t`
+// and click, and `/band rows on|off`
+async function setRows($: EngineInterface, isOpen: boolean): Promise<void> {
+  if (((await read($, bandSetting)).isToolsOpen === true) !== isOpen) await $.store.set('settings:band-tools', isOpen ? 'open' : 'closed')
   await loadBand($)
+}
+
+// The band's toggle
+async function toggleTools($: EngineInterface): Promise<void> {
+  await setRows($, (await read($, bandSetting)).isToolsOpen !== true)
 }
 
 // A skill the main loop loaded: in its context from then on, until the conversation starts over
@@ -1439,7 +1450,7 @@ function forecastOf(h: Handoff, u: Usage, runway: Runway | null): { at: number; 
 }
 
 const QUIET_USAGE = 'Usage: /quiet [on|off]'
-const BAND_USAGE = 'Usage: /band [full|calm]'
+const BAND_USAGE = 'Usage: /band [full|calm|above|under|rows on|rows off]'
 const quietText = (isOn: boolean): string => `Compact tool rows: ${isOn ? 'on' : 'off'}`
 
 async function isNoColor($: EngineInterface): Promise<boolean> {
@@ -1673,7 +1684,7 @@ export const register: Register = (on, options) => {
     await $.command.register({ name: 'inspect', description: 'Session metrics, agents, tool failures, cache, the timeline and the plan in a pane', argumentHint: '[now|usage|agents|tools|cache|timeline|plan [name]]' })
     await $.command.register({ name: 'rec', description: 'Recording mode: hide keys, emails, phones and your private words on screen', argumentHint: '[on|strict|off|test|words]' })
     await $.command.register({ name: 'quiet', description: 'Compact tool rows: one line per tool call', argumentHint: '[on|off]' })
-    await $.command.register({ name: 'band', description: 'The band above the prompt: full with its info line, or calm, its two lines', argumentHint: '[full|calm]' })
+    await $.command.register({ name: 'band', description: 'The band above or under the prompt: full with its info line, or calm, its two lines', argumentHint: '[full|calm|above|under|rows on|rows off]' })
     await $.command.register({ name: 'auto-handoff', description: 'Save a handoff before the context fills: ask, save by itself, or off', argumentHint: '[ask|auto|off|at <percent>|now]' })
     recMem.home = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE')) ?? null
     await loadRec($)
@@ -1986,9 +1997,27 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', { command: 'band' }, async ($, e) => {
-    const word = e.args.trim().toLowerCase()
+    const [word = '', arg, ...rest] = e.args.trim().toLowerCase().split(/\s+/)
     const stored = await loadBand($)
-    if (word !== 'full' && word !== 'calm') return { text: `Band: ${stored}\n${BAND_USAGE}` }
+    const setting = await read($, bandSetting)
+    const isUnder = setting.isUnder === true
+    const usage = { text: `Band: ${stored} · ${isUnder ? 'under' : 'above'}\n${BAND_USAGE}` }
+    if (rest.length > 0) return usage
+    if (word === 'rows') {
+      const rows = (isOpen: boolean): string => `Rows: ${isOpen ? 'open' : 'closed'}`
+      if (arg === undefined) return { text: rows(setting.isToolsOpen === true) }
+      if (arg !== 'on' && arg !== 'off') return usage
+      await setRows($, arg === 'on')
+      return { text: rows(arg === 'on') }
+    }
+    if (arg !== undefined) return usage
+    if (word === 'under' || word === 'above') {
+      if (word === 'under' && !isUnder) await $.store.set('settings:band-place', 'under')
+      if (word === 'above' && isUnder) await $.store.delete('settings:band-place')
+      await loadBand($)
+      return { text: `Band: ${word}` }
+    }
+    if (word !== 'full' && word !== 'calm') return usage
     if (word !== stored) await $.store.set('settings:band', word)
     await loadBand($)
     return { text: `Band: ${word}` }

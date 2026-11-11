@@ -17,6 +17,8 @@ type Options = {
   store?: Record<string, unknown>
   // A read of `key` waits for `until` while it is set, as a slow store would
   holdStore?: { key: string; until: Promise<void> | null }
+  // Store keys whose reads are refused, as a store that fails would
+  refuseStore?: string[]
   // `agents` is what `$.agent.list()` answers; `preSwitch` what the hooks beneath answer a PreModelSwitch with, such
   // as a deny; `settings` the merged settings object a read projects its key from
   agents?: AgentInfo[]; preSwitch?: ClassicResult; settings?: Record<string, unknown>
@@ -56,8 +58,9 @@ export function stubAll(on: On, o: Options = {}): {
   invalidates: string[]
   // Each `$.ui.status` text the mod set, in order; undefined is a clear
   statuses: (string | undefined)[]
-  // `set` writes as another session would, beneath the mod
-  store: { get(key: string): unknown; keys(): string[]; set(key: string, value: unknown): void }
+  // `set` writes as another session would, beneath the mod; `writes` lists the mod's own sets and deletes, in order, as
+  // `set <key>` and `delete <key>`
+  store: { get(key: string): unknown; keys(): string[]; set(key: string, value: unknown): void; writes: string[] }
   // A test changes the session id mid-test, as a /clear does, through `session.id`; `turns` is how many prompts the
   // session's transcript holds, 1 right after a /clear (its own row) and more after a resume
   session: { id: string; turns: number }
@@ -205,17 +208,21 @@ export function stubAll(on: On, o: Options = {}): {
   // The store, kept here rather than by the kit's mock so a test can read what the mod wrote: a test's `$` has no
   // store of its own. Values go through JSON as the real store's do; keys keep their insertion order.
   const stored = new Map<string, unknown>(Object.entries(o.store ?? {}))
+  const writes: string[] = []
   on('store.get', async (_, e) => {
+    if (o.refuseStore?.includes(e.key) === true) return { deny: `test: store read refused, ${e.key}` }
     if (o.holdStore?.until && e.key === o.holdStore.key) await o.holdStore.until
     if (e.key === 'settings:band' && !stored.has(e.key) && o.band !== 'unset') return { value: o.band ?? 'calm' }
     if (e.key === 'settings:quiet' && !stored.has(e.key) && o.quiet !== 'unset') return { value: o.quiet === 'on' }
     return { value: stored.get(e.key) }
   })
   on('store.set', (_, e) => {
+    writes.push(`set ${e.key}`)
     stored.set(e.key, JSON.parse(JSON.stringify(e.value)) as unknown)
     return { value: undefined }
   })
   on('store.delete', (_, e) => {
+    writes.push(`delete ${e.key}`)
     stored.delete(e.key)
     return { value: undefined }
   })
@@ -223,6 +230,7 @@ export function stubAll(on: On, o: Options = {}): {
   const store = {
     get: (key: string): unknown => stored.get(key), keys: (): string[] => [...stored.keys()],
     set: (key: string, value: unknown): void => void stored.set(key, JSON.parse(JSON.stringify(value)) as unknown),
+    writes,
   }
   mock.env(on, o.env ?? {})
   return { clock, toasts, opened, copied, usage, panes, listed, files, store, session, git, prompt, invalidates, statuses }
