@@ -24,13 +24,13 @@ async function failTwice($: Engine): Promise<void> {
 }
 
 test('statusText joins what needs the person, in the band order', () => {
-  expect(statusText({ percent: 82, newFailures: 2, recLevel: 'off' })).toBe('ctx 82% · ✗ 2 new')
-  expect(statusText({ percent: 82, newFailures: 2, recLevel: 'on' })).toBe('● REC · ctx 82% · ✗ 2 new')
+  expect(statusText({ percent: 82, newFailures: 2, recLevel: 'off' , isBandShown: false })).toBe('ctx 82% · ✗ 2 new')
+  expect(statusText({ percent: 82, newFailures: 2, recLevel: 'on' , isBandShown: false })).toBe('● REC · ctx 82% · ✗ 2 new')
   // The band turns hot at 60
-  expect(statusText({ percent: 59.6, newFailures: 0, recLevel: 'off' })).toBe('ctx 60%')
-  expect(statusText({ percent: 59.4, newFailures: 0, recLevel: 'off' })).toBeNull()
-  expect(statusText({ percent: null, newFailures: 0, recLevel: 'off' })).toBeNull()
-  expect(statusText({ percent: null, newFailures: 0, recLevel: 'strict' })).toBe('● REC')
+  expect(statusText({ percent: 59.6, newFailures: 0, recLevel: 'off' , isBandShown: false })).toBe('ctx 60%')
+  expect(statusText({ percent: 59.4, newFailures: 0, recLevel: 'off' , isBandShown: false })).toBeNull()
+  expect(statusText({ percent: null, newFailures: 0, recLevel: 'off' , isBandShown: false })).toBeNull()
+  expect(statusText({ percent: null, newFailures: 0, recLevel: 'strict' , isBandShown: false })).toBe('● REC')
 })
 
 test('the status line shows what needs the person', { timeoutMs: 15_000 }, async ($, on) => {
@@ -86,4 +86,56 @@ test('through mask()', { timeoutMs: 15_000 }, async ($, on) => {
   const last = statuses[statuses.length - 1] ?? ''
   expect(last.startsWith('● REC · ✗ 2 ')).toBe(true)
   expect(last.includes('new')).toBe(false)
+})
+
+// Spec 2026-11-11, D6: while the band is in view it shows REC and ctx itself, so the pinned line leaves them out
+const BAND = { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 12, bodyColumns: 160, scroll: { offset: 0, bodyRows: 12 }, view: {} }
+const mountBand = ($: Engine, props: typeof BAND = BAND) => $.ui.mount({ plugin: 'alfred-mods', surface: 'terminal', component: 'AbovePrompt', props })
+
+test('statusText leaves out REC and ctx while the band is in view; new failures stay', () => {
+  expect(statusText({ percent: 82, newFailures: 2, recLevel: 'on', isBandShown: true })).toBe('✗ 2 new')
+  expect(statusText({ percent: 82, newFailures: 0, recLevel: 'on', isBandShown: true })).toBeNull()
+})
+
+test('the band in view drops REC and ctx from the pinned line; collapsed brings both back', { timeoutMs: 15_000 }, async ($, on) => {
+  const { statuses, clock } = stubAll(on, { band: 'full', store: { 'settings:rec': 'on' } })
+  engine(on)
+  await $.session.start(START)
+  await measure($, 82)
+  const ui = await mountBand($)
+  await clock.advance(1000)
+  expect(statuses[statuses.length - 1]).toBeUndefined()
+  await ui.redraw({ ...BAND, isCollapsed: true })
+  await clock.advance(1000)
+  expect(statuses[statuses.length - 1]).toBe('● REC · ctx 82%')
+  await ui.unmount()
+})
+
+test('collapsed with REC off and ctx under 60, the line stays cleared and is not set again', { timeoutMs: 15_000 }, async ($, on) => {
+  const { statuses, clock } = stubAll(on, { band: 'full' })
+  engine(on)
+  await $.session.start(START)
+  await measure($, 40)
+  const ui = await mountBand($)
+  await clock.advance(1000)
+  await ui.redraw({ ...BAND, isCollapsed: true })
+  await clock.advance(1000)
+  await ui.redraw(BAND)
+  await clock.advance(1000)
+  expect(statuses).toEqual([undefined])
+  await ui.unmount()
+})
+
+test('under a survey, or with no isCollapsed prop, the band reads as not in view', { timeoutMs: 15_000 }, async ($, on) => {
+  const { statuses, clock } = stubAll(on, { band: 'full', store: { 'settings:rec': 'on' } })
+  engine(on)
+  await $.session.start(START)
+  const ui = await mountBand($, { ...BAND, hasSurvey: true })
+  await clock.advance(1000)
+  expect(statuses[statuses.length - 1]).toBe('● REC')
+  const { isCollapsed: _, ...older } = BAND
+  await ui.redraw(older as never)
+  await clock.advance(1000)
+  expect(statuses[statuses.length - 1]).toBe('● REC')
+  await ui.unmount()
 })

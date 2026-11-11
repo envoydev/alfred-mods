@@ -3,10 +3,11 @@ import type { Engine } from 'claude-code/testing'
 import type { EngineInterface, On, RenderElement, RenderInput, RenderSurface, SessionUsage } from 'claude-code'
 
 import { mask, setRec, toast } from '../hooks/mask.ts'
+import { REC_HELP } from '../hooks/rec.ts'
 import { planView } from '../hooks/plan.ts'
 import { planLine } from '../hooks/planlines.ts'
 import { FIVE, FIVE_OVERHEAD, FIVE_TIMES, NOW } from './plans.ts'
-import { PRESENTATION, SPINNER, START, engine, held, rows, stubAll } from './kit.ts'
+import { PRESENTATION, SPINNER, START, engine, held, rows, setUser, stubAll } from './kit.ts'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const PANE = { title: 'Inspect', isFocused: false, bodyColumns: 100, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 30 }, view: {} }
@@ -19,7 +20,6 @@ const SUBSCRIPTION: SessionUsage = {
 }
 const HOME = { HOME: '/Users/jane' }
 const ON = '● REC on · hiding keys · emails · phones'
-const OTHERS = 'Other open sessions follow within 30 s; run /rec in each one on screen.'
 const WORDS = ['Acme', 'Globex', 'Initech']
 
 const rec = async ($: Engine, args: string): Promise<string> =>
@@ -54,54 +54,50 @@ async function failingTurn($: Engine): Promise<void> {
   await $.turn.complete({ answer: '', durationMs: 3000, isAborted: false, turnId: 't1', reason: 'answer' })
 }
 
-test('bare /rec over a stored off writes on', async ($, on) => {
+// S5: bare /rec prints the level in force, its source and the help, and writes nothing
+test('bare /rec over nothing stored prints off from the default and writes nothing', async ($, on) => {
   const { store, toasts } = stubAll(on, { usage: SUBSCRIPTION, env: HOME })
   engine(on)
   await $.session.start(START)
-  expect(await rec($, '')).toBe(`${ON}\n${OTHERS}`)
-  expect(store.get('settings:rec')).toBe('on')
-  expect(toasts).toEqual([ON])
+  expect(await rec($, '')).toBe(`REC off - from the default\n${REC_HELP}`)
+  expect(store.get('settings:rec')).toBe(undefined)
+  expect(toasts).toEqual([])
 })
 
-test('bare /rec over a stored on or strict prints the status and writes nothing', async ($, on) => {
+test('bare /rec over a stored on prints the status and writes nothing', async ($, on) => {
   const { store, toasts } = stubAll(on, { usage: SUBSCRIPTION, env: HOME, store: { 'settings:rec': 'on' } })
   engine(on)
   await $.session.start(START)
-  expect(await rec($, '')).toBe(ON)
+  expect(await rec($, '')).toBe(`${ON} - from an earlier /rec\n${REC_HELP}`)
   expect(store.get('settings:rec')).toBe('on')
   expect(toasts).toEqual([])
 })
 
-test('a session whose copy says off while the store says strict leaves strict and draws strict at once', async ($, on) => {
-  const { store } = stubAll(on, { usage: SUBSCRIPTION, env: HOME })
+test('a session that has not read a file set strict yet: bare /rec reads it and draws strict at once', async ($, on) => {
+  const { sources } = stubAll(on, { usage: SUBSCRIPTION, env: HOME })
   engine(on)
   await $.session.start(START)
   expect((await band($, 'terminal')).join('\n')).toContain('$3.12')
-  // Another session turned strict on; this one has not polled yet
-  store.set('settings:rec', 'strict')
-  expect(await rec($, '')).toBe('● REC strict · hiding keys · emails · phones · account · home paths · $ amounts')
-  expect(store.get('settings:rec')).toBe('strict')
+  // The file changed; no ConfigChange or poll reached this session yet
+  sources.user['alfred-mods'] = { rec: 'strict' }
+  expect((await rec($, '')).split('\n')[0]).toBe('● REC strict · hiding keys · emails · phones · account · home paths · $ amounts - from ~/.claude/settings.json')
   const lines = await band($, 'terminal')
   expect(lines[0]!.startsWith('● REC')).toBe(true)
   expect(lines.join('\n')).toContain('$•.••')
   expect(lines.join('\n')).not.toContain('$3.12')
 })
 
-test('/rec on, strict and off set the level; only /rec off turns it off', async ($, on) => {
-  const { store, toasts } = stubAll(on, { usage: SUBSCRIPTION, env: HOME })
+test('"rec" on, strict and off in the user file set the level, each change toasted once', async ($, on) => {
+  const kit = stubAll(on, { usage: SUBSCRIPTION, env: HOME })
   engine(on)
   await $.session.start(START)
-  expect(await rec($, 'on')).toBe(`${ON}\n${OTHERS}`)
-  expect(await rec($, 'strict')).toContain(OTHERS)
-  expect(store.get('settings:rec')).toBe('strict')
-  // A bare /rec never takes strict down
-  expect(await rec($, '')).not.toContain(OTHERS)
-  expect(store.get('settings:rec')).toBe('strict')
-  // The same level again changes nothing, so no other-sessions line and no toast
-  expect(await rec($, 'strict')).not.toContain(OTHERS)
-  expect(await rec($, 'off')).toBe(`REC off\n${OTHERS}`)
-  expect(store.get('settings:rec')).toBe('off')
-  expect(toasts).toEqual([ON, '● REC strict · hiding keys · emails · phones · account · home paths · $ amounts', 'REC off'])
+  await setUser($, kit, { rec: 'on' })
+  await setUser($, kit, { rec: 'strict' })
+  // The same level again changes nothing, so no toast
+  await setUser($, kit, { rec: 'strict' })
+  await setUser($, kit, { rec: 'off' })
+  expect(kit.toasts).toEqual([ON, '● REC strict · hiding keys · emails · phones · account · home paths · $ amounts', 'REC off'])
+  expect(kit.store.writes.filter(w => w.endsWith('settings:rec'))).toEqual([])
 })
 
 for (const surface of SURFACES) {
@@ -175,14 +171,14 @@ for (const surface of SURFACES) {
   })
 
   test(`the Now tab's first row is the status, strict's with account, home paths and $ amounts (${surface})`, async ($, on) => {
-    stubAll(on, { usage: SUBSCRIPTION, env: HOME, store: { 'settings:rec': 'on', 'rec:words': WORDS } })
+    const kit = stubAll(on, { usage: SUBSCRIPTION, env: HOME, store: { 'settings:rec': 'on', 'rec:words': WORDS } })
     engine(on)
     await $.session.start(START)
     await inspect($, 'now')
     expect(await inspectPane($, surface)).toContain(`${ON} · 3 private words`)
-    await rec($, 'strict')
+    await setUser($, kit, { rec: 'strict' })
     expect(await inspectPane($, surface)).toContain('● REC strict · hiding keys · emails · phones · 3 private words · account · home paths · $ amounts')
-    await rec($, 'off')
+    await setUser($, kit, { rec: 'off' })
     expect((await inspectPane($, surface)).join('\n')).not.toContain('● REC')
   })
 
@@ -216,15 +212,15 @@ for (const surface of SURFACES) {
     expect(spun).not.toContain('/Users/jane')
   })
 
-  test(`a failure recorded while REC is on draws in clear after /rec off (${surface})`, async ($, on) => {
-    stubAll(on, { usage: SUBSCRIPTION, env: HOME, store: { 'settings:rec': 'on' } })
+  test(`a failure recorded while REC is on draws in clear after "rec": "off" (${surface})`, async ($, on) => {
+    const kit = stubAll(on, { usage: SUBSCRIPTION, env: HOME, store: { 'settings:rec': 'on' } })
     failingCalls(on)
     engine(on, ['tool.call'])
     await $.session.start(START)
     await failingTurn($)
     await inspect($, 'now')
     expect((await inspectPane($, surface)).join('\n')).not.toContain('jane.doe@example.com')
-    await rec($, 'off')
+    await setUser($, kit, { rec: 'off' })
     expect((await inspectPane($, surface)).join('\n')).toContain('jane.doe@example.com')
   })
 }
@@ -251,7 +247,7 @@ test('/rec help and an unknown argument print the usage and what REC cannot hide
   await $.session.start(START)
   for (const arg of ['help', 'bogus']) {
     const text = await rec($, arg)
-    expect(text.startsWith('Usage: /rec [on|strict|off|test|words]')).toBe(true)
+    expect(text.startsWith('REC off - from the default\nUsage: /rec [on|strict|off|test|words]')).toBe(true)
     expect(text).toContain('REC cannot hide:')
     expect(text).toContain('what you type in the prompt box\n- a prompt the mod fills into the prompt box\n')
     expect(text).toContain('the option labels of a question Claude asks')
@@ -286,15 +282,15 @@ test('a toast is masked like any drawn string', () => {
 })
 
 test('REC strict, then /clear: the first redraw is strict', async ($, on) => {
-  stubAll(on, { usage: SUBSCRIPTION, env: HOME })
+  const kit = stubAll(on, { usage: SUBSCRIPTION, env: HOME })
   engine(on)
   await $.session.start(START)
-  await rec($, 'strict')
+  await setUser($, kit, { rec: 'strict' })
   await $.classic.SessionStart({ source: 'clear' })
   const lines = await band($, 'terminal')
   expect(lines[0]!.startsWith('● REC')).toBe(true)
   expect(lines.join('\n')).toContain('$•.••')
-  await rec($, 'off')
+  await setUser($, kit, { rec: 'off' })
 })
 
 test('a row drawn while /resume resets the session is masked at the level before it', async ($, on) => {
@@ -326,11 +322,12 @@ test('a row drawn while /resume resets the session is masked at the level before
 })
 
 test('the 30-second poll redraws every site only when the level or the words change', async ($, on) => {
-  const { clock, store, invalidates } = stubAll(on, { usage: SUBSCRIPTION, env: HOME })
+  const kit = stubAll(on, { usage: SUBSCRIPTION, env: HOME })
+  const { clock, store, invalidates } = kit
   engine(on)
   await $.session.start(START)
   const before = invalidates.length
-  await rec($, 'on')
+  await setUser($, kit, { rec: 'on' })
   expect(invalidates.length).toBe(before + 1)
   await clock.advance(30_000)
   expect(invalidates.length).toBe(before + 1)
@@ -340,7 +337,7 @@ test('the 30-second poll redraws every site only when the level or the words cha
   store.set('rec:words', ['Globex'])
   await clock.advance(30_000)
   expect(invalidates.slice(before)).toEqual(['ui.render', 'ui.render', 'ui.render'])
-  await rec($, 'off')
+  await setUser($, kit, { rec: 'off' })
 })
 
 test('REC on with a private word longer once masked: a plan row cut to its columns measures the masked title', () => {

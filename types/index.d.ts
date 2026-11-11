@@ -38,11 +38,19 @@ export type Meta = {
   // The skills the main loop loaded into its context this conversation, by name, with how many times; absent before one
   skills?: Record<string, number>
   // The folder holding the repository (or the working folder outside one) and its branch, read at start and every 30 s
-  place?: { project: string; branch: string | null }
+  // `project`: the session's project root's name; `folder`: where Claude works when not that root, from it, or
+  // '…/<name>' outside it; `branch`: the branch of the repository holding that folder
+  place?: { project: string; folder?: string; branch: string | null }
   // Claude Code's version, read at start
   version?: string
   // A resumed or branched conversation: it holds skills loaded before the mod watched it, which no API lists
   isResumed?: boolean
+  // The agents dispatched this conversation, by type, with how many; keys in the order of each type's first dispatch,
+  // absent before the first (spec 2026-11-11, D3)
+  agentTypes?: Record<string, number>
+  // The rules the main context loaded by path this conversation (classic.InstructionsLoaded), base names in load order,
+  // each once; a compaction keeps them, as Claude Code re-attaches them (spec 2026-11-11, D4)
+  pathRules?: string[]
 }
 export type Tab = 'now' | 'usage' | 'agents' | 'tools' | 'cache' | 'timeline' | 'plan'
 // `planSlug`: the plan `/inspect plan <name>` pinned, shown while its file parses
@@ -118,12 +126,13 @@ export type TaskItem = { id: string; subject: string; status: 'pending' | 'in_pr
 export type Level = 'off' | 'on' | 'strict'
 // What surfaces redraw on: the level, the word count and the pane's last refusal, never the words themselves
 export type RecState = { level: Level; count: number; note: string | null }
-// /quiet: compact tool rows on or off, every session's from `settings:quiet`
+// "quiet": compact tool rows on or off, from the settings files (spec settings-values S2)
 export type Quiet = { isOn: boolean }
-// /band: the full band with its info line, or calm, its two lines; every session's from `settings:band`
+// "band": the full band with its info line, or calm, its two lines, from the settings files
 export type BandMode = 'full' | 'calm'
-// `isToolsOpen`: the full band's rows of every tool and the skills are open (`settings:band-tools`)
-export type BandSetting = { mode: BandMode; isToolsOpen?: boolean }
+// `isToolsOpen`: the full band's detail rows are open ("bandRows"); `isUnder`: the band draws under the input on the
+// terminal ("bandPlace": "under", spec 2026-11-11 band-under U1), set only while under
+export type BandSetting = { mode: BandMode; isToolsOpen?: boolean; isUnder?: boolean }
 // F8: the stored mode and threshold; `point`, the tokens where Claude Code compacts by itself; `handled`, the highest
 // step handled; `lastSave`, the last save's time and result; `alfred`, the stack's status file as last read
 export type HandoffMode = 'ask' | 'auto' | 'off'
@@ -153,6 +162,8 @@ export type Parts = {
   memory: { files: number; tokens: number; top: { name: string; tokens: number }[] }
   // The skill listing: the skills it carries, of the session's, and its tokens; absent when the breakdown has none
   skills?: SkillListing
+  // The rule files the breakdown lists, loaded at start: base names in its order, each once (spec 2026-11-11, D4)
+  rules?: string[]
 }
 export type SkillListing = { listed: number; total: number; tokens: number }
 

@@ -154,11 +154,6 @@ export function maskHits(c: Compiled, text: string): Hit[] {
 
 export const LEVELS: Level[] = ['off', 'on', 'strict']
 
-// A stored level, anything else read as off
-export function parseLevel(v: unknown): Level {
-  return LEVELS.find(l => l === v) ?? 'off'
-}
-
 // The stored words, anything else read as none
 export function parseWords(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((w): w is string => typeof w === 'string') : []
@@ -188,7 +183,7 @@ export function recNote(level: Level): string {
 // The /rec help text: the usage and what REC cannot hide (spec 'What REC cannot hide')
 export const REC_HELP = [
   REC_USAGE,
-  '/rec turns masking on, /rec strict adds the account, home paths and $ amounts, /rec off turns it off, /rec test checks it, /rec words opens the private-words pane.',
+  'The level is the "rec" field of "alfred-mods" in a settings file: "off", "on" or "strict". /rec on, strict and off set it in ~/.claude/settings.json, /rec test checks it, /rec words opens the private-words pane.',
   'REC cannot hide:',
   "- what you type in the prompt box",
   '- a prompt the mod fills into the prompt box',

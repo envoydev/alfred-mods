@@ -9,19 +9,13 @@ import type { Line, Seg } from './band.ts'
 import type { Runway } from './stack.ts'
 import { clock, duration, mins, modelText, tokens, usd } from './format.ts'
 
-const MODES: HandoffMode[] = ['ask', 'auto', 'off']
+export const MODES: HandoffMode[] = ['ask', 'auto', 'off']
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
 // A whole percent from 10 to 95, the only thresholds the command takes
 export function isThreshold(n: unknown): n is number {
   return typeof n === 'number' && Number.isInteger(n) && n >= 10 && n <= 95
-}
-
-// The stored `settings:handoff`, a missing or bad field read as its default
-export function parseSettings(v: unknown): { mode: HandoffMode; threshold: number } {
-  const s = isRecord(v) ? v : {}
-  return { mode: MODES.find(m => m === s.mode) ?? 'ask', threshold: isThreshold(s.threshold) ? s.threshold : 80 }
 }
 
 // The threshold, then every 5 points up to 95
@@ -69,8 +63,7 @@ export function parseStatus(text: string, session: string): { state: 'stood-down
 }
 
 export const HANDOFF_PATH = '.claude/session-inspector/HANDOFF.md'
-export const HANDOFF_USAGE = 'Usage: /auto-handoff [ask|auto|off|at <percent>|now]'
-export const THRESHOLD_REFUSED = 'Threshold must be a whole percent from 10 to 95.'
+export const HANDOFF_USAGE = 'Usage: /auto-handoff [ask|auto|off|at <percent>|now]. The mode is the "handoff" field of "alfred-mods" in a settings file ("ask", "auto" or "off"), the first ask "handoffAt" (10 to 95); ask, auto, off and at <percent> set them in ~/.claude/settings.json.'
 
 // The status path for a session id; an id that could leave the folder has none
 export function statusPath(id: string): string | null {

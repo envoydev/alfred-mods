@@ -1,17 +1,9 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { Line } from '../hooks/band.ts'
-import { TOASTS, gitPart, handoffLines, handoffText, nextStep, parseSettings, parseStatus, percentOf, stepsOf, windowThreshold } from '../hooks/handoff.ts'
+import { TOASTS, gitPart, handoffLines, handoffText, nextStep, parseStatus, percentOf, stepsOf, windowThreshold } from '../hooks/handoff.ts'
 import type { HandoffView, SaveInput } from '../hooks/handoff.ts'
 import { gitResult } from './kit.ts'
-
-test('settings read their defaults for a missing or bad field', () => {
-  expect(parseSettings(undefined)).toEqual({ mode: 'ask', threshold: 80 })
-  expect(parseSettings({ mode: 'auto', threshold: 70 })).toEqual({ mode: 'auto', threshold: 70 })
-  expect(parseSettings({ mode: 'loud', threshold: 96 })).toEqual({ mode: 'ask', threshold: 80 })
-  expect(parseSettings({ mode: 'off', threshold: 8.5 })).toEqual({ mode: 'off', threshold: 80 })
-  expect(parseSettings('auto')).toEqual({ mode: 'ask', threshold: 80 })
-})
 
 test('steps run 5 points apart up to 95', () => {
   expect(stepsOf(80)).toEqual([80, 85, 90, 95])

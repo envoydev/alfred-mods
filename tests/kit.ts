@@ -2,7 +2,7 @@
 import { mock } from 'claude-code/testing'
 import type { Engine, MockClock } from 'claude-code/testing'
 import type {
-  AgentInfo, ClassicResult, EngineInterface, On, ProcessRunResult, RenderElement, RenderInput, SessionUsage, Settings, TurnStepInput, TurnStepResult,
+  AgentInfo, ClassicResult, EngineInterface, On, ProcessRunResult, RenderElement, RenderInput, SessionUsage, Settings, SettingsSource, TurnStepInput, TurnStepResult,
   TurnUsage, UiPane,
 } from 'claude-code'
 
@@ -11,14 +11,22 @@ export const NO_READING: SessionUsage = { startedAt: 0, context: { window: 200_0
 // `unplaced` is the reason a surface gives for leaving an opened pane undrawn; `store` is what earlier sessions kept
 type Options = {
   usage?: SessionUsage; sessionId?: string; cwd?: string; env?: Record<string, string>; now?: number; unplaced?: string
+  // The session's project root (`$.session.root()`); absent, the folder `cwd` names at each call, as a session that
+  // never moved off its root
+  root?: string
   store?: Record<string, unknown>
   // A read of `key` waits for `until` while it is set, as a slow store would
   holdStore?: { key: string; until: Promise<void> | null }
+  // Store keys whose reads are refused, as a store that fails would
+  refuseStore?: string[]
   // `agents` is what `$.agent.list()` answers; `preSwitch` what the hooks beneath answer a PreModelSwitch with, such
   // as a deny; `settings` the merged settings object a read projects its key from
   agents?: AgentInfo[]; preSwitch?: ClassicResult; settings?: Record<string, unknown>
   // The project's files by the path the mod passes, such as `.claude/session-inspector/plans/p.json`
   files?: Record<string, FileStub>
+  // Symbolic links by the path the mod passes, such as `.claude/rules/shared`, each to the absolute path it lands on:
+  // a folder when a file lies under that path, else a file
+  links?: Record<string, string>
   // The files the SessionStart hooks beneath the mod write, as the stack's own hook writes its status file
   writtenBeneath?: Record<string, FileStub>
   // What `git status` answers, or a reason that rejects the call; the prompt box's draft; what `prompt.fill` answers,
@@ -33,6 +41,16 @@ type Options = {
   // The same for `settings:quiet`: false (off) by default, the tool rows every test before /quiet was on by default
   // was written for; 'unset' answers nothing, as a fresh install's store does
   quiet?: 'on' | 'off' | 'unset'
+  // Claude Code's settings files by source, each the file's object: a read with a `source` answers that file's key,
+  // absent when the file or the key is; `refuseSource` denies those sources' reads, as a build without them would
+  sources?: Partial<Record<SettingsSource, Record<string, unknown>>>; refuseSource?: string[]
+  // What a read of `settings:moved` answers while the test stored none: true ('told') by default, so a test of an
+  // earlier command's choice meets no toast of S7's; 'unset' answers nothing, as a machine not yet told
+  moved?: 'told' | 'unset'
+  // Store keys whose first delete is refused, as a store that fails once would
+  refuseDelete?: string[]
+  // Paths whose writes, or whose existence checks, are refused, as a guard or a read-only disk would
+  refuseWrite?: string[]; refuseExists?: string[]
 }
 
 export const gitResult = (stdout: string, exitCode = 0, stderr = ''): ProcessRunResult =>
@@ -42,21 +60,28 @@ export const gitResult = (stdout: string, exitCode = 0, stderr = ''): ProcessRun
 export type FileStub = { text: string; mtimeMs: number; size?: number }
 
 export function stubAll(on: On, o: Options = {}): {
-  clock: MockClock; toasts: string[]; opened: string[]; copied: string[]; usage: { current: SessionUsage; breakdowns: number; refuse: boolean; fail: boolean }; panes: UiPane[]
-  listed: { current: AgentInfo[]; calls: number }; files: { current: Record<string, FileStub>; reads: string[]; writes: string[]; exists: string[] }
+  clock: MockClock; toasts: string[]; toastMs: (number | undefined)[]; opened: string[]; copied: string[]; usage: { current: SessionUsage; breakdowns: number; refuse: boolean; fail: boolean }; panes: UiPane[]
+  listed: { current: AgentInfo[]; calls: number }; files: { current: Record<string, FileStub>; reads: string[]; writes: string[]; exists: string[]; lists: string[] }
   // `git.current` and `git.calls`; the draft a test types and the texts the mod filled
   git: { current: ProcessRunResult | string; calls: number; argv: readonly string[] | null; timeoutMs: number | null }; prompt: { draft: string; fills: string[] }
   // Each `$.ui.invalidate` event the mod raised, in order
   invalidates: string[]
   // Each `$.ui.status` text the mod set, in order; undefined is a clear
   statuses: (string | undefined)[]
-  // `set` writes as another session would, beneath the mod
-  store: { get(key: string): unknown; keys(): string[]; set(key: string, value: unknown): void }
+  // `set` writes as another session would, beneath the mod; `writes` lists the mod's own sets and deletes, in order, as
+  // `set <key>` and `delete <key>`
+  store: { get(key: string): unknown; keys(): string[]; set(key: string, value: unknown): void; writes: string[] }
   // A test changes the session id mid-test, as a /clear does, through `session.id`; `turns` is how many prompts the
   // session's transcript holds, 1 right after a /clear (its own row) and more after a resume
   session: { id: string; turns: number }
+  // Each settings file by source, which a test changes mid-test, as an edit would: `sources.local['alfred-mods'] = ...`
+  sources: Record<SettingsSource, Record<string, unknown>>
+  // The names of the commands the mod registered, in order
+  registered: string[]
 } {
   const toasts: string[] = []
+  // Each toast's timeoutMs, in the order of `toasts`: undefined is the default 4 s
+  const toastMs: (number | undefined)[] = []
   const opened: string[] = []
   // The engine's record of the open panes; a test places a waiting one by replacing its entry
   const panes: UiPane[] = []
@@ -74,10 +99,15 @@ export function stubAll(on: On, o: Options = {}): {
   on('session.id', () => ({ value: session.id }))
   on('session.turns', () => ({ value: session.turns }))
   on('session.cwd', () => ({ value: o.cwd ?? '/w' }))
+  on('session.root', () => ({ value: o.root ?? o.cwd ?? '/w' }))
   on('session.model', () => (o.model === undefined ? { deny: 'test: no model' } : { value: o.model }))
   on('session.version', () => (o.version === undefined ? { deny: 'test: no version' } : { value: { version: o.version } }))
   on('session.repo', () => (o.repo === undefined ? { deny: 'test: no repo' } : { value: (o.repo === null ? null : { remote: null, internal: false, ...o.repo }) as never }))
-  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  const registered: string[] = []
+  on('command.register', (_, e) => {
+    registered.push(e.name)
+    return { value: { command: e.name } }
+  })
   on('ui.open', (_, e) => {
     opened.push(e.id)
     const isPlaced = o.unplaced === undefined
@@ -91,22 +121,63 @@ export function stubAll(on: On, o: Options = {}): {
     listed.calls++
     return { value: listed.current }
   })
-  on('settings.read', () => ({ value: (o.settings ?? {}) as Settings }))
+  // A key's read answers that key's value; a read with no key, the whole object; a read with a source, that file's key
+  const sources: Record<SettingsSource, Record<string, unknown>> = {
+    user: { ...o.sources?.user }, project: { ...o.sources?.project }, local: { ...o.sources?.local },
+    flag: { ...o.sources?.flag }, policy: { ...o.sources?.policy },
+  }
+  on('settings.read', (_, e) => {
+    const key = e !== undefined && 'key' in e && typeof e.key === 'string' ? e.key : null
+    const source = e !== undefined && 'source' in e && typeof e.source === 'string' ? (e.source as SettingsSource) : null
+    if (source !== null) {
+      if (o.refuseSource?.includes(source) === true) return { deny: `test: settings source refused, ${source}` }
+      return { value: (key === null ? sources[source] : sources[source][key]) as Settings }
+    }
+    return { value: (key === null ? (o.settings ?? {}) : o.settings?.[key]) as Settings }
+  })
   // A test changes the files mid-test through `files.current`; a folder with no file in it is missing. The kit hands a
   // hook the path resolved against the mod's folder, with Windows' separators on Windows, so a stub matches its end
   // after `\` reads as `/`; `{ deny }` rejects the mod's call.
-  const files = { current: { ...(o.files ?? {}) }, reads: [] as string[], writes: [] as string[], exists: [] as string[] }
+  const files = { current: { ...(o.files ?? {}) }, reads: [] as string[], writes: [] as string[], exists: [] as string[], lists: [] as string[] }
+  const links = o.links ?? {}
+  // A stub's absolute path such as `/shared/house.md` reaches a hook on Windows with the drive the resolve added
+  // (`D:\shared\house.md`, or `\\?\D:\...` past the long-path limit), so the drive is dropped before matching
+  // (Windows CI, 2026-11-12)
   const slashed = (path: string): string => path.replace(/\\/g, '/')
-  const at = (full: string, path: string): boolean => slashed(full) === path || slashed(full).endsWith(`/${path}`)
+  const undrived = (path: string): string => slashed(path).replace(/^(?:\/\/\?\/)?[A-Za-z]:(?=\/)/, '')
+  const at = (full: string, path: string): boolean => undrived(full) === path || undrived(full).endsWith(`/${path}`)
   on('fs.list', (_, e) => {
     const dir = slashed(e.path).replace(/\/$/, '')
-    const inDir = Object.entries(files.current).filter(([path]) => at(dir, path.slice(0, path.lastIndexOf('/'))))
-    if (inDir.length === 0) return { deny: `ENOENT: no such directory, ${e.path}` }
+    files.lists.push(dir)
+    const parentOf = (path: string): string => path.slice(0, path.lastIndexOf('/'))
+    const inDir = Object.entries(files.current).filter(([path]) => at(dir, parentOf(path)))
+    const linksIn = Object.keys(links).filter(path => at(dir, parentOf(path)))
+    // A folder holding a file or link at any depth below is listed as a folder
+    const folders = (path: string): string[] => (path.includes('/') ? [parentOf(path), ...folders(parentOf(path))].filter(f => f.includes('/')) : [])
+    const dirsIn = [...new Set([...Object.keys(files.current), ...Object.keys(links)].flatMap(path => folders(path).filter(f => at(dir, parentOf(f)))))]
+    if (inDir.length === 0 && linksIn.length === 0 && dirsIn.length === 0) return { deny: `ENOENT: no such directory, ${e.path}` }
     return {
-      value: inDir.map(([path, f]) => ({
-        name: path.slice(path.lastIndexOf('/') + 1), kind: 'file' as const, size: f.size ?? f.text.length, mtimeMs: f.mtimeMs, isLink: false,
-      })),
+      value: [
+        ...dirsIn.map(path => ({ name: path.slice(path.lastIndexOf('/') + 1), kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false })),
+        ...inDir.map(([path, f]) => ({
+          name: path.slice(path.lastIndexOf('/') + 1), kind: 'file' as const, size: f.size ?? f.text.length, mtimeMs: f.mtimeMs, isLink: false,
+        })),
+        ...linksIn.map(path => ({ name: path.slice(path.lastIndexOf('/') + 1), kind: 'other' as const, size: 0, mtimeMs: 0, isLink: true })),
+      ],
     }
+  })
+  // A link stats as what it leads to, with `realPath` its target when asked; a file as itself, its path its real one
+  on('fs.stat', (_, e) => {
+    const link = Object.entries(links).find(([path]) => at(e.path, path))
+    if (link !== undefined) {
+      const isDir = Object.keys(files.current).some(path => path.startsWith(`${link[1]}/`))
+      return { value: { kind: isDir ? 'dir' as const : 'file' as const, size: 0, mtimeMs: 0, isLink: true, ...(e.resolve ? { realPath: link[1] } : {}) } }
+    }
+    const found = Object.entries(files.current).find(([path]) => at(e.path, path))
+    if (found === undefined) return { deny: `ENOENT: no such file, ${e.path}` }
+    // An absolute stub's real path is its own, as a link's target is written: both sides then compare on Windows too
+    const realPath = found[0].startsWith('/') ? found[0] : slashed(e.path)
+    return { value: { kind: 'file' as const, size: found[1].size ?? found[1].text.length, mtimeMs: found[1].mtimeMs, isLink: false, ...(e.resolve ? { realPath } : {}) } }
   })
   // A read rejects over 4 MiB, as Claude Code's does (types, `$.fs.read`)
   on('fs.read', (_, e) => {
@@ -118,10 +189,12 @@ export function stubAll(on: On, o: Options = {}): {
   // Each path asked, so a test counts the reads of a missing file
   on('fs.exists', (_, e) => {
     files.exists.push(slashed(e.path))
+    if (o.refuseExists?.some(path => at(e.path, path)) === true) return { deny: `EACCES: check refused, ${e.path}` }
     return { value: Object.keys(files.current).some(path => at(e.path, path)) }
   })
   // A write lands at the path of a file the test gave, else at the path the mod passed
   on('fs.write', (_, e) => {
+    if (o.refuseWrite?.some(path => at(e.path, path)) === true) return { deny: `EACCES: write refused, ${e.path}` }
     const key = Object.keys(files.current).find(path => at(e.path, path)) ?? slashed(e.path)
     files.current[key] = { text: e.text, mtimeMs: o.now ?? 0 }
     files.writes.push(key)
@@ -144,6 +217,7 @@ export function stubAll(on: On, o: Options = {}): {
   })
   on('ui.toast', (_, e) => {
     toasts.push(e.text)
+    toastMs.push(e.timeoutMs)
     return { value: undefined }
   })
   const invalidates: string[] = []
@@ -171,21 +245,33 @@ export function stubAll(on: On, o: Options = {}): {
   })
   on('classic.PostModelSwitch', () => ({}))
   on('classic.PreModelSwitch', () => o.preSwitch ?? {})
+  on('classic.InstructionsLoaded', () => ({}))
+  on('classic.ConfigChange', () => ({}))
   const clock = mock.clock(on, { now: o.now ?? 0 })
   // The store, kept here rather than by the kit's mock so a test can read what the mod wrote: a test's `$` has no
   // store of its own. Values go through JSON as the real store's do; keys keep their insertion order.
   const stored = new Map<string, unknown>(Object.entries(o.store ?? {}))
+  const writes: string[] = []
   on('store.get', async (_, e) => {
+    if (o.refuseStore?.includes(e.key) === true) return { deny: `test: store read refused, ${e.key}` }
     if (o.holdStore?.until && e.key === o.holdStore.key) await o.holdStore.until
     if (e.key === 'settings:band' && !stored.has(e.key) && o.band !== 'unset') return { value: o.band ?? 'calm' }
     if (e.key === 'settings:quiet' && !stored.has(e.key) && o.quiet !== 'unset') return { value: o.quiet === 'on' }
+    if (e.key === 'settings:moved' && !stored.has(e.key) && o.moved !== 'unset') return { value: true }
     return { value: stored.get(e.key) }
   })
   on('store.set', (_, e) => {
+    writes.push(`set ${e.key}`)
     stored.set(e.key, JSON.parse(JSON.stringify(e.value)) as unknown)
     return { value: undefined }
   })
+  const refusedDeletes = new Set<string>()
   on('store.delete', (_, e) => {
+    if (o.refuseDelete?.includes(e.key) === true && !refusedDeletes.has(e.key)) {
+      refusedDeletes.add(e.key)
+      return { deny: `test: store delete refused, ${e.key}` }
+    }
+    writes.push(`delete ${e.key}`)
     stored.delete(e.key)
     return { value: undefined }
   })
@@ -193,9 +279,10 @@ export function stubAll(on: On, o: Options = {}): {
   const store = {
     get: (key: string): unknown => stored.get(key), keys: (): string[] => [...stored.keys()],
     set: (key: string, value: unknown): void => void stored.set(key, JSON.parse(JSON.stringify(value)) as unknown),
+    writes,
   }
   mock.env(on, o.env ?? {})
-  return { clock, toasts, opened, copied, usage, panes, listed, files, store, session, git, prompt, invalidates, statuses }
+  return { clock, toasts, toastMs, opened, copied, usage, panes, listed, files, store, session, git, prompt, invalidates, statuses, sources, registered }
 }
 
 // Claude Code's own answers to the events a session raises, for a test that drives a whole turn. A test hooks an
@@ -213,6 +300,17 @@ export function engine(on: On, except: string[] = []): void {
 }
 
 export const START = { cwd: '/w', surface: 'terminal', isInteractive: true } as const
+
+// A person's edit to their user settings file mid-session: the fields merged under "alfred-mods", then Claude Code's
+// ConfigChange and the clock's next tick, when the mod reads the files again (spec settings-values S4)
+export async function setUser(
+  $: Engine, kit: { sources: Record<SettingsSource, Record<string, unknown>>; clock: MockClock }, fields: Record<string, unknown>,
+): Promise<void> {
+  const before = kit.sources.user['alfred-mods']
+  kit.sources.user['alfred-mods'] = { ...(typeof before === 'object' && before !== null ? before : {}), ...fields }
+  await $.classic.ConfigChange({ source: 'user_settings' })
+  await kit.clock.advance(0)
+}
 export const SPAWN = {
   tool_use_id: 'sp1', prompt: 'look', description: 'a look', subagentType: 'general-purpose',
   provider: { plugin: 'claude-code', tier: 'core' }, parentModel: 'claude-sonnet-5-5', background: false, fork: false,
@@ -344,6 +442,7 @@ export function engineSites(on: On): { asked: unknown[] } {
     return { type: 'engine', ref: 0 } as RenderElement
   })
   on('ui.render', { component: 'Spinner' }, json)
+  on('ui.render', { component: 'PromptHint' }, json)
   return { asked }
 }
 

@@ -16,7 +16,7 @@ const READ_ONLY = ['Read', 'Grep', 'Glob', 'LS', 'NotebookRead']
 export const KEEPS_PREVIEW: readonly string[] = []
 
 // Tools whose emptied result drew something false or bare live (A3, 2026-10-28: Write 'Wrote 1 line to …' and '(No
-// content)' for three lines, Edit a lone ⎿): under /quiet their result block draws nothing, as an errored one does
+// content)' for three lines, Edit a lone ⎿): with "quiet" on their result block draws nothing, as an errored one does
 export const DROPS_RESULT: readonly string[] = ['Edit', 'Write']
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)

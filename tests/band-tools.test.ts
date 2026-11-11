@@ -4,7 +4,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, RenderSurface, SessionContextBreakdown, SessionUsage } from 'claude-code'
 
-import { PRESENTATION, START, engine, rows, step, stepEngine, stubAll, watchState } from './kit.ts'
+import { PRESENTATION, START, engine, rows, setUser, step, stepEngine, stubAll, watchState } from './kit.ts'
 import { tokens } from '../hooks/format.ts'
 
 import type { Meta, Parts } from '../types'
@@ -31,61 +31,85 @@ async function oneTurn($: Engine): Promise<void> {
   await $.turn.complete(complete)
 }
 
-const isOpen = (lines: string[]): boolean => lines.some(l => l.startsWith('tools   '))
+const isOpen = (lines: string[]): boolean => lines.some(l => l.startsWith('tools:   '))
 
 for (const surface of SURFACES) {
-  test(`the toggle opens every tool by name and the skills, and the choice is kept (${surface})`, async ($, on) => {
-    const { store } = stubAll(on, { band: 'full', usage: READING, now: NOW })
+  // Spec 2026-11-11, D1: the rows start open; settings-values S2: "bandRows" closes and opens them, and the toggle
+  // writes nothing
+  test(`a fresh store opens the rows; "bandRows" false closes them and true opens them again; no button toggles them (${surface})`, async ($, on) => {
+    const kit = stubAll(on, { band: 'full', usage: READING, now: NOW })
     stepEngine(on, () => null)
     engine(on)
     await oneTurn($)
     const ui = await mount($, surface)
-    expect(isOpen(await rows(ui))).toBe(false)
-    expect((await ui.find({ key: 'tools' }))?.props).toMatchObject({ hotkey: 't' })
-    expect((await ui.find({ key: 'tools' }))?.props.plain).toBeUndefined()
+    expect(isOpen(await rows(ui))).toBe(true)
 
-    await ui.press({ key: 'tools' })
+    await setUser($, kit, { bandRows: false })
+    expect(isOpen(await rows(ui))).toBe(false)
+
+    await setUser($, kit, { bandRows: true })
     const open = await rows(ui)
-    expect(open).toContain('tools   Bash ×1 · Context7:query-docs ×1')
-    expect(open).toContain('skills  none loaded')
-    expect(store.get('settings:band-tools')).toBe('open')
+    expect(open).toContain('tools:   Bash ×1 │ Context7:query-docs ×1')
+    expect(open).toContain('skills:  none loaded')
 
-    await ui.press({ key: 'tools' })
-    expect(isOpen(await rows(ui))).toBe(false)
-    expect(store.get('settings:band-tools')).toBe('closed')
+    // usage: is text now (spec settings-values, S6): no tools button to press, and nothing written
+    expect(open).toContain('usage:   [ 2 tools ]')
+    expect(await ui.press({ key: 'tools' }).then(() => true, () => false)).toBe(false)
+    expect(isOpen(await rows(ui))).toBe(true)
+    expect(kit.store.writes.filter(w => w.endsWith('settings:band-tools'))).toEqual([])
     await ui.unmount()
   })
 
-  test(`a stored open draws the rows from the start, and a /clear keeps it (${surface})`, async ($, on) => {
-    stubAll(on, { band: 'full', usage: READING, now: NOW, store: { 'settings:band-tools': 'open' } })
+  test(`a stored closed keeps the rows closed from the start, through a /clear and a resume (${surface})`, async ($, on) => {
+    stubAll(on, { band: 'full', usage: READING, now: NOW, store: { 'settings:band-tools': 'closed' } })
     stepEngine(on, () => null)
     engine(on)
     await oneTurn($)
-    expect(isOpen(await rows(await mount($, surface)))).toBe(true)
+    expect(isOpen(await rows(await mount($, surface)))).toBe(false)
     await $.classic.SessionStart({ source: 'clear' })
     await $.tool.call({ tool: 'Read', file_path: '/w/a.ts' })
-    expect(await rows(await mount($, surface))).toContain('tools   Read ×1')
+    expect(isOpen(await rows(await mount($, surface)))).toBe(false)
+    await $.classic.SessionStart({ source: 'resume' })
+    expect(isOpen(await rows(await mount($, surface)))).toBe(false)
+  })
+
+  test(`after a resume a fresh store still draws the rows open (${surface})`, async ($, on) => {
+    stubAll(on, { band: 'full', usage: READING, now: NOW })
+    stepEngine(on, () => null)
+    engine(on)
+    await oneTurn($)
+    await $.classic.SessionStart({ source: 'resume' })
+    await $.tool.call({ tool: 'Read', file_path: '/w/a.ts' })
+    expect(await rows(await mount($, surface))).toContain('tools:   Read ×1')
   })
 }
 
-for (const value of [true, 'OPEN', 'yes']) {
-  test(`a stored ${JSON.stringify(value)} reads as closed`, async ($, on) => {
-    stubAll(on, { band: 'full', store: { 'settings:band-tools': value } })
+for (const value of [undefined, true, 'OPEN', 'open', 'yes']) {
+  test(`a stored ${JSON.stringify(value)} reads as open`, async ($, on) => {
+    stubAll(on, { band: 'full', store: value === undefined ? {} : { 'settings:band-tools': value } })
     const state = watchState(on)
     engine(on)
     await $.session.start(START)
-    expect(state.get('band')).toEqual({ mode: 'full' })
+    expect(state.get('band')).toEqual({ mode: 'full', isToolsOpen: true })
   })
 }
 
-test('another session opening the rows is picked up on the poll', async ($, on) => {
+test('a stored "closed" reads as closed', async ($, on) => {
+  stubAll(on, { band: 'full', store: { 'settings:band-tools': 'closed' } })
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  expect(state.get('band')).toEqual({ mode: 'full' })
+})
+
+test('another session closing the rows is picked up on the poll', async ($, on) => {
   const { clock, store } = stubAll(on, { band: 'full' })
   const state = watchState(on)
   engine(on)
   await $.session.start(START)
-  store.set('settings:band-tools', 'open')
+  store.set('settings:band-tools', 'closed')
   await clock.advance(30_000)
-  expect(state.get('band')).toEqual({ mode: 'full', isToolsOpen: true })
+  expect(state.get('band')).toEqual({ mode: 'full' })
 })
 
 const skillsOf = (state: { get(key: string): unknown }): Record<string, number> | undefined => (state.get('meta') as Meta | undefined)?.skills

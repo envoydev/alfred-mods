@@ -242,7 +242,7 @@ function skillsRow(skills: Record<string, number> | undefined, isResumed: boolea
   if (loadedTexts(skills).length === 0 && p.skills === undefined) return []
   const items = skillSegs(skills, isResumed)
   if (p.skills !== undefined) items.push({ text: `${listedText(p.skills)} · ${tokens(p.skills.tokens)}` })
-  return wrapRows({ text: 'Skills', width: PARTS_LABEL }, { text: '', width: PARTS_LABEL }, items, columns)
+  return wrapRows({ text: 'Skills', width: PARTS_LABEL }, { text: '', width: PARTS_LABEL }, items.map(s => [s]), columns, ' · ')
 }
 
 export function usageLines(b: TabInput): Line[] {

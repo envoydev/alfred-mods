@@ -17,6 +17,8 @@ const show = (text: string): string => mask(printable(text))
 const COLOR: Record<Exclude<Tone, 'dim'>, string> = {
   ok: 'success', warn: 'warning', fail: 'error', usage: '#60a5fa', skill: '#65a30d', agents: '#f472b6', cache: '#22d3ee',
   opus: '#ff8c1a', sonnet: '#3d9bff', haiku: '#19c3a6', fable: '#d16bff', plan: '#ca8a04', handoff: '#a78bfa',
+  // The project row's git:( ) and branch, and the usage row's counts (the user, 2026-11-11)
+  git: '#c084fc', branch: '#eab308', counts: '#66d9e8',
 }
 
 // With NO_COLOR set, no colour at all: the glyphs carry the meaning
@@ -284,6 +286,21 @@ export function drawLines(
     return [row(line, `line-${n}`)]
   }
   return <Box flexDirection="column">{lines.flatMap(rows)}</Box>
+}
+
+// The band under the input (spec 2026-11-11 band-under, U2): Claude Code's own footer line first, kept live, then the
+// band's lines
+export function drawUnder(
+  $: EngineInterface, e: ResolveInput, beneath: RenderElement, lines: Line[], o: { noColor: boolean; press: Record<string, () => unknown>; columns: number },
+): RenderElement {
+  const { Box } = $.ui.resolve(e)
+  return <Box flexDirection="column">{beneath}{drawLines($, e, lines, o)}</Box>
+}
+
+// The footer's .catch while under: Claude Code's line, then the band's failure note, as `drawNote` draws it above
+export function drawUnderNote($: EngineInterface, e: ResolveInput, beneath: RenderElement, text: string): RenderElement {
+  const { Box, Text } = $.ui.resolve(e)
+  return <Box flexDirection="column">{beneath}<Text dimColor wrap="truncate-end">{text}</Text></Box>
 }
 
 // One dim line a draw hook's .catch draws in place of its tree. Not masked: the text is the mod's own, and the masker

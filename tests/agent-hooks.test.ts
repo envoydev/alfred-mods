@@ -66,7 +66,8 @@ test("an agent's step gives its model, effort and context tokens", async ($, on)
   await step($, { turnId: 'x', index: 0, model: 'claude-haiku-5-5', effort: 'medium', messageCount: 3, agentId: 'a1' })
 
   expect(rowOf(state.get, 'a1')).toMatchObject({ model: 'claude-haiku-5-5', effort: 'medium', contextTokens: 31_200 })
-  expect(state.get('meta')).toBe(undefined)
+  // The main loop's model and effort stay unset; the spawn only counts its dispatch
+  expect(state.get('meta')).toMatchObject({ model: null, effort: null, agentTypes: { 'general-purpose': 1 } })
 })
 
 test("an agent's end keeps its report and status", async ($, on) => {
