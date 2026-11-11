@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { DEFAULTS, FIELDS, SOURCES, legacyOf, nameOf, resolve, skippedToast } from '../hooks/settings.ts'
+import { DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, nameOf, resolve, skippedToast } from '../hooks/settings.ts'
 import type { Field, Resolved, Skip, Source, Values } from '../hooks/settings.ts'
 
 // A valid value for each field that differs from its default, and a second one that differs from both
@@ -154,4 +154,26 @@ test('legacyOf maps each stored choice', () => {
 test('legacyOf leaves out what the old commands never wrote', () => {
   expect(legacyOf({ ...RAW, band: 'x', tools: 'maybe', rec: 'loud', handoff: 'ask' })).toEqual({})
   expect(legacyOf({ ...RAW, place: 'above', quiet: 'off', handoff: { mode: 'loud', threshold: 96 } })).toEqual({})
+})
+
+// S3's one departure: mid-session, REC never falls because the file that set it went quiet
+test('holdRec takes the next level unless a lower source lowers it', () => {
+  expect(holdRec(null, { level: 'off', from: 'user' })).toEqual({ level: 'off', from: 'user', isHeld: false })
+  // A raise, from any source
+  expect(holdRec({ level: 'on', from: 'local' }, { level: 'strict', from: 'default' })).toEqual({ level: 'strict', from: 'default', isHeld: false })
+  // A lower level from the same source, or from one above it
+  expect(holdRec({ level: 'strict', from: 'local' }, { level: 'off', from: 'local' })).toEqual({ level: 'off', from: 'local', isHeld: false })
+  expect(holdRec({ level: 'on', from: 'user' }, { level: 'off', from: 'local' })).toEqual({ level: 'off', from: 'local', isHeld: false })
+  expect(holdRec({ level: 'on', from: 'legacy' }, { level: 'off', from: 'user' })).toEqual({ level: 'off', from: 'user', isHeld: false })
+  // A lower level from a lower source: held
+  expect(holdRec({ level: 'on', from: 'local' }, { level: 'off', from: 'user' })).toEqual({ level: 'on', from: 'local', isHeld: true })
+  expect(holdRec({ level: 'strict', from: 'project' }, { level: 'on', from: 'user' })).toEqual({ level: 'strict', from: 'project', isHeld: true })
+  expect(holdRec({ level: 'on', from: 'policy' }, { level: 'off', from: 'default' })).toEqual({ level: 'on', from: 'policy', isHeld: true })
+  // The same level is no hold
+  expect(holdRec({ level: 'on', from: 'local' }, { level: 'on', from: 'user' })).toEqual({ level: 'on', from: 'user', isHeld: false })
+})
+
+test('holdToast names the level and the file', () => {
+  expect(holdToast('on', 'local')).toBe('alfred-mods: REC stays on - .claude/settings.local.json no longer gives "rec" (a file that does not parse gives nothing); fix it, or set "rec": "off" there')
+  expect(holdToast('strict', 'project')).toBe('alfred-mods: REC stays strict - .claude/settings.json no longer gives "rec" (a file that does not parse gives nothing); fix it, or set "rec": "off" there')
 })

@@ -129,3 +129,82 @@ test('with leave_out_skipped_hooks no ConfigChange hook is registered', { option
   await clock.advance(30_000)
   expect(band().mode).toBe('calm')
 })
+
+// S3's REC hold: a file that set REC and goes quiet (a typo drops it whole, F5) does not unmask a running recording
+const HOLD_LOCAL = 'alfred-mods: REC stays on - .claude/settings.local.json no longer gives "rec" (a file that does not parse gives nothing); fix it, or set "rec": "off" there'
+
+async function holding($: Engine, on: On) {
+  const kit = await start($, on, { sources: { local: mod({ rec: 'on' }), user: mod({ rec: 'off' }) } })
+  expect(kit.rec().level).toBe('on')
+  delete kit.sources.local['alfred-mods']
+  await $.classic.ConfigChange({ source: 'local_settings' })
+  await kit.clock.advance(0)
+  return kit
+}
+
+test('a local on over a user off holds when the local file goes quiet', async ($, on) => {
+  const { rec, toasts, clock } = await holding($, on)
+  expect(rec().level).toBe('on')
+  expect(toasts).toEqual([HOLD_LOCAL])
+  await $.classic.ConfigChange({ source: 'user_settings' })
+  await clock.advance(30_000)
+  expect(rec().level).toBe('on')
+  expect(toasts).toEqual([HOLD_LOCAL])
+})
+
+test('the file answering ends the hold', async ($, on) => {
+  const { rec, toasts, clock, sources } = await holding($, on)
+  sources.local['alfred-mods'] = { rec: 'off' }
+  await $.classic.ConfigChange({ source: 'local_settings' })
+  await clock.advance(0)
+  expect(rec().level).toBe('off')
+  expect(toasts).toEqual([HOLD_LOCAL, 'REC off'])
+})
+
+test('a higher file lowers at once', async ($, on) => {
+  const { rec, toasts, clock, sources } = await start($, on, { sources: { user: mod({ rec: 'on' }) } })
+  sources.local['alfred-mods'] = { rec: 'off' }
+  await $.classic.ConfigChange({ source: 'local_settings' })
+  await clock.advance(0)
+  expect(rec().level).toBe('off')
+  expect(toasts).toEqual(['REC off'])
+})
+
+test('a project strict that goes quiet holds, and its off ends it', async ($, on) => {
+  const { rec, toasts, clock, sources } = await start($, on, { sources: { project: mod({ rec: 'strict' }), user: mod({ rec: 'on' }) } })
+  expect(rec().level).toBe('strict')
+  delete sources.project['alfred-mods']
+  await clock.advance(30_000)
+  expect(rec().level).toBe('strict')
+  expect(toasts).toEqual(['alfred-mods: REC stays strict - .claude/settings.json no longer gives "rec" (a file that does not parse gives nothing); fix it, or set "rec": "off" there'])
+  sources.project['alfred-mods'] = { rec: 'off' }
+  await clock.advance(30_000)
+  expect(rec().level).toBe('off')
+})
+
+test('a /clear keeps the hold', async ($, on) => {
+  const { rec } = await holding($, on)
+  await $.classic.SessionStart({ source: 'clear' })
+  expect(rec().level).toBe('on')
+})
+
+test('a new run ends the hold', async ($, on) => {
+  const { rec, toasts } = await holding($, on)
+  await $.session.start(START)
+  expect(rec().level).toBe('off')
+  expect(toasts).toEqual([HOLD_LOCAL])
+})
+
+test('a change found after the first read toasts REC\'s status', async ($, on) => {
+  const { toasts, clock, sources } = await start($, on)
+  expect(toasts).toEqual([])
+  sources.user['alfred-mods'] = { rec: 'on' }
+  await clock.advance(30_000)
+  expect(toasts).toEqual(['● REC on · hiding keys · emails · phones'])
+})
+
+test('the session\'s first read toasts nothing, REC on included', async ($, on) => {
+  const { rec, toasts } = await start($, on, { sources: { user: mod({ rec: 'on' }) } })
+  expect(rec().level).toBe('on')
+  expect(toasts).toEqual([])
+})

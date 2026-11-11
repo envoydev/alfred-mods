@@ -99,3 +99,21 @@ export function legacyOf(raw: { band: unknown; place: unknown; tools: unknown; q
   }
   return out
 }
+
+// The order a hold compares sources in, highest first
+const ORDER: readonly From[] = ['policy', 'flag', 'local', 'project', 'user', 'legacy', 'default']
+
+// S3's one departure, REC's hold: after the session's first read, a lower level lowers REC only when it comes from the
+// source that set the level in force, or one above it. From a lower source - the file that set it gives no valid "rec"
+// any more, which a typo that drops the whole file also does - the level in force holds.
+export function holdRec(inForce: { level: Level; from: From } | null, next: { level: Level; from: From }): { level: Level; from: From; isHeld: boolean } {
+  if (inForce === null || LEVELS.indexOf(next.level) >= LEVELS.indexOf(inForce.level) || ORDER.indexOf(next.from) <= ORDER.indexOf(inForce.from)) {
+    return { ...next, isHeld: false }
+  }
+  return { ...inForce, isHeld: true }
+}
+
+// S3's toast for a hold, once per hold
+export function holdToast(level: Level, from: From): string {
+  return `alfred-mods: REC stays ${level} - ${nameOf(from)} no longer gives "rec" (a file that does not parse gives nothing); fix it, or set "rec": "off" there`
+}

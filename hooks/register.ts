@@ -38,7 +38,7 @@ import type { Close } from './steptime.ts'
 import { agentsLines, cacheLines, nowLines, tabBar, timelineLines, toolsLines, usageLines } from './tabs.ts'
 import { classify, fold, targetOf, toolKey } from './outcome.ts'
 import { LEVELS, REC_HELP, addWord, parseLevel, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec.ts'
-import { DEFAULTS, SOURCES, legacyOf, resolve } from './settings.ts'
+import { DEFAULTS, SOURCES, holdRec, holdToast, legacyOf, resolve } from './settings.ts'
 import type { From, Resolved, Source, Values } from './settings.ts'
 import { baseName, dropPassed, folderOf, gitDirOf, headBranch, nextWindows, parentOf, storedWindows } from './startup.ts'
 import type { CallFacts } from './outcome.ts'
@@ -1016,8 +1016,17 @@ async function loadSettingsNow($: EngineInterface, isStart: boolean): Promise<vo
   })
   const r = resolve(layers, legacy)
   settingsMem.resolved = r
-  settingsMem.rec = { level: r.values.rec, from: r.from.rec }
+  // REC's hold (S3), told once per hold; a level that changes after the session's first read is told as /rec told it
+  const before = settingsMem.rec
+  const held = holdRec(before, { level: r.values.rec, from: r.from.rec })
+  settingsMem.rec = { level: held.level, from: held.from }
+  if (!held.isHeld) settingsMem.isHoldTold = false
+  else if (!settingsMem.isHoldTold) {
+    settingsMem.isHoldTold = true
+    toast($, holdToast(held.level, held.from))
+  }
   await loadRec($)
+  if (before !== null && before.level !== held.level) toast($, recStatus(held.level, recMem.words.length))
   await loadQuiet($)
   await loadBand($)
   await loadHandoff($)
@@ -2039,11 +2048,9 @@ export const register: Register = (on, options) => {
     }
     const target = word === '' ? (stored === 'off' ? 'on' : stored) : LEVELS.find(l => l === word)
     if (target === undefined) return { text: mask(REC_HELP) }
-    const before = recLevel()
     if (target !== stored) await $.store.set('settings:rec', target)
     await loadSettings($)
     const status = recStatus(target, recMem.words.length)
-    if (target !== before) toast($, status)
     return { text: mask(target === stored ? status : `${status}\n${OTHER_SESSIONS}`) }
   })
 
