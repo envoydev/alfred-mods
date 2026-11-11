@@ -216,8 +216,22 @@ skills  superpowers:brainstorming ×1 · solve-task ×2 · 57 of 60 listed
 ```
 
 - **The info line** sits under the gauges and above the needs-you line in every state, dim but for the model. As the
-  width runs out its items go in this order: the times (Claude's first), the toggle (the skills' count, then the
-  tools', then the arrow; while open, after the cache), the output speed, the cache, the session's time, the model.
+  width runs out its items go in this order: the version, the project and branch, the times (Claude's first), the
+  toggle (the skills' count, then the tools', then the arrow; while open, after the cache), the output speed, the
+  cache, the session's time, the model.
+- **From the first second** (the user, 2026-11-11: the band shows its data as soon as Claude starts): the full band
+  draws once the model or a stored window is known, before any prompt; calm still waits for the first reading.
+  `session.start` (and each start-over) reads `$.session.model()`, `$.session.version()` (`CC 2.1.322`) and the place:
+  `$.session.repo()` null is the working folder's name alone; else the folder holding `.git` at or above the working
+  folder (a worktree's `.git` file names its git folder) and its `HEAD` file's branch, or a detached commit's first 7
+  characters, as `alfred-mods git:(main)`; the 30 s poll re-reads that `HEAD`, or the whole place when
+  `$.session.cwd()` moved. No git process runs. A `/model` switch (`classic.PostModelSwitch`) names the new model at
+  once. Each turn's `session.measure` with windows stores them in `$.store` `usage:windows` (`{ at, windows }`, only
+  when a percent as shown, a kind or a reset changed: every write rewrites the file the machine's sessions share); a
+  session with none of its own shows the stored ones whose reset is ahead, each marked `≈`, in the band and the Usage
+  tab, and the tick drops each as its reset passes. The first reading after a request decides: its windows, or none
+  off a subscription, where a stored plan window would price the cache on the wrong tier. Left out: ctx before the first request and the effort before the first reply (no `$.http.fetch` or
+  `$.model` call), and RAM or the account, which the mods API does not give.
 - **The tools toggle** (the user, 2026-11-11: every tool by name, and the skills in context, collapsed and expandable):
   `[ <calls> tools · <k> skills ▸ ]`, the session's tool calls (Skill calls apart, agents' included) and the skills the
   main loop loaded; a letter hotkey `t`, never a digit, as a bare digit in an empty prompt presses a band button. Open
@@ -226,7 +240,10 @@ skills  superpowers:brainstorming ×1 · solve-task ×2 · 57 of 60 listed
   the listing's `57 of 60 listed` from the last breakdown; drawn only while the toggle is in view. A skill is in the
   main context from a main-loop Skill call that ended ok, or a `skill.prompt` with no Skill call behind it while no main
   turn runs (a `/name`); one mid-turn with none is a subagent's preload, and a `context: fork` skill is never in it. Short of rows, the open rows go first, from the last, then the info line. A /clear
-  empties the skills; the list outlives a compaction, as the mod has no word of what one drops. Where a managed plugin
+  empties the skills; the list outlives a compaction, as the mod has no word of what one drops. A resume or a branch
+  (`classic.SessionStart`, a start-over that is not a /clear, or a process whose first `$.state` holds no reading while
+  `$.session.turns()` is above 0) sets `meta.isResumed`: the context holds skills loaded before, which no API lists,
+  so the row reads `none seen since resume`, or the skills since with `since resume` after them. Where a managed plugin
   skips `skill.prompt`, a `/name` is missing from the list (README). Idle and healthy, the band is the gauge line and the info
   line, both dim, the times on the info line only. Today's cost follows the session's while line 2 fits, never on the
   narrow form; it is the mod's own count (F1 note).

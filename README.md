@@ -37,9 +37,10 @@ tool's column to keep its counts, and the Timeline leaves out the prompt's time 
 its tokens.
 
 By default the band has an info line under its gauges: the model and effort, the session's time, the average output
-speed, the cache, a toggle that counts the tool calls and the skills loaded, and the times of your last prompt and
-Claude's reply, `Sonnet 5.5 ◑ medium │ 59m │ ≈133 tok/s avg │ cache warm 54m │ [ 30 tools · 2 skills ▸ ] │ you 22:47 ·
-Claude 23:55`; while a turn runs, its first line counts the turn's tool calls, and the gauges add today's cost. A click
+speed, the cache, a toggle that counts the tool calls and the skills loaded, the times of your last prompt and
+Claude's reply, the project with its branch and Claude Code's version, `Sonnet 5.5 ◑ medium │ 59m │ ≈133 tok/s avg │
+cache warm 54m │ [ 30 tools · 2 skills ▸ ] │ you 22:47 · Claude 23:55 │ alfred-mods git:(main) │ CC 2.1.322`; while a
+turn runs, its first line counts the turn's tool calls, and the gauges add today's cost. A click
 on the toggle, or `t` with the band focused (ctrl+x tab), opens rows under the info line, kept open for every session
 until closed:
 
@@ -51,12 +52,21 @@ skills  superpowers:brainstorming ×1 · solve-task ×2 · 57 of 60 listed
 `tools` lists every tool by name with its calls, agents' calls included, an MCP tool as `<server>:<tool>`. `skills`
 lists the skills loaded into the main chat's context this conversation, by Claude's Skill tool or by you as `/name`
 (a subagent's Skill calls are on its Agents row, and a skill that runs forked is in its own subagent, never listed
-here), then how many skills the context's listing carries, of the session's. The open rows show while the toggle is
+here), then how many skills the context's listing carries, of the session's. A resumed or branched conversation
+still holds the skills loaded before it, which no mods API lists, so its row counts from the resume: `none seen since
+resume`, or the skills loaded since with `since resume` after them. The open rows show while the toggle is
 in view: at a narrow width, which drops the toggle, they close with it. Today's cost is the mod's own count on this
 machine: sessions it did not run in are not in it, so it can read lower than a status line's that counts every
 session. Items drop whole when the width runs out; when the band has fewer rows than it needs, as in fullscreen under
 a tall draft, the open rows go first, then the whole info line, so the line with its buttons stays in view. `/band calm` goes back to the
 two lines.
+
+The full band draws from the session's first second, before any prompt: the model, the session's time, the project
+and branch (read from git's own `HEAD` file, and again every 30 seconds for a checkout or a move to another folder)
+and the version, with the 5h and 7d windows the last turn on this machine stored, marked `≈15%` until this session's
+first reply brings its own, and only while their reset is still ahead; a session off a subscription, which has no
+windows, drops them at its first request. The context's fill waits for the first request (`ctx —`), and the effort
+for the first reply; nothing is fetched to get them sooner. The calm band waits for the first reading, as before.
 
 An agent whose last step stopped at the output limit ends its Agents row with `⚠ max_tokens`, and its result reads
 `result (cut off): …`, as the report ends mid-way. The Timeline's `spend` is the session's spend while the turn ran,

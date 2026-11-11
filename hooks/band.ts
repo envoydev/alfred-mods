@@ -6,6 +6,7 @@ import { bar, clock, duration, elapsed, fitLine, mins, modelParts, modelText, to
 import { pace, turnsLeft } from './forecast.ts'
 import { listedText, loadedTexts } from './parts.ts'
 import { narrowPlan, planLine, scoreSeg } from './planlines.ts'
+import { storedMark } from './startup.ts'
 import type { PlanView, ScoresView } from './plan.ts'
 import type { Runway } from './stack.ts'
 
@@ -58,8 +59,8 @@ const LABEL: Record<string, string> = { five_hour: '5h', seven_day: '7d' }
 
 export const pct = (n: number): string => `${Math.round(n)}%`
 
-// ' 45%' in its bar's threshold colour
-export const pctSeg = (n: number): Seg => ({ text: ` ${pct(n)}`, tone: toneOf(n) })
+// ' 45%' in its bar's threshold colour; ' ≈45%' with `mark` for a window an earlier session read
+export const pctSeg = (n: number, mark = ''): Seg => ({ text: ` ${mark}${pct(n)}`, tone: toneOf(n) })
 
 export function barSegs(percent: number): Seg[] {
   const [filled, empty] = bar(percent)
@@ -96,15 +97,16 @@ function gauges(b: BandInput): Line {
     const left = turnsLeft(b.turns.flatMap(t => (t.contextPercent === null ? [] : [t.contextPercent])), b.forecast?.at)
     if (left !== null) out.push({ text: ` ≈${left} turns`, tone: 'dim' })
   }
+  const mark = storedMark(u.windowsAt)
   for (const w of windowsInOrder(u.windows)) {
     sep()
     const label = LABEL[w.kind] ?? w.kind
     if (w.kind === 'five_hour') {
-      out.push({ text: `${label} `, tone: 'usage' }, ...barSegs(w.percentUsed), pctSeg(w.percentUsed), ...resetSegs(w))
+      out.push({ text: `${label} `, tone: 'usage' }, ...barSegs(w.percentUsed), pctSeg(w.percentUsed, mark), ...resetSegs(w))
       const p = fiveHourPace(b)
       if (p === 'on-pace') out.push({ text: ' on pace', tone: 'ok' })
       else if (p !== null) out.push({ text: ` full ≈${clock(p.limitAt)}`, tone: 'warn' })
-    } else out.push({ text: `${label} `, tone: 'usage' }, { text: pct(w.percentUsed), tone: toneOf(w.percentUsed) }, ...resetSegs(w))
+    } else out.push({ text: `${label} `, tone: 'usage' }, { text: `${mark}${pct(w.percentUsed)}`, tone: toneOf(w.percentUsed) }, ...resetSegs(w))
   }
   if (u.costUsd !== null) {
     sep()
@@ -129,7 +131,7 @@ function narrowGauges(u: Usage, runway: Runway | null | undefined): Line {
   out.push(...ctxSegs(u, runway))
   for (const w of windowsInOrder(u.windows)) {
     sep()
-    out.push({ text: `${LABEL[w.kind] ?? w.kind} `, tone: 'usage' }, ...barSegs(w.percentUsed), pctSeg(w.percentUsed), ...resetSegs(w))
+    out.push({ text: `${LABEL[w.kind] ?? w.kind} `, tone: 'usage' }, ...barSegs(w.percentUsed), pctSeg(w.percentUsed, storedMark(u.windowsAt)), ...resetSegs(w))
   }
   return out
 }
@@ -190,8 +192,7 @@ function toggleForms(b: BandInput): Line[] {
 export function toolRows(b: BandInput): Line[] {
   const used = toolsByCalls(b.stats)
   const tools: Seg[] = used.length === 0 ? [{ text: 'none', tone: 'dim' }] : used.map(([key, s]) => ({ text: `${key} ×${s.calls}` }))
-  const loaded = loadedTexts(b.meta.skills)
-  const skills: Seg[] = loaded.length === 0 ? [{ text: 'none loaded', tone: 'dim' }] : loaded.map(text => ({ text, tone: 'skill' }))
+  const skills = skillSegs(b.meta.skills, b.meta.isResumed === true)
   if (b.listing !== undefined && b.listing !== null) skills.push({ text: listedText(b.listing), tone: 'dim' })
   const label = (text: string): Seg => ({ text: text.padEnd(ROW_LABEL), tone: 'dim' })
   const under: Seg = { text: ' '.repeat(ROW_LABEL) }
@@ -199,6 +200,15 @@ export function toolRows(b: BandInput): Line[] {
 }
 
 const ROW_LABEL = 8
+
+// The skills loaded in the main chat; after a resume or a branch, counted from it, since the ones loaded before are in
+// the context but never seen (a side agent's note, 2026-11-11)
+export function skillSegs(skills: Record<string, number> | undefined, isResumed: boolean): Seg[] {
+  const loaded = loadedTexts(skills)
+  if (loaded.length === 0) return [{ text: isResumed ? 'none seen since resume' : 'none loaded', tone: 'dim' }]
+  const since: Seg[] = isResumed ? [{ text: 'since resume', tone: 'dim' }] : []
+  return [...loaded.map((text): Seg => ({ text, tone: 'skill' })), ...since]
+}
 
 // Items after a label, joined by ' · ' while they fit; a row that wraps starts with `under`, as wide as the label, so
 // its items line up under the first. An item wider than a row has one to itself, and the draw cuts it.
@@ -256,6 +266,13 @@ function infoItems(b: BandInput): Item[] {
   // The running turn's prompt while one runs; the last turn's, as line 1 of the calm band shows it, otherwise
   const parts = timeParts(b, 2, true)
   if (parts.length > 0) items.push({ keep: 1, forms: parts.map((_, i) => dimText(parts.slice(0, parts.length - i).join(' · '))) })
+  // Where the session runs and Claude Code's version, from the first second; the first to go when the width runs out
+  const place = b.meta.place
+  if (place !== undefined) {
+    const branch: Line = place.branch === null ? [] : [{ text: ` git:(${place.branch})`, tone: 'dim' }]
+    items.push({ keep: 0.8, forms: [[{ text: place.project, tone: 'dim' }, ...branch]] })
+  }
+  if (b.meta.version !== undefined) items.push({ keep: 0.5, forms: [dimText(`CC ${b.meta.version}`)] })
   return items
 }
 
@@ -437,7 +454,9 @@ function bandRows(b: BandInput, withInfo: boolean, toolRowsKept: number): Line[]
 
 function bandBody(b: BandInput, isNarrow: boolean, withInfo: boolean, toolRowsKept: number): Line[] {
   const u = b.usage
-  if (b.turns.length === 0 && u.percent === null) return []
+  // Before the first reading the calm band waits; the full band draws once the model or a stored window is known
+  const isFullKnown = b.mode === 'full' && (b.meta.model !== null || u.windows.length > 0)
+  if (b.turns.length === 0 && u.percent === null && !isFullKnown) return []
   const invalid: Line = b.planInvalid ? [{ text: ' │ ', tone: 'dim' }, { text: 'plan file invalid', tone: 'warn' }] : []
   const gaugeLine = isNarrow ? narrowGauges(u, b.runway) : withToday(b, gauges(b), invalid)
   const line2 = [...gaugeLine, ...invalid]

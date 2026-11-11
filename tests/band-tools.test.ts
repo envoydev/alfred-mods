@@ -174,6 +174,45 @@ test('a /clear empties the skills in context', async ($, on) => {
   expect(skillsOf(state) ?? {}).toEqual({})
 })
 
+// A resumed or branched conversation holds skills loaded before the mod watched it (a side agent's note, 2026-11-11)
+const metaOf = (state: { get(key: string): unknown }): Meta | undefined => state.get('meta') as Meta | undefined
+
+test('a resume or a branch marks the skills as counted from it; a /clear does not', async ($, on) => {
+  stubAll(on, { now: NOW })
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  expect(metaOf(state)?.isResumed).toBeUndefined()
+  for (const source of ['resume', 'fork'] as const) {
+    await $.classic.SessionStart({ source })
+    expect(metaOf(state)?.isResumed).toBe(true)
+  }
+  await $.classic.SessionStart({ source: 'clear' })
+  expect(metaOf(state)?.isResumed).toBeUndefined()
+})
+
+// `claude --resume` where a managed plugin keeps classic.SessionStart from the mod: the transcript has prompts the mod
+// never saw. A reload keeps $.state, and its readings with it, so it is not one.
+test('a process that starts on a conversation with prompts is a resume; a reload is not', async ($, on) => {
+  const kit = stubAll(on, { now: NOW })
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  expect(metaOf(state)?.isResumed).toBeUndefined()
+  kit.session.turns = 3
+  await $.session.start(START)
+  expect(metaOf(state)?.isResumed).toBeUndefined()
+})
+
+test('a process that starts on a resumed conversation counts its skills from the start', async ($, on) => {
+  const kit = stubAll(on, { now: NOW })
+  kit.session.turns = 3
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  expect(metaOf(state)?.isResumed).toBe(true)
+})
+
 // The skill listing from the context's breakdown: how many skills it carries of the session's, and its tokens
 const SKILLS = Array.from({ length: 3 }, (_, i) => ({ name: `s-${i}`, source: 'userSettings' as const, tokens: 80 }))
 const withListing = (b: Partial<SessionContextBreakdown> = {}): SessionUsage => ({
@@ -217,6 +256,15 @@ for (const surface of SURFACES) {
     expect((await usageRows($, surface)).find(l => l.startsWith('Skills'))).toBe(`Skills      none loaded · 57 of 60 listed · ${tokens(3200)}`)
     await $.tool.call({ tool: 'Skill', skill: 'solve-task' })
     expect((await usageRows($, surface)).find(l => l.startsWith('Skills'))).toBe(`Skills      solve-task ×1 · 57 of 60 listed · ${tokens(3200)}`)
+  })
+
+  test(`after a resume the Usage tab's Skills row counts from it (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
+    stubAll(on, { now: NOW, usage: withListing() })
+    engine(on)
+    await $.session.start(START)
+    await $.classic.SessionStart({ source: 'resume' })
+    await measure($)
+    expect((await usageRows($, surface)).find(l => l.startsWith('Skills'))).toBe(`Skills      none seen since resume · 57 of 60 listed · ${tokens(3200)}`)
   })
 
   // The review of 2026-11-11: in a docked pane the row wraps, so the listing is never cut off
