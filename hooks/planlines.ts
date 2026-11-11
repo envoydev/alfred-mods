@@ -49,6 +49,29 @@ export function planLine(v: PlanView, columns: number): Line {
   return [{ text: `${cut(title, columns - widthOf(rest) - 1)} ` }, ...rest]
 }
 
+// The full band's plan row after its label (the owner's target, 2026-11-11): 'Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update
+// interceptor', a dim ' +1' for each further running step, ' · done ✓' once finished, the count alone with none
+// running. Past `columns` the step's title is cut, then the step goes, then the plan's title is cut.
+export function planRowParts(v: PlanView, columns: number): Line {
+  const title = fitLine(v.title, 80)
+  const count: Line = [{ text: ' ' }, ...planBar(v.percent), { text: ` ${v.finished}/${v.total}` }]
+  const first = v.running[0]
+  if (v.isFinished) {
+    const done: Line = [...count, { text: ' · done ' }, { text: '✓', tone: 'ok' }]
+    return widthOf([{ text: title }, ...done]) <= columns ? [{ text: title }, ...done] : [{ text: cut(title, columns - widthOf(done)) }, ...done]
+  }
+  const bare: Line = [{ text: title }, ...count]
+  if (first === undefined) return widthOf(bare) <= columns ? bare : [{ text: cut(title, columns - widthOf(count)) }, ...count]
+  const more: Line = v.running.length > 1 ? [{ text: ` +${v.running.length - 1}`, tone: 'dim' }] : []
+  const lead = ` · ▸ ${fitLine(first.step.id, 12)} `
+  const stepTitle = fitLine(first.step.title, 80)
+  const full: Line = [...bare, { text: `${lead}${stepTitle}` }, ...more]
+  if (widthOf(full) <= columns) return full
+  const room = columns - widthOf(bare) - widthOf([{ text: lead }, ...more])
+  if (room >= 4) return [...bare, { text: `${lead}${cut(stepTitle, room)}` }, ...more]
+  return widthOf(bare) <= columns ? bare : [{ text: cut(title, columns - widthOf(count)) }, ...count]
+}
+
 // Under 100 columns: '⟳ S4 12m · 2 agents', the first running step's id and its time
 export function narrowPlan(v: PlanView, agents: number): Line {
   const first = v.running[0]

@@ -277,7 +277,7 @@ Build the mods ▰▰▰▰▰ done ✓ in 27m
 - **The line:** the plan's title (`Tasks` for the task list), the one bar by percent done, steps done of all, the percent, working time so far, the time left marked ≈, and ▶ the current step. Once the last step is done, the second form.
 - **Time left:** the remaining steps' estimates calibrated by the actual time of finished steps; for the task list, which has no estimates, the mean time of finished tasks times those left, shown once 3 are done.
 - **Time:** working time, as step time is counted under Time per step: waits for you and idle time between turns are left out.
-- **Its place:** line 1 while a plan runs. Phase 3's plan settles how it shares line 1 with agents and the running Bash.
+- **Its place:** line 1 while a plan runs. Phase 3's plan settles how it shares line 1 with agents and the running Bash. The full band gives it a row of its own above the info line instead, `plan:    Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update interceptor` (the owner's target, 2026-11-11): the title, the bar, steps done, the first running step's id and title with ` +N` for more, or `done ✓`; the percent and the times stay in the Plan tab, and line 1 keeps the turn. Short of rows it goes after the open rows, before the info line.
 
 **Spinner suffix:** on the main loop's spinner, its current action and context, such as `Grep AuthService · 17%`, and `· 2 agents` while agents run. Background agents draw no spinner of their own (probe, one spinner instance per session), so an agent's current action shows in its Agents row and the Now tab; a spinner whose `requestId` is an agent's id gets that agent's suffix if one ever draws. (agent)
 

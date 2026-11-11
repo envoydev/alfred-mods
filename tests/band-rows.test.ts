@@ -9,6 +9,8 @@ import { agentSegs, bandLines, ruleSegs, toggleForms, toolRows } from '../hooks/
 import type { BandInput, Line } from '../hooks/band.ts'
 import { widthOf } from '../hooks/format.ts'
 import { SPAWN, START, engine, rows, stubAll, watchState } from './kit.ts'
+import { FIVE, FIVE_OVERHEAD, FIVE_TIMES, NOW as PLAN_NOW, planOf } from './plans.ts'
+import { planView } from '../hooks/plan.ts'
 
 import type { AgentRow, AgentStatus, Cache, Meta, ToolStat, Turn } from '../types'
 
@@ -329,3 +331,61 @@ test('a name wider than the band at 24 columns is cut by the draw; no drawn row 
   expect(drawn.some(l => l.startsWith('agents:'))).toBe(true)
   await ui.unmount()
 })
+
+// The owner's target, 2026-11-11 (the user's answer): in full mode the plan has a row of its own above the info line,
+// 'plan:' and the rows' label width, its title, bar and count, then the first running step; line 1 no longer carries it
+const planNamed = (changes: Parameters<typeof planOf>[0] = {}) => planView(planOf(changes), FIVE_TIMES, FIVE_OVERHEAD, {}, PLAN_NOW)
+const planRowOf = (lines: Line[]): string | undefined => texts(lines).find(l => l.startsWith('plan:'))
+const WORKING = { isWorking: true, live: { turnId: 't2', startedAt: NOW - 30_000, tools: 3, failures: 0, running: [], promptAt: NOW - 30_000 } }
+
+test('the plan row is the target shape, above the info line, and line 1 keeps the turn', () => {
+  const lines = texts(bandLines(input({ plan: planNamed(), isToolsOpen: true, ...WORKING })))
+  const at = lines.findIndex(l => l.startsWith('plan:'))
+  expect(lines[at]).toBe('plan:    Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update interceptor')
+  expect(lines[at + 1]?.startsWith('Sonnet 5.5')).toBe(true)
+  expect(lines[0]).toBe('⟳ Turn 2 · 0:30 · 3 tools')
+})
+
+test('two steps running add a dim +1; a finished plan reads done ✓; with none running, the count alone', () => {
+  const two = bandLines(input({ plan: planNamed({ S5: 'in_progress' }) }))
+  expect(planRowOf(two)).toBe('plan:    Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update interceptor +1')
+  const plus = two.find(l => text(l).startsWith('plan:'))?.at(-1)
+  expect(plus).toEqual({ text: ' +1', tone: 'dim' })
+  expect(planRowOf(bandLines(input({ plan: planNamed({ S4: 'done', S5: 'done' }) })))).toBe('plan:    Token refresh ▰▰▰▰▰ 5/5 · done ✓')
+  expect(planRowOf(bandLines(input({ plan: planNamed({ S4: 'pending' }) })))).toBe('plan:    Token refresh ▰▰▰▱▱ 3/5')
+})
+
+test('idle with a failure, line 1 carries no PLAN in full mode; the calm band keeps it there and draws no row', () => {
+  const full = bandLines(input({ plan: planNamed(), newFailures: 1 }))
+  expect(text(full[0] ?? [])).not.toContain('PLAN')
+  expect(planRowOf(full)).toBeDefined()
+  const calm = bandLines(input({ mode: 'calm', plan: planNamed(), newFailures: 1 }))
+  expect(text(calm[0] ?? [])).toContain('PLAN 3/5')
+  expect(planRowOf(calm)).toBeUndefined()
+})
+
+test('the plan row shows with the rows closed, and dims with the band while calm', () => {
+  const lines = bandLines(input({ plan: planNamed(), isToolsOpen: false }))
+  const row = lines.find(l => text(l).startsWith('plan:')) ?? []
+  expect(row.length).toBeGreaterThan(0)
+  for (const seg of row) if ('text' in seg) expect(seg.tone).toBe('dim')
+})
+
+test('short of rows, the plan row goes after the tool rows and before the info line', () => {
+  const b = (maxRows?: number) => bandLines(open({ columns: 100, plan: planNamed(), ...(maxRows === undefined ? {} : { maxRows }) }))
+  expect(b()).toHaveLength(9)
+  expect(planRowOf(b(4))).toBeDefined()
+  expect(labelsOf(b(4))).toEqual([])
+  expect(tools(b(4))).toBeDefined()
+  expect(planRowOf(b(3))).toBeUndefined()
+  expect(b(3)).toHaveLength(3)
+})
+
+for (const columns of [24, 48, 100]) {
+  test(`at ${columns} columns the plan row fits: the step's title is cut, then the step goes, then the title`, () => {
+    const row = bandLines(input({ columns, plan: planNamed() })).find(l => text(l).startsWith('plan:')) ?? []
+    expect(row.length).toBeGreaterThan(0)
+    expect(widthOf(row)).toBeLessThanOrEqual(columns)
+  })
+}
+

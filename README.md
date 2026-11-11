@@ -40,8 +40,10 @@ By default the band has an info line under its gauges: the model and effort, the
 speed, the cache, a toggle that counts what the rows under it list, the times of your last prompt and Claude's reply,
 the project with its branch and Claude Code's version, `Sonnet 5.5 ◑ medium │ 59m │ ≈133 tok/s avg │ cache warm 54m │
 [ 45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ▾ ] │ you 22:47 · Claude 23:55 │ alfred-mods git:(main) │ CC
-2.1.322`; while a turn runs, its first line counts the turn's tool calls, and the gauges add today's cost. Four rows
-under the info line are open from the first draw:
+2.1.322`; while a turn runs, its first line counts the turn's tool calls, and the gauges add today's cost. While a plan
+runs, a row above the info line shows it, `plan:    Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update interceptor`: its title,
+bar, steps done and the step in progress (the Plan tab has the percent and the times). Four rows under the info line
+are open from the first draw:
 
 ```text
 tools:   Bash ×32 │ AskUserQuestion ×4 │ Read ×4 │ Write ×4 │ Grep ×1
@@ -66,8 +68,8 @@ is the mod's own count on this machine: sessions it did not run in are not in it
 line's that counts every session. When the width runs out, the info line wraps onto a second row between items, and
 items drop whole only when two rows cannot hold them (the version first, then the project and branch, then the times);
 when the band has fewer rows than it needs, as in fullscreen under a tall draft, that second row goes first, then the
-open rows from the last (`rules:`, `agents:`, `skills:`, `tools:`), then the whole info line, so the line with its
-buttons stays in view. `/band calm` goes back to the two lines.
+open rows from the last (`rules:`, `agents:`, `skills:`, `tools:`), then the plan row, then the whole info line, so the
+line with its buttons stays in view. `/band calm` goes back to the two lines.
 
 The full band draws from the session's first second, before any prompt: the model, the session's time, the project
 and branch (read from git's own `HEAD` file, and again every 30 seconds for a checkout or a move to another folder)
