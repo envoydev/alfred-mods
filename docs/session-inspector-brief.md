@@ -219,17 +219,22 @@ rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ w
 
 - **The info line** sits under the gauges and above the needs-you line in every state, dim but for the model. As the
   width runs out it wraps onto a second row between items (a side agent's note the user passed on, 2026-11-11: every
-  item, as claude-hud spreads them over its lines); past two rows its items go in this order: the version, the project and branch, the times (Claude's first), the
+  item, as claude-hud spreads them over its lines); past two rows its items go in this order: the version, the place (project, folder and branch), the times (Claude's first), the
   toggle (the rules' count, then the agents', then the skills', then the tools', then the arrow; while open, after the
   cache), the output speed, the
   cache, the session's time, the model.
 - **From the first second** (the user, 2026-11-11: the band shows its data as soon as Claude starts): the full band
   draws once the model or a stored window is known, before any prompt; calm still waits for the first reading.
   `session.start` (and each start-over) reads `$.session.model()`, `$.session.version()` (`CC 2.1.322`) and the place:
-  `$.session.repo()` null is the working folder's name alone; else the folder holding `.git` at or above the working
-  folder (a worktree's `.git` file names its git folder) and its `HEAD` file's branch, or a detached commit's first 7
-  characters, as `alfred-mods git:(main)`; the 30 s poll re-reads that `HEAD`, or the whole place when
-  `$.session.cwd()` moved. No git process runs. A `/model` switch (`classic.PostModelSwitch`) names the new model at
+  the project is the name of `$.session.root()`, the folder the session started in (a `/cd` or a worktree move changes
+  it, a shell `cd` does not); the folder is `$.session.cwd()` relative to it, or `…/<name>` outside it, and none when
+  the two are the same (the user, 2026-11-11: 'I want to see current folder where claude code is working right now
+  and to see what project session is started'); the branch is the `HEAD` file's of the folder holding `.git` at or
+  above `cwd` (a worktree's `.git` file names its git folder), or a detached commit's first 7 characters, as
+  `alfred-mods ▸ hooks git:(main)`; with no root, the repo folder's name or the working folder's, as before. The
+  folder keeps its last parts after `…/` within 40 cells, and narrows to `…/<last>` before the place drops whole. The
+  30 s poll re-reads that `HEAD`, or the whole place when `$.session.cwd()` moved, and a main-thread Bash call
+  re-reads it at once after it ends, so a `cd` shows within the turn. No git process runs. A `/model` switch (`classic.PostModelSwitch`) names the new model at
   once. Each turn's `session.measure` with windows stores them in `$.store` `usage:windows` (`{ at, windows }`, only
   when a percent as shown, a kind or a reset changed: every write rewrites the file the machine's sessions share); a
   session with none of its own shows the stored ones whose reset is ahead, each marked `≈`, in the band and the Usage

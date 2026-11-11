@@ -40,7 +40,10 @@ By default the band has an info line under its gauges: the model and effort, the
 speed, the cache, a toggle that counts what the rows under it list, the times of your last prompt and Claude's reply,
 the project with its branch and Claude Code's version, `Sonnet 5.5 ◑ medium │ 59m │ ≈133 tok/s avg │ cache warm 54m │
 [ 45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ▾ ] │ you 22:47 · Claude 23:55 │ alfred-mods git:(main) │ CC
-2.1.322`; while a turn runs, its first line counts the turn's tool calls, and the gauges add today's cost. While a plan
+2.1.322`; while a turn runs, its first line counts the turn's tool calls, and the gauges add today's cost. The project
+is the folder the session started in, and the folder Claude works in follows it when a Bash `cd` moves away,
+`alfred-mods ▸ hooks git:(main)` (a folder outside the project shows as `…/<name>`); it is re-read after each Bash call
+and every 30 s. While a plan
 runs, a row above the info line shows it, `plan:    Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update interceptor`: its title,
 bar, steps done and the step in progress (the Plan tab has the percent and the times). Four rows under the info line
 are open from the first draw:
@@ -66,7 +69,7 @@ click on the toggle, or `t` with the band focused (ctrl+x tab), closes the rows 
 The rows show while the toggle is in view: at a narrow width, which drops the toggle, they close with it. Today's cost
 is the mod's own count on this machine: sessions it did not run in are not in it, so it can read lower than a status
 line's that counts every session. When the width runs out, the info line wraps onto a second row between items, and
-items drop whole only when two rows cannot hold them (the version first, then the project and branch, then the times);
+items drop whole only when two rows cannot hold them (the version first, then the place, then the times);
 when the band has fewer rows than it needs, as in fullscreen under a tall draft, that second row goes first, then the
 open rows from the last (`rules:`, `agents:`, `skills:`, `tools:`), then the plan row, then the whole info line, so the
 line with its buttons stays in view. `/band calm` goes back to the two lines.

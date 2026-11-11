@@ -389,3 +389,22 @@ for (const columns of [24, 48, 100]) {
   })
 }
 
+// The user, 2026-11-11: the place reads 'project ▸ folder git:(branch)'; a folder past 40 cells keeps its last parts
+// after '…/', and a narrower form keeps only its last part
+const placed = (place: NonNullable<BandInput['meta']['place']>, columns = 200) =>
+  texts(bandLines(input({ columns, meta: { ...input().meta, place } }))).join('\n')
+
+test('the place shows the session project, then the folder Claude works in, then the branch', () => {
+  expect(placed({ project: 'Example', folder: 'Frontend', branch: 'develop' })).toContain('Example ▸ Frontend git:(develop)')
+  expect(placed({ project: 'frontend', branch: 'develop' })).toContain('frontend git:(develop)')
+  expect(placed({ project: 'frontend', branch: 'develop' })).not.toContain('frontend ▸')
+  const deep = placed({ project: 'w', folder: 'packages/web-client/src/app/features/billing/invoices', branch: 'main' })
+  expect(deep).toContain('w ▸ …/src/app/features/billing/invoices git:(main)')
+})
+
+test("narrow, the place keeps the folder's last part before it drops whole", () => {
+  const place = { project: 'Example', folder: 'Frontend/src/app', branch: 'develop' }
+  expect(placed(place, 100)).toContain('Example ▸ Frontend/src/app git:(develop)')
+  expect(placed(place, 74)).toContain('Example ▸ …/app git:(develop)')
+})
+

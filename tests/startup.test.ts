@@ -6,7 +6,7 @@ import type { RenderSurface, SessionUsage } from 'claude-code'
 
 import { PRESENTATION, START, SWITCH, engine, rows, stubAll, watchState } from './kit.ts'
 
-import { nextWindows } from '../hooks/startup.ts'
+import { folderOf, nextWindows } from '../hooks/startup.ts'
 import type { Meta, Usage } from '../types'
 
 const SURFACES = ['terminal', 'desktop'] as const
@@ -103,6 +103,53 @@ test('outside a repository the place is the folder alone', async ($, on) => {
   engine(on)
   await $.session.start(START)
   expect(metaOf(state).place).toEqual({ project: 'notes', branch: null })
+})
+
+// The user, 2026-11-11: the project the session started in, and the folder Claude works in now. A Bash `cd` moves
+// `$.session.cwd()` and leaves `$.session.root()` (live, 2.1.322), so the place reads both
+test('a Bash cd under the project shows as project ▸ folder after the call, with the branch of its repository', async ($, on) => {
+  const opts = { now: NOW, usage: NO_LIMITS, repo: { root: '/w' }, root: '/w', cwd: '/w', files: { '.git/HEAD': { text: 'ref: refs/heads/main\n', mtimeMs: 0 } } }
+  const kit = stubAll(on, opts)
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  expect(metaOf(state).place).toEqual({ project: 'w', branch: 'main' })
+  opts.cwd = '/w/src/app'
+  await $.tool.call({ tool: 'Bash', command: 'cd src/app' })
+  await kit.clock.advance(0)
+  expect(metaOf(state).place).toEqual({ project: 'w', folder: 'src/app', branch: 'main' })
+  opts.cwd = '/w'
+  await $.tool.call({ tool: 'Bash', command: 'cd ../..' })
+  await kit.clock.advance(0)
+  expect(metaOf(state).place).toEqual({ project: 'w', branch: 'main' })
+})
+
+test('a session started outside git, now in a repository under it, keeps the project and shows the folder', async ($, on) => {
+  stubAll(on, {
+    now: NOW, usage: NO_LIMITS, repo: null, root: '/home/u/Example', cwd: '/home/u/Example/Frontend',
+    files: { 'Frontend/.git/HEAD': { text: 'ref: refs/heads/develop\n', mtimeMs: 0 } },
+  })
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  expect(metaOf(state).place).toEqual({ project: 'Example', folder: 'Frontend', branch: 'develop' })
+})
+
+test('a folder outside the project is named …/<its name>, never by a path above it', async ($, on) => {
+  stubAll(on, { now: NOW, usage: NO_LIMITS, repo: null, root: '/home/u/w', cwd: '/home/u/scratch' })
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  expect(metaOf(state).place).toEqual({ project: 'w', folder: '…/scratch', branch: null })
+})
+
+test('folderOf: inside the root its relative path, a Windows path folded by case; the root itself none', () => {
+  expect(folderOf('/w/src/app', '/w')).toBe('src/app')
+  expect(folderOf('/w', '/w')).toBeNull()
+  expect(folderOf('/w/', '/w')).toBeNull()
+  expect(folderOf('/wx', '/w')).toBe('…/wx')
+  expect(folderOf('C:\\Users\\u\\Example\\Frontend', 'c:\\users\\u\\example')).toBe('Frontend')
+  expect(folderOf('/', '/')).toBeNull()
 })
 
 test('with every read refused, the session starts as before', async ($, on) => {

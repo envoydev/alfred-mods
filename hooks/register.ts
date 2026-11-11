@@ -37,7 +37,7 @@ import type { Close } from './steptime.ts'
 import { agentsLines, cacheLines, nowLines, tabBar, timelineLines, toolsLines, usageLines } from './tabs.ts'
 import { classify, fold, targetOf, toolKey } from './outcome.ts'
 import { LEVELS, REC_HELP, addWord, parseLevel, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec.ts'
-import { baseName, dropPassed, gitDirOf, headBranch, nextWindows, parentOf, storedWindows } from './startup.ts'
+import { baseName, dropPassed, folderOf, gitDirOf, headBranch, nextWindows, parentOf, storedWindows } from './startup.ts'
 import type { CallFacts } from './outcome.ts'
 import type {
   AgentRow, Cache, CacheConfig, Credit, Failure, Handoff, Live, Loop, Meta, Outcome, Pace, Plan, PlanChange, Level, Plans, Quiet, BandSetting, BandMode, RecState, SaveResult, Scores, Stack, Tab, TaskItem, ToolStat, Totals, Turn, Usage, View,
@@ -338,21 +338,27 @@ async function findHead($: EngineInterface, cwd: string): Promise<{ dir: string;
 }
 
 const setPlace = (place: NonNullable<Meta['place']>) => (m: Meta): Meta =>
-  m.place?.project === place.project && m.place.branch === place.branch ? m : { ...m, place }
+  m.place?.project === place.project && m.place.folder === place.folder && m.place.branch === place.branch ? m : { ...m, place }
 
-// The project and branch: outside a repository the working folder alone; a refused read leaves no place
+// The session's project, the folder Claude works in when it is not the project's root, and the branch of the repository
+// holding that folder (the user, 2026-11-11): a Bash `cd` moves `$.session.cwd()` and leaves `$.session.root()`. With no
+// root read, the project is the repository's folder or the working folder, as before. A refused read leaves no place.
 async function readPlace($: EngineInterface): Promise<void> {
   const repo = await $.session.repo()
   const cwd = await $.session.cwd()
+  const root = await $.session.root().catch(() => null)
   placeMem.head = null
   placeMem.cwd = cwd
-  if (repo === null) {
-    await update($, meta, setPlace({ project: baseName(cwd), branch: null }))
+  const folder = root === null ? null : folderOf(cwd, root)
+  const at = folder === null ? {} : { folder }
+  if (repo === null && folder === null) {
+    await update($, meta, setPlace({ project: baseName(root ?? cwd), branch: null }))
     return
   }
   const found = await findHead($, cwd)
   placeMem.head = found?.head ?? null
-  await update($, meta, setPlace({ project: baseName(found?.dir ?? repo.root), branch: found?.branch ?? null }))
+  const project = root === null ? baseName(found?.dir ?? repo?.root ?? cwd) : baseName(root)
+  await update($, meta, setPlace({ project, ...at, branch: found?.branch ?? null }))
 }
 
 // A checkout since: the poll reads the HEAD file the place came from
@@ -1495,6 +1501,12 @@ export const register: Register = (on, options) => {
     const isWait = isAllWait(e.tool, call.agentId === null)
     if (isWait) await update($, credit, c => openWait(c, loop, e.tool_use_id, startedAt))
     const ran = await next(e)
+    // A `cd` in the main loop's Bash moves the folder Claude works in: the place is read again off the hook
+    if (e.tool === 'Bash' && call.agentId === null) {
+      $.clock.after(0, () => {
+        pollPlace($).catch(() => undefined)
+      })
+    }
     const text = ran.text ?? (typeof ran.result === 'string' ? ran.result : '')
     if (ran.isError === true && text !== '') keepError(e.tool_use_id, text)
     call.facts = {

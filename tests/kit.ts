@@ -11,6 +11,9 @@ export const NO_READING: SessionUsage = { startedAt: 0, context: { window: 200_0
 // `unplaced` is the reason a surface gives for leaving an opened pane undrawn; `store` is what earlier sessions kept
 type Options = {
   usage?: SessionUsage; sessionId?: string; cwd?: string; env?: Record<string, string>; now?: number; unplaced?: string
+  // The session's project root (`$.session.root()`); absent, the folder `cwd` names at each call, as a session that
+  // never moved off its root
+  root?: string
   store?: Record<string, unknown>
   // A read of `key` waits for `until` while it is set, as a slow store would
   holdStore?: { key: string; until: Promise<void> | null }
@@ -77,6 +80,7 @@ export function stubAll(on: On, o: Options = {}): {
   on('session.id', () => ({ value: session.id }))
   on('session.turns', () => ({ value: session.turns }))
   on('session.cwd', () => ({ value: o.cwd ?? '/w' }))
+  on('session.root', () => ({ value: o.root ?? o.cwd ?? '/w' }))
   on('session.model', () => (o.model === undefined ? { deny: 'test: no model' } : { value: o.model }))
   on('session.version', () => (o.version === undefined ? { deny: 'test: no version' } : { value: { version: o.version } }))
   on('session.repo', () => (o.repo === undefined ? { deny: 'test: no repo' } : { value: (o.repo === null ? null : { remote: null, internal: false, ...o.repo }) as never }))

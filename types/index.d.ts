@@ -38,7 +38,9 @@ export type Meta = {
   // The skills the main loop loaded into its context this conversation, by name, with how many times; absent before one
   skills?: Record<string, number>
   // The folder holding the repository (or the working folder outside one) and its branch, read at start and every 30 s
-  place?: { project: string; branch: string | null }
+  // `project`: the session's project root's name; `folder`: where Claude works when not that root, from it, or
+  // '…/<name>' outside it; `branch`: the branch of the repository holding that folder
+  place?: { project: string; folder?: string; branch: string | null }
   // Claude Code's version, read at start
   version?: string
   // A resumed or branched conversation: it holds skills loaded before the mod watched it, which no API lists

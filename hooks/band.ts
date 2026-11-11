@@ -259,6 +259,22 @@ export function agentSegs(rows: AgentRow[], types: Record<string, number> | unde
 }
 
 // The labels' width, so the items of every row line up, and the band rows' joiner, as the owner's target draws them
+// A folder past `max` cells: its last parts that fit after '…/', or its last part cut
+function fitFolder(folder: string, max: number): string {
+  if (widthOf([{ text: folder }]) <= max) return folder
+  const parts = folder.split('/')
+  let kept = parts.slice(-1)
+  for (let i = parts.length - 2; i >= 0; i--) {
+    const more = [parts[i] ?? '', ...kept]
+    if (widthOf([{ text: `…/${more.join('/')}` }]) > max) break
+    kept = more
+  }
+  return `…/${fitLine(kept.join('/'), max - 2)}`
+}
+
+// '…/<last part>' for a folder of several parts, else the folder
+const lastPart = (folder: string): string => (folder.includes('/') ? `…/${folder.split('/').pop() ?? ''}` : folder)
+
 const ROW_LABEL = 9
 export const ROW_JOIN = ' │ '
 
@@ -336,10 +352,15 @@ function infoItems(b: BandInput): Item[] {
   const parts = timeParts(b, 2, true)
   if (parts.length > 0) items.push({ keep: 1, forms: parts.map((_, i) => dimText(parts.slice(0, parts.length - i).join(' · '))) })
   // Where the session runs and Claude Code's version, from the first second; the first to go when the width runs out
+  // 'project ▸ folder git:(branch)': the session's project, then the folder Claude works in when it is not the project's
+  // root (the user, 2026-11-11), past 40 cells its last parts after '…/', and narrower its last part alone
   const place = b.meta.place
   if (place !== undefined) {
     const branch: Line = place.branch === null ? [] : [{ text: ` git:(${place.branch})`, tone: 'dim' }]
-    items.push({ keep: 0.8, forms: [[{ text: place.project, tone: 'dim' }, ...branch]] })
+    const at = (folder: string | null): Line => [{ text: folder === null ? place.project : `${place.project} ▸ ${folder}`, tone: 'dim' }, ...branch]
+    const folder = place.folder
+    const forms = folder === undefined ? [at(null)] : [...new Set([fitFolder(folder, 40), lastPart(folder)])].map(at)
+    items.push({ keep: 0.8, forms })
   }
   if (b.meta.version !== undefined) items.push({ keep: 0.5, forms: [dimText(`CC ${b.meta.version}`)] })
   return items

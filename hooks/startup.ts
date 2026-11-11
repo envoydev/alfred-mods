@@ -57,6 +57,19 @@ export function gitDirOf(text: string, dir: string): string | null {
 
 export const baseName = (path: string): string => path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? ''
 
+// The folder Claude works in against the session's project root (the user, 2026-11-11): inside it the path from the
+// root, the root itself none, elsewhere '…/<its name>', so no path above the project (a home folder, a user name) is
+// kept. A Windows path compares without case.
+export function folderOf(cwd: string, root: string): string | null {
+  const trim = (p: string): string => p.replace(/\\/g, '/').replace(/\/+$/, '')
+  const c = trim(cwd)
+  const r = trim(root)
+  const fold = (p: string): string => (/^[A-Za-z]:/.test(c) ? p.toLowerCase() : p)
+  if (fold(c) === fold(r)) return null
+  if (fold(c).startsWith(`${fold(r)}/`)) return c.slice(r.length + 1)
+  return `…/${baseName(cwd)}`
+}
+
 // The folder above, or null at a root
 export function parentOf(path: string): string | null {
   const trimmed = path.replace(/[\\/]+$/, '')
