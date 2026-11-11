@@ -10,7 +10,8 @@ project, it shows more, read from the one status file the stack publishes for ea
 Code, and nothing it draws breaks without it.
 
 **Status: Phase 5 (Alfred Code integration) built:** the band with its plan line and handoff ask, `/inspect`
-with Now, Usage, Agents, Tools, Cache, Timeline and Plan, `/auto-handoff`, `/rec` and `/quiet`, and with Alfred Code
+with Now, Usage, Agents, Tools, Cache, Timeline and Plan, `/auto-handoff` and `/rec`, the switches as
+[settings values](#settings), and with Alfred Code
 the mode banner, the runway and the resume prompt. Phase 6 ships it; the design, the features and the build phases are
 in [the session-inspector brief](docs/session-inspector-brief.md).
 
@@ -19,7 +20,7 @@ in [the session-inspector brief](docs/session-inspector-brief.md).
 - **On Claude Code alone:** model and effort, context used out of the window, the 5-hour and weekly limits, session and
   daily cost, output speed as an average over the session (`≈70 tok/s avg` in the Usage tab), failed and denied tool
   calls with their reasons, running subagents, cache expiry, plan progress, a handoff prompt of its own, an on-screen
-  mask for recordings (`/rec`) and compact tool rows (`/quiet`), in one calm band and an `/inspect` pane.
+  mask for recordings (`"rec"`) and compact tool rows (`"quiet"`), in one band and an `/inspect` pane.
 - **With Alfred Code:** where the stack publishes its status file, the stack handles a full context and the mod's
   handoff stands down ([Handoff](#handoff)), and the mod shows the stack's mode banner, the context runway measured
   against the stack's resume trigger, and an ALFRED CODE section whose `f` fills the stack's ready resume prompt
@@ -36,25 +37,34 @@ gives up its Show and Copy buttons. A narrow pane, down to 24 columns, keeps the
 tool's column to keep its counts, and the Timeline leaves out the prompt's time to keep how long each turn took and
 its tokens.
 
-By default the band has an info line under its gauges: the model and effort, the session's time, the average output
-speed, the cache, a toggle that counts what the rows under it list, the times of your last prompt and Claude's reply,
-the project with its branch and Claude Code's version, `Sonnet 5.5 ◑ medium │ 59m │ ≈133 tok/s avg │ cache warm 54m │
-[ 45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ▾ ] │ you 22:47 · Claude 23:55 │ alfred-mods git:(main) │ CC
-2.1.322`; while a turn runs, its first line counts the turn's tool calls, and the gauges add today's cost. The project
-is the folder the session started in, and the folder Claude works in follows it: where a Bash `cd` went, or the folder
-of the last file Claude edited or wrote, whichever came last, `alfred-mods ▸ hooks git:(main)` with that folder's
-branch (a folder outside the project shows as `…/<name>`); it is re-read after each Bash call, edit and write, and
-every 30 s. While a plan
-runs, a row above the info line shows it, `plan:    Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update interceptor`: its title,
-bar, steps done and the step in progress (the Plan tab has the percent and the times). Four rows under the info line
-are open from the first draw:
+By default the band has an info line under its gauges, and rows under that:
 
 ```text
+Sonnet 5.5 ◑ high │ 9m │ ≈119 tok/s avg │ cache warm ≈60m │ you 17:15 · Claude 17:13 │ CC 2.1.322
+project: my-app │ git:(develop) │ folder: .claude
+plan:    Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update interceptor
+usage:   [ 45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ]
 tools:   Bash ×32 │ AskUserQuestion ×4 │ Read ×4 │ Write ×4 │ Grep ×1
 skills:  superpowers:brainstorming ×1 │ solve-task ×2 │ 57 of 60 listed
 agents:  ◐ alfred-code:web-angular-verifier ×1 │ ✓ Explore ×2 │ ✓ general-purpose ×1 │ 1 running
 rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ web-angular.md │ typescript.md │ 3 always-on · 2 by path
 ```
+
+- **The info line:** the model and effort, the session's time, the average output speed, the cache, the times of your
+  last prompt and Claude's reply, and Claude Code's version. While a turn runs, the band's first line counts the turn's
+  tool calls, and the gauges add today's cost. Today's cost is the mod's own count on this machine: sessions it did not
+  run in are not in it, so it can read lower than a status line's that counts every session.
+- **`project:`** the folder the session started in, then `git:(<branch>)`, the branch of the repository holding the
+  folder Claude works in (left out outside a repository), then `folder:`, that folder when it is not the project's
+  root. The folder follows Claude: where a Bash `cd` went, or the folder of the last file Claude edited or wrote,
+  whichever came last (a folder outside the project shows as `…/<name>`); it is re-read after each Bash call, edit and
+  write, and every 30 s. `git:(` and `)` are purple, the branch yellow, the project and the folder in your text's own
+  colour.
+- **`plan:`** while a plan runs: its title, bar, steps done and the step in progress (the Plan tab has the percent and
+  the times).
+- **`usage:`** in aqua, counts what the rows under it list: tool calls, skills, agents dispatched (and how many run)
+  and rules. It shows whether the rows are open or not.
+- **The detail rows** are open by default; `"bandRows": false` closes them ([Settings](#settings)).
 
 `tools:` lists every tool by name with its calls, agents' calls included, an MCP tool as `<server>:<tool>`. `skills:`
 lists the skills loaded into the main chat's context this conversation, by Claude's Skill tool or by you as `/name` (a
@@ -65,25 +75,24 @@ then how many run. `rules:` lists the rule files in the main context: those load
 link there named by the file it reaches, and your own rules folder), then those loaded by path, when Claude reads,
 writes or edits a file their `paths:` match, in violet while the band is coloured, then how many of each; a compaction
 keeps them. A resumed or branched conversation still holds the skills, agents and by-path rules from before it, which no
-mods API lists, so those rows count from the resume: `none seen since resume`, or what came since with `since resume`. A
-click on the toggle, or `t` with the band focused (ctrl+x tab), closes the rows for every session until opened again.
-The rows show while the toggle is in view: at a narrow width, which drops the toggle, they close with it. Today's cost
-is the mod's own count on this machine: sessions it did not run in are not in it, so it can read lower than a status
-line's that counts every session. When the width runs out, the info line wraps onto a second row between items, and
-items drop whole only when two rows cannot hold them (the version first, then the place, then the times);
-when the band has fewer rows than it needs, as in fullscreen under a tall draft, that second row goes first, then the
-open rows from the last (`rules:`, `agents:`, `skills:`, `tools:`), then the plan row, then the whole info line, so the
-line with its buttons stays in view. `/band calm` goes back to the two lines.
+mods API lists, so those rows count from the resume: `none seen since resume`, or what came since with `since resume`.
 
-`/band under` draws the band under the input instead, below Claude Code's own mode line, for every session; `/band
-above` puts it back. Under the input is the terminal's only (a Desktop tab keeps the band above), and it takes no keys,
-so each button becomes the command that does its job: in fullscreen a click presses it, `[ /inspect ]`, `[ /compact ]`,
-`[ /auto-handoff now ]`; on the main screen (`CLAUDE_CODE_NO_FLICKER=0`), where nothing takes a click, it is that
-command as text; and `/band rows on` and `/band rows off` open and close the rows in place of `t` (they work above too).
-There the action row comes right after the gauges. In fullscreen the room under the input is about half the screen,
-less the prompt, two rows when a status line is set and one for the mod's pinned line; whatever else takes room, a
-draft of several lines or a taller status line, cuts the band at the screen's edge from its last row, `rules:` first.
-It was built on Claude Code 2.1.322.
+When the width runs out, the info line wraps onto a second row between items, and items drop whole only when two rows
+cannot hold them (the version first, then the times); `project:` shortens its folder to the last part, then leaves it
+out, and `usage:` drops the rules, then the agents, then the skills. When the band has fewer rows than it needs, as in
+fullscreen under a tall draft, `project:` goes first, then the info line's second row, then the open rows from the last
+(`rules:`, `agents:`, `skills:`, `tools:`), then `usage:`, then `plan:`, then the whole info line, so the line with its
+buttons stays in view. `"band": "calm"` goes back to the two lines.
+
+`"bandPlace": "under"` draws the band under the input instead. Claude Code draws its own mode line (`⏵⏵ auto mode on`)
+as the first row under the prompt whatever a mod does, so with `"above"` it is the bottom row, under the band and the
+prompt, and with `"under"` it sits between the prompt and the band. Under the input is the terminal's only (a Desktop
+tab keeps the band above), and it takes no keys, so each button becomes the command that does its job: in fullscreen a
+click presses it, `[ /inspect ]`, `[ /compact ]`, `[ /auto-handoff now ]`; on the main screen
+(`CLAUDE_CODE_NO_FLICKER=0`), where nothing takes a click, it is that command as text. There the action row comes right
+after the gauges. In fullscreen the room under the input is about half the screen, less the prompt, two rows when a
+status line is set and one for the mod's pinned line; whatever else takes room, a draft of several lines or a taller
+status line, cuts the band at the screen's edge from its last row, `rules:` first. It was built on Claude Code 2.1.322.
 
 The full band draws from the session's first second, before any prompt: the model, the session's time, the project
 and branch (read from git's own `HEAD` file, and again every 30 seconds for a checkout or a move to another folder)
@@ -117,7 +126,8 @@ and sent the event on past it.` One did so for six of the mod's hooks: `classic.
 `classic.PermissionRequest`, `classic.PostToolUseFailure`, `classic.PermissionDenied` and `skill.prompt`. On such a
 machine, turn on the mod's option `Leave out hooks a managed plugin skips` (`leave_out_skipped_hooks`) in `/config`:
 the mod leaves those six hooks out, so the notices stop, and loses nothing, as they never ran there. It also leaves out
-the hook that sees a rule load by path, `classic.InstructionsLoaded`, which such a plugin may skip too. A new install
+the hook that sees a rule load by path, `classic.InstructionsLoaded`, which such a plugin may skip too, and the one
+that sees a settings file change, `classic.ConfigChange`. A new install
 asks for it once; leave it off anywhere else. Either way the mod reads a `/clear`, a resume or a branch off the session
 id, so the band starts over within a second and the first prompt carries REC's note. A `/clear` after a saved handoff
 still fills the resume prompt, unless you send a prompt first; resuming a conversation of one prompt fills it too, into
@@ -130,7 +140,8 @@ the empty box, never sent. What it cannot tell without those hooks:
   row; one Claude loads with its Skill tool is there;
 - time you spend at a permission prompt counts toward a plan step's time;
 - after a resume, the cache's rewrite cost (`rewrite ≈ $…`) is missing until you switch models;
-- the band's `rules:` row lists only the rules loaded at start, and ends `by path not tracked`.
+- the band's `rules:` row lists only the rules loaded at start, and ends `by path not tracked`;
+- a change to the mod's [settings](#settings) shows within 30 seconds, not at once.
 
 A call that fails in auto mode still counts as new, and an interrupt is read from the mod's own tool hook.
 
@@ -142,36 +153,148 @@ draws (`-p`, an SDK session) or on an earlier build, it shows all three. Where t
 drawn last decides. It changes only when its text does, and clears once nothing needs you. A status line of your own,
 such as claude-hud's, is not replaced: it draws under the prompt, below this line, with the band above the prompt.
 
+## Settings
+
+The mod's switches are values under one key, `"alfred-mods"`, in Claude Code's own settings files. Add the key to a
+file, save it, and the band redraws. The [Band Explorer](docs/band-explorer.html), one page that runs in a browser,
+offline too, previews each setting on the band and gives each file's block to copy: download the file, or clone the
+repo, and open it.
+
+### Quick start
+
+1. Pick the file. `~/.claude/settings.json` applies to every project on the machine. A project's
+   `.claude/settings.local.json` applies to that project alone and is yours, not meant to be committed. A field in the
+   local file wins over the same field in your user file, and the fields it leaves out come from the user file.
+2. Add `"alfred-mods"` beside the keys the file already has, with only the fields you want to change:
+
+   ```json
+   {
+     "permissions": { "allow": ["Bash(npm test)"] },
+     "alfred-mods": { "bandPlace": "under" }
+   }
+   ```
+
+3. Check the JSON before you save: a missing comma or quote is enough. Claude Code drops a file that does not parse
+   whole, its permission rules and every other setting in it too, and the next session starts on its 'Settings Error'
+   dialog.
+4. Save. The session redraws at once, and other open sessions within 30 seconds.
+
+Four ready blocks, each for the `"alfred-mods"` line of the file named:
+
+- **The band under the input, in every project:** `~/.claude/settings.json`
+
+  ```json
+  "alfred-mods": { "bandPlace": "under" }
+  ```
+
+- **The detail rows closed in one project:** that project's `.claude/settings.local.json`
+
+  ```json
+  "alfred-mods": { "bandRows": false }
+  ```
+
+- **REC on for a recording:** `~/.claude/settings.json`, then `"off"` when you stop
+
+  ```json
+  "alfred-mods": { "rec": "on" }
+  ```
+
+- **The handoff saving by itself from 70%:** either file
+
+  ```json
+  "alfred-mods": { "handoff": "auto", "handoffAt": 70 }
+  ```
+
+### The fields
+
+| Field       | Values                       | Default   | Decides                                                            |
+|-------------|------------------------------|-----------|--------------------------------------------------------------------|
+| `band`      | `"full"`, `"calm"`           | `"full"`  | `"full"` adds the info line and the rows under it; `"calm"` keeps two lines |
+| `bandPlace` | `"above"`, `"under"`         | `"above"` | the band above the input, or under it (the terminal only)          |
+| `bandRows`  | `true`, `false`              | `true`    | the `tools:`, `skills:`, `agents:` and `rules:` rows open or closed |
+| `quiet`     | `true`, `false`              | `true`    | one line per tool call in place of the command and its output      |
+| `rec`       | `"off"`, `"on"`, `"strict"`  | `"off"`   | [Recording mode](#recording-mode): what is masked on screen        |
+| `handoff`   | `"ask"`, `"auto"`, `"off"`   | `"ask"`   | how a [handoff](#handoff) is saved before the context fills        |
+| `handoffAt` | a whole number from 10 to 95 | `80`      | the context percent where the handoff first asks or saves          |
+
+With `quiet`, a failure keeps up to 3 error lines, runs of read-only calls fold into one line, and a blocked call
+shows the rule's first sentence; `"quiet": false`, Ctrl+O or `[Show]` in the Tools tab bring the full rows back.
+
+```text
+⏺ Bash · Show CI failure lines 1038-1042 · 30 lines ✓
+⏺ 4 reads · scorer-card.test.js, chain.js, layout.js ×2 · ✓
+⏺ Bash · npm test · ✗ exit 1
+    FAIL tests/auth.test.ts
+```
+
+### Which file wins
+
+Each field on its own takes the first valid value in this order:
+
+1. managed settings, an administrator's;
+2. `--settings` on the `claude` command line;
+3. the project's `.claude/settings.local.json`;
+4. the project's `.claude/settings.json`;
+5. your `~/.claude/settings.json`;
+6. a choice you made with a command before 0.8.0 ([From 0.7](#from-07));
+7. the default.
+
+So with `"alfred-mods": { "bandPlace": "under", "rec": "on" }` in your user file and `"alfred-mods": { "bandRows":
+false }` in one project's local file, that project draws the band under the input with REC on and the rows closed,
+and every other project the same with the rows open.
+
+- A value of the wrong type, or outside its field's values, is skipped as if absent, and a toast says so once. It
+  names the file, the values the field takes and the value in use, never the bad value: `"band" in
+  .claude/settings.local.json takes "full" or "calm" - using "calm" from ~/.claude/settings.json`.
+- A field name the mod does not know is ignored, and an `"alfred-mods"` that is not an object gives that file no
+  fields.
+- `.claude/settings.json` is often committed, so a field there applies to everyone who works in the project. Keep your
+  own choices, such as `rec` and `bandPlace`, in your user file or the local one.
+
+### REC holds
+
+One exception to the order, for REC alone: mid-session, REC never goes down because a file stopped giving it. A file
+that does not parse reads as absent, the same as one whose `"rec"` was removed, so a typo made while editing any field
+would otherwise unmask a running recording. When the file that set the level gives no `"rec"` any more, REC keeps its
+level and a toast says so once: `REC stays on: .claude/settings.local.json no longer gives "rec" - fix the file, or set
+"rec": "off" in it`. A value REC does not take in that file holds it the same way. `"rec": "off"` in that file, or in
+one above it, turns REC off at once; otherwise the hold lasts until the next `claude` run. Raising REC, and every other field,
+follow the files at once.
+
+### When a change shows
+
+At once in the session whose settings file changed, as Claude Code tells the mod, and within 30 seconds in every other
+open session; a bare `/rec` or `/auto-handoff` reads the files again at once. A change of `rec` shows REC's toast,
+`● REC on · hiding …` or `REC off`; the other fields redraw what they decide, with no toast. With
+`leave_out_skipped_hooks` on, every change takes up to 30 seconds, REC included.
+
+### From 0.7
+
+- `/band` and `/quiet` are gone; typed, they are an unknown command. `/rec` and `/auto-handoff` keep their actions
+  ([Commands](#commands)).
+- A switch is a file edit now: no click or `t` on the band's toggle, and no one-word `/rec on` before a recording.
+- Your earlier choices are kept. The mod reads what `/band`, the toggle, `/quiet`, `/rec` and `/auto-handoff` stored,
+  as one layer under your user file, and the first session after the update shows, once and for 30 seconds, the line
+  to paste: `Add "alfred-mods": { "bandRows": false, "rec": "strict" } to ~/.claude/settings.json - the choices your
+  earlier commands made`. A toast shows about 120 characters, so with several choices kept its end is cut: `/rec` and
+  `/auto-handoff` name where their values come from, and the band shows the rest. Once your user file sets a field, the
+  stored choice for it is deleted; a project's file overrides it in that project and keeps it for the others.
+- Going back to 0.7.0 brings the commands back on the stored choices: each one your user file has not replaced is still
+  there, and a replaced one reads its default.
+
 ## Commands
 
 - `/inspect [now|usage|agents|tools|cache|timeline|plan [name]]` opens the pane on a tab, Now when none is named.
   `/inspect plan <name>` pins the plan file `<name>.json`; `/inspect plan` alone returns to the newest. In the pane,
   `n`, `u`, `a`, `t`, `k`, `l` and `p` switch tabs.
-- `/auto-handoff [ask|auto|off|at <percent>|now]` sets how the mod saves a handoff before the context fills: `ask`
-  (the default) asks, `auto` saves by itself, `off` does neither, `at <n>` sets the threshold (a whole percent from 10
-  to 95, 80 by default) and `now` saves at once in any mode. With no argument it prints the state. See
-  [Handoff](#handoff).
-- `/rec [on|strict|off|test|words]` masks what is on screen for a recording: `on` or a bare `/rec` turns it on, `strict`
-  hides more, `off` turns it off, `test` checks the masker and `words` opens the private-words pane. See
-  [Recording mode](#recording-mode).
-- `/quiet [on|off]`, on by default, draws one line per tool call in place of the command and its output preview. A
-  failure keeps up to 3 error lines, runs of read-only calls fold into one line, and a blocked call shows the rule's
-  first sentence. `/quiet off`, Ctrl+O or `[Show]` in the Tools tab bring the full rows back.
+- `/rec [test|words]`: a bare `/rec` reads the settings files again and prints the level, the file it comes from, the
+  private-word count and the help; `test` checks the masker and `words` opens the private-words pane. The level is the
+  `"rec"` field ([Settings](#settings), [Recording mode](#recording-mode)).
+- `/auto-handoff [now]`: `now` saves a handoff at once, in any mode; a bare `/auto-handoff` reads the settings files
+  again and prints the mode, the first ask and the file each comes from. The mode is the `"handoff"` field and the
+  first ask `"handoffAt"` ([Handoff](#handoff)).
 
-  ```text
-  ⏺ Bash · Show CI failure lines 1038-1042 · 30 lines ✓
-  ⏺ 4 reads · scorer-card.test.js, chain.js, layout.js ×2 · ✓
-  ⏺ Bash · npm test · ✗ exit 1
-      FAIL tests/auth.test.ts
-  ```
-
-- `/band [full|calm|above|under|rows on|rows off]` sets the band: `full` (the default) adds the turn's tool count,
-  today's cost and the info line with its toggle of the detail rows; `calm` keeps its two lines; `under` draws it under
-  the input on the terminal and `above` (the default) above it; `rows on` and `rows off` open and close the detail rows.
-  With no argument it prints the state, `Band: full · above`.
-
-Settings for all four apply to every session and project on the machine; other open sessions follow within 30
-seconds.
+The band's buttons and the pane's keys are actions and stay; every switch is a settings value ([Settings](#settings)).
 
 ## Handoff
 
@@ -179,7 +302,7 @@ Before the context fills, the mod saves a handoff: a file the next session reads
 context in use over the point where Claude Code compacts the conversation by itself, not over the model's window, so
 the ask comes before that compaction.
 
-- **Ask mode** (the default): past 80%, the band shows `⚠ ctx past 80% [4 Handoff]`, a toast names
+- **Ask mode** (the default): past 80% (`"handoffAt"`), the band shows `⚠ ctx past 80% [4 Handoff]`, a toast names
   `/auto-handoff now`, and the Now tab's HANDOFF row offers `h: save handoff`, `c: compact` (save, then compact) and
   `r: remind at 85%`. Letter keys work while the pane has the focus (Ctrl+X Tab moves it to the band's buttons,
   then to the pane; a click works in fullscreen); from the prompt, press 4 or run `/auto-handoff now`. It asks
@@ -204,7 +327,8 @@ the ask comes before that compaction.
   `off`, or no file, the mod's handoff runs. A file that does not parse, has another schema or names another session
   leaves the handoff running, and the ALFRED CODE section in `/inspect` says why.
 
-`/auto-handoff off` turns it off in every project on the machine.
+`"handoff": "off"` turns it off: in `~/.claude/settings.json` for every project, in a project's
+`.claude/settings.local.json` for that project ([Settings](#settings)).
 
 ## With Alfred Code
 
@@ -233,15 +357,16 @@ session`. The file is the stack's: the mod never writes it and reads nothing els
 
 ## Recording mode
 
-`/rec` masks what the mod and Claude Code's message rows draw, for a screen recording or a shared screen.
+Recording mode masks what the mod and Claude Code's message rows draw, for a screen recording or a shared screen.
+`"rec": "on"` or `"strict"` in a settings file turns it on, and `"rec": "off"` turns it off ([Settings](#settings)).
 
 | Level    | Hides                                                                    |
 |----------|--------------------------------------------------------------------------|
 | `on`     | keys, emails, phone numbers and your private words                       |
 | `strict` | the same, plus your local user name, home folder paths and dollar amounts |
 
-- **It holds** across sessions and restarts until `/rec off`. A bare `/rec` never turns it off or down, so typing it
-  to start a recording never unmasks one. A red `● REC` leads the band while it is on.
+- **It holds** across sessions and restarts while a settings file gives it. Mid-session it never goes down because a
+  file stopped giving it, a typo included ([REC holds](#rec-holds)). A red `● REC` leads the band while it is on.
 - **Where it masks:** the band, every pane tab, toasts, the spinner, the mod's own command output, Claude's messages,
   command output, tool rows (each call drawn as its own row while REC is on) and Claude's question dialogs. Masked
   values read `‹key›`, `‹email›`, `‹phone›` and `‹private›`. Only the drawing changes: the stored messages and what
@@ -276,7 +401,8 @@ What REC cannot hide:
   option descriptions are masked.
 - A private key's middle lines in a diff that does not show its BEGIN line. A diff that shows it draws every line of
   the key as `‹key›`.
-- Other open sessions, for up to 30 seconds after a change; run `/rec` in each session that will be on screen.
+- Other open sessions, for up to 30 seconds after a change; run `/rec` in each session that will be on screen, which
+  reads the files at once.
 - Rows drawn before REC went on: on the terminal's main screen they stay in scrollback, so turn REC on before
   recording starts, then clear the terminal or start a new session.
 - Files on disk and the transcript. HANDOFF.md gets only its key, email and phone masking.

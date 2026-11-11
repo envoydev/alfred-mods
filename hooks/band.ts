@@ -12,11 +12,10 @@ import type { Runway } from './stack.ts'
 
 import type { AgentRow, AgentStatus, BandMode, Cache, Level, Live, Meta, Pace, SkillListing, ToolStat, Totals, Turn, Usage, Window } from '../types'
 
-export type Tone = 'ok' | 'warn' | 'fail' | 'dim' | 'usage' | 'skill' | 'agents' | 'cache' | 'plan' | 'handoff' | 'opus' | 'sonnet' | 'haiku' | 'fable'
+export type Tone = 'ok' | 'warn' | 'fail' | 'dim' | 'usage' | 'skill' | 'agents' | 'cache' | 'plan' | 'handoff' | 'opus' | 'sonnet' | 'haiku' | 'fable' | 'git' | 'branch' | 'counts'
 export type Seg =
   // With a `width`, a table cell: that many cells wide, its text cut with '…' when longer, at its end with `align: 'end'`
-  // `key` names a text that stands in for a button: the toggle's counts under the input, drawn as text (band-under U3)
-  | { text: string; tone?: Tone; bold?: boolean; width?: number; align?: 'start' | 'end'; key?: string }
+  | { text: string; tone?: Tone; bold?: boolean; width?: number; align?: 'start' | 'end' }
   // A toned button draws its label bold in the colour of the feature it acts on; a plain one draws `<hotkey>: <label>`
   | { button: { key: string; label: string; hotkey?: string; tone?: Tone; plain?: boolean } }
   | { code: string }
@@ -42,7 +41,7 @@ export type BandInput = {
   // Alfred Code's runway, which the ctx item measures against while it applies, and the mode banner that leads line 1
   runway?: Runway | null
   banner?: Seg[]
-  // The /band setting: `full` adds the info line, the turn's tool count and today's cost; absent or `calm`, today's two
+  // The "band" setting: `full` adds the info line, the turn's tool count and today's cost; absent or `calm`, today's two
   // lines. `totals` and `stats` feed the info line's output speed and tool calls.
   mode?: BandMode
   // The rows the band may take (the AbovePrompt site's `maxRows`); absent, as many as it draws
@@ -179,12 +178,10 @@ function toolsByCalls(stats: Record<string, ToolStat> | undefined): [string, Too
     .sort(([ka, a], [kb, z]) => z.calls - a.calls || (ka < kb ? -1 : ka > kb ? 1 : 0))
 }
 
-// The info line's toggle of the rows under it (spec 2026-11-11, D5): the tool calls, the main chat's skills, the agents
-// dispatched (and how many run) and the rules it opens, each only above 0; short of width its forms drop the rules,
-// then the agents, then the skills, then all but the arrow. A letter, never a digit: a bare digit in an empty prompt
-// presses a band button in place of typing. None while closed with nothing to open.
+// The counts of what the detail rows list (spec 2026-11-11, D5; settings-values S6, once a toggle): the tool calls, the
+// main chat's skills, the agents dispatched (and how many run) and the rules, each only above 0; its forms drop the
+// rules, then the agents, then the skills. None with nothing counted.
 export function toggleForms(b: BandInput): Line[] {
-  const isOpen = b.isToolsOpen === true
   const count = (n: number, one: string): string | null => (n === 0 ? null : `${n} ${one}${n === 1 ? '' : 's'}`)
   const calls = toolsByCalls(b.stats).reduce((n, [, s]) => n + s.calls, 0)
   const dispatched = Object.values(b.meta.agentTypes ?? {}).reduce((n, k) => n + k, 0)
@@ -194,19 +191,12 @@ export function toggleForms(b: BandInput): Line[] {
   const skills = count(Object.keys(b.meta.skills ?? {}).length, 'skill')
   const agents = count(dispatched, 'agent')
   const rules = count(drawn.always.length + drawn.byPath.length, 'rule')
-  if (tools === null && skills === null && agents === null && rules === null && !isOpen) return []
-  const arrow = isOpen ? '▾' : '▸'
+  if (tools === null && skills === null && agents === null && rules === null) return []
   const parts = (...of: (string | null)[]): string[] => of.filter((p): p is string => p !== null)
   const agentsPart = agents === null ? null : running > 0 ? `${agents} (${running} ◐)` : agents
   const all = parts(tools, skills, agentsPart, rules)
   const forms = [all, parts(tools, skills, agentsPart), parts(tools, skills), parts(tools)].filter(f => f.length > 0)
-  const labels = [...new Set([...(all.length === 0 ? ['tools'] : forms.map(f => f.join(' · '))).map(l => `${l} ${arrow}`), arrow])]
-  if (b.under?.buttons === 'text') {
-    const texts = [...new Set(labels.map(l => l.replace(/ ?[▾▸]$/, '')).filter(l => l !== ''))]
-    return texts.map(text => [{ text, tone: 'dim' as const, key: 'tools' }])
-  }
-  if (b.under?.buttons === 'click') return labels.map(label => [{ button: { key: 'tools', label } }])
-  return labels.map(label => [{ button: { key: 'tools', label, hotkey: 't' } }])
+  return [...new Set(forms.map(f => f.join(' · ')))].map(text => [{ text, tone: 'dim' as const }])
 }
 
 type ButtonSeg = Extract<Seg, { button: unknown }>['button']
@@ -299,10 +289,42 @@ const lastPart = (folder: string): string => (folder.includes('/') ? `…/${fold
 const ROW_LABEL = 9
 export const ROW_JOIN = ' │ '
 
-// The full band's plan row, above the info line (the owner's target, 2026-11-11): none in calm mode or with no plan
+// The full band's plan row, under the project row (the user, 2026-11-11): none in calm mode or with no plan
 function planRow(b: BandInput): Line[] {
   if (b.mode !== 'full' || b.plan === null) return []
   return [[{ text: 'plan:'.padEnd(ROW_LABEL), tone: 'dim' }, ...planRowParts(b.plan, b.columns - ROW_LABEL)]]
+}
+
+const rowLabel = (text: string): Seg => ({ text: text.padEnd(ROW_LABEL), tone: 'dim' })
+const dimSeg = (text: string): Seg => ({ text, tone: 'dim' })
+
+// The project row (the user, 2026-11-11): 'project: my-app │ git:(develop) │ folder: .claude' - the session's
+// project, the branch of the repository holding the folder Claude works in, and that folder when it is not the
+// project's root, past 40 cells its last parts after '…/'; short of width the folder takes its last part, then goes
+function placeRow(b: BandInput): Line[] {
+  const place = b.meta.place
+  if (place === undefined) return []
+  const sep = dimSeg(ROW_JOIN)
+  const line = (folder: string | null): Line => [
+    { text: place.project },
+    // git:( and ) purple, the branch yellow, the folder in the text's own colour (the user, 2026-11-11)
+    ...(place.branch === null ? [] : [sep, { text: 'git:(', tone: 'git' as const }, { text: place.branch, tone: 'branch' as const }, { text: ')', tone: 'git' as const }]),
+    ...(folder === null ? [] : [sep, dimSeg('folder: '), { text: folder }]),
+  ]
+  const folder = place.folder
+  const forms = folder === undefined ? [line(null)] : [line(fitFolder(folder, 40)), line(lastPart(folder)), line(null)]
+  const form = forms.find(f => widthOf(f) <= b.columns - ROW_LABEL) ?? forms[forms.length - 1] ?? []
+  return [[rowLabel('project:'), ...form]]
+}
+
+// The usage row (the user, 2026-11-11): 'usage:   [ 45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ]', the counts of
+// what the detail rows under it list, as text: `bandRows` opens and closes those rows, not a click (spec
+// settings-values, S6); short of width its forms drop the rules, then the agents, then the skills
+function usageRow(b: BandInput): Line[] {
+  const texts = toggleForms(b).flatMap(l => l.flatMap(s => ('text' in s ? [`[ ${s.text} ]`] : [])))
+  const text = texts.find(t => widthOf([{ text: t }]) <= b.columns - ROW_LABEL) ?? texts[texts.length - 1]
+  // Aqua, as the toggle's button was drawn (the user, 2026-11-11)
+  return text === undefined ? [] : [[rowLabel('usage:'), { text, tone: 'counts' }]]
 }
 
 // The skills loaded in the main chat; after a resume or a branch, counted from it, since the ones loaded before are in
@@ -349,8 +371,8 @@ type Item = { keep: number; forms: Line[] }
 
 const dimText = (text: string): Line => [{ text, tone: 'dim' }]
 
-// The info line's items in the approved mockup's order, each only when known: the model and effort, the session's
-// time, the average output speed, the cache, the toggle of the tools and skills, the last prompt and reply
+// The info line's items in the user's order (2026-11-11), each only when known: the model and effort, the session's
+// time, the average output speed, the cache, the last prompt and reply, Claude Code's version
 function infoItems(b: BandInput): Item[] {
   const items: Item[] = []
   const model = b.meta.model
@@ -366,23 +388,10 @@ function infoItems(b: BandInput): Item[] {
     const v = cacheView(b.cache, billingOf(b.usage.windows), b.now, b.usage.tokens)
     items.push({ keep: 4, forms: [dimText(v.leftMs === null ? 'cache cold' : `cache warm ${v.tier.isEstimate ? '≈' : ''}${minutes(v.leftMs)}`)] })
   }
-  // While open it outlasts tok/s and the cache: the rows under it close only through it
-  const toggle = toggleForms(b)
-  if (toggle.length > 0) items.push({ keep: b.isToolsOpen === true ? 4.5 : 2, forms: toggle })
   // The running turn's prompt while one runs; the last turn's, as line 1 of the calm band shows it, otherwise
   const parts = timeParts(b, 2, true)
   if (parts.length > 0) items.push({ keep: 1, forms: parts.map((_, i) => dimText(parts.slice(0, parts.length - i).join(' · '))) })
-  // Where the session runs and Claude Code's version, from the first second; the first to go when the width runs out
-  // 'project ▸ folder git:(branch)': the session's project, then the folder Claude works in when it is not the project's
-  // root (the user, 2026-11-11), past 40 cells its last parts after '…/', and narrower its last part alone
-  const place = b.meta.place
-  if (place !== undefined) {
-    const branch: Line = place.branch === null ? [] : [{ text: ` git:(${place.branch})`, tone: 'dim' }]
-    const at = (folder: string | null): Line => [{ text: folder === null ? place.project : `${place.project} ▸ ${folder}`, tone: 'dim' }, ...branch]
-    const folder = place.folder
-    const forms = folder === undefined ? [at(null)] : [...new Set([fitFolder(folder, 40), lastPart(folder)])].map(at)
-    items.push({ keep: 0.8, forms })
-  }
+  // Claude Code's version, from the first second; the first to go when the width runs out
   if (b.meta.version !== undefined) items.push({ keep: 0.5, forms: [dimText(`CC ${b.meta.version}`)] })
   return items
 }
@@ -571,40 +580,49 @@ export function underRows(v: { rows: number; isFullscreen?: boolean }, o: { hasS
   return Math.max(2, Math.floor(v.rows / 2) - 6 - (o.hasStatusLine ? 2 : 0) - (o.isPinned ? 1 : 0))
 }
 
+// What the full band keeps under its info line: the rows the info line may take (none for 0), the project row, the open
+// detail rows (how many lines of them), the usage row and the plan row
+type Keep = { infoUpTo: number; isPlaceKept: boolean; toolRowsKept: number; isUsageKept: boolean; isPlanKept: boolean }
+const KEEP_ALL: Keep = { infoUpTo: 2, isPlaceKept: true, toolRowsKept: Infinity, isUsageKept: true, isPlanKept: true }
+
 // A red '● REC' while REC is on, then Alfred Code's mode banner, lead line 1 in every state, never dropped for width:
 // the body's first line follows them while it fits what is left, else they take line 1 alone and the body keeps the
 // full width, so no gauge, reset or the cost drops for them
 export function bandLines(b: BandInput): Line[] {
   const max = b.maxRows
-  if (max === undefined) return bandRows(b, 2, Infinity, true)
-  // Short of rows, the info line's second row gives way first, then the open rows of tools, from the last, then the
-  // plan row, then the info line: the line under them holds the buttons, and a digit arms only those in view
-  for (const upTo of [2, 1]) {
-    const lines = bandRows(b, upTo, Infinity, true)
+  if (max === undefined) return bandRows(b, KEEP_ALL)
+  // Short of rows, the project row gives way first, then the info line's second row, then the open detail rows from
+  // the last, then the usage row, then the plan row, then the info line: the line under them holds the buttons, and a
+  // digit arms only those in view
+  for (const k of [KEEP_ALL, { ...KEEP_ALL, isPlaceKept: false }, { ...KEEP_ALL, isPlaceKept: false, infoUpTo: 1 }]) {
+    const lines = bandRows(b, k)
     if (lines.length <= max) return lines
   }
-  const core = bandRows(b, 1, 0, true)
-  if (core.length <= max) return bandRows(b, 1, max - core.length, true)
-  const bare = bandRows(b, 1, 0, false)
-  return bare.length > max ? bandRows(b, 0, 0, false) : bare
+  const core: Keep = { infoUpTo: 1, isPlaceKept: false, toolRowsKept: 0, isUsageKept: true, isPlanKept: true }
+  const coreLines = bandRows(b, core)
+  if (coreLines.length <= max) return bandRows(b, { ...core, toolRowsKept: max - coreLines.length })
+  for (const k of [{ ...core, isUsageKept: false }, { ...core, isUsageKept: false, isPlanKept: false }]) {
+    const lines = bandRows(b, k)
+    if (lines.length <= max) return lines
+  }
+  return bandRows(b, { infoUpTo: 0, isPlaceKept: false, toolRowsKept: 0, isUsageKept: false, isPlanKept: false })
 }
 
-// `infoUpTo`: the rows the info line may take, none for 0; `isPlanKept`: the full band's plan row stays
-function bandRows(b: BandInput, infoUpTo: number, toolRowsKept: number, isPlanKept: boolean): Line[] {
+function bandRows(b: BandInput, k: Keep): Line[] {
   const isNarrow = b.columns < 100
   const marks: Line[] = [b.rec !== undefined && b.rec.level !== 'off' ? [REC_MARK] : [], b.banner ?? []].filter(m => m.length > 0)
-  if (marks.length === 0) return bandBody(b, isNarrow, infoUpTo, toolRowsKept, isPlanKept)
+  if (marks.length === 0) return bandBody(b, isNarrow, k)
   const sep: Seg = { text: ' │ ', tone: 'dim' }
   const alone: Line = marks.flatMap((m, i) => (i === 0 ? m : [sep, ...m]))
   const lead: Line = [...alone, sep]
   // Only line 1 shares its row with the marks: the lines under it are fitted to the band's whole width
-  const [first] = bandBody({ ...b, columns: b.columns - widthOf(lead) }, isNarrow, infoUpTo, toolRowsKept, isPlanKept)
+  const [first] = bandBody({ ...b, columns: b.columns - widthOf(lead) }, isNarrow, k)
   if (first === undefined) return [alone]
-  const body = bandBody(b, isNarrow, infoUpTo, toolRowsKept, isPlanKept)
+  const body = bandBody(b, isNarrow, k)
   return widthOf(lead) + widthOf(first) <= b.columns ? [[...lead, ...first], ...body.slice(1)] : [alone, ...body]
 }
 
-function bandBody(b: BandInput, isNarrow: boolean, infoUpTo: number, toolRowsKept: number, isPlanKept: boolean): Line[] {
+function bandBody(b: BandInput, isNarrow: boolean, k: Keep): Line[] {
   const u = b.usage
   // Before the first reading the calm band waits; the full band draws once the model or a stored window is known
   const isFullKnown = b.mode === 'full' && (b.meta.model !== null || u.windows.length > 0)
@@ -612,11 +630,14 @@ function bandBody(b: BandInput, isNarrow: boolean, infoUpTo: number, toolRowsKep
   const invalid: Line = b.planInvalid ? [{ text: ' │ ', tone: 'dim' }, { text: 'plan file invalid', tone: 'warn' }] : []
   const gaugeLine = isNarrow ? narrowGauges(u, b.runway) : withToday(b, gauges(b), invalid)
   const line2 = [...gaugeLine, ...invalid]
-  // The info line, then the open rows of tools under it, only while its toggle is in view to close them
-  const head = infoUpTo > 0 && b.mode === 'full' ? infoRows(b, infoUpTo) : []
-  const hasToggle = head.some(row => row.some(s => ('button' in s && s.button.key === 'tools') || ('text' in s && s.key === 'tools')))
-  const plan: Line[] = head.length > 0 && isPlanKept ? planRow(b) : []
-  const info: Line[] = head.length === 0 ? [] : [...plan, ...head, ...(b.isToolsOpen === true && hasToggle ? toolRows(b).slice(0, toolRowsKept) : [])]
+  // The info line, then the project, plan and usage rows, then the detail rows while `bandRows` opens them; the full
+  // band's alone (the user, 2026-11-11)
+  const head = k.infoUpTo > 0 && b.mode === 'full' ? infoRows(b, k.infoUpTo) : []
+  const place = head.length > 0 && k.isPlaceKept ? placeRow(b) : []
+  const counts = head.length > 0 && k.isUsageKept ? usageRow(b) : []
+  const info: Line[] = head.length === 0 ? [] : [
+    ...head, ...place, ...(k.isPlanKept ? planRow(b) : []), ...counts, ...(b.isToolsOpen === true ? toolRows(b).slice(0, k.toolRowsKept) : []),
+  ]
   const p = fiveHourPace(b)
   const isHot = (b.runway?.percent ?? u.percent ?? 0) >= 60 || u.windows.some(w => w.percentUsed >= 60) || (p !== null && p !== 'on-pace')
   const agentsRun = b.agents.some(r => isLive(r.status))
@@ -625,7 +646,9 @@ function bandBody(b: BandInput, isNarrow: boolean, infoUpTo: number, toolRowsKep
   if (!isHot && b.newFailures === 0 && !b.isWorking && !agentsRun && warning === null && ask === null) {
     const calm = isNarrow || b.mode === 'full' ? gaugeLine : withTimes(b, gaugeLine)
     const dim = (l: Line): Line => l.map(s => ('text' in s ? { text: s.text, tone: 'dim' as const } : s))
-    return [[...dim(calm), ...invalid], ...info.map(dim)]
+    // The project and usage rows keep the user's colours, as the toggle's button kept its own (the user, 2026-11-11)
+    const lively = new Set([...place, ...counts])
+    return [[...dim(calm), ...invalid], ...info.map(l => (lively.has(l) ? l : dim(l)))]
   }
   if (b.isWorking) return [working(b, isNarrow), line2, ...info]
   const failed: Line = b.newFailures > 0

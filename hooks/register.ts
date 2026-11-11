@@ -23,7 +23,7 @@ import { maskDeep, maskDialog, maskResult, neutralDialog, resultLines } from './
 import { DROPS_RESULT, callLine, emptyPreview, groupLines } from './compact.ts'
 import type { CompactCall } from './compact.ts'
 import {
-  FOREIGN, HANDOFF_PATH, HANDOFF_USAGE, MARKER, RESUME_PROMPT, THRESHOLD_REFUSED, TOASTS, gitPart, handoffText, isThreshold, nextStep, parseSettings,
+  FOREIGN, HANDOFF_PATH, HANDOFF_USAGE, MARKER, RESUME_PROMPT, TOASTS, gitPart, handoffText, nextStep,
   parseStatus, percentOf, statusPath, stepUnder, stepsOf, windowThreshold,
 } from './handoff.ts'
 import type { HandoffView, PlanPart, SaveInput, ScoresPart } from './handoff.ts'
@@ -37,7 +37,9 @@ import { closeOf, closeSlices, closeWait, isAllWait, liveSpans, mineOf, openWait
 import type { Close } from './steptime.ts'
 import { agentsLines, cacheLines, nowLines, tabBar, timelineLines, toolsLines, usageLines } from './tabs.ts'
 import { classify, fold, targetOf, toolKey } from './outcome.ts'
-import { LEVELS, REC_HELP, addWord, parseLevel, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec.ts'
+import { REC_HELP, addWord, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec.ts'
+import { DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast } from './settings.ts'
+import type { Field, From, Resolved, Source, Values } from './settings.ts'
 import { baseName, dropPassed, folderOf, gitDirOf, headBranch, nextWindows, parentOf, storedWindows } from './startup.ts'
 import type { CallFacts } from './outcome.ts'
 import type {
@@ -977,11 +979,110 @@ function keepError(id: string, text: string): void {
   keepLast(errorMem)
 }
 
-// The stored level and words into the masker and the rec atom: at the start, on the poll, after a /clear and after
-// each change, so a word or a level set in one session reaches every session within 30 seconds
+// The mod's switches, from the "alfred-mods" key of each settings file and the old commands' store keys (spec
+// 2026-11-11 settings-values, S1-S4 and S7): read at the start, on the poll, after a /clear and after each change, one
+// run at a time as the status file's reads are. `rec`, the level in force and the source that set it; `skippedKey`,
+// the skipped values last told; `isHoldTold`, whether REC's hold was told. A new claude run starts them over.
+const settingsMem = {
+  resolved: null as Resolved | null, rec: null as { level: Level; from: From } | null, skippedKey: '', isHoldTold: false,
+  reading: Promise.resolve() as Promise<void>,
+}
+
+const settingsNow = (): Values => settingsMem.resolved?.values ?? DEFAULTS
+
+function loadSettings($: EngineInterface, isStart = false): Promise<void> {
+  const next = settingsMem.reading.then(() => loadSettingsNow($, isStart))
+  settingsMem.reading = next.catch(() => undefined)
+  return next
+}
+
+// Each source read on its own, so a file that does not parse falls to the files below rather than taking the rest
+// with it (S1); a refused read, or a store key that throws, counts as absent
+async function loadSettingsNow($: EngineInterface, isStart: boolean): Promise<void> {
+  if (isStart) {
+    settingsMem.rec = null
+    settingsMem.skippedKey = ''
+    settingsMem.isHoldTold = false
+  }
+  const layers: Partial<Record<Source, unknown>> = {}
+  for (const source of SOURCES) layers[source] = await $.settings.read({ key: 'alfred-mods', source }).catch(() => undefined)
+  const rawHandoff = await $.store.get('settings:handoff').catch(() => null)
+  const legacy = legacyOf({
+    band: await $.store.get('settings:band').catch(() => null),
+    place: await $.store.get('settings:band-place').catch(() => null),
+    tools: await $.store.get('settings:band-tools').catch(() => null),
+    quiet: await $.store.get('settings:quiet').catch(() => null),
+    rec: await $.store.get('settings:rec').catch(() => null),
+    handoff: rawHandoff,
+  })
+  const r = resolve(layers, legacy)
+  settingsMem.resolved = r
+  await retireOld($, r, legacy, rawHandoff)
+  if (isStart) await tellMoved($, r)
+  const before = settingsMem.rec
+  const held = holdRec(before, { level: r.values.rec, from: r.from.rec })
+  // A skipped value is told once (S3): each skip the last told set did not hold, when the set changes. While REC holds,
+  // its skip is the hold's to tell: a skip toast would name a level REC is not at
+  const skips = r.skipped.filter(k => !(held.isHeld && k.field === 'rec'))
+  const skippedKey = skips.map(k => `${k.field}@${k.source}`).sort().join(',')
+  if (skippedKey !== settingsMem.skippedKey) {
+    const told = new Set(settingsMem.skippedKey.split(','))
+    for (const skip of skips) if (!told.has(`${skip.field}@${skip.source}`)) toast($, skippedToast(skip, r))
+    settingsMem.skippedKey = skippedKey
+  }
+  // REC's hold (S3), told once per hold; a level that changes after the session's first read is told as /rec told it
+  settingsMem.rec = { level: held.level, from: held.from }
+  if (!held.isHeld) settingsMem.isHoldTold = false
+  else if (!settingsMem.isHoldTold) {
+    settingsMem.isHoldTold = true
+    toast($, holdToast(held.level, held.from))
+  }
+  await loadRec($)
+  if (before !== null && before.level !== held.level) toast($, recStatus(held.level, recMem.words.length))
+  await loadQuiet($)
+  await loadBand($)
+  await loadHandoff($)
+}
+
+// The old commands' store keys, by the field each held (S7); `settings:handoff` holds two, retired field by field
+const OLD_KEYS: Partial<Record<Field, string>> = {
+  band: 'settings:band', bandPlace: 'settings:band-place', bandRows: 'settings:band-tools', quiet: 'settings:quiet', rec: 'settings:rec',
+}
+
+// S7: a field the user's own file sets, machine-wide as the store is, drops its old value; a project or local value
+// overrides the old one without retiring it. A refused delete is tried at the next read.
+async function retireOld($: EngineInterface, r: Resolved, legacy: Partial<Values>, rawHandoff: unknown): Promise<void> {
+  for (const field of r.userFields) {
+    const key = OLD_KEYS[field]
+    if (key !== undefined && legacy[field] !== undefined) await $.store.delete(key).catch(() => undefined)
+  }
+  const isMode = r.userFields.includes('handoff') && legacy.handoff !== undefined
+  const isAt = r.userFields.includes('handoffAt') && legacy.handoffAt !== undefined
+  if ((!isMode && !isAt) || typeof rawHandoff !== 'object' || rawHandoff === null || Array.isArray(rawHandoff)) return
+  const left: Record<string, unknown> = { ...rawHandoff }
+  if (isMode) delete left.mode
+  if (isAt) delete left.threshold
+  if ('mode' in left || 'threshold' in left) await $.store.set('settings:handoff', left).catch(() => undefined)
+  else await $.store.delete('settings:handoff').catch(() => undefined)
+}
+
+// S7's toast, at a run's first read, once per machine: the earlier commands' choices still in force. A refused read of
+// the mark counts as told, so a failing store never repeats it.
+async function tellMoved($: EngineInterface, r: Resolved): Promise<void> {
+  const kept: Partial<Record<Field, unknown>> = {}
+  for (const field of FIELDS) if (r.from[field] === 'legacy' && r.values[field] !== DEFAULTS[field]) kept[field] = r.values[field]
+  if (Object.keys(kept).length === 0 || (await $.store.get('settings:moved').catch(() => true)) === true) return
+  // 30 s to copy the line (the review's #1)
+  toast($, movedToast(kept as Partial<Values>), 30_000)
+  await $.store.set('settings:moved', true).catch(() => undefined)
+}
+
+// The level in force and the stored words into the masker and the rec atom: a word set in one session reaches every
+// session within 30 seconds
 async function loadRec($: EngineInterface, note: string | null = null): Promise<void> {
-  const level = parseLevel(await $.store.get('settings:rec'))
-  const words = parseWords(await $.store.get('rec:words'))
+  const level = settingsMem.rec?.level ?? 'off'
+  // A refused read keeps the words REC had, so the fields after REC still settle (the review's #4)
+  const words = await $.store.get('rec:words').then(parseWords, () => recMem.words)
   recMem.words = words
   // Recompiled and every site redrawn only on a change: a word swapped for another keeps the atom's count, and rows a
   // reload drew before this read were drawn at off
@@ -1018,42 +1119,27 @@ async function removeRecWord($: EngineInterface, word: string): Promise<void> {
 
 const recOf = (r: RecState): { level: RecState['level']; words: number } => ({ level: r.level, words: r.count })
 
-const OTHER_SESSIONS = 'Other open sessions follow within 30 s; run /rec in each one on screen.'
+// A source's name in the commands' answers: an earlier command's choice is named for its command (S7)
+const sourceName = (from: From, command: '/rec' | '/auto-handoff'): string => (from === 'legacy' ? `an earlier ${command}` : nameOf(from))
 
-// /quiet's stored setting into the quiet atom, at the same points as REC's: only `false`, which /quiet off writes, is
-// off; absent, or anything another version or a hand wrote, is on
+// "quiet" into the quiet atom
 async function loadQuiet($: EngineInterface): Promise<boolean> {
-  const isOn = (await $.store.get('settings:quiet')) !== false
+  const isOn = settingsNow().quiet
   await update($, quiet, q => (q.isOn === isOn ? q : { isOn }))
   return isOn
 }
 
-// Only the exact string 'calm' reads as calm: absent, or anything another version or a hand wrote, is full. The band's
-// detail rows likewise close only on the exact string 'closed' (spec 2026-11-11, D1): a fresh store, or anything
-// another version or a hand wrote, opens them.
-// The place likewise is under only on the exact string 'under' (spec 2026-11-11 band-under U1), and a read that throws
-// counts as absent, so a refused store leaves the band above.
+// "band", "bandRows" and "bandPlace" into the band's setting
 async function loadBand($: EngineInterface): Promise<BandMode> {
-  const mode: BandMode = (await $.store.get('settings:band')) === 'calm' ? 'calm' : 'full'
-  const isOpen = (await $.store.get('settings:band-tools')) !== 'closed'
-  const isUnder = (await $.store.get('settings:band-place').catch(() => null)) === 'under'
+  const v = settingsNow()
+  const mode: BandMode = v.band
+  const isOpen = v.bandRows
+  const isUnder = v.bandPlace === 'under'
   bandMem.isUnder = isUnder
   const next: BandSetting = { mode, ...(isOpen ? { isToolsOpen: true } : {}), ...(isUnder ? { isUnder: true } : {}) }
   await update($, bandSetting, b =>
     (b.mode === mode && (b.isToolsOpen === true) === isOpen && (b.isUnder === true) === isUnder ? b : next))
   return mode
-}
-
-// The band's rows open or closed for every session, as /band's mode is, written only on a change: the toggle's `t`
-// and click, and `/band rows on|off`
-async function setRows($: EngineInterface, isOpen: boolean): Promise<void> {
-  if (((await read($, bandSetting)).isToolsOpen === true) !== isOpen) await $.store.set('settings:band-tools', isOpen ? 'open' : 'closed')
-  await loadBand($)
-}
-
-// The band's toggle
-async function toggleTools($: EngineInterface): Promise<void> {
-  await setRows($, (await read($, bandSetting)).isToolsOpen !== true)
 }
 
 // The band's lines from the session's state, for the site above or the footer (spec band-under U2): the same reads, the
@@ -1087,7 +1173,7 @@ async function bandInputOf(
 
 // What the band's buttons do, above or under
 function bandPress($: EngineInterface, held: Held): Record<string, () => unknown> {
-  return { inspect: () => inspectFromBand($), compact: () => compactNow($, held), handoff: () => saveNow($), tools: () => toggleTools($) }
+  return { inspect: () => inspectFromBand($), compact: () => compactNow($, held), handoff: () => saveNow($) }
 }
 
 // Under the input on the terminal, once its footer has drawn, the site above is Claude Code's (spec band-under U2)
@@ -1113,7 +1199,7 @@ const handoffMem = {
 
 // Only ask mode keeps an ask up: a change to auto or off, here or polled from another session, takes it down
 async function loadHandoff($: EngineInterface): Promise<void> {
-  const s = parseSettings(await $.store.get('settings:handoff'))
+  const s = { mode: settingsNow().handoff, threshold: settingsNow().handoffAt }
   await update($, handoff, h => (h.mode === s.mode && h.threshold === s.threshold ? h : { ...h, ...s, isAskUp: s.mode === 'ask' && h.isAskUp }))
 }
 
@@ -1402,10 +1488,7 @@ function startOver($: EngineInterface, source: string | null, calls: Map<string,
     handoffMem.rearm = false
     handoffMem.savedStep = null
     await resetAll($)
-    await loadRec($)
-    await loadQuiet($)
-    await loadBand($)
-    await loadHandoff($)
+    await loadSettings($)
     if (!isClear) await update($, meta, m => ({ ...m, isResumed: true }))
     // This read, finding no file, reads once more at 2 s
     if (!(await readStatus($, true))) {
@@ -1496,9 +1579,6 @@ function forecastOf(h: Handoff, u: Usage, runway: Runway | null): { at: number; 
   return { at: h.point !== null && u.window !== null ? windowThreshold(h.threshold, h.point, u.window) : h.threshold, label: `${h.threshold}%` }
 }
 
-const QUIET_USAGE = 'Usage: /quiet [on|off]'
-const BAND_USAGE = 'Usage: /band [full|calm|above|under|rows on|rows off]'
-const quietText = (isOn: boolean): string => `Compact tool rows: ${isOn ? 'on' : 'off'}`
 
 async function isNoColor($: EngineInterface): Promise<boolean> {
   return ((await $.env.get('NO_COLOR')) ?? '') !== ''
@@ -1724,20 +1804,24 @@ export const register: Register = (on, options) => {
       if (name !== null) await update($, meta, m => (m.pathRules?.includes(name) === true ? m : { ...m, pathRules: [...(m.pathRules ?? []), name] }))
       return next(e)
     }).catch(($, e, next) => next(e))
+
+    // An edit to a settings file (spec settings-values S4): a read inside this hook still answers the old value (F4),
+    // so the files are read again at the clock's next tick; left out, the 30 s poll reads them
+    on('classic.ConfigChange', ($, e, next) => {
+      $.clock.after(0, () => {
+        loadSettings($).catch(() => undefined)
+      })
+      return next(e)
+    }).catch(($, e, next) => next(e))
   }
 
   on('session.start', async ($, e, next) => {
     const started = await next(e)
     await $.command.register({ name: 'inspect', description: 'Session metrics, agents, tool failures, cache, the timeline and the plan in a pane', argumentHint: '[now|usage|agents|tools|cache|timeline|plan [name]]' })
-    await $.command.register({ name: 'rec', description: 'Recording mode: hide keys, emails, phones and your private words on screen', argumentHint: '[on|strict|off|test|words]' })
-    await $.command.register({ name: 'quiet', description: 'Compact tool rows: one line per tool call', argumentHint: '[on|off]' })
-    await $.command.register({ name: 'band', description: 'The band above or under the prompt: full with its info line, or calm, its two lines', argumentHint: '[full|calm|above|under|rows on|rows off]' })
-    await $.command.register({ name: 'auto-handoff', description: 'Save a handoff before the context fills: ask, save by itself, or off', argumentHint: '[ask|auto|off|at <percent>|now]' })
+    await $.command.register({ name: 'rec', description: 'Recording mode, set by "rec" in settings: show the level, test it, or edit your private words', argumentHint: '[test|words]' })
+    await $.command.register({ name: 'auto-handoff', description: 'Save a handoff now, or show the handoff mode the settings give', argumentHint: '[now]' })
     recMem.home = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE')) ?? null
-    await loadRec($)
-    await loadQuiet($)
-    await loadBand($)
-    await loadHandoff($)
+    await loadSettings($, true)
     await readStatus($)
     freshMem.at = -Infinity
     conversationMem.id = await $.session.id()
@@ -1765,10 +1849,8 @@ export const register: Register = (on, options) => {
     await update($, plans, p => (p.since === null ? { ...p, since: now } : p))
     $.clock.every(30_000, () => {
       queueReload($, held)
-      loadRec($).catch(() => undefined)
-      loadQuiet($).catch(() => undefined)
-      loadBand($).catch(() => undefined)
-      loadHandoff($).then(() => readStatus($)).catch(() => undefined)
+      // The status file is read whatever the settings read did
+      loadSettings($).catch(() => undefined).then(() => readStatus($)).catch(() => undefined)
       pollPlace($).catch(() => undefined)
     })
     scheduleReload($, held)
@@ -1982,97 +2064,40 @@ export const register: Register = (on, options) => {
     return { text: opened.isPlaced ? 'Opened the inspect pane.' : `The inspect pane is open but not drawn: ${opened.reason}.` }
   })
 
-  // '/rec [on|strict|off|test|words]': every form reads the stored level first, so a session that has not polled acts on
-  // it, never on its own copy. A bare /rec turns REC on over off and never turns it off or down.
+  // '/rec [test|words]': the level is a settings value (S5); every form but words reads the files first, so a session
+  // that has not polled answers with the level in force, never its own copy
   on('command.run', { command: 'rec' }, async ($, e) => {
     const word = e.args.trim().toLowerCase()
-    const stored = parseLevel(await $.store.get('settings:rec'))
-    if (word === 'test') {
-      await loadRec($)
-      return { text: mask(recTest(stored === 'off' ? 'on' : stored, recMem.words, recMem.home)) }
-    }
     if (word === 'words') {
       const opened = await $.ui.open({ id: 'rec', title: 'REC words', focus: true })
       return { text: opened.isPlaced ? 'Opened the REC words pane.' : `The REC words pane is open but not drawn: ${opened.reason}.` }
     }
-    const target = word === '' ? (stored === 'off' ? 'on' : stored) : LEVELS.find(l => l === word)
-    if (target === undefined) return { text: mask(REC_HELP) }
-    const before = recLevel()
-    if (target !== stored) await $.store.set('settings:rec', target)
-    await loadRec($)
-    const status = recStatus(target, recMem.words.length)
-    if (target !== before) toast($, status)
-    return { text: mask(target === stored ? status : `${status}\n${OTHER_SESSIONS}`) }
+    await loadSettings($)
+    const level = settingsMem.rec?.level ?? 'off'
+    if (word === 'test') return { text: mask(recTest(level === 'off' ? 'on' : level, recMem.words, recMem.home)) }
+    const from = sourceName(settingsMem.rec?.from ?? 'default', '/rec')
+    return { text: mask(`${recStatus(level, recMem.words.length)} - from ${from}\n${REC_HELP}`) }
   })
 
-  // '/auto-handoff [ask|auto|off|at <percent>|now]': each change reads `settings:handoff` first and changes only the
-  // field it names, so a session that has not polled never writes back an old mode or threshold
+  // '/auto-handoff [now]': the mode and the first ask are settings values (S5); any form but now reads the files first
+  // and prints the state with each value's source, and while Alfred Code owns the handoff, its state alone
   on('command.run', { command: 'auto-handoff' }, async ($, e) => {
-    const word = e.args.trim().toLowerCase()
-    const raw = await $.store.get('settings:handoff')
-    const stored = parseSettings(raw)
-    const write = async (s: ReturnType<typeof parseSettings>): Promise<string> => {
-      await $.store.set('settings:handoff', { ...(typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? raw : {}), ...s })
-      await loadHandoff($)
-      return mask(await handoffState($))
-    }
-    if (word === 'now') {
+    if (e.args.trim().toLowerCase() === 'now') {
       await saveNow($)
       return { text: `Saving a handoff to ${HANDOFF_PATH}.` }
     }
-    if (word === 'ask' || word === 'auto' || word === 'off') return { text: await write({ ...stored, mode: word }) }
-    const at = /^at(?:\s+(\S*))?$/.exec(word)
-    if (at !== null) {
-      const n = Number(at[1])
-      if (!/^\d+$/.test(at[1] ?? '') || !isThreshold(n)) return { text: THRESHOLD_REFUSED }
-      return { text: await write({ ...stored, threshold: n }) }
-    }
-    if (word !== '') return { text: HANDOFF_USAGE }
-    await loadHandoff($)
-    return { text: mask(`${await handoffState($)}\n${HANDOFF_USAGE}`) }
-  })
-
-  // '/quiet [on|off]': reads the stored setting first; on or off writes it only when it changes, any other form prints it
-  on('command.run', { command: 'quiet' }, async ($, e) => {
-    const word = e.args.trim().toLowerCase()
-    const stored = await loadQuiet($)
-    if (word !== 'on' && word !== 'off') return { text: `${quietText(stored)}\n${QUIET_USAGE}` }
-    const isOn = word === 'on'
-    if (isOn !== stored) await $.store.set('settings:quiet', isOn)
-    await loadQuiet($)
-    return { text: quietText(isOn) }
-  })
-
-  on('command.run', { command: 'band' }, async ($, e) => {
-    const [word = '', arg, ...rest] = e.args.trim().toLowerCase().split(/\s+/)
-    const stored = await loadBand($)
-    const setting = await read($, bandSetting)
-    const isUnder = setting.isUnder === true
-    const usage = { text: `Band: ${stored} · ${isUnder ? 'under' : 'above'}\n${BAND_USAGE}` }
-    if (rest.length > 0) return usage
-    if (word === 'rows') {
-      const rows = (isOpen: boolean): string => `Rows: ${isOpen ? 'open' : 'closed'}`
-      if (arg === undefined) return { text: rows(setting.isToolsOpen === true) }
-      if (arg !== 'on' && arg !== 'off') return usage
-      await setRows($, arg === 'on')
-      return { text: rows(arg === 'on') }
-    }
-    if (arg !== undefined) return usage
-    if (word === 'under' || word === 'above') {
-      if (word === 'under' && !isUnder) await $.store.set('settings:band-place', 'under')
-      if (word === 'above' && isUnder) await $.store.delete('settings:band-place')
-      await loadBand($)
-      return { text: `Band: ${word}` }
-    }
-    if (word !== 'full' && word !== 'calm') return usage
-    if (word !== stored) await $.store.set('settings:band', word)
-    await loadBand($)
-    return { text: `Band: ${word}` }
+    await loadSettings($)
+    const state = await handoffState($)
+    const from = settingsMem.resolved?.from
+    const sources = (await read($, handoff)).alfred.state === 'stood-down' || from === undefined
+      ? ''
+      : ` · mode from ${sourceName(from.handoff, '/auto-handoff')} · first ask from ${sourceName(from.handoffAt, '/auto-handoff')}`
+    return { text: mask(`${state}${sources}\n${HANDOFF_USAGE}`) }
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     // Decided on module memory, so a person above meets no new read before the survey's check; the read keeps this
-    // hook drawn again on a later /band above. The width it lends the footer redraws it only on a change.
+    // hook drawn again on a later "bandPlace": "above". The width it lends the footer redraws it only on a change.
     if (isPassingAbove(e.surface)) {
       await read($, bandSetting)
       if (bandMem.columns !== e.props.bodyColumns) {
@@ -2153,7 +2178,7 @@ export const register: Register = (on, options) => {
     return text === e.props.text ? next(e) : next({ ...e, props: { ...e.props, text: printable(text) } })
   }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
 
-  // The tool sites in two steps (Decision 14): /quiet's compact row or emptied result first, then REC over whatever
+  // The tool sites in two steps (Decision 14): "quiet"'s compact row or emptied result first, then REC over whatever
   // the first hands on. A settled row that is not expanded, or that a group unfolded, draws its compact line.
   // An unfolded group's rows draw `output` inline, so a row's input and output are both masked
   on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
@@ -2184,7 +2209,7 @@ export const register: Register = (on, options) => {
     return next({ ...e, props: { ...e.props, input, ...(output === e.props.output ? {} : { output }) } })
   }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
 
-  // Under /quiet an errored result draws an empty Box, as Claude Code would draw its whole error text and the compact
+  // With "quiet" on an errored result draws an empty Box, as Claude Code would draw its whole error text and the compact
   // row above carries ✗ and its error lines, and so does an Edit or Write result (DROPS_RESULT); any other keeps
   // next(e)'s tree, the classifier line in it, its preview gone. Under REC, so does an errored result whose row drew
   // its masked error text
@@ -2207,7 +2232,7 @@ export const register: Register = (on, options) => {
     return drawLines($, e, lines, { noColor: await isNoColor($), press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
   }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
 
-  // Under /quiet a settled group of calls alone draws its compact lines. One holding another row, or an errored or
+  // With "quiet" on a settled group of calls alone draws its compact lines. One holding another row, or an errored or
   // interrupted call, is unfolded and its calls marked, so each draws its own compact line; a group drawn expanded (the
   // main screen's ctrl+o) unmarks them, so ctrl+o shows all. A group's folded line shows its calls' paths, patterns and
   // git results, and `isExpanded` is the one prop a rewrite changes, so REC unfolds it into ToolUse rows, which the

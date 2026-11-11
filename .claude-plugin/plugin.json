@@ -1,6 +1,6 @@
 {
   "name": "alfred-mods",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "A Claude Code mod: context, usage, cost, tool failures, agents, cache and plan progress in one calm band and an /inspect pane. Works on Claude Code alone; with Alfred Code installed it also shows the stack's mode, runway and handoff.",
   "author": { "name": "envoydev" },
   "homepage": "https://github.com/envoydev/alfred-mods",
@@ -12,7 +12,7 @@
     "leave_out_skipped_hooks": {
       "type": "boolean",
       "title": "Leave out hooks a managed plugin skips",
-      "description": "Only where Claude Code notes 'alfred-mods: its ... hook was skipped': leaves out the six hooks seen skipped and the rules hook, so the notices stop. Off elsewhere.",
+      "description": "Only where Claude Code notes 'alfred-mods: its ... hook was skipped': leaves out the six hooks seen skipped, the rules hook and the settings-change hook (classic.ConfigChange), so the notices stop. Off elsewhere.",
       "default": false
     }
   }

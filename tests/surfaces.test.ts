@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, RenderElement, RenderSurface, SessionUsage } from 'claude-code'
 
-import { PRESENTATION, SPAWN, START, engine, rows as rowsOf, spawns, step, stepEngine, stubAll } from './kit.ts'
+import { PRESENTATION, SPAWN, START, engine, rows as rowsOf, setUser, spawns, step, stepEngine, stubAll } from './kit.ts'
 import { drawLines } from '../hooks/draw.tsx'
 import type { Line } from '../hooks/band.ts'
 import type { FileStub } from './kit.ts'
@@ -87,7 +87,7 @@ const READING: SessionUsage = {
 const USAGE = { input_tokens: 1000, output_tokens: 200, cache_read_input_tokens: 20_000, cache_creation_input_tokens: 10_000, model: 'claude-opus-5-5' }
 const complete = (turnId: string, more: object = {}) => ({ answer: '', durationMs: 3000, isAborted: false, turnId, reason: 'answer' as const, ...more })
 
-async function busy($: Engine, on: On): Promise<void> {
+async function busy($: Engine, on: On): Promise<ReturnType<typeof stubAll>> {
   const kit = stubAll(on, {
     now: NOW, usage: READING, env: { HOME: '/Users/jane' },
     store: { 'settings:rec': 'on', 'rec:words': ['Zephyrine'] },
@@ -111,6 +111,7 @@ async function busy($: Engine, on: On): Promise<void> {
   await $.agent.spawn({ ...SPAWN, subagentType: 'Explore', description: 'done' })
   await $.turn.complete(complete('x3', { agentId: 'a3', answer: 'found it' }))
   await $.session.measure({ context: { tokens: 164_000, window: 200_000, percent: 82 }, rateLimits: READING.rateLimits, changed: ['context'] })
+  return kit
 }
 
 const BAND = { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 6, scroll: { offset: 0, bodyRows: 6 }, view: {} }
@@ -158,8 +159,7 @@ test('no faults or spills in each tab and the rec pane', { timeoutMs: 15_000 }, 
 })
 
 test('no faults or spills in the tool rows', { timeoutMs: 15_000 }, async ($, on) => {
-  await busy($, on)
-  await $.command.run({ command: 'quiet', args: 'on', origin: { kind: 'composer' }, presentation: PRESENTATION })
+  await setUser($, await busy($, on), { quiet: true })
   const use = { tool_use_id: 'f1', tool: 'Bash', input: { command: 'false Zephyrine', description: 'Fail on purpose' }, isRunning: false, isErrored: true, isInterrupted: false, output: 'Exit code 1\nboom' }
   const sites = [
     { component: 'ToolUse', props: use },
@@ -423,9 +423,9 @@ test('the per turn chart keeps its size on desktop, and its spark length in the 
 // A tool row is measured against the viewport but takes its slot's width, so a slot narrower than the viewport (a pane
 // docked beside the transcript) clips the row rather than lay it out past the slot (the release 2 review)
 test("a tool row takes its slot's width, not the viewport's", async ($, on) => {
-  stubAll(on)
+  const kit = stubAll(on)
   engine(on)
-  await $.command.run({ command: 'quiet', args: 'on', origin: { kind: 'composer' }, presentation: PRESENTATION })
+  await setUser($, kit, { quiet: true })
   const props = { tool_use_id: 'u1', tool: 'Bash', input: { command: 'ls', description: 'List files' }, isRunning: false, isErrored: false, isInterrupted: false, output: 'a\nb' }
   const ui = await $.ui.mount({ plugin: 'alfred-mods', surface: 'terminal', component: 'ToolUse', props, viewport: { columns: 120, rows: 40 } } as never)
   const lines = lineBoxes(await ui.drawn())

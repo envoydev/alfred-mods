@@ -2,7 +2,7 @@
 import { mock } from 'claude-code/testing'
 import type { Engine, MockClock } from 'claude-code/testing'
 import type {
-  AgentInfo, ClassicResult, EngineInterface, On, ProcessRunResult, RenderElement, RenderInput, SessionUsage, Settings, TurnStepInput, TurnStepResult,
+  AgentInfo, ClassicResult, EngineInterface, On, ProcessRunResult, RenderElement, RenderInput, SessionUsage, Settings, SettingsSource, TurnStepInput, TurnStepResult,
   TurnUsage, UiPane,
 } from 'claude-code'
 
@@ -41,6 +41,14 @@ type Options = {
   // The same for `settings:quiet`: false (off) by default, the tool rows every test before /quiet was on by default
   // was written for; 'unset' answers nothing, as a fresh install's store does
   quiet?: 'on' | 'off' | 'unset'
+  // Claude Code's settings files by source, each the file's object: a read with a `source` answers that file's key,
+  // absent when the file or the key is; `refuseSource` denies those sources' reads, as a build without them would
+  sources?: Partial<Record<SettingsSource, Record<string, unknown>>>; refuseSource?: string[]
+  // What a read of `settings:moved` answers while the test stored none: true ('told') by default, so a test of an
+  // earlier command's choice meets no toast of S7's; 'unset' answers nothing, as a machine not yet told
+  moved?: 'told' | 'unset'
+  // Store keys whose first delete is refused, as a store that fails once would
+  refuseDelete?: string[]
 }
 
 export const gitResult = (stdout: string, exitCode = 0, stderr = ''): ProcessRunResult =>
@@ -50,7 +58,7 @@ export const gitResult = (stdout: string, exitCode = 0, stderr = ''): ProcessRun
 export type FileStub = { text: string; mtimeMs: number; size?: number }
 
 export function stubAll(on: On, o: Options = {}): {
-  clock: MockClock; toasts: string[]; opened: string[]; copied: string[]; usage: { current: SessionUsage; breakdowns: number; refuse: boolean; fail: boolean }; panes: UiPane[]
+  clock: MockClock; toasts: string[]; toastMs: (number | undefined)[]; opened: string[]; copied: string[]; usage: { current: SessionUsage; breakdowns: number; refuse: boolean; fail: boolean }; panes: UiPane[]
   listed: { current: AgentInfo[]; calls: number }; files: { current: Record<string, FileStub>; reads: string[]; writes: string[]; exists: string[]; lists: string[] }
   // `git.current` and `git.calls`; the draft a test types and the texts the mod filled
   git: { current: ProcessRunResult | string; calls: number; argv: readonly string[] | null; timeoutMs: number | null }; prompt: { draft: string; fills: string[] }
@@ -64,8 +72,14 @@ export function stubAll(on: On, o: Options = {}): {
   // A test changes the session id mid-test, as a /clear does, through `session.id`; `turns` is how many prompts the
   // session's transcript holds, 1 right after a /clear (its own row) and more after a resume
   session: { id: string; turns: number }
+  // Each settings file by source, which a test changes mid-test, as an edit would: `sources.local['alfred-mods'] = ...`
+  sources: Record<SettingsSource, Record<string, unknown>>
+  // The names of the commands the mod registered, in order
+  registered: string[]
 } {
   const toasts: string[] = []
+  // Each toast's timeoutMs, in the order of `toasts`: undefined is the default 4 s
+  const toastMs: (number | undefined)[] = []
   const opened: string[] = []
   // The engine's record of the open panes; a test places a waiting one by replacing its entry
   const panes: UiPane[] = []
@@ -87,7 +101,11 @@ export function stubAll(on: On, o: Options = {}): {
   on('session.model', () => (o.model === undefined ? { deny: 'test: no model' } : { value: o.model }))
   on('session.version', () => (o.version === undefined ? { deny: 'test: no version' } : { value: { version: o.version } }))
   on('session.repo', () => (o.repo === undefined ? { deny: 'test: no repo' } : { value: (o.repo === null ? null : { remote: null, internal: false, ...o.repo }) as never }))
-  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  const registered: string[] = []
+  on('command.register', (_, e) => {
+    registered.push(e.name)
+    return { value: { command: e.name } }
+  })
   on('ui.open', (_, e) => {
     opened.push(e.id)
     const isPlaced = o.unplaced === undefined
@@ -101,9 +119,18 @@ export function stubAll(on: On, o: Options = {}): {
     listed.calls++
     return { value: listed.current }
   })
-  // A key's read answers that key's value; a read with no key, the whole object
+  // A key's read answers that key's value; a read with no key, the whole object; a read with a source, that file's key
+  const sources: Record<SettingsSource, Record<string, unknown>> = {
+    user: { ...o.sources?.user }, project: { ...o.sources?.project }, local: { ...o.sources?.local },
+    flag: { ...o.sources?.flag }, policy: { ...o.sources?.policy },
+  }
   on('settings.read', (_, e) => {
     const key = e !== undefined && 'key' in e && typeof e.key === 'string' ? e.key : null
+    const source = e !== undefined && 'source' in e && typeof e.source === 'string' ? (e.source as SettingsSource) : null
+    if (source !== null) {
+      if (o.refuseSource?.includes(source) === true) return { deny: `test: settings source refused, ${source}` }
+      return { value: (key === null ? sources[source] : sources[source][key]) as Settings }
+    }
     return { value: (key === null ? (o.settings ?? {}) : o.settings?.[key]) as Settings }
   })
   // A test changes the files mid-test through `files.current`; a folder with no file in it is missing. The kit hands a
@@ -180,6 +207,7 @@ export function stubAll(on: On, o: Options = {}): {
   })
   on('ui.toast', (_, e) => {
     toasts.push(e.text)
+    toastMs.push(e.timeoutMs)
     return { value: undefined }
   })
   const invalidates: string[] = []
@@ -208,6 +236,7 @@ export function stubAll(on: On, o: Options = {}): {
   on('classic.PostModelSwitch', () => ({}))
   on('classic.PreModelSwitch', () => o.preSwitch ?? {})
   on('classic.InstructionsLoaded', () => ({}))
+  on('classic.ConfigChange', () => ({}))
   const clock = mock.clock(on, { now: o.now ?? 0 })
   // The store, kept here rather than by the kit's mock so a test can read what the mod wrote: a test's `$` has no
   // store of its own. Values go through JSON as the real store's do; keys keep their insertion order.
@@ -218,6 +247,7 @@ export function stubAll(on: On, o: Options = {}): {
     if (o.holdStore?.until && e.key === o.holdStore.key) await o.holdStore.until
     if (e.key === 'settings:band' && !stored.has(e.key) && o.band !== 'unset') return { value: o.band ?? 'calm' }
     if (e.key === 'settings:quiet' && !stored.has(e.key) && o.quiet !== 'unset') return { value: o.quiet === 'on' }
+    if (e.key === 'settings:moved' && !stored.has(e.key) && o.moved !== 'unset') return { value: true }
     return { value: stored.get(e.key) }
   })
   on('store.set', (_, e) => {
@@ -225,7 +255,12 @@ export function stubAll(on: On, o: Options = {}): {
     stored.set(e.key, JSON.parse(JSON.stringify(e.value)) as unknown)
     return { value: undefined }
   })
+  const refusedDeletes = new Set<string>()
   on('store.delete', (_, e) => {
+    if (o.refuseDelete?.includes(e.key) === true && !refusedDeletes.has(e.key)) {
+      refusedDeletes.add(e.key)
+      return { deny: `test: store delete refused, ${e.key}` }
+    }
     writes.push(`delete ${e.key}`)
     stored.delete(e.key)
     return { value: undefined }
@@ -237,7 +272,7 @@ export function stubAll(on: On, o: Options = {}): {
     writes,
   }
   mock.env(on, o.env ?? {})
-  return { clock, toasts, opened, copied, usage, panes, listed, files, store, session, git, prompt, invalidates, statuses }
+  return { clock, toasts, toastMs, opened, copied, usage, panes, listed, files, store, session, git, prompt, invalidates, statuses, sources, registered }
 }
 
 // Claude Code's own answers to the events a session raises, for a test that drives a whole turn. A test hooks an
@@ -255,6 +290,17 @@ export function engine(on: On, except: string[] = []): void {
 }
 
 export const START = { cwd: '/w', surface: 'terminal', isInteractive: true } as const
+
+// A person's edit to their user settings file mid-session: the fields merged under "alfred-mods", then Claude Code's
+// ConfigChange and the clock's next tick, when the mod reads the files again (spec settings-values S4)
+export async function setUser(
+  $: Engine, kit: { sources: Record<SettingsSource, Record<string, unknown>>; clock: MockClock }, fields: Record<string, unknown>,
+): Promise<void> {
+  const before = kit.sources.user['alfred-mods']
+  kit.sources.user['alfred-mods'] = { ...(typeof before === 'object' && before !== null ? before : {}), ...fields }
+  await $.classic.ConfigChange({ source: 'user_settings' })
+  await kit.clock.advance(0)
+}
 export const SPAWN = {
   tool_use_id: 'sp1', prompt: 'look', description: 'a look', subagentType: 'general-purpose',
   provider: { plugin: 'claude-code', tier: 'core' }, parentModel: 'claude-sonnet-5-5', background: false, fork: false,
