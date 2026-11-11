@@ -37,12 +37,25 @@ tool's column to keep its counts, and the Timeline leaves out the prompt's time 
 its tokens.
 
 By default the band has an info line under its gauges: the model and effort, the session's time, the average output
-speed, the cache, the tool calls by tool and the times of your last prompt and Claude's reply, `Sonnet 5.5 ◑ medium │
-59m │ ≈133 tok/s avg │ cache warm 54m │ Bash ×5 · Grep ×1 │ you 22:47 · Claude 23:55`; while a turn runs, its first
-line counts the turn's tool calls, and the gauges add today's cost. Today's cost is the mod's own count on this
+speed, the cache, a toggle that counts the tool calls and the skills loaded, and the times of your last prompt and
+Claude's reply, `Sonnet 5.5 ◑ medium │ 59m │ ≈133 tok/s avg │ cache warm 54m │ [ 30 tools · 2 skills ▸ ] │ you 22:47 ·
+Claude 23:55`; while a turn runs, its first line counts the turn's tool calls, and the gauges add today's cost. A click
+on the toggle, or `t` with the band focused (ctrl+x tab), opens rows under the info line, kept open for every session
+until closed:
+
+```text
+tools   Bash ×12 · Read ×8 · Edit ×5 · Context7:query-docs ×3 · Grep ×2
+skills  superpowers:brainstorming ×1 · solve-task ×2 · 57 of 60 listed
+```
+
+`tools` lists every tool by name with its calls, agents' calls included, an MCP tool as `<server>:<tool>`. `skills`
+lists the skills loaded into the main chat's context this conversation, by Claude's Skill tool or by you as `/name`
+(a subagent's Skill calls are on its Agents row, and a skill that runs forked is in its own subagent, never listed
+here), then how many skills the context's listing carries, of the session's. The open rows show while the toggle is
+in view: at a narrow width, which drops the toggle, they close with it. Today's cost is the mod's own count on this
 machine: sessions it did not run in are not in it, so it can read lower than a status line's that counts every
-session. Items drop whole when the width runs out, and the whole info line goes when the band has fewer rows than it
-needs, as in fullscreen under a tall draft, so the line with its buttons stays in view. `/band calm` goes back to the
+session. Items drop whole when the width runs out; when the band has fewer rows than it needs, as in fullscreen under
+a tall draft, the open rows go first, then the whole info line, so the line with its buttons stays in view. `/band calm` goes back to the
 two lines.
 
 An agent whose last step stopped at the output limit ends its Agents row with `⚠ max_tokens`, and its result reads
@@ -51,8 +64,9 @@ agents included (`spend, est.` on a plan, as the Usage tab marks cost); spend wh
 finishing after the reply, falls in no row, so the column does not sum to the session's cost.
 
 The Usage tab shows what fills the context, from Claude Code's own estimate: `In context` lists each part (system
-prompt, tools, agents, memory files, messages), `Plugins` each plugin's agents and skills with their tokens, and
-`Memory` the memory files with the three largest. It reads again after a compaction, and when the tab opens a minute or
+prompt, tools, agents, memory files, messages), `Plugins` each plugin's agents and skills with their tokens, `Memory`
+the memory files with the three largest, and `Skills` the skills loaded into the main chat, the listing's count and its
+tokens. It reads again after a compaction, and when the tab opens a minute or
 more after the last read. A memory file outside the project is named by its type and base name, never its path.
 
 With two agents or more, the Agents tab draws them on one time axis above the tree, one lane each, the newest 8; the
@@ -77,7 +91,8 @@ the empty box, never sent. What it cannot tell without those hooks:
 - outside auto mode, a call you were asked about reads `refused`, whether you denied it, it failed after you allowed
   it, or another plugin's permission hook denied it;
 - a classifier block counts as a new failure;
-- a skill typed as `/name` is not counted;
+- a skill typed as `/name` is not counted, and is missing from the band's `skills` row and the Usage tab's `Skills`
+  row; one Claude loads with its Skill tool is there;
 - time you spend at a permission prompt counts toward a plan step's time;
 - after a resume, the cache's rewrite cost (`rewrite ≈ $…`) is missing until you switch models.
 
@@ -110,8 +125,8 @@ It changes only when its text does, and clears once nothing needs you.
       FAIL tests/auth.test.ts
   ```
 
-- `/band [full|calm]` sets the band: `full` (the default) adds the turn's tool count, today's cost and the info line;
-  `calm` keeps its two lines. With no argument it prints the state.
+- `/band [full|calm]` sets the band: `full` (the default) adds the turn's tool count, today's cost and the info line
+  with its toggle of the tools and skills rows; `calm` keeps its two lines. With no argument it prints the state.
 
 Settings for all four apply to every session and project on the machine; other open sessions follow within 30
 seconds.

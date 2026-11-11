@@ -4,11 +4,12 @@ import { actionOf, isLive } from './agents.ts'
 import { billingOf, cacheView, minutes } from './cache.ts'
 import { bar, clock, duration, elapsed, fitLine, mins, modelParts, modelText, toneOf, tokens, usd, when, widthOf } from './format.ts'
 import { pace, turnsLeft } from './forecast.ts'
+import { listedText, loadedTexts } from './parts.ts'
 import { narrowPlan, planLine, scoreSeg } from './planlines.ts'
 import type { PlanView, ScoresView } from './plan.ts'
 import type { Runway } from './stack.ts'
 
-import type { AgentRow, AgentStatus, BandMode, Cache, Level, Live, Meta, Pace, ToolStat, Totals, Turn, Usage, Window } from '../types'
+import type { AgentRow, AgentStatus, BandMode, Cache, Level, Live, Meta, Pace, SkillListing, ToolStat, Totals, Turn, Usage, Window } from '../types'
 
 export type Tone = 'ok' | 'warn' | 'fail' | 'dim' | 'usage' | 'skill' | 'agents' | 'cache' | 'plan' | 'handoff' | 'opus' | 'sonnet' | 'haiku' | 'fable'
 export type Seg =
@@ -46,6 +47,10 @@ export type BandInput = {
   maxRows?: number
   totals?: Totals
   stats?: Record<string, ToolStat>
+  // The full band's rows of every tool and the skills are open (spec: the user, 2026-11-11); the skill listing from
+  // the context's last breakdown, or null before one
+  isToolsOpen?: boolean
+  listing?: SkillListing | null
 }
 
 const ORDER = ['five_hour', 'seven_day']
@@ -144,13 +149,92 @@ function times(b: BandInput, upTo = 2): Line {
   return parts.length === 0 ? [] : [{ text: ` │ ${parts.join(' · ')}`, tone: 'dim' }]
 }
 
+// A line's cells as the terminal draws it: its text, and each button `[ label ]`, or `1: label` when plain
+export function cellsOf(line: Line): number {
+  return line.reduce((n, s) => {
+    if ('text' in s && s.width !== undefined) return n + s.width
+    if (!('button' in s)) return n + widthOf([s])
+    const b = s.button
+    const label = widthOf([{ text: b.label }])
+    return n + (b.plain === true || /^\d$/.test(b.hotkey ?? '') ? (b.hotkey === undefined ? 0 : b.hotkey.length + 2) + label : label + 4)
+  }, 0)
+}
+
+const isSkill = (key: string): boolean => key.startsWith('Skill: ')
+
+// The session's tools by calls, most first (ties by name), Skill calls apart
+function toolsByCalls(stats: Record<string, ToolStat> | undefined): [string, ToolStat][] {
+  return Object.entries(stats ?? {})
+    .filter(([key, s]) => s.calls > 0 && !isSkill(key))
+    .sort(([ka, a], [kb, z]) => z.calls - a.calls || (ka < kb ? -1 : ka > kb ? 1 : 0))
+}
+
+// The info line's toggle of the rows under it: the tool calls and the main chat's skills it opens, the skills' count
+// going first when the width runs out, then both. A letter, never a digit: a bare digit in an empty prompt presses a
+// band button in place of typing. Null while it has nothing to open.
+function toggleForms(b: BandInput): Line[] {
+  const isOpen = b.isToolsOpen === true
+  const calls = toolsByCalls(b.stats).reduce((n, [, s]) => n + s.calls, 0)
+  const loaded = Object.keys(b.meta.skills ?? {}).length
+  if (calls === 0 && loaded === 0 && !isOpen) return []
+  const toolsPart = calls === 0 ? null : `${calls} ${calls === 1 ? 'tool' : 'tools'}`
+  const skillsPart = loaded === 0 ? null : `${loaded} ${loaded === 1 ? 'skill' : 'skills'}`
+  const arrow = isOpen ? '▾' : '▸'
+  const both = [toolsPart, skillsPart].filter((p): p is string => p !== null)
+  const labels = [`${both.length === 0 ? 'tools' : both.join(' · ')} ${arrow}`, ...(both.length === 2 ? [`${toolsPart} ${arrow}`] : []), arrow]
+  return labels.map(label => [{ button: { key: 'tools', label, hotkey: 't' } }])
+}
+
+// The open rows: every tool by name with its calls, then the skills the main chat loaded and how many the listing
+// carries, each under its label, as many to a row as the width holds
+export function toolRows(b: BandInput): Line[] {
+  const used = toolsByCalls(b.stats)
+  const tools: Seg[] = used.length === 0 ? [{ text: 'none', tone: 'dim' }] : used.map(([key, s]) => ({ text: `${key} ×${s.calls}` }))
+  const loaded = loadedTexts(b.meta.skills)
+  const skills: Seg[] = loaded.length === 0 ? [{ text: 'none loaded', tone: 'dim' }] : loaded.map(text => ({ text, tone: 'skill' }))
+  if (b.listing !== undefined && b.listing !== null) skills.push({ text: listedText(b.listing), tone: 'dim' })
+  const label = (text: string): Seg => ({ text: text.padEnd(ROW_LABEL), tone: 'dim' })
+  const under: Seg = { text: ' '.repeat(ROW_LABEL) }
+  return [...wrapRows(label('tools'), under, tools, b.columns), ...wrapRows(label('skills'), under, skills, b.columns)]
+}
+
+const ROW_LABEL = 8
+
+// Items after a label, joined by ' · ' while they fit; a row that wraps starts with `under`, as wide as the label, so
+// its items line up under the first. An item wider than a row has one to itself, and the draw cuts it.
+export function wrapRows(label: Seg, under: Seg, items: Seg[], columns: number): Line[] {
+  const lead = cellsOf([label])
+  const rows: Line[] = []
+  let row: Line = [label]
+  let used = lead
+  let count = 0
+  for (const item of items) {
+    const w = widthOf([item])
+    if (count > 0 && used + 3 + w > columns) {
+      rows.push(row)
+      row = [under]
+      used = lead
+      count = 0
+    }
+    if (count > 0) {
+      row.push({ text: ' · ', tone: 'dim' })
+      used += 3
+    }
+    row.push(item)
+    used += w
+    count++
+  }
+  rows.push(row)
+  return rows
+}
+
 // One item of the info line: its forms, fullest first, and its keep rank, 1 going first when the width runs out
 type Item = { keep: number; forms: Line[] }
 
 const dimText = (text: string): Line => [{ text, tone: 'dim' }]
 
 // The info line's items in the approved mockup's order, each only when known: the model and effort, the session's
-// time, the average output speed, the cache, the tool calls by tool, the last prompt and reply
+// time, the average output speed, the cache, the toggle of the tools and skills, the last prompt and reply
 function infoItems(b: BandInput): Item[] {
   const items: Item[] = []
   const model = b.meta.model
@@ -166,17 +250,9 @@ function infoItems(b: BandInput): Item[] {
     const v = cacheView(b.cache, billingOf(b.usage.windows), b.now, b.usage.tokens)
     items.push({ keep: 4, forms: [dimText(v.leftMs === null ? 'cache cold' : `cache warm ${v.tier.isEstimate ? '≈' : ''}${minutes(v.leftMs)}`)] })
   }
-  const used = Object.entries(b.stats ?? {})
-    .filter(([, s]) => s.calls > 0)
-    .sort(([ka, a], [kb, z]) => z.calls - a.calls || (ka < kb ? -1 : ka > kb ? 1 : 0))
-  if (used.length > 0) {
-    const forms: Line[] = []
-    for (let k = used.length; k >= 1; k--) {
-      const names = used.slice(0, k).map(([key, s]) => `${key} ×${s.calls}`).join(' · ')
-      forms.push(dimText(k < used.length ? `${names} +${used.length - k}` : names))
-    }
-    items.push({ keep: 2, forms })
-  }
+  // While open it outlasts tok/s and the cache: the rows under it close only through it
+  const toggle = toggleForms(b)
+  if (toggle.length > 0) items.push({ keep: b.isToolsOpen === true ? 4.5 : 2, forms: toggle })
   // The running turn's prompt while one runs; the last turn's, as line 1 of the calm band shows it, otherwise
   const parts = timeParts(b, 2, true)
   if (parts.length > 0) items.push({ keep: 1, forms: parts.map((_, i) => dimText(parts.slice(0, parts.length - i).join(' · '))) })
@@ -192,7 +268,7 @@ export function infoLine(b: BandInput): Line {
   for (;;) {
     const kept = items.flatMap((item, i) => (shown[i] ? [item.forms[form[i] ?? 0] ?? []] : []))
     const line: Line = kept.flatMap((l, i) => (i === 0 ? l : [{ text: ' │ ', tone: 'dim' as const }, ...l]))
-    if (widthOf(line) <= b.columns) return line
+    if (cellsOf(line) <= b.columns) return line
     let lowest = -1
     items.forEach((item, i) => {
       if (shown[i] && (lowest === -1 || item.keep < (items[lowest]?.keep ?? Infinity))) lowest = i
@@ -337,32 +413,38 @@ export function statusText(o: { percent: number | null; newFailures: number; rec
 // the body's first line follows them while it fits what is left, else they take line 1 alone and the body keeps the
 // full width, so no gauge, reset or the cost drops for them
 export function bandLines(b: BandInput): Line[] {
-  const lines = bandRows(b, true)
-  // Short of rows, the info line goes first: the line under it holds the buttons, and a digit arms only those in view
-  return b.maxRows !== undefined && lines.length > b.maxRows ? bandRows(b, false) : lines
+  const lines = bandRows(b, true, Infinity)
+  if (b.maxRows === undefined || lines.length <= b.maxRows) return lines
+  // Short of rows, the open rows of tools give way first, from the last, then the info line: the line under them holds
+  // the buttons, and a digit arms only those in view
+  const core = bandRows(b, true, 0)
+  return core.length > b.maxRows ? bandRows(b, false, 0) : bandRows(b, true, b.maxRows - core.length)
 }
 
-function bandRows(b: BandInput, withInfo: boolean): Line[] {
+function bandRows(b: BandInput, withInfo: boolean, toolRowsKept: number): Line[] {
   const isNarrow = b.columns < 100
   const marks: Line[] = [b.rec !== undefined && b.rec.level !== 'off' ? [REC_MARK] : [], b.banner ?? []].filter(m => m.length > 0)
-  if (marks.length === 0) return bandBody(b, isNarrow, withInfo)
+  if (marks.length === 0) return bandBody(b, isNarrow, withInfo, toolRowsKept)
   const sep: Seg = { text: ' │ ', tone: 'dim' }
   const alone: Line = marks.flatMap((m, i) => (i === 0 ? m : [sep, ...m]))
   const lead: Line = [...alone, sep]
   // Only line 1 shares its row with the marks: the lines under it are fitted to the band's whole width
-  const [first] = bandBody({ ...b, columns: b.columns - widthOf(lead) }, isNarrow, withInfo)
+  const [first] = bandBody({ ...b, columns: b.columns - widthOf(lead) }, isNarrow, withInfo, toolRowsKept)
   if (first === undefined) return [alone]
-  const body = bandBody(b, isNarrow, withInfo)
+  const body = bandBody(b, isNarrow, withInfo, toolRowsKept)
   return widthOf(lead) + widthOf(first) <= b.columns ? [[...lead, ...first], ...body.slice(1)] : [alone, ...body]
 }
 
-function bandBody(b: BandInput, isNarrow: boolean, withInfo: boolean): Line[] {
+function bandBody(b: BandInput, isNarrow: boolean, withInfo: boolean, toolRowsKept: number): Line[] {
   const u = b.usage
   if (b.turns.length === 0 && u.percent === null) return []
   const invalid: Line = b.planInvalid ? [{ text: ' │ ', tone: 'dim' }, { text: 'plan file invalid', tone: 'warn' }] : []
   const gaugeLine = isNarrow ? narrowGauges(u, b.runway) : withToday(b, gauges(b), invalid)
   const line2 = [...gaugeLine, ...invalid]
-  const info: Line[] = withInfo && b.mode === 'full' ? [infoLine(b)].filter(l => l.length > 0) : []
+  // The info line, then the open rows of tools under it, only while its toggle is in view to close them
+  const head = withInfo && b.mode === 'full' ? infoLine(b) : []
+  const hasToggle = head.some(s => 'button' in s && s.button.key === 'tools')
+  const info: Line[] = head.length === 0 ? [] : [head, ...(b.isToolsOpen === true && hasToggle ? toolRows(b).slice(0, toolRowsKept) : [])]
   const p = fiveHourPace(b)
   const isHot = (b.runway?.percent ?? u.percent ?? 0) >= 60 || u.windows.some(w => w.percentUsed >= 60) || (p !== null && p !== 'on-pace')
   const agentsRun = b.agents.some(r => isLive(r.status))

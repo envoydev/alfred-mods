@@ -106,7 +106,10 @@ test('a long multi-line reason is one line of 80', () => {
 
 test('keys and targets', () => {
   expect(toolKey('Skill', { skill: 'plan-builder' })).toBe('Skill: plan-builder')
-  expect(toolKey('mcp__context7__get_docs', {})).toBe('mcp: context7')
+  // An MCP tool by its server and its own name, a claude.ai connector's or a plugin's server without that prefix
+  expect(toolKey('mcp__context7__get_docs', {})).toBe('context7:get_docs')
+  expect(toolKey('mcp__claude_ai_Context7__query-docs', {})).toBe('Context7:query-docs')
+  expect(toolKey('mcp__plugin_superpowers_chrome__use_browser', {})).toBe('superpowers_chrome:use_browser')
   expect(targetOf('Edit', { file_path: '/w/src/a.ts' }, '/w')).toBe('src/a.ts')
   expect(targetOf('Edit', { file_path: 'C:\\w\\src\\a.ts' }, 'C:\\w')).toBe('src\\a.ts')
   expect(targetOf('Bash', { command: 'npm test\n--x', description: 'Run tests' }, '/w')).toBe('Run tests')

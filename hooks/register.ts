@@ -50,6 +50,8 @@ type Call = {
   // `by`: the hook script its last settle counted a block for
   settled: boolean; outcome: Outcome | null; rowId: string | null; by: string | null
   startedAt: number | null; durationMs: number | null; pendingMs: number | null
+  // A Skill call whose skill runs forked, in a subagent of its own: never in the main context
+  isFork?: boolean
 }
 
 // What outlives one hook but is no $.state value: the cache's toast timer, a [Compact] in flight, the compactions the
@@ -253,6 +255,10 @@ async function settle($: EngineInterface, id: string, call: Call): Promise<void>
     running: l.running.filter(r => r.id !== id),
   }))
   if (isMain && before === null) await update($, meta, m => ({ ...m, mainCalls: m.mainCalls + 1 }))
+  // A Skill call that failed loaded nothing, and one whose skill ran forked loaded it into a subagent
+  if (isMain && before === null && outcome === 'ok' && call.isFork !== true && call.key.startsWith('Skill: ')) {
+    await addSkill($, call.key.slice('Skill: '.length))
+  }
   await syncStatus($)
 }
 
@@ -890,11 +896,26 @@ async function loadQuiet($: EngineInterface): Promise<boolean> {
   return isOn
 }
 
-// Only the exact string 'calm' reads as calm: absent, or anything another version or a hand wrote, is full
+// Only the exact string 'calm' reads as calm: absent, or anything another version or a hand wrote, is full. The rows
+// of every tool and the skills likewise: only 'open' opens them.
 async function loadBand($: EngineInterface): Promise<BandMode> {
   const mode: BandMode = (await $.store.get('settings:band')) === 'calm' ? 'calm' : 'full'
-  await update($, bandSetting, b => (b.mode === mode ? b : { mode }))
+  const isOpen = (await $.store.get('settings:band-tools')) === 'open'
+  const next: BandSetting = isOpen ? { mode, isToolsOpen: true } : { mode }
+  await update($, bandSetting, b => (b.mode === mode && (b.isToolsOpen === true) === isOpen ? b : next))
   return mode
+}
+
+// The band's toggle: the rows open or closed for every session, as /band's mode is
+async function toggleTools($: EngineInterface): Promise<void> {
+  const isOpen = (await read($, bandSetting)).isToolsOpen !== true
+  await $.store.set('settings:band-tools', isOpen ? 'open' : 'closed')
+  await loadBand($)
+}
+
+// A skill the main loop loaded: in its context from then on, until the conversation starts over
+async function addSkill($: EngineInterface, name: string): Promise<void> {
+  await update($, meta, m => ({ ...m, skills: { ...m.skills, [name]: (m.skills?.[name] ?? 0) + 1 } }))
 }
 
 // F8's memory outside $.state: whether the stack stood F8 down, which outlives a /clear until a read of the new id's
@@ -1457,12 +1478,20 @@ export const register: Register = (on, options) => {
       return next(e)
     }).catch(($, e, next) => next(e))
 
-    // A skill the person runs as /name raises no Skill call; one the model runs raises both, and counts once
+    // A skill the person runs as /name raises no Skill call; one the model runs raises both, and counts once. One with
+    // no Skill call behind it while no main turn runs is the person's /name, in the main context; mid-turn, it is a
+    // subagent's preload.
+    // A `context: fork` skill runs in a subagent of its own (code.claude.com/docs/en/skills, read 2026-11-11).
     on('skill.prompt', async ($, e, next) => {
       const prompted = await next(e)
       const key = `Skill: ${e.skill}`
-      if (![...calls.values()].some(c => !c.settled && c.key === key)) {
+      const isFork = e.frontmatter.context === 'fork'
+      const pending = [...calls.values()].find(c => !c.settled && c.key === key)
+      if (pending !== undefined) {
+        if (isFork) pending.isFork = true
+      } else {
         await update($, stats, s => ({ ...s, [key]: tally(s[key], 'ok', 1) }))
+        if (!isFork && (await read($, live)).turnId === null) await addSkill($, e.skill)
       }
       return prompted
     }).catch(($, e, next) => next(e))
@@ -1814,16 +1843,20 @@ export const register: Register = (on, options) => {
     const st = await read($, stack)
     const m = await read($, meta)
     const runway = runwayOf(st, u, m.model)
+    const setting = await read($, bandSetting)
     const lines = bandLines({
       now, columns: e.props.bodyColumns, maxRows: e.props.maxRows, isWorking: e.props.isWorking,
       live: await read($, live), usage: u, meta: m, turns: await read($, turns),
       newFailures: (await read($, failures)).filter(f => f.isNew).length, pace: await read($, pace), agents: await read($, agents),
       cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score, rec: recOf(await read($, rec)),
       forecast: forecastOf(h, u, runway), handoffAsk: h.isAskUp ? h.handled : null, runway, banner: bannerSegs(st),
-      mode: (await read($, bandSetting)).mode, totals: await read($, totals), stats: await read($, stats),
+      mode: setting.mode, totals: await read($, totals), stats: await read($, stats),
+      isToolsOpen: setting.isToolsOpen === true, listing: (await read($, parts)).skills ?? null,
     })
     if (lines.length === 0) return next(e)
-    const press = { inspect: () => inspectFromBand($), compact: () => compactNow($, held), handoff: () => saveNow($) }
+    const press = {
+      inspect: () => inspectFromBand($), compact: () => compactNow($, held), handoff: () => saveNow($), tools: () => toggleTools($),
+    }
     return drawLines($, e, lines, { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
   }).catch(($, e, next) => drawNote($, e, bandFailed(next.error.kind)))
 

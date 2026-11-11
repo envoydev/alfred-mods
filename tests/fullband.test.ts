@@ -3,7 +3,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { RenderSurface, SessionUsage } from 'claude-code'
 
-import { bandLines, infoLine } from '../hooks/band.ts'
+import { bandLines, cellsOf, infoLine } from '../hooks/band.ts'
 import type { BandInput, Line } from '../hooks/band.ts'
 import { clock, widthOf } from '../hooks/format.ts'
 import { START, engine, rows, step, stepEngine, stubAll } from './kit.ts'
@@ -14,7 +14,8 @@ const SURFACES = ['terminal', 'desktop'] as const
 const NOW = Date.parse('2026-10-28T14:00:00Z')
 const P = NOW - 73 * 60_000
 const R = NOW - 2 * 60_000
-const FULL = `Sonnet 5.5 ◑ medium │ 59m │ ≈133 tok/s avg │ cache warm 54m │ AskUserQuestion ×13 · Bash ×5 · Grep ×1 │ you ${clock(P)} · Claude ${clock(R)}`
+const HEAD = 'Sonnet 5.5 ◑ medium │ 59m │ ≈133 tok/s avg │ cache warm 54m'
+const FULL = `${HEAD} │ [ 19 tools ▸ ] │ you ${clock(P)} · Claude ${clock(R)}`
 
 const stat = (calls: number): ToolStat => ({ calls, ok: calls, failed: 0, stopped: 0 })
 const turn = (n: number, contextPercent: number | null = null): Turn => ({
@@ -48,22 +49,21 @@ function input(o: Partial<BandInput> = {}): BandInput {
   }
 }
 
-const text = (line: Line): string => line.map(s => ('text' in s ? s.text : '')).join('')
+// A button as the terminal draws a bracketed one
+const text = (line: Line): string => line.map(s => ('text' in s ? s.text : 'button' in s ? `[ ${s.button.label} ]` : '')).join('')
 const texts = (lines: Line[]): string[] => lines.map(text)
 
 test('the info line holds every item in the mockup order', () => {
-  expect(text(infoLine(input({ columns: 128 })))).toBe(FULL)
-  expect(widthOf(infoLine(input({ columns: 128 })))).toBe(128)
+  expect(text(infoLine(input({ columns: 103 })))).toBe(FULL)
+  expect(cellsOf(infoLine(input({ columns: 103 })))).toBe(103)
 })
 
 test('the info line drops items by keep order, whole', () => {
   const at = (columns: number) => text(infoLine(input({ columns })))
-  const head = 'Sonnet 5.5 ◑ medium │ 59m │ ≈133 tok/s avg │ cache warm 54m'
-  expect(at(127)).toBe(FULL.replace(` · Claude ${clock(R)}`, ''))
-  expect(at(112)).toBe(`${head} │ AskUserQuestion ×13 · Bash ×5 · Grep ×1`)
-  expect(at(100)).toBe(`${head} │ AskUserQuestion ×13 · Bash ×5 +1`)
-  expect(at(93)).toBe(`${head} │ AskUserQuestion ×13 +2`)
-  expect(at(83)).toBe(head)
+  expect(at(102)).toBe(FULL.replace(` · Claude ${clock(R)}`, ''))
+  expect(at(87)).toBe(`${HEAD} │ [ 19 tools ▸ ]`)
+  expect(at(75)).toBe(`${HEAD} │ [ ▸ ]`)
+  expect(at(66)).toBe(HEAD)
   // tok/s goes before the cache
   expect(at(58)).toBe('Sonnet 5.5 ◑ medium │ 59m │ cache warm 54m')
   expect(at(41)).toBe('Sonnet 5.5 ◑ medium │ 59m')
@@ -163,6 +163,87 @@ test('short of rows, the full band drops its info line and keeps the buttons in 
   const marked = bandLines(input({ columns: 128, newFailures: 1, maxRows: 4, rec: { level: 'on', words: 0 }, banner: [{ text: 'x'.repeat(120) }] }))
   expect(marked).toHaveLength(4)
   expect(inspect(marked)).toBe(true)
+})
+
+// Every tool by name and the skills in context (the user, 2026-11-11): the info line's tools item is a toggle, and
+// open, rows under the info line list them all
+const tools = (lines: Line[]) => lines.flat().find(s => 'button' in s && s.button.key === 'tools')
+
+test("the toggle counts the session's tool calls and the main chat's skills, never a Skill call as a tool", () => {
+  const skills = { 'superpowers:brainstorming': 1, 'solve-task': 2 }
+  const at = (o: Partial<BandInput>) => text(infoLine(input({ columns: 200, ...o })))
+  const meta = input().meta
+  expect(at({ meta: { ...meta, skills: { 'solve-task': 2 } } })).toContain(' │ [ 19 tools · 1 skill ▸ ] │ ')
+  expect(at({ meta: { ...meta, skills }, stats: { ...input().stats, 'Skill: solve-task': stat(2) } })).toContain(' │ [ 19 tools · 2 skills ▸ ] │ ')
+  expect(at({ meta: { ...meta, skills }, stats: {} })).toContain(' │ [ 2 skills ▸ ] │ ')
+  expect(at({ stats: { Bash: stat(1) } })).toContain(' │ [ 1 tool ▸ ] │ ')
+  expect(at({ isToolsOpen: true })).toContain(' │ [ 19 tools ▾ ] │ ')
+  // Its width runs out: the skills' count goes first, then the count
+  const narrow = (columns: number) => text(infoLine(input({ columns, meta: { ...meta, skills } })))
+  expect(narrow(87)).toBe(`${HEAD} │ [ 19 tools · 2 skills ▸ ]`)
+  expect(narrow(86)).toBe(`${HEAD} │ [ 19 tools ▸ ]`)
+  // A letter, never a digit: a bare digit in an empty prompt would press it in place of typing
+  expect(tools([infoLine(input())])).toEqual({ button: { key: 'tools', label: '19 tools ▸', hotkey: 't' } })
+})
+
+test('closed, the band draws no rows of tools; open, every tool and the skills under the info line, dim while calm', () => {
+  expect(bandLines(input())).toHaveLength(2)
+  const open = bandLines(input({ isToolsOpen: true }))
+  expect(texts(open).slice(1)).toEqual([
+    text(infoLine(input({ isToolsOpen: true }))),
+    'tools   AskUserQuestion ×13 · Bash ×5 · Grep ×1',
+    'skills  none loaded',
+  ])
+  for (const s of open.flat()) if ('text' in s) expect(s.tone).toBe('dim')
+})
+
+test('the skills row names each skill loaded in the main chat and how many the listing carries', () => {
+  const meta = { ...input().meta, skills: { 'superpowers:brainstorming': 1, 'solve-task': 2 } }
+  const row = (o: Partial<BandInput>) => texts(bandLines(input({ isToolsOpen: true, ...o }))).find(l => l.startsWith('skills'))
+  expect(row({ meta })).toBe('skills  superpowers:brainstorming ×1 · solve-task ×2')
+  expect(row({ meta, listing: { listed: 57, total: 60, tokens: 3200 } })).toBe('skills  superpowers:brainstorming ×1 · solve-task ×2 · 57 of 60 listed')
+  expect(row({ listing: { listed: 60, total: 60, tokens: 3200 } })).toBe('skills  none loaded · 60 listed')
+  // Busy, the skills keep their colour
+  const busy = bandLines(input({ isToolsOpen: true, meta, newFailures: 1 })).find(l => text(l).startsWith('skills'))
+  expect(busy?.find(s => 'text' in s && s.text === 'solve-task ×2')).toEqual({ text: 'solve-task ×2', tone: 'skill' })
+})
+
+test('the rows wrap whole names under their label, each row in the width', () => {
+  const stats = { AskUserQuestion: stat(13), Bash: stat(5), 'Context7:query-docs': stat(3), Grep: stat(1) }
+  const lines = bandLines(input({ isToolsOpen: true, columns: 40, stats }))
+  const i = texts(lines).findIndex(l => l.startsWith('tools '))
+  expect(texts(lines).slice(i, i + 2)).toEqual(['tools   AskUserQuestion ×13 · Bash ×5', '        Context7:query-docs ×3 · Grep ×1'])
+  for (const l of lines.slice(i)) expect(cellsOf(l)).toBeLessThanOrEqual(40)
+})
+
+test('short of rows, the open rows give way first, then the info line, and the buttons stay in view', () => {
+  const inspect = (lines: Line[]): boolean => (lines[lines.length - 1] ?? []).some(s => 'button' in s && s.button.key === 'inspect')
+  const at = (maxRows: number) => bandLines(input({ isToolsOpen: true, newFailures: 1, maxRows }))
+  expect(texts(at(6)).filter(l => /^(tools|skills) /.test(l))).toHaveLength(2)
+  expect(texts(at(5)).filter(l => /^(tools|skills) /.test(l))).toEqual(['tools   AskUserQuestion ×13 · Bash ×5 · Grep ×1'])
+  expect(texts(at(4)).some(l => /^(tools|skills) /.test(l))).toBe(false)
+  expect(texts(at(4)).includes(FULL.replace('▸', '▾'))).toBe(true)
+  expect(texts(at(3)).some(l => l.startsWith(HEAD))).toBe(false)
+  for (const n of [6, 5, 4, 3]) {
+    expect(at(n)).toHaveLength(n)
+    expect(inspect(at(n))).toBe(true)
+  }
+})
+
+// The review of 2026-11-11: open rows with no toggle in view could not be closed
+test('open, the toggle outlasts tok/s and the cache; with no room for it, no rows are drawn', () => {
+  const open = (columns: number) => input({ isToolsOpen: true, columns })
+  expect(text(infoLine(open(66)))).toBe('Sonnet 5.5 ◑ medium │ 59m │ cache warm 54m │ [ 19 tools ▾ ]')
+  expect(texts(bandLines(open(66))).some(l => l.startsWith('tools '))).toBe(true)
+  const narrow = bandLines(open(24))
+  expect(tools(narrow)).toBeUndefined()
+  expect(texts(narrow).some(l => /^(tools|skills) /.test(l))).toBe(false)
+})
+
+test('calm mode has no toggle and no rows, open or not', () => {
+  const calm = bandLines(input({ isToolsOpen: true, mode: 'calm', newFailures: 1 }))
+  expect(calm).toEqual(bandLines(input({ mode: 'calm', newFailures: 1 })))
+  expect(tools(calm)).toBeUndefined()
 })
 
 // The mounted band: a session started 5 minutes ago, one main step on Sonnet at medium effort

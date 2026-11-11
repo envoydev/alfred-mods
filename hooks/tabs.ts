@@ -1,12 +1,12 @@
 // Each /inspect tab, from the session's values to lines of styled segments.
 import { LOOPS_NOTE, agentTime, agentTree, isLive, laneFit, lanesOf, loopsLine, statusGlyph, toolSummary } from './agents.ts'
-import { REC_MARK, barSegs, cacheWarning, pctSeg, windowsInOrder, working } from './band.ts'
+import { REC_MARK, barSegs, cacheWarning, pctSeg, windowsInOrder, working, wrapRows } from './band.ts'
 import { IDLE_COMPACT_MS, billingOf, cacheLine, cacheView, selfCompacts, toastAt } from './cache.ts'
 import type { BandInput, Line, Seg, Tone } from './band.ts'
 import { clock, duration, fitLine, modelParts, modelText, printable, tokens, usd, when } from './format.ts'
 import { pace, turnsLeft } from './forecast.ts'
 import { handoffLines } from './handoff.ts'
-import { partsLines } from './parts.ts'
+import { PARTS_LABEL, listedText, loadedTexts, partsLines } from './parts.ts'
 import type { HandoffView } from './handoff.ts'
 import { planSection } from './planlines.ts'
 import { recStatus } from './rec.ts'
@@ -235,6 +235,16 @@ function badge(model: string | null): Seg {
   return parts === null ? { text: model } : { text: modelText(model, true), tone: parts.family }
 }
 
+// The Usage tab's Skills row after the context's parts: each skill the main chat loaded, then the listing and its
+// tokens, wrapped whole under the label; none with neither
+function skillsRow(skills: Record<string, number> | undefined, p: Parts, columns: number): Line[] {
+  const loaded = loadedTexts(skills)
+  if (loaded.length === 0 && p.skills === undefined) return []
+  const items: Seg[] = loaded.length === 0 ? [{ text: 'none loaded', tone: 'dim' }] : loaded.map(text => ({ text, tone: 'skill' }))
+  if (p.skills !== undefined) items.push({ text: `${listedText(p.skills)} · ${tokens(p.skills.tokens)}` })
+  return wrapRows({ text: 'Skills', width: PARTS_LABEL }, { text: '', width: PARTS_LABEL }, items, columns)
+}
+
 export function usageLines(b: TabInput): Line[] {
   const u = b.usage
   const head: Line = [{ text: 'Usage  ', bold: true }, badge(b.meta.model)]
@@ -274,7 +284,7 @@ export function usageLines(b: TabInput): Line[] {
   // Output over the main loop's request time, first token and the hooks beneath included: a throughput, not a decode speed
   const rate = t.stepMs > 0 ? ` · ≈${Math.round(t.stepOutput / (t.stepMs / 1000))} tok/s avg` : ''
   out.push([{ text: 'Tokens', width: LABEL }, { text: `in ${tokens(t.input)} · out ${tokens(t.output)} · cache read ${tokens(t.cacheRead)} · cache write ${tokens(t.cacheWrite)}${rate}` }])
-  if (b.parts !== undefined) out.push(...partsLines(b.parts))
+  if (b.parts !== undefined) out.push(...partsLines(b.parts), ...skillsRow(b.meta.skills, b.parts, b.columns))
   out.push([{ text: `Compactions ${b.meta.compactions}${b.meta.lastCompactAt === null ? '' : `, at ${clock(b.meta.lastCompactAt)}`}` }])
   return out
 }
