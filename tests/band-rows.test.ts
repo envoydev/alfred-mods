@@ -408,3 +408,59 @@ test("narrow, the place keeps the folder's last part before it drops whole", () 
   expect(placed(place, 74)).toContain('Example ▸ …/app git:(develop)')
 })
 
+
+// Spec 2026-11-11 band-under, U2 'Order under' and U3: under the input the action row follows the gauges, so a cut at
+// the screen's edge takes the detail rows first; fullscreen's buttons name their commands and take no hotkey, and the
+// main screen draws the commands as text
+const textOf = (l: Line): string => l.map(s => ('text' in s ? s.text : 'button' in s ? `[${s.button.label}]` : '')).join('')
+const buttonsOf = (lines: Line[]) => lines.flat().flatMap(s => ('button' in s ? [s.button] : []))
+
+test('under, the action row follows the gauges; above it stays last', () => {
+  const under = bandLines(input({ newFailures: 1, under: { buttons: 'click' } }))
+  expect(under.findIndex(l => textOf(l).startsWith('✗ 1 new'))).toBe(2)
+  const above = bandLines(input({ newFailures: 1 }))
+  expect(above.findIndex(l => textOf(l).startsWith('✗ 1 new'))).toBe(above.length - 1)
+})
+
+test('fullscreen under, the buttons name their commands and take no hotkey', () => {
+  const lines = bandLines(input({ newFailures: 1, handoffAsk: 80, under: { buttons: 'click' } }))
+  const buttons = buttonsOf(lines)
+  expect(buttons.every(b => b.hotkey === undefined)).toBe(true)
+  expect(buttons.find(b => b.key === 'inspect')?.label).toBe('/inspect')
+  expect(buttons.find(b => b.key === 'handoff')?.label).toBe('/auto-handoff now')
+  expect(buttons.find(b => b.key === 'tools')?.label).toMatch(/tools/)
+})
+
+test('main screen under, the buttons are commands', () => {
+  const lines = bandLines(input({ newFailures: 1, handoffAsk: 80, under: { buttons: 'text' } }))
+  expect(buttonsOf(lines)).toEqual([])
+  const texts = lines.map(textOf)
+  expect(texts.some(t => t.includes('✗ 1 new /inspect'))).toBe(true)
+  expect(texts.some(t => t.includes('/auto-handoff now'))).toBe(true)
+  const info = texts.find(t => t.includes('tools') && t.includes('│'))
+  expect(info).toBeDefined()
+  expect(info).not.toMatch(/[▾▸[]/)
+})
+
+test('main screen under, the open rows still draw under the toggle as text', () => {
+  const open = bandLines(input({ isToolsOpen: true, under: { buttons: 'text' } }))
+  expect(open.some(l => textOf(l).startsWith('tools:'))).toBe(true)
+  const closed = bandLines(input({ under: { buttons: 'text' } }))
+  expect(closed.some(l => textOf(l).startsWith('tools:'))).toBe(false)
+})
+
+// The gauges line is as wide under as above (its narrow form keeps the resets at 48, today's behaviour), so the check
+// is on the rows the place changes: the action items, a row each when one cannot hold them, and the info line
+test('main screen under at 48 columns, every row the place changes fits', () => {
+  const lines = bandLines(input({ columns: 48, newFailures: 1, handoffAsk: 80, isToolsOpen: true, under: { buttons: 'text' } }))
+  const above = bandLines(input({ columns: 48, newFailures: 1, handoffAsk: 80, isToolsOpen: true }))
+  const gauges = textOf(above[1] ?? [])
+  for (const l of lines.filter(l => textOf(l) !== gauges)) expect(widthOf(l)).toBeLessThanOrEqual(48)
+  expect(lines.map(textOf).join('\n')).toContain('/inspect')
+})
+
+test('above, the buttons keep their hotkeys', () => {
+  const buttons = buttonsOf(bandLines(input({ newFailures: 1 })))
+  expect(buttons.find(b => b.key === 'inspect')?.hotkey).toBe('1')
+  expect(buttons.find(b => b.key === 'tools')?.hotkey).toBe('t')
+})
