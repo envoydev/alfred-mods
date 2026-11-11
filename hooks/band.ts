@@ -196,8 +196,30 @@ export function toolRows(b: BandInput): Line[] {
   if (b.listing !== undefined && b.listing !== null) skills.push({ text: listedText(b.listing), tone: 'dim' })
   const label = (text: string): Seg => ({ text: text.padEnd(ROW_LABEL), tone: 'dim' })
   const under: Seg = { text: ' '.repeat(ROW_LABEL) }
-  const row = (name: string, items: Seg[]): Line[] => wrapRows(label(name), under, items.map(s => [s]), b.columns, ROW_JOIN)
-  return [...row('tools:', tools), ...row('skills:', skills)]
+  const row = (name: string, items: Line[]): Line[] => wrapRows(label(name), under, items, b.columns, ROW_JOIN)
+  const one = (segs: Seg[]): Line[] => segs.map(s => [s])
+  return [
+    ...row('tools:', one(tools)), ...row('skills:', one(skills)),
+    ...row('agents:', agentSegs(b.agents, b.meta.agentTypes, b.meta.isResumed === true)),
+  ]
+}
+
+// The agents row's items (spec 2026-11-11, D3): each type in the order of its first dispatch, its glyph and dispatches -
+// ◐ while a kept row of it runs, ✗ once one failed or was killed, else ✓ - then how many run; after a resume, counted
+// from it. A type whose rows were all dropped (at most 50 kept) reads ✓.
+export function agentSegs(rows: AgentRow[], types: Record<string, number> | undefined, isResumed: boolean): Line[] {
+  const names = Object.keys(types ?? {})
+  if (names.length === 0) return [[{ text: isResumed ? 'none seen since resume' : 'none', tone: 'dim' }]]
+  const items = names.map((type): Line => {
+    const of = rows.filter(r => r.type === type)
+    const glyph: Seg = of.some(r => isLive(r.status))
+      ? { text: '◐ ', tone: 'warn' }
+      : of.some(r => r.status === 'failed' || r.status === 'killed') ? { text: '✗ ', tone: 'fail' } : { text: '✓ ', tone: 'ok' }
+    return [glyph, { text: `${type} ×${types?.[type] ?? 0}` }]
+  })
+  const running = rows.filter(r => isLive(r.status)).length
+  const since: Line[] = isResumed ? [[{ text: 'since resume', tone: 'dim' }]] : []
+  return [...items, ...since, [{ text: `${running} running`, tone: running > 0 ? 'warn' : 'dim' }]]
 }
 
 // The labels' width, so the items of every row line up, and the band rows' joiner, as the owner's target draws them

@@ -193,6 +193,7 @@ test('closed, the band draws no rows of tools; open, every tool and the skills u
     text(infoLine(input({ isToolsOpen: true }))),
     'tools:   AskUserQuestion ×13 │ Bash ×5 │ Grep ×1',
     'skills:  none loaded',
+    'agents:  none',
   ])
   for (const s of open.flat()) if ('text' in s) expect(s.tone).toBe('dim')
 })
@@ -318,12 +319,13 @@ test('the info line wraps onto a second row, between items, before one drops', (
 test('short of rows, the second info row gives way before the open rows of tools', () => {
   const meta = { ...input().meta, ...PLACED }
   const at = (maxRows: number) => texts(bandLines(input({ columns: 103, meta, isToolsOpen: true, newFailures: 1, maxRows })))
-  expect(at(7)).toContain('alfred-mods git:(develop) │ CC 2.1.322')
-  expect(at(7).filter(l => /^(tools|skills|agents|rules):/.test(l))).toHaveLength(2)
-  expect(at(6).some(l => l.includes('alfred-mods'))).toBe(false)
-  expect(at(6)).toContain(FULL.replace('▸', '▾'))
-  expect(at(6).filter(l => /^(tools|skills|agents|rules):/.test(l))).toHaveLength(2)
-  for (const n of [7, 6]) expect(at(n)).toHaveLength(n)
+  const open = 3
+  expect(at(5 + open)).toContain('alfred-mods git:(develop) │ CC 2.1.322')
+  expect(at(5 + open).filter(l => /^(tools|skills|agents|rules):/.test(l))).toHaveLength(open)
+  expect(at(4 + open).some(l => l.includes('alfred-mods'))).toBe(false)
+  expect(at(4 + open)).toContain(FULL.replace('▸', '▾'))
+  expect(at(4 + open).filter(l => /^(tools|skills|agents|rules):/.test(l))).toHaveLength(open)
+  for (const n of [5 + open, 4 + open]) expect(at(n)).toHaveLength(n)
 })
 
 // The mounted band: a session started 5 minutes ago, one main step on Sonnet at medium effort

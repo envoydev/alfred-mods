@@ -1456,6 +1456,9 @@ export const register: Register = (on, options) => {
         id, parentId: e.parentAgentId ?? null, type: e.subagentType, description: e.description, prompt: e.prompt,
         isTeammate: e.isTeammate === true, model: spawned.model,
       }, now)
+      // A dispatch is a new row: a resume of a kept one runs that row again (upsertSpawn's own test)
+      const isKnown = e.resume !== undefined && (await read($, agents)).some(r => r.id === id)
+      if (!isKnown) await update($, meta, m => ({ ...m, agentTypes: { ...m.agentTypes, [row.type]: (m.agentTypes?.[row.type] ?? 0) + 1 } }))
       await update($, agents, rows => upsertSpawn(rows, row, e.resume !== undefined))
       await addMark($, markOf(row))
       // Its first step came before its spawn resolved: the loop is this agent's

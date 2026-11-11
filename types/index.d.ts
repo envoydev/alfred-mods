@@ -43,6 +43,9 @@ export type Meta = {
   version?: string
   // A resumed or branched conversation: it holds skills loaded before the mod watched it, which no API lists
   isResumed?: boolean
+  // The agents dispatched this conversation, by type, with how many; keys in the order of each type's first dispatch,
+  // absent before the first (spec 2026-11-11, D3)
+  agentTypes?: Record<string, number>
 }
 export type Tab = 'now' | 'usage' | 'agents' | 'tools' | 'cache' | 'timeline' | 'plan'
 // `planSlug`: the plan `/inspect plan <name>` pinned, shown while its file parses
