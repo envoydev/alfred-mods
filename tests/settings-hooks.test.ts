@@ -242,3 +242,61 @@ test('a run starts with no skip told', async ($, on) => {
   await clock.advance(30_000)
   expect(toasts).toEqual([BAND_SKIP, BAND_SKIP])
 })
+
+// S7: the old commands' choices, told once per machine and retired field by field when the user's file sets them
+const MOVED = 'alfred-mods reads its switches from settings files now. Kept from your earlier commands: add "alfred-mods": { "bandRows": false, "rec": "strict" } to ~/.claude/settings.json'
+
+test('the old choices toast once per machine', async ($, on) => {
+  const { toasts, store } = await start($, on, { moved: 'unset', store: { 'settings:rec': 'strict', 'settings:band-tools': 'closed' } })
+  expect(toasts).toEqual([MOVED])
+  expect(store.get('settings:moved')).toBe(true)
+  await $.session.start(START)
+  expect(toasts).toEqual([MOVED])
+})
+
+test('no toast when nothing differs from the default', async ($, on) => {
+  const { toasts, store } = await start($, on, { moved: 'unset', store: { 'settings:quiet': true } })
+  expect(toasts).toEqual([])
+  expect(store.get('settings:moved')).toBe(undefined)
+})
+
+test('a field a file sets is not in the toast', async ($, on) => {
+  const { toasts } = await start($, on, {
+    moved: 'unset', store: { 'settings:rec': 'strict', 'settings:band-tools': 'closed' }, sources: { local: mod({ bandRows: true }) },
+  })
+  expect(toasts).toEqual(['alfred-mods reads its switches from settings files now. Kept from your earlier commands: add "alfred-mods": { "rec": "strict" } to ~/.claude/settings.json'])
+})
+
+test('the user file retires a field', async ($, on) => {
+  const { store, rec, handoff } = await start($, on, {
+    store: { 'settings:rec': 'on', 'settings:handoff': { mode: 'auto', threshold: 70 } }, sources: { user: mod({ rec: 'strict', handoff: 'off' }) },
+  })
+  expect(store.get('settings:rec')).toBe(undefined)
+  expect(store.get('settings:handoff')).toEqual({ threshold: 70 })
+  expect(rec().level).toBe('strict')
+  expect(handoff()).toMatchObject({ mode: 'off', threshold: 70 })
+})
+
+test('settings:handoff goes once both its fields are retired', async ($, on) => {
+  const { store } = await start($, on, {
+    store: { 'settings:handoff': { mode: 'auto', threshold: 70 } }, sources: { user: mod({ handoff: 'ask', handoffAt: 85 }) },
+  })
+  expect(store.keys()).not.toContain('settings:handoff')
+})
+
+test('a local file overrides without retiring', async ($, on) => {
+  const { store, rec } = await start($, on, { store: { 'settings:rec': 'on' }, sources: { local: mod({ rec: 'off' }) } })
+  expect(rec().level).toBe('off')
+  expect(store.get('settings:rec')).toBe('on')
+})
+
+test('a refused delete is tried again', async ($, on) => {
+  const { store, toasts, clock } = await start($, on, {
+    refuseDelete: ['settings:rec'], store: { 'settings:rec': 'on' }, sources: { user: mod({ rec: 'on' }) },
+  })
+  expect(store.get('settings:rec')).toBe('on')
+  expect(toasts).toEqual([])
+  await clock.advance(30_000)
+  expect(store.get('settings:rec')).toBe(undefined)
+  expect(toasts).toEqual([])
+})

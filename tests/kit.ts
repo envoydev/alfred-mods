@@ -44,6 +44,11 @@ type Options = {
   // Claude Code's settings files by source, each the file's object: a read with a `source` answers that file's key,
   // absent when the file or the key is; `refuseSource` denies those sources' reads, as a build without them would
   sources?: Partial<Record<SettingsSource, Record<string, unknown>>>; refuseSource?: string[]
+  // What a read of `settings:moved` answers while the test stored none: true ('told') by default, so a test of an
+  // earlier command's choice meets no toast of S7's; 'unset' answers nothing, as a machine not yet told
+  moved?: 'told' | 'unset'
+  // Store keys whose first delete is refused, as a store that fails once would
+  refuseDelete?: string[]
 }
 
 export const gitResult = (stdout: string, exitCode = 0, stderr = ''): ProcessRunResult =>
@@ -233,6 +238,7 @@ export function stubAll(on: On, o: Options = {}): {
     if (o.holdStore?.until && e.key === o.holdStore.key) await o.holdStore.until
     if (e.key === 'settings:band' && !stored.has(e.key) && o.band !== 'unset') return { value: o.band ?? 'calm' }
     if (e.key === 'settings:quiet' && !stored.has(e.key) && o.quiet !== 'unset') return { value: o.quiet === 'on' }
+    if (e.key === 'settings:moved' && !stored.has(e.key) && o.moved !== 'unset') return { value: true }
     return { value: stored.get(e.key) }
   })
   on('store.set', (_, e) => {
@@ -240,7 +246,12 @@ export function stubAll(on: On, o: Options = {}): {
     stored.set(e.key, JSON.parse(JSON.stringify(e.value)) as unknown)
     return { value: undefined }
   })
+  const refusedDeletes = new Set<string>()
   on('store.delete', (_, e) => {
+    if (o.refuseDelete?.includes(e.key) === true && !refusedDeletes.has(e.key)) {
+      refusedDeletes.add(e.key)
+      return { deny: `test: store delete refused, ${e.key}` }
+    }
     writes.push(`delete ${e.key}`)
     stored.delete(e.key)
     return { value: undefined }

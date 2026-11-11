@@ -38,8 +38,8 @@ import type { Close } from './steptime.ts'
 import { agentsLines, cacheLines, nowLines, tabBar, timelineLines, toolsLines, usageLines } from './tabs.ts'
 import { classify, fold, targetOf, toolKey } from './outcome.ts'
 import { LEVELS, REC_HELP, addWord, parseLevel, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec.ts'
-import { DEFAULTS, SOURCES, holdRec, holdToast, legacyOf, resolve, skippedToast } from './settings.ts'
-import type { From, Resolved, Source, Values } from './settings.ts'
+import { DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, resolve, skippedToast } from './settings.ts'
+import type { Field, From, Resolved, Source, Values } from './settings.ts'
 import { baseName, dropPassed, folderOf, gitDirOf, headBranch, nextWindows, parentOf, storedWindows } from './startup.ts'
 import type { CallFacts } from './outcome.ts'
 import type {
@@ -1006,16 +1006,19 @@ async function loadSettingsNow($: EngineInterface, isStart: boolean): Promise<vo
   }
   const layers: Partial<Record<Source, unknown>> = {}
   for (const source of SOURCES) layers[source] = await $.settings.read({ key: 'alfred-mods', source }).catch(() => undefined)
+  const rawHandoff = await $.store.get('settings:handoff').catch(() => null)
   const legacy = legacyOf({
     band: await $.store.get('settings:band').catch(() => null),
     place: await $.store.get('settings:band-place').catch(() => null),
     tools: await $.store.get('settings:band-tools').catch(() => null),
     quiet: await $.store.get('settings:quiet').catch(() => null),
     rec: await $.store.get('settings:rec').catch(() => null),
-    handoff: await $.store.get('settings:handoff').catch(() => null),
+    handoff: rawHandoff,
   })
   const r = resolve(layers, legacy)
   settingsMem.resolved = r
+  await retireOld($, r, legacy, rawHandoff)
+  if (isStart) await tellMoved($, r)
   // A skipped value is told once (S3): each skip the last told set did not hold, when the set changes
   const skippedKey = r.skipped.map(k => `${k.field}@${k.source}`).sort().join(',')
   if (skippedKey !== settingsMem.skippedKey) {
@@ -1037,6 +1040,38 @@ async function loadSettingsNow($: EngineInterface, isStart: boolean): Promise<vo
   await loadQuiet($)
   await loadBand($)
   await loadHandoff($)
+}
+
+// The old commands' store keys, by the field each held (S7); `settings:handoff` holds two, retired field by field
+const OLD_KEYS: Partial<Record<Field, string>> = {
+  band: 'settings:band', bandPlace: 'settings:band-place', bandRows: 'settings:band-tools', quiet: 'settings:quiet', rec: 'settings:rec',
+}
+
+// S7: a field the user's own file sets, machine-wide as the store is, drops its old value; a project or local value
+// overrides the old one without retiring it. A refused delete is tried at the next read.
+async function retireOld($: EngineInterface, r: Resolved, legacy: Partial<Values>, rawHandoff: unknown): Promise<void> {
+  for (const field of r.userFields) {
+    const key = OLD_KEYS[field]
+    if (key !== undefined && legacy[field] !== undefined) await $.store.delete(key).catch(() => undefined)
+  }
+  const isMode = r.userFields.includes('handoff') && legacy.handoff !== undefined
+  const isAt = r.userFields.includes('handoffAt') && legacy.handoffAt !== undefined
+  if ((!isMode && !isAt) || typeof rawHandoff !== 'object' || rawHandoff === null || Array.isArray(rawHandoff)) return
+  const left: Record<string, unknown> = { ...rawHandoff }
+  if (isMode) delete left.mode
+  if (isAt) delete left.threshold
+  if ('mode' in left || 'threshold' in left) await $.store.set('settings:handoff', left).catch(() => undefined)
+  else await $.store.delete('settings:handoff').catch(() => undefined)
+}
+
+// S7's toast, at a run's first read, once per machine: the earlier commands' choices still in force. A refused read of
+// the mark counts as told, so a failing store never repeats it.
+async function tellMoved($: EngineInterface, r: Resolved): Promise<void> {
+  const kept: Partial<Record<Field, unknown>> = {}
+  for (const field of FIELDS) if (r.from[field] === 'legacy' && r.values[field] !== DEFAULTS[field]) kept[field] = r.values[field]
+  if (Object.keys(kept).length === 0 || (await $.store.get('settings:moved').catch(() => true)) === true) return
+  toast($, movedToast(kept as Partial<Values>))
+  await $.store.set('settings:moved', true).catch(() => undefined)
 }
 
 // The level in force and the stored words into the masker and the rec atom: a word set in one session reaches every

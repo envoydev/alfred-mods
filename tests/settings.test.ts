@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, nameOf, resolve, skippedToast } from '../hooks/settings.ts'
+import { DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast } from '../hooks/settings.ts'
 import type { Field, Resolved, Skip, Source, Values } from '../hooks/settings.ts'
 
 // A valid value for each field that differs from its default, and a second one that differs from both
@@ -176,4 +176,10 @@ test('holdRec takes the next level unless a lower source lowers it', () => {
 test('holdToast names the level and the file', () => {
   expect(holdToast('on', 'local')).toBe('alfred-mods: REC stays on - .claude/settings.local.json no longer gives "rec" (a file that does not parse gives nothing); fix it, or set "rec": "off" there')
   expect(holdToast('strict', 'project')).toBe('alfred-mods: REC stays strict - .claude/settings.json no longer gives "rec" (a file that does not parse gives nothing); fix it, or set "rec": "off" there')
+})
+
+// S7: the line to paste, the fields in S2's order
+test('movedToast gives the line to paste', () => {
+  expect(movedToast({ rec: 'strict', bandRows: false })).toBe('alfred-mods reads its switches from settings files now. Kept from your earlier commands: add "alfred-mods": { "bandRows": false, "rec": "strict" } to ~/.claude/settings.json')
+  expect(movedToast({ handoffAt: 70, band: 'calm' })).toBe('alfred-mods reads its switches from settings files now. Kept from your earlier commands: add "alfred-mods": { "band": "calm", "handoffAt": 70 } to ~/.claude/settings.json')
 })
