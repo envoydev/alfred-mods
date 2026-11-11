@@ -1763,6 +1763,15 @@ export const register: Register = (on, options) => {
       if (name !== null) await update($, meta, m => (m.pathRules?.includes(name) === true ? m : { ...m, pathRules: [...(m.pathRules ?? []), name] }))
       return next(e)
     }).catch(($, e, next) => next(e))
+
+    // An edit to a settings file (spec settings-values S4): a read inside this hook still answers the old value (F4),
+    // so the files are read again at the clock's next tick; left out, the 30 s poll reads them
+    on('classic.ConfigChange', ($, e, next) => {
+      $.clock.after(0, () => {
+        loadSettings($).catch(() => undefined)
+      })
+      return next(e)
+    }).catch(($, e, next) => next(e))
   }
 
   on('session.start', async ($, e, next) => {

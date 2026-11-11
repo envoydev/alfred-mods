@@ -98,3 +98,34 @@ test('the poll still reads the status file', async ($, on) => {
   await clock.advance(30_000)
   expect((state.get('stack') as Stack).state).not.toBe('none')
 })
+
+// S4: Claude Code raises ConfigChange on an edit to a settings file; a read inside the hook still answers the old
+// value (F4), so the mod reads again at the clock's next tick
+test('a ConfigChange reads again after the clock\'s next tick', async ($, on) => {
+  const { band, sources, clock } = await start($, on)
+  sources.local['alfred-mods'] = { band: 'calm' }
+  await $.classic.ConfigChange({ source: 'local_settings' })
+  expect(band().mode).toBe('full')
+  await clock.advance(0)
+  expect(band().mode).toBe('calm')
+})
+
+test('two ConfigChanges in one tick read in turn', async ($, on) => {
+  const { band, sources, clock } = await start($, on)
+  sources.local['alfred-mods'] = { band: 'calm' }
+  await $.classic.ConfigChange({ source: 'local_settings' })
+  sources.user['alfred-mods'] = { bandRows: false }
+  await $.classic.ConfigChange({ source: 'user_settings' })
+  await clock.advance(0)
+  expect(band()).toEqual({ mode: 'calm' })
+})
+
+test('with leave_out_skipped_hooks no ConfigChange hook is registered', { options: { leave_out_skipped_hooks: true } }, async ($, on) => {
+  const { band, sources, clock } = await start($, on)
+  sources.local['alfred-mods'] = { band: 'calm' }
+  await $.classic.ConfigChange({ source: 'local_settings' })
+  await clock.advance(0)
+  expect(band().mode).toBe('full')
+  await clock.advance(30_000)
+  expect(band().mode).toBe('calm')
+})

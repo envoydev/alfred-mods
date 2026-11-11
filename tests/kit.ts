@@ -222,6 +222,7 @@ export function stubAll(on: On, o: Options = {}): {
   on('classic.PostModelSwitch', () => ({}))
   on('classic.PreModelSwitch', () => o.preSwitch ?? {})
   on('classic.InstructionsLoaded', () => ({}))
+  on('classic.ConfigChange', () => ({}))
   const clock = mock.clock(on, { now: o.now ?? 0 })
   // The store, kept here rather than by the kit's mock so a test can read what the mod wrote: a test's `$` has no
   // store of its own. Values go through JSON as the real store's do; keys keep their insertion order.
