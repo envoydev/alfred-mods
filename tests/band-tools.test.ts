@@ -31,7 +31,7 @@ async function oneTurn($: Engine): Promise<void> {
   await $.turn.complete(complete)
 }
 
-const isOpen = (lines: string[]): boolean => lines.some(l => l.startsWith('tools   '))
+const isOpen = (lines: string[]): boolean => lines.some(l => l.startsWith('tools:   '))
 
 for (const surface of SURFACES) {
   test(`the toggle opens every tool by name and the skills, and the choice is kept (${surface})`, async ($, on) => {
@@ -46,8 +46,8 @@ for (const surface of SURFACES) {
 
     await ui.press({ key: 'tools' })
     const open = await rows(ui)
-    expect(open).toContain('tools   Bash ×1 · Context7:query-docs ×1')
-    expect(open).toContain('skills  none loaded')
+    expect(open).toContain('tools:   Bash ×1 │ Context7:query-docs ×1')
+    expect(open).toContain('skills:  none loaded')
     expect(store.get('settings:band-tools')).toBe('open')
 
     await ui.press({ key: 'tools' })
@@ -64,7 +64,7 @@ for (const surface of SURFACES) {
     expect(isOpen(await rows(await mount($, surface)))).toBe(true)
     await $.classic.SessionStart({ source: 'clear' })
     await $.tool.call({ tool: 'Read', file_path: '/w/a.ts' })
-    expect(await rows(await mount($, surface))).toContain('tools   Read ×1')
+    expect(await rows(await mount($, surface))).toContain('tools:   Read ×1')
   })
 }
 

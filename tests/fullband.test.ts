@@ -191,20 +191,20 @@ test('closed, the band draws no rows of tools; open, every tool and the skills u
   const open = bandLines(input({ isToolsOpen: true }))
   expect(texts(open).slice(1)).toEqual([
     text(infoLine(input({ isToolsOpen: true }))),
-    'tools   AskUserQuestion ×13 · Bash ×5 · Grep ×1',
-    'skills  none loaded',
+    'tools:   AskUserQuestion ×13 │ Bash ×5 │ Grep ×1',
+    'skills:  none loaded',
   ])
   for (const s of open.flat()) if ('text' in s) expect(s.tone).toBe('dim')
 })
 
 test('the skills row names each skill loaded in the main chat and how many the listing carries', () => {
   const meta = { ...input().meta, skills: { 'superpowers:brainstorming': 1, 'solve-task': 2 } }
-  const row = (o: Partial<BandInput>) => texts(bandLines(input({ isToolsOpen: true, ...o }))).find(l => l.startsWith('skills'))
-  expect(row({ meta })).toBe('skills  superpowers:brainstorming ×1 · solve-task ×2')
-  expect(row({ meta, listing: { listed: 57, total: 60, tokens: 3200 } })).toBe('skills  superpowers:brainstorming ×1 · solve-task ×2 · 57 of 60 listed')
-  expect(row({ listing: { listed: 60, total: 60, tokens: 3200 } })).toBe('skills  none loaded · 60 listed')
+  const row = (o: Partial<BandInput>) => texts(bandLines(input({ isToolsOpen: true, ...o }))).find(l => l.startsWith('skills:'))
+  expect(row({ meta })).toBe('skills:  superpowers:brainstorming ×1 │ solve-task ×2')
+  expect(row({ meta, listing: { listed: 57, total: 60, tokens: 3200 } })).toBe('skills:  superpowers:brainstorming ×1 │ solve-task ×2 │ 57 of 60 listed')
+  expect(row({ listing: { listed: 60, total: 60, tokens: 3200 } })).toBe('skills:  none loaded │ 60 listed')
   // Busy, the skills keep their colour
-  const busy = bandLines(input({ isToolsOpen: true, meta, newFailures: 1 })).find(l => text(l).startsWith('skills'))
+  const busy = bandLines(input({ isToolsOpen: true, meta, newFailures: 1 })).find(l => text(l).startsWith('skills:'))
   expect(busy?.find(s => 'text' in s && s.text === 'solve-task ×2')).toEqual({ text: 'solve-task ×2', tone: 'skill' })
 })
 
@@ -212,25 +212,25 @@ test('the skills row names each skill loaded in the main chat and how many the l
 // which no API lists, so the row says what it counts from in place of 'none loaded'
 test('after a resume the skills row counts from it', () => {
   const resumed = { ...input().meta, isResumed: true }
-  const row = (o: Partial<BandInput>) => texts(bandLines(input({ isToolsOpen: true, ...o }))).find(l => l.startsWith('skills'))
-  expect(row({ meta: resumed, listing: { listed: 60, total: 60, tokens: 3200 } })).toBe('skills  none seen since resume · 60 listed')
-  expect(row({ meta: { ...resumed, skills: { 'solve-task': 1 } } })).toBe('skills  solve-task ×1 · since resume')
+  const row = (o: Partial<BandInput>) => texts(bandLines(input({ isToolsOpen: true, ...o }))).find(l => l.startsWith('skills:'))
+  expect(row({ meta: resumed, listing: { listed: 60, total: 60, tokens: 3200 } })).toBe('skills:  none seen since resume │ 60 listed')
+  expect(row({ meta: { ...resumed, skills: { 'solve-task': 1 } } })).toBe('skills:  solve-task ×1 │ since resume')
 })
 
 test('the rows wrap whole names under their label, each row in the width', () => {
   const stats = { AskUserQuestion: stat(13), Bash: stat(5), 'Context7:query-docs': stat(3), Grep: stat(1) }
-  const lines = bandLines(input({ isToolsOpen: true, columns: 40, stats }))
-  const i = texts(lines).findIndex(l => l.startsWith('tools '))
-  expect(texts(lines).slice(i, i + 2)).toEqual(['tools   AskUserQuestion ×13 · Bash ×5', '        Context7:query-docs ×3 · Grep ×1'])
-  for (const l of lines.slice(i)) expect(cellsOf(l)).toBeLessThanOrEqual(40)
+  const lines = bandLines(input({ isToolsOpen: true, columns: 41, stats }))
+  const i = texts(lines).findIndex(l => l.startsWith('tools:'))
+  expect(texts(lines).slice(i, i + 2)).toEqual(['tools:   AskUserQuestion ×13 │ Bash ×5', '         Context7:query-docs ×3 │ Grep ×1'])
+  for (const l of lines.slice(i)) expect(cellsOf(l)).toBeLessThanOrEqual(41)
 })
 
 test('short of rows, the open rows give way first, then the info line, and the buttons stay in view', () => {
   const inspect = (lines: Line[]): boolean => (lines[lines.length - 1] ?? []).some(s => 'button' in s && s.button.key === 'inspect')
   const at = (maxRows: number) => bandLines(input({ isToolsOpen: true, newFailures: 1, maxRows }))
-  expect(texts(at(6)).filter(l => /^(tools|skills) /.test(l))).toHaveLength(2)
-  expect(texts(at(5)).filter(l => /^(tools|skills) /.test(l))).toEqual(['tools   AskUserQuestion ×13 · Bash ×5 · Grep ×1'])
-  expect(texts(at(4)).some(l => /^(tools|skills) /.test(l))).toBe(false)
+  expect(texts(at(6)).filter(l => /^(tools|skills|agents|rules):/.test(l))).toHaveLength(2)
+  expect(texts(at(5)).filter(l => /^(tools|skills|agents|rules):/.test(l))).toEqual(['tools:   AskUserQuestion ×13 │ Bash ×5 │ Grep ×1'])
+  expect(texts(at(4)).some(l => /^(tools|skills|agents|rules):/.test(l))).toBe(false)
   expect(texts(at(4)).includes(FULL.replace('▸', '▾'))).toBe(true)
   expect(texts(at(3)).some(l => l.startsWith(HEAD))).toBe(false)
   for (const n of [6, 5, 4, 3]) {
@@ -243,11 +243,11 @@ test('short of rows, the open rows give way first, then the info line, and the b
 test('open, the toggle outlasts tok/s and the cache; with no room for it, no rows are drawn', () => {
   const open = (columns: number) => input({ isToolsOpen: true, columns })
   expect(text(infoLine(open(66)))).toBe('Sonnet 5.5 ◑ medium │ 59m │ cache warm 54m │ [ 19 tools ▾ ]')
-  expect(texts(bandLines(open(66))).some(l => l.startsWith('tools '))).toBe(true)
+  expect(texts(bandLines(open(66))).some(l => l.startsWith('tools:'))).toBe(true)
   // Two rows hold the toggle down to 19 columns; at 18 the model does not fit, and no info line is drawn
   const narrow = bandLines(open(18))
   expect(tools(narrow)).toBeUndefined()
-  expect(texts(narrow).some(l => /^(tools|skills) /.test(l))).toBe(false)
+  expect(texts(narrow).some(l => /^(tools|skills|agents|rules):/.test(l))).toBe(false)
 })
 
 test('calm mode has no toggle and no rows, open or not', () => {
@@ -319,10 +319,10 @@ test('short of rows, the second info row gives way before the open rows of tools
   const meta = { ...input().meta, ...PLACED }
   const at = (maxRows: number) => texts(bandLines(input({ columns: 103, meta, isToolsOpen: true, newFailures: 1, maxRows })))
   expect(at(7)).toContain('alfred-mods git:(develop) │ CC 2.1.322')
-  expect(at(7).filter(l => /^(tools|skills) /.test(l))).toHaveLength(2)
+  expect(at(7).filter(l => /^(tools|skills|agents|rules):/.test(l))).toHaveLength(2)
   expect(at(6).some(l => l.includes('alfred-mods'))).toBe(false)
   expect(at(6)).toContain(FULL.replace('▸', '▾'))
-  expect(at(6).filter(l => /^(tools|skills) /.test(l))).toHaveLength(2)
+  expect(at(6).filter(l => /^(tools|skills|agents|rules):/.test(l))).toHaveLength(2)
   for (const n of [7, 6]) expect(at(n)).toHaveLength(n)
 })
 

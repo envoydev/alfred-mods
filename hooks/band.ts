@@ -187,8 +187,8 @@ function toggleForms(b: BandInput): Line[] {
   return labels.map(label => [{ button: { key: 'tools', label, hotkey: 't' } }])
 }
 
-// The open rows: every tool by name with its calls, then the skills the main chat loaded and how many the listing
-// carries, each under its label, as many to a row as the width holds
+// The open rows (spec 2026-11-11, D2): every tool by name with its calls, then the skills the main chat loaded and how
+// many the listing carries, each under its label, as many to a row as the width holds, joined by ' │ '
 export function toolRows(b: BandInput): Line[] {
   const used = toolsByCalls(b.stats)
   const tools: Seg[] = used.length === 0 ? [{ text: 'none', tone: 'dim' }] : used.map(([key, s]) => ({ text: `${key} ×${s.calls}` }))
@@ -196,10 +196,13 @@ export function toolRows(b: BandInput): Line[] {
   if (b.listing !== undefined && b.listing !== null) skills.push({ text: listedText(b.listing), tone: 'dim' })
   const label = (text: string): Seg => ({ text: text.padEnd(ROW_LABEL), tone: 'dim' })
   const under: Seg = { text: ' '.repeat(ROW_LABEL) }
-  return [...wrapRows(label('tools'), under, tools, b.columns), ...wrapRows(label('skills'), under, skills, b.columns)]
+  const row = (name: string, items: Seg[]): Line[] => wrapRows(label(name), under, items.map(s => [s]), b.columns, ROW_JOIN)
+  return [...row('tools:', tools), ...row('skills:', skills)]
 }
 
-const ROW_LABEL = 8
+// The labels' width, so the items of every row line up, and the band rows' joiner, as the owner's target draws them
+const ROW_LABEL = 9
+export const ROW_JOIN = ' │ '
 
 // The skills loaded in the main chat; after a resume or a branch, counted from it, since the ones loaded before are in
 // the context but never seen (a side agent's note, 2026-11-11)
@@ -210,27 +213,29 @@ export function skillSegs(skills: Record<string, number> | undefined, isResumed:
   return [...loaded.map((text): Seg => ({ text, tone: 'skill' })), ...since]
 }
 
-// Items after a label, joined by ' · ' while they fit; a row that wraps starts with `under`, as wide as the label, so
-// its items line up under the first. An item wider than a row has one to itself, and the draw cuts it.
-export function wrapRows(label: Seg, under: Seg, items: Seg[], columns: number): Line[] {
+// Items after a label, joined by `joiner` (dim) while they fit; a row that wraps starts with `under`, as wide as the
+// label, so its items line up under the first. An item is a line of its own segments, so a glyph can carry a tone its
+// name does not; one wider than a row has the row to itself, and the draw cuts it.
+export function wrapRows(label: Seg, under: Seg, items: Line[], columns: number, joiner: string): Line[] {
   const lead = cellsOf([label])
+  const gap = widthOf([{ text: joiner }])
   const rows: Line[] = []
   let row: Line = [label]
   let used = lead
   let count = 0
   for (const item of items) {
-    const w = widthOf([item])
-    if (count > 0 && used + 3 + w > columns) {
+    const w = widthOf(item)
+    if (count > 0 && used + gap + w > columns) {
       rows.push(row)
       row = [under]
       used = lead
       count = 0
     }
     if (count > 0) {
-      row.push({ text: ' · ', tone: 'dim' })
-      used += 3
+      row.push({ text: joiner, tone: 'dim' })
+      used += gap
     }
-    row.push(item)
+    row.push(...item)
     used += w
     count++
   }
