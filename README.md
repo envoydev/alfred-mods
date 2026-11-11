@@ -376,6 +376,26 @@ claude plugin marketplace update envoydev
 claude plugin update alfred-mods@envoydev
 ```
 
+### Without a GitHub SSH key
+
+Claude Code fetches the mod from GitHub over SSH when it can. On a machine with no GitHub SSH key, an install or
+update from `/plugin` in a session fails with `git@github.com: Permission denied (publickey)`: only
+`claude plugin install` run from a shell falls back to HTTPS on its own. This repo is public, so HTTPS needs no
+sign-in. Set `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` for good, then open a new terminal and start Claude Code again:
+
+```bash
+# macOS and Linux: add the line to ~/.zshrc or ~/.bashrc
+export CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1
+```
+
+```powershell
+# Windows, in PowerShell
+[Environment]::SetEnvironmentVariable('CLAUDE_CODE_PLUGIN_PREFER_HTTPS', '1', 'User')
+```
+
+Keep it set: updates do not fall back to HTTPS either
+([installing without a GitHub SSH key](https://code.claude.com/docs/en/plugins/host-marketplace#serve-users-who-have-no-git-host-account)).
+
 ### Moving from session-inspector
 
 Until 0.5.0 the mod was the plugin `session-inspector`. The `envoydev` marketplace no longer lists that id, so an old
