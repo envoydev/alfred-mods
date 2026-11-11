@@ -1,19 +1,275 @@
 # alfred-mods
 
-`alfred-mods`, a Claude Code mod by envoydev (named `session-inspector` until 0.5.0), with its own plugin marketplace,
-`alfred-mods`. A mod is a Claude
-Code plugin whose JavaScript or TypeScript hooks run inside Claude Code, so it can watch events and draw its own
-interface ([mods overview](https://code.claude.com/docs/en/plugins/mods/overview)).
+A Claude Code mod that shows what your session is doing while you work: a band above the prompt with the model, the
+context, your usage limits, the cost, the cache and the tools, skills, agents and rules in play, and an `/inspect` pane
+with the details. It also saves a handoff before the context fills, and masks keys, emails and phone numbers on screen
+while you record.
 
 It works on Claude Code alone. With [Alfred Code](https://github.com/envoydev/alfred-code) installed in the same
 project, it shows more, read from the one status file the stack publishes for each session. It never needs Alfred
 Code, and nothing it draws breaks without it.
 
-**Status: Phase 5 (Alfred Code integration) built:** the band with its plan line and handoff ask, `/inspect`
-with Now, Usage, Agents, Tools, Cache, Timeline and Plan, `/auto-handoff` and `/rec`, the switches as
-[settings values](#settings), and with Alfred Code
-the mode banner, the runway and the resume prompt. Phase 6 ships it; the design, the features and the build phases are
-in [the session-inspector brief](docs/session-inspector-brief.md).
+A mod is a Claude Code plugin whose hooks run inside Claude Code, so it can watch events and draw its own interface
+([mods overview](https://code.claude.com/docs/en/plugins/mods/overview)). Until 0.5.0 this one was named
+`session-inspector`.
+
+## Contents
+
+- [Install](#install)
+- [Quick start](#quick-start)
+- [Commands](#commands)
+- [Settings](#settings)
+- [What it shows](#what-it-shows)
+- [Recording mode](#recording-mode)
+- [Handoff](#handoff)
+- [With Alfred Code](#with-alfred-code)
+- [Plan and score files](#plan-and-score-files)
+- [Development](#development)
+
+## Install
+
+Requires Claude Code 2.1.312 or later, in the terminal (`claude --version`) and in the Desktop app's Code tab
+(`/status`). Mods load from 2.1.287, but the handoff and the compact rows use fields this mod is checked against only
+from 2.1.312.
+
+Install it from `envoydev`, the one marketplace for envoydev's plugins. It also lists Alfred Code, which the mod does
+not need:
+
+```bash
+claude plugin marketplace add envoydev/alfred-code
+claude plugin install alfred-mods@envoydev
+```
+
+Then run `/reload-plugins`, or start a new session: `/plugin` shows `1 mod active · alfred-mods`.
+
+It adds nothing to every session's context: `claude plugin details alfred-mods@envoydev` reads `Always-on:
+~0 tok` (measured 2026-10-30). The one thing it ever tells Claude is Recording mode's short note.
+
+The `envoydev` entry follows this repo's `main` branch, so each release reaches you on your next update. Updates are
+pulled, not pushed:
+
+```bash
+claude plugin marketplace update envoydev
+claude plugin update alfred-mods@envoydev
+```
+
+### Without a GitHub SSH key
+
+Claude Code fetches the mod from GitHub over SSH when it can. On a machine with no GitHub SSH key, an install or
+update from `/plugin` in a session fails with `git@github.com: Permission denied (publickey)`: only
+`claude plugin install` run from a shell falls back to HTTPS on its own. This repo is public, so HTTPS needs no
+sign-in. Set `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` for good, then open a new terminal and start Claude Code again:
+
+```bash
+# macOS and Linux: add the line to ~/.zshrc or ~/.bashrc
+export CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1
+```
+
+```powershell
+# Windows, in PowerShell
+[Environment]::SetEnvironmentVariable('CLAUDE_CODE_PLUGIN_PREFER_HTTPS', '1', 'User')
+```
+
+Keep it set: updates do not fall back to HTTPS either
+([installing without a GitHub SSH key](https://code.claude.com/docs/en/plugins/host-marketplace#serve-users-who-have-no-git-host-account)).
+
+### Moving from session-inspector
+
+Until 0.5.0 the mod was the plugin `session-inspector`. The `envoydev` marketplace no longer lists that id, so an old
+install stops loading. Switch once, at the scope you installed it (`--scope user` by default):
+
+```bash
+claude plugin marketplace update envoydev
+claude plugin uninstall session-inspector@envoydev
+claude plugin install alfred-mods@envoydev
+```
+
+Settings the mod saved between sessions (the `/rec`
+words, `/quiet`, `/auto-handoff` and today's cost) are kept per plugin name, so they start fresh under the new id.
+The files it writes in a project keep their place under `.claude/session-inspector/`.
+
+This repo is also a marketplace of its own, `alfred-mods`, kept for development. Install through one marketplace only:
+if you added both, keep one of the two installs, as two plugin ids with the same name register its hooks only once.
+
+A mod does not load in a session started with `--safe-mode` or `--bare`, with `disableAllHooks` set, or where your
+organization's managed settings allow only its own mods
+([troubleshoot a mod](https://code.claude.com/docs/en/plugins/mods/troubleshoot)).
+
+## Quick start
+
+1. [Install](#install) it and run `/reload-plugins`. The band appears above the prompt; Ctrl+X Ctrl+A hides it and
+   shows it again.
+2. Run `/inspect` for the pane with the details: Now, Usage, Agents, Tools, Cache, Timeline and Plan.
+3. Change what you want in `~/.claude/settings.json`, under one `"alfred-mods"` key beside the keys the file already
+   has. Add only the fields you change; here is every field with its default:
+
+   ```json
+   {
+     "alfred-mods": {
+       "band": "full",
+       "bandPlace": "above",
+       "bandRows": true,
+       "quiet": true,
+       "rec": "off",
+       "handoff": "ask",
+       "handoffAt": 80
+     }
+   }
+   ```
+
+   Keep the JSON valid: Claude Code drops a file that does not parse, its permission rules with it. The band redraws
+   as soon as you save.
+
+### Common setups
+
+| You want                                             | In `"alfred-mods"`     | Or run                |
+|------------------------------------------------------|------------------------|-----------------------|
+| The band under the prompt (the terminal only)        | `"bandPlace": "under"` | -                     |
+| The short, two-line band                             | `"band": "calm"`       | -                     |
+| No `tools:`, `skills:`, `agents:` and `rules:` rows  | `"bandRows": false`    | -                     |
+| Each tool call's full command and output             | `"quiet": false`       | -                     |
+| Keys, emails and phones masked for a recording       | `"rec": "on"`          | `/rec on`             |
+| Also your user name, home paths and dollar amounts   | `"rec": "strict"`      | `/rec strict`         |
+| The recording over                                   | `"rec": "off"`         | `/rec off`            |
+| A handoff saved by itself before the context fills   | `"handoff": "auto"`    | `/auto-handoff auto`  |
+| No handoff                                           | `"handoff": "off"`     | `/auto-handoff off`   |
+| The handoff from 70% instead of 80%                  | `"handoffAt": 70`      | `/auto-handoff at 70` |
+
+A command writes its field into `~/.claude/settings.json` for you. For one project only, put the field in that
+project's `.claude/settings.local.json`, which wins over your user file there ([Which file wins](#which-file-wins)).
+The [Band Explorer](docs/band-explorer.html), one page that runs in a browser, offline too, previews each setting on
+the band and gives each file's block to copy.
+
+## Commands
+
+- **`/inspect [now|usage|agents|tools|cache|timeline|plan [name]]`** opens the pane on a tab, Now when none is named.
+  In the pane, `n`, `u`, `a`, `t`, `k`, `l` and `p` switch tabs. `/inspect plan <name>` pins the plan file
+  `<name>.json`; `/inspect plan` alone returns to the newest.
+- **`/rec on`, `/rec strict`, `/rec off`** set [Recording mode](#recording-mode)'s level, the `"rec"` field, in your
+  user file.
+- **`/rec`** reads the settings files again and prints the level, the file it comes from, the private-word count and
+  what REC cannot hide. **`/rec test`** runs the masker over fake samples and your private words; **`/rec words`**
+  opens the private-words pane.
+- **`/auto-handoff ask`, `auto`, `off`** set the [handoff](#handoff)'s mode, the `"handoff"` field, in your user file.
+  **`/auto-handoff at 70`** (or `/auto-handoff 70`) sets the percent it starts at, `"handoffAt"`, a whole number from
+  10 to 95.
+- **`/auto-handoff now`** saves a handoff at once, in any mode. **`/auto-handoff`** reads the settings files again and
+  prints the mode, the first ask and the file each comes from.
+
+A command that sets a field writes that one field under `"alfred-mods"` in `~/.claude/settings.json` (in
+`$CLAUDE_CONFIG_DIR` when that is set) and leaves every other key, the file's indent and its line ends as they were.
+The band follows within seconds, as for an edit by hand. If a project or local file gives the same field, it still
+comes first, and the command says so. A file that does not parse as JSON, or whose `"alfred-mods"` is not an object,
+is never rewritten: the command says why, and you set the field by hand.
+
+The band's buttons and the pane's keys are actions; every switch is a settings value ([Settings](#settings)).
+
+## Settings
+
+The mod's switches are values under one key, `"alfred-mods"`, in Claude Code's own settings files. Add the key to a
+file, save it, and the band redraws. The [Band Explorer](docs/band-explorer.html), one page that runs in a browser,
+offline too, previews each setting on the band and gives each file's block to copy: download the file, or clone the
+repo, and open it.
+
+### Where to put them
+
+1. Pick the file. `~/.claude/settings.json` applies to every project on the machine. A project's
+   `.claude/settings.local.json` applies to that project alone and is yours, not meant to be committed. A field in the
+   local file wins over the same field in your user file, and the fields it leaves out come from the user file.
+2. Add `"alfred-mods"` beside the keys the file already has, with only the fields you want to change:
+
+   ```json
+   {
+     "permissions": { "allow": ["Bash(npm test)"] },
+     "alfred-mods": { "bandPlace": "under" }
+   }
+   ```
+
+3. Check the JSON before you save: a missing comma or quote is enough. Claude Code drops a file that does not parse
+   whole, its permission rules and every other setting in it too, and the next session starts on its 'Settings Error'
+   dialog.
+4. Save. The session redraws at once, and other open sessions within 30 seconds.
+
+### The fields
+
+| Field       | Values                       | Default   | Decides                                                            |
+|-------------|------------------------------|-----------|--------------------------------------------------------------------|
+| `band`      | `"full"`, `"calm"`           | `"full"`  | `"full"` adds the info line and the rows under it; `"calm"` keeps two lines |
+| `bandPlace` | `"above"`, `"under"`         | `"above"` | the band above the input, or under it (the terminal only)          |
+| `bandRows`  | `true`, `false`              | `true`    | the `tools:`, `skills:`, `agents:` and `rules:` rows open or closed |
+| `quiet`     | `true`, `false`              | `true`    | one line per tool call in place of the command and its output      |
+| `rec`       | `"off"`, `"on"`, `"strict"`  | `"off"`   | [Recording mode](#recording-mode): what is masked on screen        |
+| `handoff`   | `"ask"`, `"auto"`, `"off"`   | `"ask"`   | how a [handoff](#handoff) is saved before the context fills        |
+| `handoffAt` | a whole number from 10 to 95 | `80`      | the context percent where the handoff first asks or saves          |
+
+`rec`, `handoff` and `handoffAt` can also be set by a command, which writes the field into your user file
+([Commands](#commands)).
+
+With `quiet`, a failure keeps up to 3 error lines, runs of read-only calls fold into one line, and a blocked call
+shows the rule's first sentence; `"quiet": false`, Ctrl+O or `[Show]` in the Tools tab bring the full rows back.
+
+```text
+⏺ Bash · Show CI failure lines 1038-1042 · 30 lines ✓
+⏺ 4 reads · scorer-card.test.js, chain.js, layout.js ×2 · ✓
+⏺ Bash · npm test · ✗ exit 1
+    FAIL tests/auth.test.ts
+```
+
+### Which file wins
+
+Each field on its own takes the first valid value in this order:
+
+1. managed settings, an administrator's;
+2. `--settings` on the `claude` command line;
+3. the project's `.claude/settings.local.json`;
+4. the project's `.claude/settings.json`;
+5. your `~/.claude/settings.json`;
+6. a choice you made with a command before 0.8.0 ([From 0.7](#from-07));
+7. the default.
+
+So with `"alfred-mods": { "bandPlace": "under", "rec": "on" }` in your user file and `"alfred-mods": { "bandRows":
+false }` in one project's local file, that project draws the band under the input with REC on and the rows closed,
+and every other project the same with the rows open.
+
+- A value of the wrong type, or outside its field's values, is skipped as if absent, and a toast says so once. It
+  names the file, the values the field takes and the value in use, never the bad value: `"band" in
+  .claude/settings.local.json takes "full" or "calm" - using "calm" from ~/.claude/settings.json`.
+- A field name the mod does not know is ignored, and an `"alfred-mods"` that is not an object gives that file no
+  fields.
+- `.claude/settings.json` is often committed, so a field there applies to everyone who works in the project. Keep your
+  own choices, such as `rec` and `bandPlace`, in your user file or the local one.
+
+### REC holds
+
+One exception to the order, for REC alone: mid-session, REC never goes down because a file stopped giving it. A file
+that does not parse reads as absent, the same as one whose `"rec"` was removed, so a typo made while editing any field
+would otherwise unmask a running recording. When the file that set the level gives no `"rec"` any more, REC keeps its
+level and a toast says so once: `REC stays on: .claude/settings.local.json no longer gives "rec" - fix the file, or set
+"rec": "off" in it`. A value REC does not take in that file holds it the same way. `"rec": "off"` in that file, or in
+one above it, turns REC off at once; otherwise the hold lasts until the next `claude` run. Raising REC, and every other field,
+follow the files at once.
+
+### When a change shows
+
+At once in the session whose settings file changed, as Claude Code tells the mod, and within 30 seconds in every other
+open session; a bare `/rec` or `/auto-handoff` reads the files again at once. A change of `rec` shows REC's toast,
+`● REC on · hiding …` or `REC off`; the other fields redraw what they decide, with no toast. With
+`leave_out_skipped_hooks` on, every change takes up to 30 seconds, REC included.
+
+### From 0.7
+
+- `/band` and `/quiet` are gone; typed, they are an unknown command. `/rec` and `/auto-handoff` keep their actions,
+  and their switches now write your user file ([Commands](#commands)).
+- A switch is a settings value now: no click or `t` on the band's toggle. `/rec on` and `/auto-handoff auto` still
+  work, by setting the field in `~/.claude/settings.json`.
+- Your earlier choices are kept. The mod reads what `/band`, the toggle, `/quiet`, `/rec` and `/auto-handoff` stored,
+  as one layer under your user file, and the first session after the update shows, once and for 30 seconds, the line
+  to paste: `Add "alfred-mods": { "bandRows": false, "rec": "strict" } to ~/.claude/settings.json - the choices your
+  earlier commands made`. A toast shows about 120 characters, so with several choices kept its end is cut: `/rec` and
+  `/auto-handoff` name where their values come from, and the band shows the rest. Once your user file sets a field, the
+  stored choice for it is deleted; a project's file overrides it in that project and keeps it for the others.
+- Going back to 0.7.0 brings the commands back on the stored choices: each one your user file has not replaced is still
+  there, and a replaced one reads its default.
 
 ## What it shows
 
@@ -153,157 +409,59 @@ draws (`-p`, an SDK session) or on an earlier build, it shows all three. Where t
 drawn last decides. It changes only when its text does, and clears once nothing needs you. A status line of your own,
 such as claude-hud's, is not replaced: it draws under the prompt, below this line, with the band above the prompt.
 
-## Settings
+## Recording mode
 
-The mod's switches are values under one key, `"alfred-mods"`, in Claude Code's own settings files. Add the key to a
-file, save it, and the band redraws. The [Band Explorer](docs/band-explorer.html), one page that runs in a browser,
-offline too, previews each setting on the band and gives each file's block to copy: download the file, or clone the
-repo, and open it.
+Recording mode masks what the mod and Claude Code's message rows draw, for a screen recording or a shared screen.
+`"rec": "on"` or `"strict"` in a settings file turns it on, and `"rec": "off"` turns it off; `/rec on`, `/rec strict`
+and `/rec off` set it in your user file ([Settings](#settings), [Commands](#commands)).
 
-### Quick start
+| Level    | Hides                                                                    |
+|----------|--------------------------------------------------------------------------|
+| `on`     | keys, emails, phone numbers and your private words                       |
+| `strict` | the same, plus your local user name, home folder paths and dollar amounts |
 
-1. Pick the file. `~/.claude/settings.json` applies to every project on the machine. A project's
-   `.claude/settings.local.json` applies to that project alone and is yours, not meant to be committed. A field in the
-   local file wins over the same field in your user file, and the fields it leaves out come from the user file.
-2. Add `"alfred-mods"` beside the keys the file already has, with only the fields you want to change:
+- **It holds** across sessions and restarts while a settings file gives it. Mid-session it never goes down because a
+  file stopped giving it, a typo included ([REC holds](#rec-holds)). A red `● REC` leads the band while it is on.
+- **Where it masks:** the band, every pane tab, toasts, the spinner, the mod's own command output, Claude's messages,
+  command output, tool rows (each call drawn as its own row while REC is on) and Claude's question dialogs. Masked
+  values read `‹key›`, `‹email›`, `‹phone›` and `‹private›`. Only the drawing changes: the stored messages and what
+  Claude reads stay as they are.
+- **Claude is told:** while REC is on, your next prompt carries a short note asking Claude not to write secret values,
+  emails or phone numbers in replies; turning REC off sends a note that the limit is lifted.
+- **Private words** are added in the `/rec words` pane, never as command arguments, which the transcript echoes. Each
+  is 3 to 64 characters, up to 100 words, matched inside longer words regardless of case. They are stored as plain
+  JSON in the mod's store file on this machine, not encrypted, and never in session state, a log, a toast, a file the
+  mod writes or Claude's context. With REC on, the pane shows only how many there are.
+- **Keys** are provider keys and tokens, private key blocks, bearer tokens and named secrets (`API_KEY=…`), and also:
+  a value named `password`, `passwd`, `pwd` or `secret` from 4 characters (`password=‹key›`, not `password: null`);
+  a secret flag and its value (`--password ‹key›`, `--token=‹key›`); an Authorization header of any scheme
+  (`Authorization: Basic ‹key›`); and the password in a URL's credentials (`postgres://admin:‹key›@localhost`). Only
+  the value is hidden.
+- **If a row fails to draw** while REC is on, it reads `‹row hidden: REC could not mask it›`, the spinner reads
+  `Working`, and a question dialog keeps its option labels with every other text `‹hidden›`. With REC off, Claude Code
+  draws the row as it would without the mod.
+- **`/rec test`** runs the masker over fake samples of each kind, near misses that must stay visible, and your private
+  words, and prints what it hid.
+- **Before you record:** run `/rec test` and check that each sample and private word is hidden, then clear the
+  terminal or start a new session, so no row drawn before REC went on is left in view.
 
-   ```json
-   {
-     "permissions": { "allow": ["Bash(npm test)"] },
-     "alfred-mods": { "bandPlace": "under" }
-   }
-   ```
+What REC cannot hide:
 
-3. Check the JSON before you save: a missing comma or quote is enough. Claude Code drops a file that does not parse
-   whole, its permission rules and every other setting in it too, and the next session starts on its 'Settings Error'
-   dialog.
-4. Save. The session redraws at once, and other open sessions within 30 seconds.
-
-Four ready blocks, each for the `"alfred-mods"` line of the file named:
-
-- **The band under the input, in every project:** `~/.claude/settings.json`
-
-  ```json
-  "alfred-mods": { "bandPlace": "under" }
-  ```
-
-- **The detail rows closed in one project:** that project's `.claude/settings.local.json`
-
-  ```json
-  "alfred-mods": { "bandRows": false }
-  ```
-
-- **REC on for a recording:** `~/.claude/settings.json`, then `"off"` when you stop
-
-  ```json
-  "alfred-mods": { "rec": "on" }
-  ```
-
-- **The handoff saving by itself from 70%:** either file
-
-  ```json
-  "alfred-mods": { "handoff": "auto", "handoffAt": 70 }
-  ```
-
-### The fields
-
-| Field       | Values                       | Default   | Decides                                                            |
-|-------------|------------------------------|-----------|--------------------------------------------------------------------|
-| `band`      | `"full"`, `"calm"`           | `"full"`  | `"full"` adds the info line and the rows under it; `"calm"` keeps two lines |
-| `bandPlace` | `"above"`, `"under"`         | `"above"` | the band above the input, or under it (the terminal only)          |
-| `bandRows`  | `true`, `false`              | `true`    | the `tools:`, `skills:`, `agents:` and `rules:` rows open or closed |
-| `quiet`     | `true`, `false`              | `true`    | one line per tool call in place of the command and its output      |
-| `rec`       | `"off"`, `"on"`, `"strict"`  | `"off"`   | [Recording mode](#recording-mode): what is masked on screen        |
-| `handoff`   | `"ask"`, `"auto"`, `"off"`   | `"ask"`   | how a [handoff](#handoff) is saved before the context fills        |
-| `handoffAt` | a whole number from 10 to 95 | `80`      | the context percent where the handoff first asks or saves          |
-
-With `quiet`, a failure keeps up to 3 error lines, runs of read-only calls fold into one line, and a blocked call
-shows the rule's first sentence; `"quiet": false`, Ctrl+O or `[Show]` in the Tools tab bring the full rows back.
-
-```text
-⏺ Bash · Show CI failure lines 1038-1042 · 30 lines ✓
-⏺ 4 reads · scorer-card.test.js, chain.js, layout.js ×2 · ✓
-⏺ Bash · npm test · ✗ exit 1
-    FAIL tests/auth.test.ts
-```
-
-### Which file wins
-
-Each field on its own takes the first valid value in this order:
-
-1. managed settings, an administrator's;
-2. `--settings` on the `claude` command line;
-3. the project's `.claude/settings.local.json`;
-4. the project's `.claude/settings.json`;
-5. your `~/.claude/settings.json`;
-6. a choice you made with a command before 0.8.0 ([From 0.7](#from-07));
-7. the default.
-
-So with `"alfred-mods": { "bandPlace": "under", "rec": "on" }` in your user file and `"alfred-mods": { "bandRows":
-false }` in one project's local file, that project draws the band under the input with REC on and the rows closed,
-and every other project the same with the rows open.
-
-- A value of the wrong type, or outside its field's values, is skipped as if absent, and a toast says so once. It
-  names the file, the values the field takes and the value in use, never the bad value: `"band" in
-  .claude/settings.local.json takes "full" or "calm" - using "calm" from ~/.claude/settings.json`.
-- A field name the mod does not know is ignored, and an `"alfred-mods"` that is not an object gives that file no
-  fields.
-- `.claude/settings.json` is often committed, so a field there applies to everyone who works in the project. Keep your
-  own choices, such as `rec` and `bandPlace`, in your user file or the local one.
-
-### REC holds
-
-One exception to the order, for REC alone: mid-session, REC never goes down because a file stopped giving it. A file
-that does not parse reads as absent, the same as one whose `"rec"` was removed, so a typo made while editing any field
-would otherwise unmask a running recording. When the file that set the level gives no `"rec"` any more, REC keeps its
-level and a toast says so once: `REC stays on: .claude/settings.local.json no longer gives "rec" - fix the file, or set
-"rec": "off" in it`. A value REC does not take in that file holds it the same way. `"rec": "off"` in that file, or in
-one above it, turns REC off at once; otherwise the hold lasts until the next `claude` run. Raising REC, and every other field,
-follow the files at once.
-
-### When a change shows
-
-At once in the session whose settings file changed, as Claude Code tells the mod, and within 30 seconds in every other
-open session; a bare `/rec` or `/auto-handoff` reads the files again at once. A change of `rec` shows REC's toast,
-`● REC on · hiding …` or `REC off`; the other fields redraw what they decide, with no toast. With
-`leave_out_skipped_hooks` on, every change takes up to 30 seconds, REC included.
-
-### From 0.7
-
-- `/band` and `/quiet` are gone; typed, they are an unknown command. `/rec` and `/auto-handoff` keep their actions,
-  and their switches now write your user file ([Commands](#commands)).
-- A switch is a settings value now: no click or `t` on the band's toggle. `/rec on` and `/auto-handoff auto` still
-  work, by setting the field in `~/.claude/settings.json`.
-- Your earlier choices are kept. The mod reads what `/band`, the toggle, `/quiet`, `/rec` and `/auto-handoff` stored,
-  as one layer under your user file, and the first session after the update shows, once and for 30 seconds, the line
-  to paste: `Add "alfred-mods": { "bandRows": false, "rec": "strict" } to ~/.claude/settings.json - the choices your
-  earlier commands made`. A toast shows about 120 characters, so with several choices kept its end is cut: `/rec` and
-  `/auto-handoff` name where their values come from, and the band shows the rest. Once your user file sets a field, the
-  stored choice for it is deleted; a project's file overrides it in that project and keeps it for the others.
-- Going back to 0.7.0 brings the commands back on the stored choices: each one your user file has not replaced is still
-  there, and a replaced one reads its default.
-
-## Commands
-
-- `/inspect [now|usage|agents|tools|cache|timeline|plan [name]]` opens the pane on a tab, Now when none is named.
-  `/inspect plan <name>` pins the plan file `<name>.json`; `/inspect plan` alone returns to the newest. In the pane,
-  `n`, `u`, `a`, `t`, `k`, `l` and `p` switch tabs.
-- `/rec [on|strict|off|test|words]`: `on`, `strict` and `off` set the `"rec"` field in your user file; a bare `/rec`
-  reads the settings files again and prints the level, the file it comes from, the private-word count and the help;
-  `test` checks the masker and `words` opens the private-words pane ([Settings](#settings),
-  [Recording mode](#recording-mode)).
-- `/auto-handoff [ask|auto|off|at <percent>|now]`: `ask`, `auto` and `off` set the `"handoff"` field, and `at 70` (or
-  `70`) sets `"handoffAt"`, a whole number from 10 to 95, in your user file; `now` saves a handoff at once, in any
-  mode; a bare `/auto-handoff` reads the settings files again and prints the mode, the first ask and the file each
-  comes from ([Handoff](#handoff)).
-
-A command that sets a field writes that one field under `"alfred-mods"` in `~/.claude/settings.json` (in
-`$CLAUDE_CONFIG_DIR` when that is set) and leaves every other key, the file's indent and its line ends as they were.
-The band follows within seconds, as for an edit by hand. If a project or local file gives the same field, it still
-comes first, and the command says so. A file that does not parse as JSON, or whose `"alfred-mods"` is not an object,
-is never rewritten: the command says why, and you set the field by hand.
-
-The band's buttons and the pane's keys are actions and stay; every switch is a settings value ([Settings](#settings)).
+- What you type in the prompt box.
+- A prompt the mod fills into the prompt box (`f` in the ALFRED CODE section).
+- Claude Code's own screens and dialogs: the permission dialog, `/context`, `/usage`, `/config`, the status line and the
+  welcome header.
+- Other plugins' bands and panes.
+- The option labels of a question Claude asks: Claude Code draws them as asked. The question, its header and the
+  option descriptions are masked.
+- A private key's middle lines in a diff that does not show its BEGIN line. A diff that shows it draws every line of
+  the key as `‹key›`.
+- Other open sessions, for up to 30 seconds after a change; run `/rec` in each session that will be on screen, which
+  reads the files at once.
+- Rows drawn before REC went on: on the terminal's main screen they stay in scrollback, so turn REC on before
+  recording starts, then clear the terminal or start a new session.
+- Files on disk and the transcript. HANDOFF.md gets only its key, email and phone masking.
+- Anything Claude reads.
 
 ## Handoff
 
@@ -363,60 +521,6 @@ agents' tokens, the Tools tab names its guards (`blocked by shell-guards.js: …
 Without Alfred Code, or when the file is missing, has another schema or names another session, the band shows none of
 this, and the ALFRED CODE section shows one dim line with the reason, such as `Alfred Code: no status file for this
 session`. The file is the stack's: the mod never writes it and reads nothing else of the stack.
-
-## Recording mode
-
-Recording mode masks what the mod and Claude Code's message rows draw, for a screen recording or a shared screen.
-`"rec": "on"` or `"strict"` in a settings file turns it on, and `"rec": "off"` turns it off; `/rec on`, `/rec strict`
-and `/rec off` set it in your user file ([Settings](#settings), [Commands](#commands)).
-
-| Level    | Hides                                                                    |
-|----------|--------------------------------------------------------------------------|
-| `on`     | keys, emails, phone numbers and your private words                       |
-| `strict` | the same, plus your local user name, home folder paths and dollar amounts |
-
-- **It holds** across sessions and restarts while a settings file gives it. Mid-session it never goes down because a
-  file stopped giving it, a typo included ([REC holds](#rec-holds)). A red `● REC` leads the band while it is on.
-- **Where it masks:** the band, every pane tab, toasts, the spinner, the mod's own command output, Claude's messages,
-  command output, tool rows (each call drawn as its own row while REC is on) and Claude's question dialogs. Masked
-  values read `‹key›`, `‹email›`, `‹phone›` and `‹private›`. Only the drawing changes: the stored messages and what
-  Claude reads stay as they are.
-- **Claude is told:** while REC is on, your next prompt carries a short note asking Claude not to write secret values,
-  emails or phone numbers in replies; turning REC off sends a note that the limit is lifted.
-- **Private words** are added in the `/rec words` pane, never as command arguments, which the transcript echoes. Each
-  is 3 to 64 characters, up to 100 words, matched inside longer words regardless of case. They are stored as plain
-  JSON in the mod's store file on this machine, not encrypted, and never in session state, a log, a toast, a file the
-  mod writes or Claude's context. With REC on, the pane shows only how many there are.
-- **Keys** are provider keys and tokens, private key blocks, bearer tokens and named secrets (`API_KEY=…`), and also:
-  a value named `password`, `passwd`, `pwd` or `secret` from 4 characters (`password=‹key›`, not `password: null`);
-  a secret flag and its value (`--password ‹key›`, `--token=‹key›`); an Authorization header of any scheme
-  (`Authorization: Basic ‹key›`); and the password in a URL's credentials (`postgres://admin:‹key›@localhost`). Only
-  the value is hidden.
-- **If a row fails to draw** while REC is on, it reads `‹row hidden: REC could not mask it›`, the spinner reads
-  `Working`, and a question dialog keeps its option labels with every other text `‹hidden›`. With REC off, Claude Code
-  draws the row as it would without the mod.
-- **`/rec test`** runs the masker over fake samples of each kind, near misses that must stay visible, and your private
-  words, and prints what it hid.
-- **Before you record:** run `/rec test` and check that each sample and private word is hidden, then clear the
-  terminal or start a new session, so no row drawn before REC went on is left in view.
-
-What REC cannot hide:
-
-- What you type in the prompt box.
-- A prompt the mod fills into the prompt box (`f` in the ALFRED CODE section).
-- Claude Code's own screens and dialogs: the permission dialog, `/context`, `/usage`, `/config`, the status line and the
-  welcome header.
-- Other plugins' bands and panes.
-- The option labels of a question Claude asks: Claude Code draws them as asked. The question, its header and the
-  option descriptions are masked.
-- A private key's middle lines in a diff that does not show its BEGIN line. A diff that shows it draws every line of
-  the key as `‹key›`.
-- Other open sessions, for up to 30 seconds after a change; run `/rec` in each session that will be on screen, which
-  reads the files at once.
-- Rows drawn before REC went on: on the terminal's main screen they stay in scrollback, so turn REC on before
-  recording starts, then clear the terminal or start a new session.
-- Files on disk and the transcript. HANDOFF.md gets only its key, email and phone masking.
-- Anything Claude reads.
 
 ## Plan and score files
 
@@ -515,75 +619,6 @@ prompts) and idle time between turns do not.
    with a fresh grader each round, leave them out: the mod then shows each round's total, the change per criterion and
    the count per severity (for example BLOCKER 2→0), and hides fixed and improved.
 
-## Install
-
-Requires Claude Code 2.1.312 or later, in the terminal (`claude --version`) and in the Desktop app's Code tab
-(`/status`). Mods load from 2.1.287, but the handoff and the compact rows use fields this mod is checked against only
-from 2.1.312.
-
-Install it from `envoydev`, the one marketplace for envoydev's plugins. It also lists Alfred Code, which the mod does
-not need:
-
-```bash
-claude plugin marketplace add envoydev/alfred-code
-claude plugin install alfred-mods@envoydev
-```
-
-Then run `/reload-plugins`, or start a new session: `/plugin` shows `1 mod active · alfred-mods`.
-
-It adds nothing to every session's context: `claude plugin details alfred-mods@envoydev` reads `Always-on:
-~0 tok` (measured 2026-10-30). The one thing it ever tells Claude is Recording mode's short note.
-
-The `envoydev` entry follows this repo's `main` branch, so each release reaches you on your next update. Updates are
-pulled, not pushed:
-
-```bash
-claude plugin marketplace update envoydev
-claude plugin update alfred-mods@envoydev
-```
-
-### Without a GitHub SSH key
-
-Claude Code fetches the mod from GitHub over SSH when it can. On a machine with no GitHub SSH key, an install or
-update from `/plugin` in a session fails with `git@github.com: Permission denied (publickey)`: only
-`claude plugin install` run from a shell falls back to HTTPS on its own. This repo is public, so HTTPS needs no
-sign-in. Set `CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1` for good, then open a new terminal and start Claude Code again:
-
-```bash
-# macOS and Linux: add the line to ~/.zshrc or ~/.bashrc
-export CLAUDE_CODE_PLUGIN_PREFER_HTTPS=1
-```
-
-```powershell
-# Windows, in PowerShell
-[Environment]::SetEnvironmentVariable('CLAUDE_CODE_PLUGIN_PREFER_HTTPS', '1', 'User')
-```
-
-Keep it set: updates do not fall back to HTTPS either
-([installing without a GitHub SSH key](https://code.claude.com/docs/en/plugins/host-marketplace#serve-users-who-have-no-git-host-account)).
-
-### Moving from session-inspector
-
-Until 0.5.0 the mod was the plugin `session-inspector`. The `envoydev` marketplace no longer lists that id, so an old
-install stops loading. Switch once, at the scope you installed it (`--scope user` by default):
-
-```bash
-claude plugin marketplace update envoydev
-claude plugin uninstall session-inspector@envoydev
-claude plugin install alfred-mods@envoydev
-```
-
-Settings the mod saved between sessions (the `/rec`
-words, `/quiet`, `/auto-handoff` and today's cost) are kept per plugin name, so they start fresh under the new id.
-The files it writes in a project keep their place under `.claude/session-inspector/`.
-
-This repo is also a marketplace of its own, `alfred-mods`, kept for development. Install through one marketplace only:
-if you added both, keep one of the two installs, as two plugin ids with the same name register its hooks only once.
-
-A mod does not load in a session started with `--safe-mode` or `--bare`, with `disableAllHooks` set, or where your
-organization's managed settings allow only its own mods
-([troubleshoot a mod](https://code.claude.com/docs/en/plugins/mods/troubleshoot)).
-
 ## Development
 
 The repo root is the mod: `.claude-plugin/plugin.json` (the one place its version lives), `hooks/hooks.json` naming
@@ -601,7 +636,8 @@ against the types the pinned Claude Code build writes.
 
 The first interactive `--plugin-dir` session writes the mod types for the running build into
 `.claude-plugin/types/` (git-ignored), which editors and `tsc` read. Requires Node 22 for the scripts (built-ins
-only) and the `claude` CLI on PATH. This repo's own rules are in `.claude/CLAUDE.md`.
+only) and the `claude` CLI on PATH. This repo's own rules are in `.claude/CLAUDE.md`; the
+design, the features and the build phases are in [the session-inspector brief](docs/session-inspector-brief.md).
 
 ## License
 
