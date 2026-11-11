@@ -138,8 +138,12 @@ export function stubAll(on: On, o: Options = {}): {
   // after `\` reads as `/`; `{ deny }` rejects the mod's call.
   const files = { current: { ...(o.files ?? {}) }, reads: [] as string[], writes: [] as string[], exists: [] as string[], lists: [] as string[] }
   const links = o.links ?? {}
+  // A stub's absolute path such as `/shared/house.md` reaches a hook on Windows with the drive the resolve added
+  // (`D:\shared\house.md`, or `\\?\D:\...` past the long-path limit), so the drive is dropped before matching
+  // (Windows CI, 2026-11-12)
   const slashed = (path: string): string => path.replace(/\\/g, '/')
-  const at = (full: string, path: string): boolean => slashed(full) === path || slashed(full).endsWith(`/${path}`)
+  const undrived = (path: string): string => slashed(path).replace(/^(?:\/\/\?\/)?[A-Za-z]:(?=\/)/, '')
+  const at = (full: string, path: string): boolean => undrived(full) === path || undrived(full).endsWith(`/${path}`)
   on('fs.list', (_, e) => {
     const dir = slashed(e.path).replace(/\/$/, '')
     files.lists.push(dir)
@@ -169,7 +173,9 @@ export function stubAll(on: On, o: Options = {}): {
     }
     const found = Object.entries(files.current).find(([path]) => at(e.path, path))
     if (found === undefined) return { deny: `ENOENT: no such file, ${e.path}` }
-    return { value: { kind: 'file' as const, size: found[1].size ?? found[1].text.length, mtimeMs: found[1].mtimeMs, isLink: false, ...(e.resolve ? { realPath: slashed(e.path) } : {}) } }
+    // An absolute stub's real path is its own, as a link's target is written: both sides then compare on Windows too
+    const realPath = found[0].startsWith('/') ? found[0] : slashed(e.path)
+    return { value: { kind: 'file' as const, size: found[1].size ?? found[1].text.length, mtimeMs: found[1].mtimeMs, isLink: false, ...(e.resolve ? { realPath } : {}) } }
   })
   // A read rejects over 4 MiB, as Claude Code's does (types, `$.fs.read`)
   on('fs.read', (_, e) => {
