@@ -15,7 +15,7 @@ import { baseCost, pruneCost, recordCost, todayUsd } from './cost.ts'
 import { drawLines, drawNote, drawWithInput } from './draw.tsx'
 import { localDate } from './forecast.ts'
 import { REC_HIDDEN, SPINNER_WORD, bandFailed, paneFailed } from './failsafe.ts'
-import { NO_PARTS, partsOf } from './parts.ts'
+import { NO_PARTS, partsOf, ruleName } from './parts.ts'
 import { clock, fingerprint, mins, oneLine, printable, tokens, usd, when } from './format.ts'
 import { mask, maskForFile, maskSpans, recLevel, setRec, toast } from './mask.ts'
 import { maskDeep, maskDialog, maskResult, neutralDialog, resultLines } from './sites.ts'
@@ -365,8 +365,8 @@ async function pollPlace($: EngineInterface): Promise<void> {
   if (text !== null && project !== undefined) await update($, meta, setPlace({ project, branch: headBranch(text) }))
 }
 
-// What the band shows before the first reply: the model, Claude Code's version, the place and the stored windows. Each
-// read stands alone: a refusal leaves its value as it was.
+// What the band shows before the first reply: the model, Claude Code's version, the place, the stored windows and the
+// context's parts. Each read stands alone: a refusal leaves its value as it was.
 async function readStart($: EngineInterface): Promise<void> {
   try {
     const model = await $.session.model()
@@ -382,6 +382,8 @@ async function readStart($: EngineInterface): Promise<void> {
   }
   await readPlace($).catch(() => undefined)
   await seedWindows($).catch(() => undefined)
+  // The rules row's always-on rules (spec 2026-11-11, D4), from a breakdown read on a timer: the start waits on nothing
+  readBreakdownSoon($)
 }
 
 // When the band's figures were last read mid-turn: the tick reads them at most this often while a turn runs or an
@@ -1425,7 +1427,8 @@ async function isNoColor($: EngineInterface): Promise<boolean> {
 export const register: Register = (on, options) => {
   // The person's word that a managed plugin sends these events on past the mod: Claude Code then tells the model, once
   // per event and conversation, that the mod's hook was skipped. Left out, the hooks never join the chain; they never ran
-  // there anyway, and a new conversation is read off the session id.
+  // there anyway, and a new conversation is read off the session id. The rules hook goes with the six on the safe side
+  // (spec 2026-11-11, D4, A1): such a plugin may skip it too, and the rules row then says by path is not tracked.
   const isLeftOut = options.leave_out_skipped_hooks === true
   // Keyed by call id, at most 100, the oldest dropped first
   const calls = new Map<string, Call>()
@@ -1621,6 +1624,15 @@ export const register: Register = (on, options) => {
       const result = await next(e)
       await readStatus($).catch(() => undefined)
       return result
+    }).catch(($, e, next) => next(e))
+
+    // A rule the main context loaded by path (spec 2026-11-11, D4): a match of its `paths:` globs, or a nested folder's
+    // rules. A subagent's load is in its own context; a start-up or compaction load is the breakdown's to list.
+    on('classic.InstructionsLoaded', async ($, e, next) => {
+      const isByPath = e.load_reason === 'path_glob_match' || e.load_reason === 'nested_traversal'
+      const name = e.agent_id === undefined && isByPath ? ruleName(e.file_path, e.memory_type) : null
+      if (name !== null) await update($, meta, m => (m.pathRules?.includes(name) === true ? m : { ...m, pathRules: [...(m.pathRules ?? []), name] }))
+      return next(e)
     }).catch(($, e, next) => next(e))
   }
 
@@ -1962,6 +1974,7 @@ export const register: Register = (on, options) => {
     const m = await read($, meta)
     const runway = runwayOf(st, u, m.model)
     const setting = await read($, bandSetting)
+    const p = await read($, parts)
     const lines = bandLines({
       now, columns: e.props.bodyColumns, maxRows: e.props.maxRows, isWorking: e.props.isWorking,
       live: await read($, live), usage: u, meta: m, turns: await read($, turns),
@@ -1969,7 +1982,8 @@ export const register: Register = (on, options) => {
       cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score, rec: recOf(await read($, rec)),
       forecast: forecastOf(h, u, runway), handoffAsk: h.isAskUp ? h.handled : null, runway, banner: bannerSegs(st),
       mode: setting.mode, totals: await read($, totals), stats: await read($, stats),
-      isToolsOpen: setting.isToolsOpen === true, listing: (await read($, parts)).skills ?? null,
+      isToolsOpen: setting.isToolsOpen === true, listing: p.skills ?? null,
+      rules: { always: p.rules ?? [], byPath: m.pathRules ?? [], isTracked: !isLeftOut },
     })
     if (lines.length === 0) return next(e)
     const press = {

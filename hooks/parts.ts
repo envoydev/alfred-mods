@@ -28,6 +28,14 @@ export function memoryName(path: string, type: string, cwd: string): string {
   return `${type} ${file.split('/').pop() ?? ''}`
 }
 
+// A rule file's base name, else null: a `rules` folder directly inside a `.claude` folder, or a User file under any
+// `rules` folder (a CLAUDE_CONFIG_DIR not named .claude); `\` read as `/`. Only the name is kept, never its folder.
+export function ruleName(path: string, type: string): string | null {
+  const file = slashed(path)
+  const isRule = /\/\.claude\/rules\//.test(file) || (type === 'User' && /\/rules\//.test(file))
+  return isRule ? (file.split('/').pop() ?? null) : null
+}
+
 // The breakdown as the atom keeps it: `used` categories in Claude Code's order; agents by the plugin before the `:` of
 // their type and skills by their plugin, most tokens first; the memory files' count, tokens and three largest. A host
 // may leave a list out, so each is read as empty when absent.
@@ -54,9 +62,11 @@ export function partsOf(b: SessionContextBreakdown, cwd: string, at: number): Pa
     p.skillTokens += s.tokens
   }
   const files = (b.memoryFiles ?? []).map(f => ({ name: memoryName(f.path, f.type, cwd), tokens: f.tokens }))
+  const rules = [...new Set((b.memoryFiles ?? []).flatMap(f => ruleName(f.path, f.type) ?? []))]
   const listing = b.skills === undefined ? {} : { skills: { listed: b.skills.includedSkills, total: b.skills.totalSkills, tokens: b.skills.tokens } }
   return {
     ...listing,
+    ...(rules.length === 0 ? {} : { rules }),
     at,
     categories: (b.categories ?? []).filter(c => c.kind === 'used').map(c => ({ name: c.name, tokens: c.tokens })),
     plugins: [...plugins.values()].sort((x, y) => y.agentTokens + y.skillTokens - (x.agentTokens + x.skillTokens) || x.name.localeCompare(y.name)),

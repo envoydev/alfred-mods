@@ -2,12 +2,12 @@
 // `agents:` and `rules:` under the info line, open by default, items joined by ' │ '; the toggle counts all four
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
-import type { On } from 'claude-code'
+import type { On, SessionUsage } from 'claude-code'
 
 import { newRow } from '../hooks/agents.ts'
-import { agentSegs, toolRows } from '../hooks/band.ts'
+import { agentSegs, ruleSegs, toolRows } from '../hooks/band.ts'
 import type { BandInput, Line } from '../hooks/band.ts'
-import { SPAWN, START, engine, stubAll, watchState } from './kit.ts'
+import { SPAWN, START, engine, rows, stubAll, watchState } from './kit.ts'
 
 import type { AgentRow, AgentStatus, Cache, Meta, ToolStat, Turn } from '../types'
 
@@ -143,4 +143,100 @@ test('a /clear empties the dispatches; a resume starts them over as unseen', asy
   await $.classic.SessionStart({ source: 'resume' })
   expect(metaOf(state).agentTypes).toBeUndefined()
   expect(metaOf(state).isResumed).toBe(true)
+})
+
+const TARGET_RULES = { always: ['alfred-interaction.md', 'alfred-git.md', 'alfred-preferences.md'], byPath: ['web-angular.md', 'typescript.md'], isTracked: true }
+const rulesRow = (b: BandInput): string | undefined => texts(toolRows(b)).find(l => l.startsWith('rules:'))
+
+test('the rules row: always-on, then by path in violet, then the counts', () => {
+  expect(rulesRow(input({ isToolsOpen: true, rules: TARGET_RULES })))
+    .toBe('rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ web-angular.md │ typescript.md │ 3 always-on · 2 by path')
+  const items = ruleSegs(TARGET_RULES, false)
+  expect(items[0]).toEqual([{ text: 'alfred-interaction.md' }])
+  expect(items[3]).toEqual([{ text: 'web-angular.md', tone: 'handoff' }])
+  expect(items[5]).toEqual([{ text: '3 always-on · 2 by path', tone: 'dim' }])
+})
+
+test('a name loaded both always-on and by path is drawn and counted once', () => {
+  expect(texts(ruleSegs({ always: ['a.md'], byPath: ['a.md', 'b.md'], isTracked: true }, false))).toEqual(['a.md', 'b.md', '1 always-on · 1 by path'])
+})
+
+test('no rule known reads none loaded, also from a state kept before the rules row', () => {
+  expect(rulesRow(input({ isToolsOpen: true }))).toBe('rules:   none loaded')
+  expect(texts(ruleSegs({ always: [], byPath: [], isTracked: true }, false))).toEqual(['none loaded'])
+})
+
+test('after a resume the by-path count reads since resume; untracked, by path not tracked', () => {
+  expect(texts(ruleSegs({ always: ['a.md'], byPath: ['b.md'], isTracked: true }, true))).toEqual(['a.md', 'b.md', '1 always-on · 1 by path since resume'])
+  expect(texts(ruleSegs({ always: ['a.md'], byPath: [], isTracked: false }, false))).toEqual(['a.md', '1 always-on · by path not tracked'])
+  expect(texts(ruleSegs({ always: [], byPath: [], isTracked: false }, false))).toEqual(['0 always-on · by path not tracked'])
+})
+
+// What Claude Code hands the classic hook as a rule loads; `agent_id` only inside a subagent
+const load = (file_path: string, load_reason: string, agent_id?: string) => ({
+  file_path, memory_type: 'Project', load_reason, globs: ['src/**/*.ts'], trigger_file_path: '/w/src/app.ts',
+  ...(agent_id === undefined ? {} : { agent_id }),
+}) as never
+
+test('a by-path load on the main thread is listed once, in load order', async ($, on) => {
+  stubAll(on)
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  await $.classic.InstructionsLoaded(load('/w/.claude/rules/web.md', 'path_glob_match'))
+  await $.classic.InstructionsLoaded(load('/w/sub/.claude/rules/nested.md', 'nested_traversal'))
+  await $.classic.InstructionsLoaded(load('/w/.claude/rules/web.md', 'path_glob_match'))
+  expect(metaOf(state).pathRules).toEqual(['web.md', 'nested.md'])
+})
+
+test("a subagent's load, a start-up or compaction reload, an include and a non-rule file are not listed", async ($, on) => {
+  stubAll(on)
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  await $.classic.InstructionsLoaded(load('/w/.claude/rules/a.md', 'path_glob_match', 'agent-1'))
+  await $.classic.InstructionsLoaded(load('/w/.claude/rules/b.md', 'session_start'))
+  await $.classic.InstructionsLoaded(load('/w/.claude/rules/c.md', 'compact'))
+  await $.classic.InstructionsLoaded(load('/w/.claude/rules/d.md', 'include'))
+  await $.classic.InstructionsLoaded(load('/w/src/CLAUDE.md', 'nested_traversal'))
+  expect((state.get('meta') as Meta | undefined)?.pathRules).toBeUndefined()
+})
+
+test('a compaction keeps the by-path rules; a /clear empties them; a resume starts them over', async ($, on) => {
+  stubAll(on)
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  await $.classic.InstructionsLoaded(load('/w/.claude/rules/web.md', 'path_glob_match'))
+  await $.session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'q', toolUses: [] }] as never })
+  expect(metaOf(state).pathRules).toEqual(['web.md'])
+  await $.classic.SessionStart({ source: 'clear' })
+  expect(metaOf(state).pathRules).toBeUndefined()
+  await $.classic.InstructionsLoaded(load('/w/.claude/rules/web.md', 'path_glob_match'))
+  await $.classic.SessionStart({ source: 'resume' })
+  expect(metaOf(state).pathRules).toBeUndefined()
+  expect(metaOf(state).isResumed).toBe(true)
+})
+
+const BAND = { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 12, bodyColumns: 160, scroll: { offset: 0, bodyRows: 12 }, view: {} }
+const ALWAYS: SessionUsage = {
+  startedAt: NOW - 5 * 60_000, rateLimits: [],
+  context: {
+    window: 200_000, tokens: 20_000, percent: 10,
+    breakdown: {
+      categories: [], totalTokens: 0, maxTokens: 200_000, rawMaxTokens: 200_000, percentage: 0, gridRows: [], model: 'claude-opus-5-5',
+      memoryFiles: [{ path: '/w/.claude/rules/always.md', type: 'Project', tokens: 60 }], mcpTools: [], agents: [], isAutoCompactEnabled: true,
+    } as never,
+  },
+}
+
+test('the band draws the rules row from the parts and the loads', async ($, on) => {
+  const { clock } = stubAll(on, { band: 'full', usage: ALWAYS, now: NOW })
+  engine(on)
+  await $.session.start(START)
+  await clock.advance(1)
+  await $.classic.InstructionsLoaded(load('/w/.claude/rules/web.md', 'path_glob_match'))
+  const ui = await $.ui.mount({ plugin: 'alfred-mods', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+  expect(await rows(ui)).toContain('rules:   always.md │ web.md │ 1 always-on · 1 by path')
+  await ui.unmount()
 })

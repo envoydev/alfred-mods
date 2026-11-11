@@ -4,7 +4,7 @@ import type { RenderSurface, SessionContextBreakdown, SessionUsage } from 'claud
 
 import { PRESENTATION, START, engine, rows, stubAll, watchState } from './kit.ts'
 import { clock } from '../hooks/format.ts'
-import { memoryName, partsOf } from '../hooks/parts.ts'
+import { memoryName, partsOf, ruleName } from '../hooks/parts.ts'
 import type { Handoff, Parts } from '../types'
 
 // Spec C1: what fills the context, by category, plugin and memory file, from the breakdown A4 already reads
@@ -173,23 +173,64 @@ test('a compaction and a stale Usage tab read again from a timer', { timeoutMs: 
   const { usage, clock: time } = stubAll(on, { usage: reading(breakdown()) })
   engine(on)
   await $.session.start(START)
-  await measure($)
+  // The start reads one from a timer too (spec 2026-11-11, D4)
+  await time.advance(0)
   expect(usage.breakdowns).toBe(1)
+  await measure($)
+  expect(usage.breakdowns).toBe(2)
 
   // A compaction reads again, from a timer: the hook does not wait on it
   await $.session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'q', toolUses: [] }] as never })
-  expect(usage.breakdowns).toBe(1)
-  await time.advance(0)
   expect(usage.breakdowns).toBe(2)
+  await time.advance(0)
+  expect(usage.breakdowns).toBe(3)
 
   // The Usage tab 30 s after the last read: no read; 61 s after it: one more
   await time.advance(30_000)
   await inspect($, 'usage')
   await time.advance(0)
-  expect(usage.breakdowns).toBe(2)
+  expect(usage.breakdowns).toBe(3)
   await time.advance(31_000)
   await inspect($, 'usage')
-  expect(usage.breakdowns).toBe(2)
-  await time.advance(0)
   expect(usage.breakdowns).toBe(3)
+  await time.advance(0)
+  expect(usage.breakdowns).toBe(4)
+})
+
+// Spec 2026-11-11, D4: the always-on rules from the breakdown, by base name
+test('ruleName: a rule under .claude/rules, or a User file under any rules folder; nothing else', () => {
+  expect(ruleName('/w/.claude/rules/web.md', 'Project')).toBe('web.md')
+  expect(ruleName('/w/.claude/rules/sub/deep.md', 'Project')).toBe('deep.md')
+  expect(ruleName('C:\\Users\\u\\.claude\\rules\\a.md', 'User')).toBe('a.md')
+  expect(ruleName('/cfg/rules/a.md', 'User')).toBe('a.md')
+  expect(ruleName('/w/docs/rules/a.md', 'Project')).toBeNull()
+  expect(ruleName('/w/CLAUDE.md', 'Project')).toBeNull()
+  expect(ruleName('/w/.claude/CLAUDE.md', 'Project')).toBeNull()
+})
+
+const RULE_FILES = [
+  { path: '/home/u/.claude/rules/user-pref.md', type: 'User', tokens: 40 },
+  { path: '/w/CLAUDE.md', type: 'Project', tokens: 900 },
+  { path: '/w/.claude/rules/always.md', type: 'Project', tokens: 60 },
+  { path: '/w/sub/.claude/rules/always.md', type: 'Project', tokens: 60 },
+]
+
+test("the parts keep the breakdown's rule files in its order, each name once, other memory files left out", async ($, on) => {
+  stubAll(on, { usage: reading(breakdown({ memoryFiles: RULE_FILES })) })
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  await measure($)
+  expect((state.get('parts') as Parts).rules).toEqual(['user-pref.md', 'always.md'])
+})
+
+test('the breakdown is read at start off the start hook, so the rules are known within a tick', async ($, on) => {
+  const kit = stubAll(on, { usage: reading(breakdown({ memoryFiles: [{ path: '/w/.claude/rules/always.md', type: 'Project', tokens: 60 }] })) })
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  const atStart = kit.usage.breakdowns
+  await kit.clock.advance(1)
+  expect(kit.usage.breakdowns).toBe(atStart + 1)
+  expect((state.get('parts') as Parts).rules).toEqual(['always.md'])
 })

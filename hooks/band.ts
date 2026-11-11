@@ -52,7 +52,11 @@ export type BandInput = {
   // the context's last breakdown, or null before one
   isToolsOpen?: boolean
   listing?: SkillListing | null
+  // The rules row (spec 2026-11-11, D4): the always-on rules from the breakdown, the ones loaded by path, and whether
+  // by-path loads are tracked (false with leave_out_skipped_hooks on); absent, none known and tracked
+  rules?: RulesInput
 }
+export type RulesInput = { always: string[]; byPath: string[]; isTracked: boolean }
 
 const ORDER = ['five_hour', 'seven_day']
 const LABEL: Record<string, string> = { five_hour: '5h', seven_day: '7d' }
@@ -201,6 +205,29 @@ export function toolRows(b: BandInput): Line[] {
   return [
     ...row('tools:', one(tools)), ...row('skills:', one(skills)),
     ...row('agents:', agentSegs(b.agents, b.meta.agentTypes, b.meta.isResumed === true)),
+    ...row('rules:', ruleSegs(b.rules ?? NO_RULES, b.meta.isResumed === true)),
+  ]
+}
+
+const NO_RULES: RulesInput = { always: [], byPath: [], isTracked: true }
+
+// The rules drawn, each name once, an always-on name winning: the always-on ones, then the by-path ones not among them
+export function rulesDrawn(r: RulesInput): { always: string[]; byPath: string[] } {
+  const always = [...new Set(r.always)]
+  return { always, byPath: [...new Set(r.byPath)].filter(n => !always.includes(n)) }
+}
+
+// The rules row's items (spec 2026-11-11, D4): the always-on rules plain, the by-path ones violet, then how many of
+// each; untracked (the option on), by path is not known; after a resume, the by-path ones loaded before are unseen
+export function ruleSegs(r: RulesInput, isResumed: boolean): Line[] {
+  const { always, byPath } = rulesDrawn(r)
+  if (r.isTracked && always.length + byPath.length === 0) return [[{ text: 'none loaded', tone: 'dim' }]]
+  const summary = r.isTracked
+    ? `${always.length} always-on · ${byPath.length} by path${isResumed ? ' since resume' : ''}`
+    : `${always.length} always-on · by path not tracked`
+  return [
+    ...always.map((text): Line => [{ text }]), ...byPath.map((text): Line => [{ text, tone: 'handoff' }]),
+    [{ text: summary, tone: 'dim' }],
   ]
 }
 

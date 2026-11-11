@@ -46,6 +46,9 @@ export type Meta = {
   // The agents dispatched this conversation, by type, with how many; keys in the order of each type's first dispatch,
   // absent before the first (spec 2026-11-11, D3)
   agentTypes?: Record<string, number>
+  // The rules the main context loaded by path this conversation (classic.InstructionsLoaded), base names in load order,
+  // each once; a compaction keeps them, as Claude Code re-attaches them (spec 2026-11-11, D4)
+  pathRules?: string[]
 }
 export type Tab = 'now' | 'usage' | 'agents' | 'tools' | 'cache' | 'timeline' | 'plan'
 // `planSlug`: the plan `/inspect plan <name>` pinned, shown while its file parses
@@ -156,6 +159,8 @@ export type Parts = {
   memory: { files: number; tokens: number; top: { name: string; tokens: number }[] }
   // The skill listing: the skills it carries, of the session's, and its tokens; absent when the breakdown has none
   skills?: SkillListing
+  // The rule files the breakdown lists, loaded at start: base names in its order, each once (spec 2026-11-11, D4)
+  rules?: string[]
 }
 export type SkillListing = { listed: number; total: number; tokens: number }
 

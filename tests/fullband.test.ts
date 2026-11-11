@@ -194,6 +194,7 @@ test('closed, the band draws no rows of tools; open, every tool and the skills u
     'tools:   AskUserQuestion ×13 │ Bash ×5 │ Grep ×1',
     'skills:  none loaded',
     'agents:  none',
+    'rules:   none loaded',
   ])
   for (const s of open.flat()) if ('text' in s) expect(s.tone).toBe('dim')
 })
@@ -319,7 +320,7 @@ test('the info line wraps onto a second row, between items, before one drops', (
 test('short of rows, the second info row gives way before the open rows of tools', () => {
   const meta = { ...input().meta, ...PLACED }
   const at = (maxRows: number) => texts(bandLines(input({ columns: 103, meta, isToolsOpen: true, newFailures: 1, maxRows })))
-  const open = 3
+  const open = 4
   expect(at(5 + open)).toContain('alfred-mods git:(develop) │ CC 2.1.322')
   expect(at(5 + open).filter(l => /^(tools|skills|agents|rules):/.test(l))).toHaveLength(open)
   expect(at(4 + open).some(l => l.includes('alfred-mods'))).toBe(false)
