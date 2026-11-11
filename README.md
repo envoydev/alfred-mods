@@ -242,7 +242,7 @@ false }` in one project's local file, that project draws the band under the inpu
 and every other project the same with the rows open.
 
 - A value of the wrong type, or outside its field's values, is skipped as if absent, and a toast says so once. It
-  names the file, the values the field takes and the value in use, never the bad value: `alfred-mods: "band" in
+  names the file, the values the field takes and the value in use, never the bad value: `"band" in
   .claude/settings.local.json takes "full" or "calm" - using "calm" from ~/.claude/settings.json`.
 - A field name the mod does not know is ignored, and an `"alfred-mods"` that is not an object gives that file no
   fields.
@@ -254,9 +254,9 @@ and every other project the same with the rows open.
 One exception to the order, for REC alone: mid-session, REC never goes down because a file stopped giving it. A file
 that does not parse reads as absent, the same as one whose `"rec"` was removed, so a typo made while editing any field
 would otherwise unmask a running recording. When the file that set the level gives no `"rec"` any more, REC keeps its
-level and a toast says so once: `alfred-mods: REC stays on - .claude/settings.local.json no longer gives "rec" (a file
-that does not parse gives nothing); fix it, or set "rec": "off" there`. `"rec": "off"` in that file, or in one above
-it, turns REC off at once; otherwise the hold lasts until the next `claude` run. Raising REC, and every other field,
+level and a toast says so once: `REC stays on: .claude/settings.local.json no longer gives "rec" - fix the file, or set
+"rec": "off" in it`. A value REC does not take in that file holds it the same way. `"rec": "off"` in that file, or in
+one above it, turns REC off at once; otherwise the hold lasts until the next `claude` run. Raising REC, and every other field,
 follow the files at once.
 
 ### When a change shows
@@ -272,10 +272,11 @@ open session; a bare `/rec` or `/auto-handoff` reads the files again at once. A 
   ([Commands](#commands)).
 - A switch is a file edit now: no click or `t` on the band's toggle, and no one-word `/rec on` before a recording.
 - Your earlier choices are kept. The mod reads what `/band`, the toggle, `/quiet`, `/rec` and `/auto-handoff` stored,
-  as one layer under your user file, and the first session after the update shows, once, the line to paste: `alfred-mods
-  reads its switches from settings files now. Kept from your earlier commands: add "alfred-mods": { "bandRows": false,
-  "rec": "strict" } to ~/.claude/settings.json`. Once your user file sets a field, the stored choice for it is deleted;
-  a project's file overrides it in that project and keeps it for the others.
+  as one layer under your user file, and the first session after the update shows, once and for 30 seconds, the line
+  to paste: `Add "alfred-mods": { "bandRows": false, "rec": "strict" } to ~/.claude/settings.json - the choices your
+  earlier commands made`. A toast shows about 120 characters, so with several choices kept its end is cut: `/rec` and
+  `/auto-handoff` name where their values come from, and the band shows the rest. Once your user file sets a field, the
+  stored choice for it is deleted; a project's file overrides it in that project and keeps it for the others.
 - Going back to 0.7.0 brings the commands back on the stored choices: each one your user file has not replaced is still
   there, and a replaced one reads its default.
 

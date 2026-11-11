@@ -101,6 +101,24 @@ test('the poll still reads the status file', async ($, on) => {
   expect((state.get('stack') as Stack).state).not.toBe('none')
 })
 
+// The review's #4: a refused read of REC's words keeps the words REC had, and every other field still settles
+test('a refused words read still settles every field', async ($, on) => {
+  const { band, quiet, rec, handoff } = await start($, on, {
+    refuseStore: ['rec:words'], sources: { user: mod({ band: 'calm', quiet: false, rec: 'on', handoff: 'auto', handoffAt: 70 }) },
+  })
+  expect(band().mode).toBe('calm')
+  expect(quiet()).toEqual({ isOn: false })
+  expect(rec().level).toBe('on')
+  expect(handoff()).toMatchObject({ mode: 'auto', threshold: 70 })
+})
+
+test('the poll reads the status file when the words read is refused', async ($, on) => {
+  const { state, files, clock } = await start($, on, { refuseStore: ['rec:words'] })
+  files.current[STATUS] = STATUS_FILE
+  await clock.advance(30_000)
+  expect((state.get('stack') as Stack).state).not.toBe('none')
+})
+
 // S4: Claude Code raises ConfigChange on an edit to a settings file; a read inside the hook still answers the old
 // value (F4), so the mod reads again at the clock's next tick
 test('a ConfigChange reads again after the clock\'s next tick', async ($, on) => {
@@ -133,7 +151,7 @@ test('with leave_out_skipped_hooks no ConfigChange hook is registered', { option
 })
 
 // S3's REC hold: a file that set REC and goes quiet (a typo drops it whole, F5) does not unmask a running recording
-const HOLD_LOCAL = 'alfred-mods: REC stays on - .claude/settings.local.json no longer gives "rec" (a file that does not parse gives nothing); fix it, or set "rec": "off" there'
+const HOLD_LOCAL = 'REC stays on: .claude/settings.local.json no longer gives "rec" - fix the file, or set "rec": "off" in it'
 
 async function holding($: Engine, on: On) {
   const kit = await start($, on, { sources: { local: mod({ rec: 'on' }), user: mod({ rec: 'off' }) } })
@@ -172,13 +190,29 @@ test('a higher file lowers at once', async ($, on) => {
   expect(toasts).toEqual(['REC off'])
 })
 
+// The review's #2: a bad "rec" in the file that set REC is that file going quiet, so the hold's toast alone tells it,
+// never a skip toast saying REC is off beside it; a file above it saying off ends the hold, and the bad value under
+// that file is never reached, so no skip is told
+test('a bad rec in the holding file toasts the hold alone', async ($, on) => {
+  const { rec, toasts, clock, sources } = await start($, on, { sources: { local: mod({ rec: 'on' }), user: mod({ rec: 'off' }) } })
+  sources.local['alfred-mods'] = { rec: 'of' }
+  await $.classic.ConfigChange({ source: 'local_settings' })
+  await clock.advance(0)
+  expect(rec().level).toBe('on')
+  expect(toasts).toEqual([HOLD_LOCAL])
+  sources.flag['alfred-mods'] = { rec: 'off' }
+  await clock.advance(30_000)
+  expect(rec().level).toBe('off')
+  expect(toasts).toEqual([HOLD_LOCAL, 'REC off'])
+})
+
 test('a project strict that goes quiet holds, and its off ends it', async ($, on) => {
   const { rec, toasts, clock, sources } = await start($, on, { sources: { project: mod({ rec: 'strict' }), user: mod({ rec: 'on' }) } })
   expect(rec().level).toBe('strict')
   delete sources.project['alfred-mods']
   await clock.advance(30_000)
   expect(rec().level).toBe('strict')
-  expect(toasts).toEqual(['alfred-mods: REC stays strict - .claude/settings.json no longer gives "rec" (a file that does not parse gives nothing); fix it, or set "rec": "off" there'])
+  expect(toasts).toEqual(['REC stays strict: .claude/settings.json no longer gives "rec" - fix the file, or set "rec": "off" in it'])
   sources.project['alfred-mods'] = { rec: 'off' }
   await clock.advance(30_000)
   expect(rec().level).toBe('off')
@@ -212,8 +246,8 @@ test('the session\'s first read toasts nothing, REC on included', async ($, on) 
 })
 
 // S3: a skipped value is told once, when the set of skipped fields changes, and never quoted
-const BAND_SKIP = 'alfred-mods: "band" in .claude/settings.local.json takes "full" or "calm" - using "full" from the default'
-const REC_SKIP = 'alfred-mods: "rec" in .claude/settings.local.json takes "off", "on" or "strict" - using "off" from the default'
+const BAND_SKIP = '"band" in .claude/settings.local.json takes "full" or "calm" - using "full" from the default'
+const REC_SKIP = '"rec" in .claude/settings.local.json takes "off", "on" or "strict" - using "off" from the default'
 
 test('a bad value toasts once', async ($, on) => {
   const { toasts, clock, sources } = await start($, on, { sources: { local: mod({ band: 'compact' }) } })
@@ -246,11 +280,13 @@ test('a run starts with no skip told', async ($, on) => {
 })
 
 // S7: the old commands' choices, told once per machine and retired field by field when the user's file sets them
-const MOVED = 'alfred-mods reads its switches from settings files now. Kept from your earlier commands: add "alfred-mods": { "bandRows": false, "rec": "strict" } to ~/.claude/settings.json'
+const MOVED = 'Add "alfred-mods": { "bandRows": false, "rec": "strict" } to ~/.claude/settings.json - the choices your earlier commands made'
 
 test('the old choices toast once per machine', async ($, on) => {
-  const { toasts, store } = await start($, on, { moved: 'unset', store: { 'settings:rec': 'strict', 'settings:band-tools': 'closed' } })
+  const { toasts, toastMs, store } = await start($, on, { moved: 'unset', store: { 'settings:rec': 'strict', 'settings:band-tools': 'closed' } })
   expect(toasts).toEqual([MOVED])
+  // The review's #1: 30 s to copy the line, which the box shows first (Claude Code 2.1.322 draws three 40-cell lines)
+  expect(toastMs).toEqual([30_000])
   expect(store.get('settings:moved')).toBe(true)
   await $.session.start(START)
   expect(toasts).toEqual([MOVED])
@@ -266,7 +302,7 @@ test('a field a file sets is not in the toast', async ($, on) => {
   const { toasts } = await start($, on, {
     moved: 'unset', store: { 'settings:rec': 'strict', 'settings:band-tools': 'closed' }, sources: { local: mod({ bandRows: true }) },
   })
-  expect(toasts).toEqual(['alfred-mods reads its switches from settings files now. Kept from your earlier commands: add "alfred-mods": { "rec": "strict" } to ~/.claude/settings.json'])
+  expect(toasts).toEqual(['Add "alfred-mods": { "rec": "strict" } to ~/.claude/settings.json - the choices your earlier commands made'])
 })
 
 test('the user file retires a field', async ($, on) => {

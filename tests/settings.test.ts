@@ -104,13 +104,13 @@ test('userFields lists the fields the user file gives', () => {
 
 test('the skipped toast names the file, the values and the value in use', () => {
   const r = resolve({ local: { band: 'compact' }, user: { band: 'calm' } }, {})
-  expect(skippedToast(skipOf(r), r)).toBe('alfred-mods: "band" in .claude/settings.local.json takes "full" or "calm" - using "calm" from ~/.claude/settings.json')
+  expect(skippedToast(skipOf(r), r)).toBe('"band" in .claude/settings.local.json takes "full" or "calm" - using "calm" from ~/.claude/settings.json')
   const at = resolve({ user: { handoffAt: 100 } }, {})
   const text = skippedToast(skipOf(at), at)
-  expect(text).toBe('alfred-mods: "handoffAt" in ~/.claude/settings.json takes a whole number from 10 to 95 - using 80 from the default')
+  expect(text).toBe('"handoffAt" in ~/.claude/settings.json takes a whole number from 10 to 95 - using 80 from the default')
   expect(text).not.toContain('100')
   const legacy = resolve({ flag: { rec: 'loud' } }, { rec: 'on' })
-  expect(skippedToast(skipOf(legacy), legacy)).toBe('alfred-mods: "rec" in --settings takes "off", "on" or "strict" - using "on" from an earlier command')
+  expect(skippedToast(skipOf(legacy), legacy)).toBe('"rec" in --settings takes "off", "on" or "strict" - using "on" from an earlier command')
   const each: [Field, unknown, string][] = [
     ['bandPlace', 'below', '"above" or "under"'],
     ['bandRows', 'no', 'true or false'],
@@ -119,7 +119,7 @@ test('the skipped toast names the file, the values and the value in use', () => 
   ]
   for (const [field, bad, values] of each) {
     const b = resolve({ policy: { [field]: bad } }, {})
-    expect(skippedToast(skipOf(b), b)).toBe(`alfred-mods: "${field}" in managed settings takes ${values} - using ${JSON.stringify(DEFAULTS[field])} from the default`)
+    expect(skippedToast(skipOf(b), b)).toBe(`"${field}" in managed settings takes ${values} - using ${JSON.stringify(DEFAULTS[field])} from the default`)
   }
 })
 
@@ -173,13 +173,22 @@ test('holdRec takes the next level unless a lower source lowers it', () => {
   expect(holdRec({ level: 'on', from: 'local' }, { level: 'on', from: 'user' })).toEqual({ level: 'on', from: 'user', isHeld: false })
 })
 
+// The review's #1: a toast box shows three lines of 40 cells, so the line to act on comes first and the common cases
+// fit in 120 characters
+test('the toasts put what to do first and fit the box', () => {
+  expect(movedToast({ rec: 'strict', bandRows: false }).startsWith('Add "alfred-mods": { ')).toBe(true)
+  expect(holdToast('strict', 'local').length).toBeLessThanOrEqual(120)
+  const r = resolve({ local: { bandPlace: 'below' }, user: { bandPlace: 'under' } }, {})
+  expect(skippedToast(skipOf(r), r).length).toBeLessThanOrEqual(120)
+})
+
 test('holdToast names the level and the file', () => {
-  expect(holdToast('on', 'local')).toBe('alfred-mods: REC stays on - .claude/settings.local.json no longer gives "rec" (a file that does not parse gives nothing); fix it, or set "rec": "off" there')
-  expect(holdToast('strict', 'project')).toBe('alfred-mods: REC stays strict - .claude/settings.json no longer gives "rec" (a file that does not parse gives nothing); fix it, or set "rec": "off" there')
+  expect(holdToast('on', 'local')).toBe('REC stays on: .claude/settings.local.json no longer gives "rec" - fix the file, or set "rec": "off" in it')
+  expect(holdToast('strict', 'project')).toBe('REC stays strict: .claude/settings.json no longer gives "rec" - fix the file, or set "rec": "off" in it')
 })
 
 // S7: the line to paste, the fields in S2's order
 test('movedToast gives the line to paste', () => {
-  expect(movedToast({ rec: 'strict', bandRows: false })).toBe('alfred-mods reads its switches from settings files now. Kept from your earlier commands: add "alfred-mods": { "bandRows": false, "rec": "strict" } to ~/.claude/settings.json')
-  expect(movedToast({ handoffAt: 70, band: 'calm' })).toBe('alfred-mods reads its switches from settings files now. Kept from your earlier commands: add "alfred-mods": { "band": "calm", "handoffAt": 70 } to ~/.claude/settings.json')
+  expect(movedToast({ rec: 'strict', bandRows: false })).toBe('Add "alfred-mods": { "bandRows": false, "rec": "strict" } to ~/.claude/settings.json - the choices your earlier commands made')
+  expect(movedToast({ handoffAt: 70, band: 'calm' })).toBe('Add "alfred-mods": { "band": "calm", "handoffAt": 70 } to ~/.claude/settings.json - the choices your earlier commands made')
 })

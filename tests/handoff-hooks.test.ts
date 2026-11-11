@@ -90,7 +90,7 @@ test('"handoffAt" 9, 96, 8.5 and "70" are skipped, told once, and 70 takes', asy
     await setUser($, kit, { handoffAt: bad })
     expect(kit.h().threshold).toBe(80)
   }
-  expect(kit.toasts).toEqual(['alfred-mods: "handoffAt" in ~/.claude/settings.json takes a whole number from 10 to 95 - using 80 from the default'])
+  expect(kit.toasts).toEqual(['"handoffAt" in ~/.claude/settings.json takes a whole number from 10 to 95 - using 80 from the default'])
   await setUser($, kit, { handoffAt: 70 })
   expect((await handoff($, '')).split('\n')[0]).toBe('Handoff: ask at 70% · ctx – · mode from the default · first ask from ~/.claude/settings.json')
   expect(kit.store.get('settings:handoff')).toBe(undefined)

@@ -58,7 +58,7 @@ export const gitResult = (stdout: string, exitCode = 0, stderr = ''): ProcessRun
 export type FileStub = { text: string; mtimeMs: number; size?: number }
 
 export function stubAll(on: On, o: Options = {}): {
-  clock: MockClock; toasts: string[]; opened: string[]; copied: string[]; usage: { current: SessionUsage; breakdowns: number; refuse: boolean; fail: boolean }; panes: UiPane[]
+  clock: MockClock; toasts: string[]; toastMs: (number | undefined)[]; opened: string[]; copied: string[]; usage: { current: SessionUsage; breakdowns: number; refuse: boolean; fail: boolean }; panes: UiPane[]
   listed: { current: AgentInfo[]; calls: number }; files: { current: Record<string, FileStub>; reads: string[]; writes: string[]; exists: string[]; lists: string[] }
   // `git.current` and `git.calls`; the draft a test types and the texts the mod filled
   git: { current: ProcessRunResult | string; calls: number; argv: readonly string[] | null; timeoutMs: number | null }; prompt: { draft: string; fills: string[] }
@@ -78,6 +78,8 @@ export function stubAll(on: On, o: Options = {}): {
   registered: string[]
 } {
   const toasts: string[] = []
+  // Each toast's timeoutMs, in the order of `toasts`: undefined is the default 4 s
+  const toastMs: (number | undefined)[] = []
   const opened: string[] = []
   // The engine's record of the open panes; a test places a waiting one by replacing its entry
   const panes: UiPane[] = []
@@ -205,6 +207,7 @@ export function stubAll(on: On, o: Options = {}): {
   })
   on('ui.toast', (_, e) => {
     toasts.push(e.text)
+    toastMs.push(e.timeoutMs)
     return { value: undefined }
   })
   const invalidates: string[] = []
@@ -269,7 +272,7 @@ export function stubAll(on: On, o: Options = {}): {
     writes,
   }
   mock.env(on, o.env ?? {})
-  return { clock, toasts, opened, copied, usage, panes, listed, files, store, session, git, prompt, invalidates, statuses, sources, registered }
+  return { clock, toasts, toastMs, opened, copied, usage, panes, listed, files, store, session, git, prompt, invalidates, statuses, sources, registered }
 }
 
 // Claude Code's own answers to the events a session raises, for a test that drives a whole turn. A test hooks an

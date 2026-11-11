@@ -1019,16 +1019,18 @@ async function loadSettingsNow($: EngineInterface, isStart: boolean): Promise<vo
   settingsMem.resolved = r
   await retireOld($, r, legacy, rawHandoff)
   if (isStart) await tellMoved($, r)
-  // A skipped value is told once (S3): each skip the last told set did not hold, when the set changes
-  const skippedKey = r.skipped.map(k => `${k.field}@${k.source}`).sort().join(',')
+  const before = settingsMem.rec
+  const held = holdRec(before, { level: r.values.rec, from: r.from.rec })
+  // A skipped value is told once (S3): each skip the last told set did not hold, when the set changes. While REC holds,
+  // its skip is the hold's to tell: a skip toast would name a level REC is not at
+  const skips = r.skipped.filter(k => !(held.isHeld && k.field === 'rec'))
+  const skippedKey = skips.map(k => `${k.field}@${k.source}`).sort().join(',')
   if (skippedKey !== settingsMem.skippedKey) {
     const told = new Set(settingsMem.skippedKey.split(','))
-    for (const skip of r.skipped) if (!told.has(`${skip.field}@${skip.source}`)) toast($, skippedToast(skip, r))
+    for (const skip of skips) if (!told.has(`${skip.field}@${skip.source}`)) toast($, skippedToast(skip, r))
     settingsMem.skippedKey = skippedKey
   }
   // REC's hold (S3), told once per hold; a level that changes after the session's first read is told as /rec told it
-  const before = settingsMem.rec
-  const held = holdRec(before, { level: r.values.rec, from: r.from.rec })
   settingsMem.rec = { level: held.level, from: held.from }
   if (!held.isHeld) settingsMem.isHoldTold = false
   else if (!settingsMem.isHoldTold) {
@@ -1070,7 +1072,8 @@ async function tellMoved($: EngineInterface, r: Resolved): Promise<void> {
   const kept: Partial<Record<Field, unknown>> = {}
   for (const field of FIELDS) if (r.from[field] === 'legacy' && r.values[field] !== DEFAULTS[field]) kept[field] = r.values[field]
   if (Object.keys(kept).length === 0 || (await $.store.get('settings:moved').catch(() => true)) === true) return
-  toast($, movedToast(kept as Partial<Values>))
+  // 30 s to copy the line (the review's #1)
+  toast($, movedToast(kept as Partial<Values>), 30_000)
   await $.store.set('settings:moved', true).catch(() => undefined)
 }
 
@@ -1078,7 +1081,8 @@ async function tellMoved($: EngineInterface, r: Resolved): Promise<void> {
 // session within 30 seconds
 async function loadRec($: EngineInterface, note: string | null = null): Promise<void> {
   const level = settingsMem.rec?.level ?? 'off'
-  const words = parseWords(await $.store.get('rec:words'))
+  // A refused read keeps the words REC had, so the fields after REC still settle (the review's #4)
+  const words = await $.store.get('rec:words').then(parseWords, () => recMem.words)
   recMem.words = words
   // Recompiled and every site redrawn only on a change: a word swapped for another keeps the atom's count, and rows a
   // reload drew before this read were drawn at off
@@ -1845,7 +1849,8 @@ export const register: Register = (on, options) => {
     await update($, plans, p => (p.since === null ? { ...p, since: now } : p))
     $.clock.every(30_000, () => {
       queueReload($, held)
-      loadSettings($).then(() => readStatus($)).catch(() => undefined)
+      // The status file is read whatever the settings read did
+      loadSettings($).catch(() => undefined).then(() => readStatus($)).catch(() => undefined)
       pollPlace($).catch(() => undefined)
     })
     scheduleReload($, held)

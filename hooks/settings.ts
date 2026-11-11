@@ -79,7 +79,7 @@ export function resolve(layers: Partial<Record<Source, unknown>>, legacy: Partia
 // S3's toast for a skipped value: it names the file, the values the field takes and the value in use, never the bad one
 export function skippedToast(skip: Skip, r: Resolved): string {
   const using = JSON.stringify(r.values[skip.field])
-  return `alfred-mods: "${skip.field}" in ${nameOf(skip.source)} takes ${RULES[skip.field].takes} - using ${using} from ${nameOf(r.from[skip.field])}`
+  return `"${skip.field}" in ${nameOf(skip.source)} takes ${RULES[skip.field].takes} - using ${using} from ${nameOf(r.from[skip.field])}`
 }
 
 // The old commands' store keys as an earlier command's choices (S7): only the values those commands wrote, so a fresh
@@ -113,13 +113,15 @@ export function holdRec(inForce: { level: Level; from: From } | null, next: { le
   return { ...inForce, isHeld: true }
 }
 
-// S3's toast for a hold, once per hold
+// S3's toast for a hold, once per hold. The toast box carries the mod's name and shows three 40-cell lines, so no
+// prefix and under 120 characters (the review's #1, Claude Code 2.1.322)
 export function holdToast(level: Level, from: From): string {
-  return `alfred-mods: REC stays ${level} - ${nameOf(from)} no longer gives "rec" (a file that does not parse gives nothing); fix it, or set "rec": "off" there`
+  return `REC stays ${level}: ${nameOf(from)} no longer gives "rec" - fix the file, or set "rec": "off" in it`
 }
 
-// S7's toast, once per machine: the earlier commands' choices still in force, as the line to paste, in S2's order
+// S7's toast, once per machine: the earlier commands' choices still in force, as the line to paste, in S2's order. The
+// line comes first, so the box's three lines show it before the why (the review's #1)
 export function movedToast(kept: Partial<Values>): string {
   const fields = FIELDS.filter(f => kept[f] !== undefined).map(f => `"${f}": ${JSON.stringify(kept[f])}`).join(', ')
-  return `alfred-mods reads its switches from settings files now. Kept from your earlier commands: add "alfred-mods": { ${fields} } to ~/.claude/settings.json`
+  return `Add "alfred-mods": { ${fields} } to ~/.claude/settings.json - the choices your earlier commands made`
 }
