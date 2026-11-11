@@ -81,3 +81,21 @@ export function skippedToast(skip: Skip, r: Resolved): string {
   const using = JSON.stringify(r.values[skip.field])
   return `alfred-mods: "${skip.field}" in ${nameOf(skip.source)} takes ${RULES[skip.field].takes} - using ${using} from ${nameOf(r.from[skip.field])}`
 }
+
+// The old commands' store keys as an earlier command's choices (S7): only the values those commands wrote, so a fresh
+// store, or anything another version or a hand wrote, gives no field
+export function legacyOf(raw: { band: unknown; place: unknown; tools: unknown; quiet: unknown; rec: unknown; handoff: unknown }): Partial<Values> {
+  const out: Partial<Values> = {}
+  if (raw.band === 'calm' || raw.band === 'full') out.band = raw.band
+  if (raw.place === 'under') out.bandPlace = 'under'
+  if (raw.tools === 'open' || raw.tools === 'closed') out.bandRows = raw.tools === 'open'
+  if (isBool(raw.quiet)) out.quiet = raw.quiet
+  const level = LEVELS.find(l => l === raw.rec)
+  if (level !== undefined) out.rec = level
+  if (isRecord(raw.handoff)) {
+    const mode = MODES.find(m => m === (raw.handoff as Record<string, unknown>).mode)
+    if (mode !== undefined) out.handoff = mode
+    if (isThreshold(raw.handoff.threshold)) out.handoffAt = raw.handoff.threshold
+  }
+  return out
+}

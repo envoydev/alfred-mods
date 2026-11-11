@@ -38,6 +38,8 @@ import type { Close } from './steptime.ts'
 import { agentsLines, cacheLines, nowLines, tabBar, timelineLines, toolsLines, usageLines } from './tabs.ts'
 import { classify, fold, targetOf, toolKey } from './outcome.ts'
 import { LEVELS, REC_HELP, addWord, parseLevel, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec.ts'
+import { DEFAULTS, SOURCES, legacyOf, resolve } from './settings.ts'
+import type { From, Resolved, Source, Values } from './settings.ts'
 import { baseName, dropPassed, folderOf, gitDirOf, headBranch, nextWindows, parentOf, storedWindows } from './startup.ts'
 import type { CallFacts } from './outcome.ts'
 import type {
@@ -977,10 +979,54 @@ function keepError(id: string, text: string): void {
   keepLast(errorMem)
 }
 
-// The stored level and words into the masker and the rec atom: at the start, on the poll, after a /clear and after
-// each change, so a word or a level set in one session reaches every session within 30 seconds
+// The mod's switches, from the "alfred-mods" key of each settings file and the old commands' store keys (spec
+// 2026-11-11 settings-values, S1-S4 and S7): read at the start, on the poll, after a /clear and after each change, one
+// run at a time as the status file's reads are. `rec`, the level in force and the source that set it; `skippedKey`,
+// the skipped values last told; `isHoldTold`, whether REC's hold was told. A new claude run starts them over.
+const settingsMem = {
+  resolved: null as Resolved | null, rec: null as { level: Level; from: From } | null, skippedKey: '', isHoldTold: false,
+  reading: Promise.resolve() as Promise<void>,
+}
+
+const settingsNow = (): Values => settingsMem.resolved?.values ?? DEFAULTS
+
+function loadSettings($: EngineInterface, isStart = false): Promise<void> {
+  const next = settingsMem.reading.then(() => loadSettingsNow($, isStart))
+  settingsMem.reading = next.catch(() => undefined)
+  return next
+}
+
+// Each source read on its own, so a file that does not parse falls to the files below rather than taking the rest
+// with it (S1); a refused read, or a store key that throws, counts as absent
+async function loadSettingsNow($: EngineInterface, isStart: boolean): Promise<void> {
+  if (isStart) {
+    settingsMem.rec = null
+    settingsMem.skippedKey = ''
+    settingsMem.isHoldTold = false
+  }
+  const layers: Partial<Record<Source, unknown>> = {}
+  for (const source of SOURCES) layers[source] = await $.settings.read({ key: 'alfred-mods', source }).catch(() => undefined)
+  const legacy = legacyOf({
+    band: await $.store.get('settings:band').catch(() => null),
+    place: await $.store.get('settings:band-place').catch(() => null),
+    tools: await $.store.get('settings:band-tools').catch(() => null),
+    quiet: await $.store.get('settings:quiet').catch(() => null),
+    rec: await $.store.get('settings:rec').catch(() => null),
+    handoff: await $.store.get('settings:handoff').catch(() => null),
+  })
+  const r = resolve(layers, legacy)
+  settingsMem.resolved = r
+  settingsMem.rec = { level: r.values.rec, from: r.from.rec }
+  await loadRec($)
+  await loadQuiet($)
+  await loadBand($)
+  await loadHandoff($)
+}
+
+// The level in force and the stored words into the masker and the rec atom: a word set in one session reaches every
+// session within 30 seconds
 async function loadRec($: EngineInterface, note: string | null = null): Promise<void> {
-  const level = parseLevel(await $.store.get('settings:rec'))
+  const level = settingsMem.rec?.level ?? 'off'
   const words = parseWords(await $.store.get('rec:words'))
   recMem.words = words
   // Recompiled and every site redrawn only on a change: a word swapped for another keeps the atom's count, and rows a
@@ -1020,23 +1066,19 @@ const recOf = (r: RecState): { level: RecState['level']; words: number } => ({ l
 
 const OTHER_SESSIONS = 'Other open sessions follow within 30 s; run /rec in each one on screen.'
 
-// /quiet's stored setting into the quiet atom, at the same points as REC's: only `false`, which /quiet off writes, is
-// off; absent, or anything another version or a hand wrote, is on
+// "quiet" into the quiet atom
 async function loadQuiet($: EngineInterface): Promise<boolean> {
-  const isOn = (await $.store.get('settings:quiet')) !== false
+  const isOn = settingsNow().quiet
   await update($, quiet, q => (q.isOn === isOn ? q : { isOn }))
   return isOn
 }
 
-// Only the exact string 'calm' reads as calm: absent, or anything another version or a hand wrote, is full. The band's
-// detail rows likewise close only on the exact string 'closed' (spec 2026-11-11, D1): a fresh store, or anything
-// another version or a hand wrote, opens them.
-// The place likewise is under only on the exact string 'under' (spec 2026-11-11 band-under U1), and a read that throws
-// counts as absent, so a refused store leaves the band above.
+// "band", "bandRows" and "bandPlace" into the band's setting
 async function loadBand($: EngineInterface): Promise<BandMode> {
-  const mode: BandMode = (await $.store.get('settings:band')) === 'calm' ? 'calm' : 'full'
-  const isOpen = (await $.store.get('settings:band-tools')) !== 'closed'
-  const isUnder = (await $.store.get('settings:band-place').catch(() => null)) === 'under'
+  const v = settingsNow()
+  const mode: BandMode = v.band
+  const isOpen = v.bandRows
+  const isUnder = v.bandPlace === 'under'
   bandMem.isUnder = isUnder
   const next: BandSetting = { mode, ...(isOpen ? { isToolsOpen: true } : {}), ...(isUnder ? { isUnder: true } : {}) }
   await update($, bandSetting, b =>
@@ -1048,7 +1090,7 @@ async function loadBand($: EngineInterface): Promise<BandMode> {
 // and click, and `/band rows on|off`
 async function setRows($: EngineInterface, isOpen: boolean): Promise<void> {
   if (((await read($, bandSetting)).isToolsOpen === true) !== isOpen) await $.store.set('settings:band-tools', isOpen ? 'open' : 'closed')
-  await loadBand($)
+  await loadSettings($)
 }
 
 // The band's toggle
@@ -1113,7 +1155,7 @@ const handoffMem = {
 
 // Only ask mode keeps an ask up: a change to auto or off, here or polled from another session, takes it down
 async function loadHandoff($: EngineInterface): Promise<void> {
-  const s = parseSettings(await $.store.get('settings:handoff'))
+  const s = { mode: settingsNow().handoff, threshold: settingsNow().handoffAt }
   await update($, handoff, h => (h.mode === s.mode && h.threshold === s.threshold ? h : { ...h, ...s, isAskUp: s.mode === 'ask' && h.isAskUp }))
 }
 
@@ -1402,10 +1444,7 @@ function startOver($: EngineInterface, source: string | null, calls: Map<string,
     handoffMem.rearm = false
     handoffMem.savedStep = null
     await resetAll($)
-    await loadRec($)
-    await loadQuiet($)
-    await loadBand($)
-    await loadHandoff($)
+    await loadSettings($)
     if (!isClear) await update($, meta, m => ({ ...m, isResumed: true }))
     // This read, finding no file, reads once more at 2 s
     if (!(await readStatus($, true))) {
@@ -1734,10 +1773,7 @@ export const register: Register = (on, options) => {
     await $.command.register({ name: 'band', description: 'The band above or under the prompt: full with its info line, or calm, its two lines', argumentHint: '[full|calm|above|under|rows on|rows off]' })
     await $.command.register({ name: 'auto-handoff', description: 'Save a handoff before the context fills: ask, save by itself, or off', argumentHint: '[ask|auto|off|at <percent>|now]' })
     recMem.home = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE')) ?? null
-    await loadRec($)
-    await loadQuiet($)
-    await loadBand($)
-    await loadHandoff($)
+    await loadSettings($, true)
     await readStatus($)
     freshMem.at = -Infinity
     conversationMem.id = await $.session.id()
@@ -1765,10 +1801,7 @@ export const register: Register = (on, options) => {
     await update($, plans, p => (p.since === null ? { ...p, since: now } : p))
     $.clock.every(30_000, () => {
       queueReload($, held)
-      loadRec($).catch(() => undefined)
-      loadQuiet($).catch(() => undefined)
-      loadBand($).catch(() => undefined)
-      loadHandoff($).then(() => readStatus($)).catch(() => undefined)
+      loadSettings($).then(() => readStatus($)).catch(() => undefined)
       pollPlace($).catch(() => undefined)
     })
     scheduleReload($, held)
@@ -1999,7 +2032,7 @@ export const register: Register = (on, options) => {
     if (target === undefined) return { text: mask(REC_HELP) }
     const before = recLevel()
     if (target !== stored) await $.store.set('settings:rec', target)
-    await loadRec($)
+    await loadSettings($)
     const status = recStatus(target, recMem.words.length)
     if (target !== before) toast($, status)
     return { text: mask(target === stored ? status : `${status}\n${OTHER_SESSIONS}`) }
@@ -2013,7 +2046,7 @@ export const register: Register = (on, options) => {
     const stored = parseSettings(raw)
     const write = async (s: ReturnType<typeof parseSettings>): Promise<string> => {
       await $.store.set('settings:handoff', { ...(typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? raw : {}), ...s })
-      await loadHandoff($)
+      await loadSettings($)
       return mask(await handoffState($))
     }
     if (word === 'now') {
@@ -2028,23 +2061,25 @@ export const register: Register = (on, options) => {
       return { text: await write({ ...stored, threshold: n }) }
     }
     if (word !== '') return { text: HANDOFF_USAGE }
-    await loadHandoff($)
+    await loadSettings($)
     return { text: mask(`${await handoffState($)}\n${HANDOFF_USAGE}`) }
   })
 
   // '/quiet [on|off]': reads the stored setting first; on or off writes it only when it changes, any other form prints it
   on('command.run', { command: 'quiet' }, async ($, e) => {
     const word = e.args.trim().toLowerCase()
+    await loadSettings($)
     const stored = await loadQuiet($)
     if (word !== 'on' && word !== 'off') return { text: `${quietText(stored)}\n${QUIET_USAGE}` }
     const isOn = word === 'on'
     if (isOn !== stored) await $.store.set('settings:quiet', isOn)
-    await loadQuiet($)
+    await loadSettings($)
     return { text: quietText(isOn) }
   })
 
   on('command.run', { command: 'band' }, async ($, e) => {
     const [word = '', arg, ...rest] = e.args.trim().toLowerCase().split(/\s+/)
+    await loadSettings($)
     const stored = await loadBand($)
     const setting = await read($, bandSetting)
     const isUnder = setting.isUnder === true
@@ -2061,12 +2096,12 @@ export const register: Register = (on, options) => {
     if (word === 'under' || word === 'above') {
       if (word === 'under' && !isUnder) await $.store.set('settings:band-place', 'under')
       if (word === 'above' && isUnder) await $.store.delete('settings:band-place')
-      await loadBand($)
+      await loadSettings($)
       return { text: `Band: ${word}` }
     }
     if (word !== 'full' && word !== 'calm') return usage
     if (word !== stored) await $.store.set('settings:band', word)
-    await loadBand($)
+    await loadSettings($)
     return { text: `Band: ${word}` }
   })
 

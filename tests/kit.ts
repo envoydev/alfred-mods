@@ -2,7 +2,7 @@
 import { mock } from 'claude-code/testing'
 import type { Engine, MockClock } from 'claude-code/testing'
 import type {
-  AgentInfo, ClassicResult, EngineInterface, On, ProcessRunResult, RenderElement, RenderInput, SessionUsage, Settings, TurnStepInput, TurnStepResult,
+  AgentInfo, ClassicResult, EngineInterface, On, ProcessRunResult, RenderElement, RenderInput, SessionUsage, Settings, SettingsSource, TurnStepInput, TurnStepResult,
   TurnUsage, UiPane,
 } from 'claude-code'
 
@@ -41,6 +41,9 @@ type Options = {
   // The same for `settings:quiet`: false (off) by default, the tool rows every test before /quiet was on by default
   // was written for; 'unset' answers nothing, as a fresh install's store does
   quiet?: 'on' | 'off' | 'unset'
+  // Claude Code's settings files by source, each the file's object: a read with a `source` answers that file's key,
+  // absent when the file or the key is; `refuseSource` denies those sources' reads, as a build without them would
+  sources?: Partial<Record<SettingsSource, Record<string, unknown>>>; refuseSource?: string[]
 }
 
 export const gitResult = (stdout: string, exitCode = 0, stderr = ''): ProcessRunResult =>
@@ -64,6 +67,8 @@ export function stubAll(on: On, o: Options = {}): {
   // A test changes the session id mid-test, as a /clear does, through `session.id`; `turns` is how many prompts the
   // session's transcript holds, 1 right after a /clear (its own row) and more after a resume
   session: { id: string; turns: number }
+  // Each settings file by source, which a test changes mid-test, as an edit would: `sources.local['alfred-mods'] = ...`
+  sources: Record<SettingsSource, Record<string, unknown>>
 } {
   const toasts: string[] = []
   const opened: string[] = []
@@ -101,9 +106,18 @@ export function stubAll(on: On, o: Options = {}): {
     listed.calls++
     return { value: listed.current }
   })
-  // A key's read answers that key's value; a read with no key, the whole object
+  // A key's read answers that key's value; a read with no key, the whole object; a read with a source, that file's key
+  const sources: Record<SettingsSource, Record<string, unknown>> = {
+    user: { ...o.sources?.user }, project: { ...o.sources?.project }, local: { ...o.sources?.local },
+    flag: { ...o.sources?.flag }, policy: { ...o.sources?.policy },
+  }
   on('settings.read', (_, e) => {
     const key = e !== undefined && 'key' in e && typeof e.key === 'string' ? e.key : null
+    const source = e !== undefined && 'source' in e && typeof e.source === 'string' ? (e.source as SettingsSource) : null
+    if (source !== null) {
+      if (o.refuseSource?.includes(source) === true) return { deny: `test: settings source refused, ${source}` }
+      return { value: (key === null ? sources[source] : sources[source][key]) as Settings }
+    }
     return { value: (key === null ? (o.settings ?? {}) : o.settings?.[key]) as Settings }
   })
   // A test changes the files mid-test through `files.current`; a folder with no file in it is missing. The kit hands a
@@ -237,7 +251,7 @@ export function stubAll(on: On, o: Options = {}): {
     writes,
   }
   mock.env(on, o.env ?? {})
-  return { clock, toasts, opened, copied, usage, panes, listed, files, store, session, git, prompt, invalidates, statuses }
+  return { clock, toasts, opened, copied, usage, panes, listed, files, store, session, git, prompt, invalidates, statuses, sources }
 }
 
 // Claude Code's own answers to the events a session raises, for a test that drives a whole turn. A test hooks an

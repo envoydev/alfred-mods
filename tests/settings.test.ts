@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { DEFAULTS, FIELDS, SOURCES, nameOf, resolve, skippedToast } from '../hooks/settings.ts'
+import { DEFAULTS, FIELDS, SOURCES, legacyOf, nameOf, resolve, skippedToast } from '../hooks/settings.ts'
 import type { Field, Resolved, Skip, Source, Values } from '../hooks/settings.ts'
 
 // A valid value for each field that differs from its default, and a second one that differs from both
@@ -131,4 +131,27 @@ test('nameOf names each source', () => {
   expect(nameOf('policy')).toBe('managed settings')
   expect(nameOf('legacy')).toBe('an earlier command')
   expect(nameOf('default')).toBe('the default')
+})
+
+// The old commands' store keys, as 0.7 and the branches since wrote them (S7)
+const RAW = { band: undefined, place: undefined, tools: undefined, quiet: undefined, rec: undefined, handoff: undefined }
+
+test('legacyOf maps each stored choice', () => {
+  expect(legacyOf(RAW)).toEqual({})
+  expect(legacyOf({ ...RAW, band: 'calm' })).toEqual({ band: 'calm' })
+  expect(legacyOf({ ...RAW, band: 'full' })).toEqual({ band: 'full' })
+  expect(legacyOf({ ...RAW, place: 'under' })).toEqual({ bandPlace: 'under' })
+  expect(legacyOf({ ...RAW, tools: 'open' })).toEqual({ bandRows: true })
+  expect(legacyOf({ ...RAW, tools: 'closed' })).toEqual({ bandRows: false })
+  expect(legacyOf({ ...RAW, quiet: true })).toEqual({ quiet: true })
+  expect(legacyOf({ ...RAW, quiet: false })).toEqual({ quiet: false })
+  for (const level of ['off', 'on', 'strict'] as const) expect(legacyOf({ ...RAW, rec: level })).toEqual({ rec: level })
+  expect(legacyOf({ ...RAW, handoff: { mode: 'auto', threshold: 70 } })).toEqual({ handoff: 'auto', handoffAt: 70 })
+  expect(legacyOf({ ...RAW, handoff: { mode: 'off' } })).toEqual({ handoff: 'off' })
+  expect(legacyOf({ ...RAW, handoff: { threshold: 60 } })).toEqual({ handoffAt: 60 })
+})
+
+test('legacyOf leaves out what the old commands never wrote', () => {
+  expect(legacyOf({ ...RAW, band: 'x', tools: 'maybe', rec: 'loud', handoff: 'ask' })).toEqual({})
+  expect(legacyOf({ ...RAW, place: 'above', quiet: 'off', handoff: { mode: 'loud', threshold: 96 } })).toEqual({})
 })
