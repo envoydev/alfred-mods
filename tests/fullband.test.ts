@@ -244,7 +244,8 @@ test('open, the toggle outlasts tok/s and the cache; with no room for it, no row
   const open = (columns: number) => input({ isToolsOpen: true, columns })
   expect(text(infoLine(open(66)))).toBe('Sonnet 5.5 ◑ medium │ 59m │ cache warm 54m │ [ 19 tools ▾ ]')
   expect(texts(bandLines(open(66))).some(l => l.startsWith('tools '))).toBe(true)
-  const narrow = bandLines(open(24))
+  // Two rows hold the toggle down to 19 columns; at 18 the model does not fit, and no info line is drawn
+  const narrow = bandLines(open(18))
   expect(tools(narrow)).toBeUndefined()
   expect(texts(narrow).some(l => /^(tools|skills) /.test(l))).toBe(false)
 })
@@ -295,6 +296,34 @@ test('the place and the version go first when the width runs out; a branchless f
   expect(at(30)).toBe('Sonnet 5.5 │ <1m')
   const meta = input(AT_START).meta
   expect(at(200, { meta: { ...meta, place: { project: 'notes', branch: null } } })).toBe('Sonnet 5.5 │ <1m │ notes │ CC 2.1.322')
+})
+
+// A side agent's note (2026-11-11): the user asked for every item, so the info line wraps onto a second row before an
+// item drops; past two rows, or short of the band's rows, items drop as before
+const PLACED = { place: { project: 'alfred-mods', branch: 'develop' }, version: '2.1.322' }
+
+test('the info line wraps onto a second row, between items, before one drops', () => {
+  const meta = { ...input().meta, ...PLACED }
+  expect(texts(bandLines(input({ columns: 103, meta }))).slice(1)).toEqual([FULL, 'alfred-mods git:(develop) │ CC 2.1.322'])
+  const at80 = bandLines(input({ columns: 80, meta })).slice(1)
+  expect(texts(at80)).toEqual([`${HEAD} │ [ 19 tools ▸ ]`, `you ${clock(P)} · Claude ${clock(R)} │ alfred-mods git:(develop) │ CC 2.1.322`])
+  for (const l of at80) expect(cellsOf(l)).toBeLessThanOrEqual(80)
+  // Past two rows, items drop by keep order: at 40 the place and the version go first
+  const at40 = texts(bandLines(input({ columns: 40, meta })).slice(1))
+  expect(at40).toHaveLength(2)
+  expect(at40.some(l => l.includes('alfred-mods') || l.includes('CC 2.1.322'))).toBe(false)
+  expect(at40[0]?.startsWith('Sonnet 5.5 ◑ medium')).toBe(true)
+})
+
+test('short of rows, the second info row gives way before the open rows of tools', () => {
+  const meta = { ...input().meta, ...PLACED }
+  const at = (maxRows: number) => texts(bandLines(input({ columns: 103, meta, isToolsOpen: true, newFailures: 1, maxRows })))
+  expect(at(7)).toContain('alfred-mods git:(develop) │ CC 2.1.322')
+  expect(at(7).filter(l => /^(tools|skills) /.test(l))).toHaveLength(2)
+  expect(at(6).some(l => l.includes('alfred-mods'))).toBe(false)
+  expect(at(6)).toContain(FULL.replace('▸', '▾'))
+  expect(at(6).filter(l => /^(tools|skills) /.test(l))).toHaveLength(2)
+  for (const n of [7, 6]) expect(at(n)).toHaveLength(n)
 })
 
 // The mounted band: a session started 5 minutes ago, one main step on Sonnet at medium effort

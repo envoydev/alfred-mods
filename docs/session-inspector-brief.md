@@ -216,7 +216,8 @@ skills  superpowers:brainstorming ×1 · solve-task ×2 · 57 of 60 listed
 ```
 
 - **The info line** sits under the gauges and above the needs-you line in every state, dim but for the model. As the
-  width runs out its items go in this order: the version, the project and branch, the times (Claude's first), the
+  width runs out it wraps onto a second row between items (a side agent's note the user passed on, 2026-11-11: every
+  item, as claude-hud spreads them over its lines); past two rows its items go in this order: the version, the project and branch, the times (Claude's first), the
   toggle (the skills' count, then the tools', then the arrow; while open, after the cache), the output speed, the
   cache, the session's time, the model.
 - **From the first second** (the user, 2026-11-11: the band shows its data as soon as Claude starts): the full band
@@ -239,7 +240,7 @@ skills  superpowers:brainstorming ×1 · solve-task ×2 · 57 of 60 listed
   count, an MCP tool as `<server>:<tool>`; `skills` each skill loaded into the main context, in the order loaded, then
   the listing's `57 of 60 listed` from the last breakdown; drawn only while the toggle is in view. A skill is in the
   main context from a main-loop Skill call that ended ok, or a `skill.prompt` with no Skill call behind it while no main
-  turn runs (a `/name`); one mid-turn with none is a subagent's preload, and a `context: fork` skill is never in it. Short of rows, the open rows go first, from the last, then the info line. A /clear
+  turn runs (a `/name`); one mid-turn with none is a subagent's preload, and a `context: fork` skill is never in it. Short of rows, the info line's second row goes first, then the open rows, from the last, then the info line. A /clear
   empties the skills; the list outlives a compaction, as the mod has no word of what one drops. A resume or a branch
   (`classic.SessionStart`, a start-over that is not a /clear, or a process whose first `$.state` holds no reading while
   `$.session.turns()` is above 0) sets `meta.isResumed`: the context holds skills loaded before, which no API lists,

@@ -57,8 +57,10 @@ still holds the skills loaded before it, which no mods API lists, so its row cou
 resume`, or the skills loaded since with `since resume` after them. The open rows show while the toggle is
 in view: at a narrow width, which drops the toggle, they close with it. Today's cost is the mod's own count on this
 machine: sessions it did not run in are not in it, so it can read lower than a status line's that counts every
-session. Items drop whole when the width runs out; when the band has fewer rows than it needs, as in fullscreen under
-a tall draft, the open rows go first, then the whole info line, so the line with its buttons stays in view. `/band calm` goes back to the
+session. When the width runs out, the info line wraps onto a second row between items, and items drop whole only
+when two rows cannot hold them (the version first, then the project and branch, then the times); when the band has
+fewer rows than it needs, as in fullscreen under a tall draft, that second row goes first, then the open rows, then
+the whole info line, so the line with its buttons stays in view. `/band calm` goes back to the
 two lines.
 
 The full band draws from the session's first second, before any prompt: the model, the session's time, the project

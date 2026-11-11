@@ -276,16 +276,22 @@ function infoItems(b: BandInput): Item[] {
   return items
 }
 
-// The info line fitted to the width: while it is wider, the present item with the lowest keep takes its next form or
-// goes; nothing fitting, or nothing known, draws no line
+// The info line fitted to one row of the width
 export function infoLine(b: BandInput): Line {
+  return infoRows(b, 1)[0] ?? []
+}
+
+// The info line in up to `upTo` rows of the width, a row breaking between two items (the user, 2026-11-11: every item,
+// as claude-hud shows them): while they need more rows, the present item with the lowest keep takes its next form or
+// goes; nothing fitting, or nothing known, draws no row
+export function infoRows(b: BandInput, upTo: number): Line[] {
   const items = infoItems(b)
   const form = items.map(() => 0)
   const shown = items.map(() => true)
   for (;;) {
     const kept = items.flatMap((item, i) => (shown[i] ? [item.forms[form[i] ?? 0] ?? []] : []))
-    const line: Line = kept.flatMap((l, i) => (i === 0 ? l : [{ text: ' │ ', tone: 'dim' as const }, ...l]))
-    if (cellsOf(line) <= b.columns) return line
+    const rows = packRows(kept, b.columns)
+    if (rows !== null && rows.length <= upTo) return rows
     let lowest = -1
     items.forEach((item, i) => {
       if (shown[i] && (lowest === -1 || item.keep < (items[lowest]?.keep ?? Infinity))) lowest = i
@@ -295,6 +301,22 @@ export function infoLine(b: BandInput): Line {
     if ((form[lowest] ?? 0) < item.forms.length - 1) form[lowest] = (form[lowest] ?? 0) + 1
     else shown[lowest] = false
   }
+}
+
+// Items in rows of `columns`, joined by ' │ ' while the next fits, else on a row of its own; null when one is wider
+function packRows(items: Line[], columns: number): Line[] | null {
+  const rows: Line[] = []
+  let row: Line = []
+  for (const item of items) {
+    if (cellsOf(item) > columns) return null
+    const joined: Line = row.length === 0 ? item : [...row, { text: ' │ ', tone: 'dim' }, ...item]
+    if (cellsOf(joined) <= columns) row = joined
+    else {
+      rows.push(row)
+      row = item
+    }
+  }
+  return row.length === 0 ? rows : [...rows, row]
 }
 
 // Line 2's cost with today's after it, `$1.29 · today $10.46`, in full mode while it fits beside what follows
@@ -430,29 +452,34 @@ export function statusText(o: { percent: number | null; newFailures: number; rec
 // the body's first line follows them while it fits what is left, else they take line 1 alone and the body keeps the
 // full width, so no gauge, reset or the cost drops for them
 export function bandLines(b: BandInput): Line[] {
-  const lines = bandRows(b, true, Infinity)
-  if (b.maxRows === undefined || lines.length <= b.maxRows) return lines
-  // Short of rows, the open rows of tools give way first, from the last, then the info line: the line under them holds
-  // the buttons, and a digit arms only those in view
-  const core = bandRows(b, true, 0)
-  return core.length > b.maxRows ? bandRows(b, false, 0) : bandRows(b, true, b.maxRows - core.length)
+  const max = b.maxRows
+  if (max === undefined) return bandRows(b, 2, Infinity)
+  // Short of rows, the info line's second row gives way first, then the open rows of tools, from the last, then the
+  // info line: the line under them holds the buttons, and a digit arms only those in view
+  for (const upTo of [2, 1]) {
+    const lines = bandRows(b, upTo, Infinity)
+    if (lines.length <= max) return lines
+  }
+  const core = bandRows(b, 1, 0)
+  return core.length > max ? bandRows(b, 0, 0) : bandRows(b, 1, max - core.length)
 }
 
-function bandRows(b: BandInput, withInfo: boolean, toolRowsKept: number): Line[] {
+// `infoUpTo`: the rows the info line may take, none for 0
+function bandRows(b: BandInput, infoUpTo: number, toolRowsKept: number): Line[] {
   const isNarrow = b.columns < 100
   const marks: Line[] = [b.rec !== undefined && b.rec.level !== 'off' ? [REC_MARK] : [], b.banner ?? []].filter(m => m.length > 0)
-  if (marks.length === 0) return bandBody(b, isNarrow, withInfo, toolRowsKept)
+  if (marks.length === 0) return bandBody(b, isNarrow, infoUpTo, toolRowsKept)
   const sep: Seg = { text: ' │ ', tone: 'dim' }
   const alone: Line = marks.flatMap((m, i) => (i === 0 ? m : [sep, ...m]))
   const lead: Line = [...alone, sep]
   // Only line 1 shares its row with the marks: the lines under it are fitted to the band's whole width
-  const [first] = bandBody({ ...b, columns: b.columns - widthOf(lead) }, isNarrow, withInfo, toolRowsKept)
+  const [first] = bandBody({ ...b, columns: b.columns - widthOf(lead) }, isNarrow, infoUpTo, toolRowsKept)
   if (first === undefined) return [alone]
-  const body = bandBody(b, isNarrow, withInfo, toolRowsKept)
+  const body = bandBody(b, isNarrow, infoUpTo, toolRowsKept)
   return widthOf(lead) + widthOf(first) <= b.columns ? [[...lead, ...first], ...body.slice(1)] : [alone, ...body]
 }
 
-function bandBody(b: BandInput, isNarrow: boolean, withInfo: boolean, toolRowsKept: number): Line[] {
+function bandBody(b: BandInput, isNarrow: boolean, infoUpTo: number, toolRowsKept: number): Line[] {
   const u = b.usage
   // Before the first reading the calm band waits; the full band draws once the model or a stored window is known
   const isFullKnown = b.mode === 'full' && (b.meta.model !== null || u.windows.length > 0)
@@ -461,9 +488,9 @@ function bandBody(b: BandInput, isNarrow: boolean, withInfo: boolean, toolRowsKe
   const gaugeLine = isNarrow ? narrowGauges(u, b.runway) : withToday(b, gauges(b), invalid)
   const line2 = [...gaugeLine, ...invalid]
   // The info line, then the open rows of tools under it, only while its toggle is in view to close them
-  const head = withInfo && b.mode === 'full' ? infoLine(b) : []
-  const hasToggle = head.some(s => 'button' in s && s.button.key === 'tools')
-  const info: Line[] = head.length === 0 ? [] : [head, ...(b.isToolsOpen === true && hasToggle ? toolRows(b).slice(0, toolRowsKept) : [])]
+  const head = infoUpTo > 0 && b.mode === 'full' ? infoRows(b, infoUpTo) : []
+  const hasToggle = head.some(row => row.some(s => 'button' in s && s.button.key === 'tools'))
+  const info: Line[] = head.length === 0 ? [] : [...head, ...(b.isToolsOpen === true && hasToggle ? toolRows(b).slice(0, toolRowsKept) : [])]
   const p = fiveHourPace(b)
   const isHot = (b.runway?.percent ?? u.percent ?? 0) >= 60 || u.windows.some(w => w.percentUsed >= 60) || (p !== null && p !== 'on-pace')
   const agentsRun = b.agents.some(r => isLive(r.status))
