@@ -271,9 +271,9 @@ for (const surface of ['terminal', 'desktop'] as const) {
   test(`a CJK tool name keeps the Tools row on one line (${surface})`, async ($, on) => {
     stubAll(on)
     engine(on)
-    // An MCP tool counts under its server's name, here 30 code points and more cells: the column grows to the name and a
-    // space by code points, and the cell truncates the rest
-    const name = 'mcp: 検索サーバーと全文検索ツールの長い日本語の名前です'
+    // An MCP tool counts under its server's name and its own, here 32 code points and more cells: the column grows to the
+    // name and a space by code points, and the cell truncates the rest
+    const name = '検索サーバーと全文検索ツールの長い日本語の名前です:search'
     await $.tool.call({ tool: 'mcp__検索サーバーと全文検索ツールの長い日本語の名前です__search', query: 'x' } as never)
     await inspect($, 'tools')
     const ui = await $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'inspect', props: { ...PANE, bodyColumns: 80 } })
@@ -350,9 +350,9 @@ for (const surface of ['terminal', 'desktop'] as const) {
     await $.tool.call({ tool: 'mcp__a-very-long-server-name-two__x', query: 'x' } as never)
     await inspect($, 'tools')
     const wide = await tabRows($, surface, 120)
-    expect(wide.find(l => l.startsWith('Tools'))).toBe(`${'Tools'.padEnd(33)}${'calls'.padStart(6)}${'ok'.padStart(5)}${'✗'.padStart(5)}${'⊘'.padStart(5)}`)
-    expect(wide.some(l => l.startsWith('mcp: a-very-long-server-name-one '))).toBe(true)
-    expect(wide.some(l => l.startsWith('mcp: a-very-long-server-name-two '))).toBe(true)
+    expect(wide.find(l => l.startsWith('Tools'))).toBe(`${'Tools'.padEnd(30)}${'calls'.padStart(6)}${'ok'.padStart(5)}${'✗'.padStart(5)}${'⊘'.padStart(5)}`)
+    expect(wide.some(l => l.startsWith('a-very-long-server-name-one:x '))).toBe(true)
+    expect(wide.some(l => l.startsWith('a-very-long-server-name-two:x '))).toBe(true)
     const docked = await tabRows($, surface, 46)
     expect(docked.find(l => l.startsWith('Tools'))).toBe(`${'Tools'.padEnd(25)}${'calls'.padStart(6)}${'ok'.padStart(5)}${'✗'.padStart(5)}${'⊘'.padStart(5)}`)
   })

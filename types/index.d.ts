@@ -24,6 +24,8 @@ export type Window = { kind: string; percentUsed: number; resetsAt: string | nul
 export type Usage = {
   tokens: number | null; window: number | null; percent: number | null; startedAt: number | null
   windows: Window[]; costUsd: number | null; todayUsd: number | null; at: number
+  // When the windows shown were read by an earlier session, until this one's first reading with windows; absent after
+  windowsAt?: number
 }
 export type Totals = { input: number; output: number; cacheRead: number; cacheWrite: number; stepOutput: number; stepMs: number }
 // A prompt the person entered that no turn has answered yet, by a fingerprint of its text, never the text
@@ -33,6 +35,14 @@ export type Meta = {
   lastPromptAt: number | null; lastReplyAt: number | null; turnCount: number; waiting: Waiting[]
   // The main loop's settled tool calls this session
   mainCalls: number
+  // The skills the main loop loaded into its context this conversation, by name, with how many times; absent before one
+  skills?: Record<string, number>
+  // The folder holding the repository (or the working folder outside one) and its branch, read at start and every 30 s
+  place?: { project: string; branch: string | null }
+  // Claude Code's version, read at start
+  version?: string
+  // A resumed or branched conversation: it holds skills loaded before the mod watched it, which no API lists
+  isResumed?: boolean
 }
 export type Tab = 'now' | 'usage' | 'agents' | 'tools' | 'cache' | 'timeline' | 'plan'
 // `planSlug`: the plan `/inspect plan <name>` pinned, shown while its file parses
@@ -112,7 +122,8 @@ export type RecState = { level: Level; count: number; note: string | null }
 export type Quiet = { isOn: boolean }
 // /band: the full band with its info line, or calm, its two lines; every session's from `settings:band`
 export type BandMode = 'full' | 'calm'
-export type BandSetting = { mode: BandMode }
+// `isToolsOpen`: the full band's rows of every tool and the skills are open (`settings:band-tools`)
+export type BandSetting = { mode: BandMode; isToolsOpen?: boolean }
 // F8: the stored mode and threshold; `point`, the tokens where Claude Code compacts by itself; `handled`, the highest
 // step handled; `lastSave`, the last save's time and result; `alfred`, the stack's status file as last read
 export type HandoffMode = 'ask' | 'auto' | 'off'
@@ -140,7 +151,10 @@ export type PartsPlugin = { name: string; agents: number; agentTokens: number; s
 export type Parts = {
   at: number | null; categories: { name: string; tokens: number }[]; plugins: PartsPlugin[]
   memory: { files: number; tokens: number; top: { name: string; tokens: number }[] }
+  // The skill listing: the skills it carries, of the session's, and its tokens; absent when the breakdown has none
+  skills?: SkillListing
 }
+export type SkillListing = { listed: number; total: number; tokens: number }
 
 declare module 'claude-code' {
   interface PluginState {

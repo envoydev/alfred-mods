@@ -27,6 +27,9 @@ type Options = {
   // What a read of `settings:band` answers while the test stored none: 'calm' by default, the band every test before
   // /band was written for; 'unset' answers nothing, as a fresh install's store does. The key is never added to the store.
   band?: 'full' | 'calm' | 'unset'
+  // What `$.session.model()`, `.version()` and `.repo()` answer; each absent refuses, so a test before the band read
+  // them at session start draws as it was written for. `repo` null is a folder outside any repository.
+  model?: string; version?: string; repo?: { root: string } | null
   // The same for `settings:quiet`: false (off) by default, the tool rows every test before /quiet was on by default
   // was written for; 'unset' answers nothing, as a fresh install's store does
   quiet?: 'on' | 'off' | 'unset'
@@ -71,6 +74,9 @@ export function stubAll(on: On, o: Options = {}): {
   on('session.id', () => ({ value: session.id }))
   on('session.turns', () => ({ value: session.turns }))
   on('session.cwd', () => ({ value: o.cwd ?? '/w' }))
+  on('session.model', () => (o.model === undefined ? { deny: 'test: no model' } : { value: o.model }))
+  on('session.version', () => (o.version === undefined ? { deny: 'test: no version' } : { value: { version: o.version } }))
+  on('session.repo', () => (o.repo === undefined ? { deny: 'test: no repo' } : { value: (o.repo === null ? null : { remote: null, internal: false, ...o.repo }) as never }))
   on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('ui.open', (_, e) => {
     opened.push(e.id)

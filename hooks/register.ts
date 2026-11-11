@@ -37,6 +37,7 @@ import type { Close } from './steptime.ts'
 import { agentsLines, cacheLines, nowLines, tabBar, timelineLines, toolsLines, usageLines } from './tabs.ts'
 import { classify, fold, targetOf, toolKey } from './outcome.ts'
 import { LEVELS, REC_HELP, addWord, parseLevel, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec.ts'
+import { baseName, dropPassed, gitDirOf, headBranch, nextWindows, parentOf, storedWindows } from './startup.ts'
 import type { CallFacts } from './outcome.ts'
 import type {
   AgentRow, Cache, CacheConfig, Credit, Failure, Handoff, Live, Loop, Meta, Outcome, Pace, Plan, PlanChange, Level, Plans, Quiet, BandSetting, BandMode, RecState, SaveResult, Scores, Stack, Tab, TaskItem, ToolStat, Totals, Turn, Usage, View,
@@ -50,6 +51,8 @@ type Call = {
   // `by`: the hook script its last settle counted a block for
   settled: boolean; outcome: Outcome | null; rowId: string | null; by: string | null
   startedAt: number | null; durationMs: number | null; pendingMs: number | null
+  // A Skill call whose skill runs forked, in a subagent of its own: never in the main context
+  isFork?: boolean
 }
 
 // What outlives one hook but is no $.state value: the cache's toast timer, a [Compact] in flight, the compactions the
@@ -253,6 +256,10 @@ async function settle($: EngineInterface, id: string, call: Call): Promise<void>
     running: l.running.filter(r => r.id !== id),
   }))
   if (isMain && before === null) await update($, meta, m => ({ ...m, mainCalls: m.mainCalls + 1 }))
+  // A Skill call that failed loaded nothing, and one whose skill ran forked loaded it into a subagent
+  if (isMain && before === null && outcome === 'ok' && call.isFork !== true && call.key.startsWith('Skill: ')) {
+    await addSkill($, call.key.slice('Skill: '.length))
+  }
   await syncStatus($)
 }
 
@@ -274,11 +281,107 @@ let todayMem: { cost: number; today: number; date: string } | null = null
 async function writeUsage($: EngineInterface, reading: SessionUsage, today?: number | null): Promise<void> {
   const at = await $.clock.now()
   if (typeof today === 'number') todayMem = reading.cost === undefined ? null : { cost: reading.cost.usd, today, date: localDate(at) }
+  const fresh = windowsOf(reading.rateLimits)
   await update($, usage, u => ({
     tokens: reading.context.tokens ?? null, window: reading.context.window, percent: reading.context.percent ?? null,
-    startedAt: reading.startedAt, windows: windowsOf(reading.rateLimits), costUsd: reading.cost?.usd ?? null,
+    startedAt: reading.startedAt, ...nextWindows(u, fresh, reading.context.tokens !== undefined), costUsd: reading.cost?.usd ?? null,
     todayUsd: today === undefined ? u.todayUsd : today, at,
   }))
+}
+
+// The windows this session last stored for the next one, as the band shows them: a turn's measure stores them only when
+// that changed, since each store write rewrites the file every session on the machine shares (the review, 2026-11-11)
+const windowsMem = { stored: null as string | null }
+
+async function storeWindows($: EngineInterface, windows: Window[], at: number): Promise<void> {
+  const json = JSON.stringify(windows.map(w => [w.kind, Math.round(w.percentUsed), w.resetsAt]))
+  if (windows.length === 0 || json === windowsMem.stored) return
+  windowsMem.stored = json
+  await $.store.set('usage:windows', { at, windows })
+}
+
+// A session with no windows of its own yet shows the ones the last reading on this machine stored, while their reset is
+// ahead, marked as read before
+async function seedWindows($: EngineInterface): Promise<void> {
+  if ((await read($, usage)).windows.length > 0) return
+  const stored = storedWindows(await $.store.get('usage:windows'), await $.clock.now())
+  if (stored !== null) await update($, usage, u => ({ ...u, windows: stored.windows, windowsAt: stored.at }))
+}
+
+// The HEAD file the place was read from, so the 30-second poll reads that one file for a checkout
+// and the folder it was read for: a move to another folder (a worktree, /cd) reads the place again
+const placeMem = { head: null as string | null, cwd: null as string | null }
+
+async function readText($: EngineInterface, path: string): Promise<string | null> {
+  try {
+    return await $.fs.read(path)
+  } catch {
+    return null
+  }
+}
+
+const joinPath = (dir: string, name: string): string => (/[\\/]$/.test(dir) ? `${dir}${name}` : `${dir}/${name}`)
+
+// The folder holding `.git` at or above `cwd`, and its HEAD file and branch: a worktree's `.git` is a file naming its
+// git folder. No git process runs (spec: the user, 2026-11-11).
+async function findHead($: EngineInterface, cwd: string): Promise<{ dir: string; head: string; branch: string | null } | null> {
+  let dir: string | null = cwd
+  for (let depth = 0; dir !== null && depth < 40; depth += 1, dir = parentOf(dir)) {
+    const file = await readText($, joinPath(dir, '.git'))
+    const gitDir = file === null ? joinPath(dir, '.git') : gitDirOf(file, dir)
+    if (gitDir === null) continue
+    const head = joinPath(gitDir, 'HEAD')
+    const text = await readText($, head)
+    if (text !== null) return { dir, head, branch: headBranch(text) }
+  }
+  return null
+}
+
+const setPlace = (place: NonNullable<Meta['place']>) => (m: Meta): Meta =>
+  m.place?.project === place.project && m.place.branch === place.branch ? m : { ...m, place }
+
+// The project and branch: outside a repository the working folder alone; a refused read leaves no place
+async function readPlace($: EngineInterface): Promise<void> {
+  const repo = await $.session.repo()
+  const cwd = await $.session.cwd()
+  placeMem.head = null
+  placeMem.cwd = cwd
+  if (repo === null) {
+    await update($, meta, setPlace({ project: baseName(cwd), branch: null }))
+    return
+  }
+  const found = await findHead($, cwd)
+  placeMem.head = found?.head ?? null
+  await update($, meta, setPlace({ project: baseName(found?.dir ?? repo.root), branch: found?.branch ?? null }))
+}
+
+// A checkout since: the poll reads the HEAD file the place came from
+async function pollPlace($: EngineInterface): Promise<void> {
+  if (placeMem.cwd !== null && (await $.session.cwd()) !== placeMem.cwd) return readPlace($)
+  const head = placeMem.head
+  if (head === null) return
+  const text = await readText($, head)
+  const project = (await read($, meta)).place?.project
+  if (text !== null && project !== undefined) await update($, meta, setPlace({ project, branch: headBranch(text) }))
+}
+
+// What the band shows before the first reply: the model, Claude Code's version, the place and the stored windows. Each
+// read stands alone: a refusal leaves its value as it was.
+async function readStart($: EngineInterface): Promise<void> {
+  try {
+    const model = await $.session.model()
+    await update($, meta, m => (m.model === null ? { ...m, model } : m))
+  } catch {
+    // The first step names the model
+  }
+  try {
+    const engine = await $.session.version()
+    await update($, meta, m => ({ ...m, version: engine.version }))
+  } catch {
+    // No version item
+  }
+  await readPlace($).catch(() => undefined)
+  await seedWindows($).catch(() => undefined)
 }
 
 // When the band's figures were last read mid-turn: the tick reads them at most this often while a turn runs or an
@@ -317,6 +420,8 @@ async function tickOnce($: EngineInterface): Promise<void> {
       await update($, agents, current => refreshAgents(current, listed, now))
     }
   }
+  const u = await read($, usage)
+  if (dropPassed(u, now) !== null) await update($, usage, x => dropPassed(x, now) ?? x)
   const isWarm = needsTick(await read($, cache), billingOf((await read($, usage)).windows), now)
   const minute = Math.floor(now / 60_000)
   const isNewMinute = minute !== tickMem.minute && (await read($, bandSetting)).mode === 'full'
@@ -890,11 +995,26 @@ async function loadQuiet($: EngineInterface): Promise<boolean> {
   return isOn
 }
 
-// Only the exact string 'calm' reads as calm: absent, or anything another version or a hand wrote, is full
+// Only the exact string 'calm' reads as calm: absent, or anything another version or a hand wrote, is full. The rows
+// of every tool and the skills likewise: only 'open' opens them.
 async function loadBand($: EngineInterface): Promise<BandMode> {
   const mode: BandMode = (await $.store.get('settings:band')) === 'calm' ? 'calm' : 'full'
-  await update($, bandSetting, b => (b.mode === mode ? b : { mode }))
+  const isOpen = (await $.store.get('settings:band-tools')) === 'open'
+  const next: BandSetting = isOpen ? { mode, isToolsOpen: true } : { mode }
+  await update($, bandSetting, b => (b.mode === mode && (b.isToolsOpen === true) === isOpen ? b : next))
   return mode
+}
+
+// The band's toggle: the rows open or closed for every session, as /band's mode is
+async function toggleTools($: EngineInterface): Promise<void> {
+  const isOpen = (await read($, bandSetting)).isToolsOpen !== true
+  await $.store.set('settings:band-tools', isOpen ? 'open' : 'closed')
+  await loadBand($)
+}
+
+// A skill the main loop loaded: in its context from then on, until the conversation starts over
+async function addSkill($: EngineInterface, name: string): Promise<void> {
+  await update($, meta, m => ({ ...m, skills: { ...m.skills, [name]: (m.skills?.[name] ?? 0) + 1 } }))
 }
 
 // F8's memory outside $.state: whether the stack stood F8 down, which outlives a /clear until a read of the new id's
@@ -1203,6 +1323,7 @@ function startOver($: EngineInterface, source: string | null, calls: Map<string,
     await loadQuiet($)
     await loadBand($)
     await loadHandoff($)
+    if (!isClear) await update($, meta, m => ({ ...m, isResumed: true }))
     // This read, finding no file, reads once more at 2 s
     if (!(await readStatus($, true))) {
       stackMem.reread = $.clock.after(2000, () => {
@@ -1216,6 +1337,7 @@ function startOver($: EngineInterface, source: string | null, calls: Map<string,
     await seedMine($)
     scheduleReload($, held)
     await baseline($, await takeUsage($, await todayUsd($, now)))
+    await readStart($)
   })
   const starting: Promise<void> = run.finally(() => {
     if (conversationMem.starting === starting) conversationMem.starting = null
@@ -1457,12 +1579,20 @@ export const register: Register = (on, options) => {
       return next(e)
     }).catch(($, e, next) => next(e))
 
-    // A skill the person runs as /name raises no Skill call; one the model runs raises both, and counts once
+    // A skill the person runs as /name raises no Skill call; one the model runs raises both, and counts once. One with
+    // no Skill call behind it while no main turn runs is the person's /name, in the main context; mid-turn, it is a
+    // subagent's preload.
+    // A `context: fork` skill runs in a subagent of its own (code.claude.com/docs/en/skills, read 2026-11-11).
     on('skill.prompt', async ($, e, next) => {
       const prompted = await next(e)
       const key = `Skill: ${e.skill}`
-      if (![...calls.values()].some(c => !c.settled && c.key === key)) {
+      const isFork = e.frontmatter.context === 'fork'
+      const pending = [...calls.values()].find(c => !c.settled && c.key === key)
+      if (pending !== undefined) {
+        if (isFork) pending.isFork = true
+      } else {
         await update($, stats, s => ({ ...s, [key]: tally(s[key], 'ok', 1) }))
+        if (!isFork && (await read($, live)).turnId === null) await addSkill($, e.skill)
       }
       return prompted
     }).catch(($, e, next) => next(e))
@@ -1514,8 +1644,13 @@ export const register: Register = (on, options) => {
     await pruneCost($, now)
     for (const key of staleKeys(await storedTimes($), now)) await $.store.delete(key)
     await seedMine($)
+    windowsMem.stored = null
+    // A process that starts on a conversation with prompts in it resumed one; a reload keeps $.state and its last reading
+    const isFresh = (await read($, usage)).at === 0
     const reading = await takeUsage($, await todayUsd($, now))
     await baseline($, reading)
+    await readStart($)
+    if (isFresh && (await $.session.turns().catch(() => 0)) > 0) await update($, meta, m => ({ ...m, isResumed: true }))
     held.isTerminal = e.surface === 'terminal' && e.isInteractive
     await readCacheConfig($, held)
     // A reload keeps $.state but not the module's timer: a cache still warm gets its toast armed again
@@ -1528,6 +1663,7 @@ export const register: Register = (on, options) => {
       loadQuiet($).catch(() => undefined)
       loadBand($).catch(() => undefined)
       loadHandoff($).then(() => readStatus($)).catch(() => undefined)
+      pollPlace($).catch(() => undefined)
     })
     scheduleReload($, held)
     return started
@@ -1672,10 +1808,15 @@ export const register: Register = (on, options) => {
   on('session.measure', async ($, e, next) => {
     const measured = await next(e)
     const at = await $.clock.now()
-    await update($, usage, u => ({
-      ...u, tokens: e.context.tokens ?? null, window: e.context.window, percent: e.context.percent ?? null,
-      windows: windowsOf(e.rateLimits), costUsd: e.cost?.usd ?? u.costUsd, at,
-    }))
+    const fresh = windowsOf(e.rateLimits)
+    await update($, usage, u => {
+      const { windowsAt: _stored, ...rest } = u
+      return {
+        ...rest, tokens: e.context.tokens ?? null, window: e.context.window, percent: e.context.percent ?? null,
+        ...nextWindows(u, fresh, e.context.tokens !== undefined), costUsd: e.cost?.usd ?? u.costUsd, at,
+      }
+    })
+    await storeWindows($, fresh, at)
     for (const text of await trackPace($, e.rateLimits, at)) toast($, text)
     await stepHandoff($, e.context.tokens, e.context.window)
     await syncStatus($)
@@ -1694,6 +1835,8 @@ export const register: Register = (on, options) => {
   // A switch forfeits the cache; its report gives the tier under the billing now and prices the rewrite
   on('classic.PostModelSwitch', async ($, e, next) => {
     const done = await next(e)
+    // The band names the model before the first step does (the review, 2026-11-11)
+    await update($, meta, m => ({ ...m, model: e.to_model }))
     const billing = billingOf((await read($, usage)).windows)
     const now = await $.clock.now()
     const s = { ttl: e.cache_ttl, contextTokens: e.context_tokens, usd: e.estimated_cache_write_usd, model: e.to_model, billing }
@@ -1814,16 +1957,20 @@ export const register: Register = (on, options) => {
     const st = await read($, stack)
     const m = await read($, meta)
     const runway = runwayOf(st, u, m.model)
+    const setting = await read($, bandSetting)
     const lines = bandLines({
       now, columns: e.props.bodyColumns, maxRows: e.props.maxRows, isWorking: e.props.isWorking,
       live: await read($, live), usage: u, meta: m, turns: await read($, turns),
       newFailures: (await read($, failures)).filter(f => f.isNew).length, pace: await read($, pace), agents: await read($, agents),
       cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score, rec: recOf(await read($, rec)),
       forecast: forecastOf(h, u, runway), handoffAsk: h.isAskUp ? h.handled : null, runway, banner: bannerSegs(st),
-      mode: (await read($, bandSetting)).mode, totals: await read($, totals), stats: await read($, stats),
+      mode: setting.mode, totals: await read($, totals), stats: await read($, stats),
+      isToolsOpen: setting.isToolsOpen === true, listing: (await read($, parts)).skills ?? null,
     })
     if (lines.length === 0) return next(e)
-    const press = { inspect: () => inspectFromBand($), compact: () => compactNow($, held), handoff: () => saveNow($) }
+    const press = {
+      inspect: () => inspectFromBand($), compact: () => compactNow($, held), handoff: () => saveNow($), tools: () => toggleTools($),
+    }
     return drawLines($, e, lines, { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
   }).catch(($, e, next) => drawNote($, e, bandFailed(next.error.kind)))
 
