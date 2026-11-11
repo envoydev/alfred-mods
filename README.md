@@ -156,7 +156,9 @@ such as claude-hud's, is not replaced: it draws under the prompt, below this lin
 ## Settings
 
 The mod's switches are values under one key, `"alfred-mods"`, in Claude Code's own settings files. Add the key to a
-file, save it, and the band redraws.
+file, save it, and the band redraws. The [Band Explorer](docs/band-explorer.html), one page that runs in a browser,
+offline too, previews each setting on the band and gives each file's block to copy: download the file, or clone the
+repo, and open it.
 
 ### Quick start
 
