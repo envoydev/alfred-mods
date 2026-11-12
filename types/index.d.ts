@@ -45,7 +45,8 @@ export type Meta = {
   // '…/<name>' outside it; `branch`: the branch of the repository holding that folder
   // `changes`: the repository's uncommitted lines against HEAD, a new untracked file's lines as added; absent until
   // read, or when git refused
-  place?: { project: string; folder?: string; branch: string | null; changes?: { added: number; removed: number } }
+  // `sync`, commits ahead of and behind the branch's upstream as of the last fetch; absent with no upstream
+  place?: { project: string; folder?: string; branch: string | null; changes?: { added: number; removed: number }; sync?: { ahead: number; behind: number } }
   // Claude Code's version, read at start
   version?: string
   // A resumed or branched conversation: it holds skills loaded before the mod watched it, which no API lists

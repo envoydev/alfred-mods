@@ -506,14 +506,16 @@ rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ w
   tool calls, and the gauges add today's cost. Today's cost is the mod's own count on this machine: sessions it did not
   run in are not in it, so it can read lower than a status line's that counts every session.
 - **`project:`** the folder the session started in, then `git:(<branch>)`, the branch of the repository holding the
-  folder Claude works in (left out outside a repository), then that repository's uncommitted changes as `+added
-  −removed` lines against the last commit, a new untracked file's lines counted as added (left out when there are
+  folder Claude works in (left out outside a repository), then `↑1 ↓2`, the commits the branch is ahead of and behind
+  its upstream as of your last fetch (the mod never fetches; a side at 0, or a branch with no upstream, is left out),
+  then that repository's uncommitted changes as `+added −removed` lines against the last commit, a new untracked file's lines counted as added (left out when there are
   none), then `folder:`, that folder when it is not the project's
   root. The folder follows Claude: where a Bash `cd` went, or the folder of the last file Claude edited or wrote,
   whichever came last (a folder outside the project shows as `…/<name>`); it is re-read after each Bash call, edit and
-  write, and every 30 s. `git:(` and `)` are purple, the branch yellow, the added lines green and the removed red, the
-  project and the folder in your text's own colour. The counts come from `git diff --numstat HEAD` and `git ls-files`,
-  each with a 2 s timeout; short of width the folder goes first, then the counts.
+  write, and every 30 s. `git:(`, `)` and the arrows are purple, the branch yellow, the added lines green and the removed red, the
+  project and the folder in your text's own colour. The counts come from `git diff --numstat HEAD`, `git ls-files` and
+  `git rev-list --left-right --count @{upstream}...HEAD`, each with a 2 s timeout; short of width the folder goes first,
+  then the changes, then the arrows.
 - **`plan:`** while a plan runs: its title, bar, steps done and the step in progress (the Plan tab has the percent and
   the times).
 - **`usage:`** in aqua, counts what the rows under it list: tool calls, skills, agents dispatched (and how many run)
@@ -528,7 +530,7 @@ then how many skills the context's listing carries, of the session's. `agents:` 
 was first dispatched, with how many times: `◐` while one of it runs, `✗` once one failed or was stopped, else `✓`,
 then how many run. `rules:` lists the rule files in the main context: those loaded at start (from `.claude/rules/`, a
 link there named by the file it reaches, and your own rules folder), then those loaded by path, when Claude reads,
-writes or edits a file their `paths:` match, in violet while the band is coloured, then how many of each; a compaction
+writes or edits a file their `paths:` match, in violet, then how many of each; a compaction
 keeps them. A resumed or branched conversation still holds the skills, agents and by-path rules from before it, which no
 mods API lists, so those rows count from the resume: `none seen since resume`, or what came since with `since resume`.
 
@@ -537,15 +539,16 @@ cannot hold them (the version first, then the times); `project:` shortens its fo
 out, and `usage:` drops the rules, then the agents, then the skills. When the band has fewer rows than it needs, as in
 fullscreen under a tall draft, `project:` goes first, then the info line's second row, then the open rows from the last
 (`rules:`, `agents:`, `skills:`, `tools:`), then `usage:`, then `plan:`, then the whole info line, so the line with its
-buttons stays in view. `"band": "calm"` goes back to the two lines.
+buttons stays in view. The full band keeps its colours when idle too, not only while a turn runs; `"band": "calm"`
+goes back to the two lines, dim until something needs you.
 
 `"bandPlace": "under"` draws the band under the input instead. Claude Code draws its own mode line (`⏵⏵ auto mode on`)
 as the first row under the prompt whatever a mod does, so with `"above"` it is the bottom row, under the band and the
 prompt, and with `"under"` it sits between the prompt and the band. Under the input is the terminal's only (a Desktop
 tab keeps the band above), and it takes no keys, so each button becomes the command that does its job: in fullscreen a
 click presses it, `[ /inspect ]`, `[ /compact ]`, `[ /auto-handoff now ]`; on the main screen
-(`CLAUDE_CODE_NO_FLICKER=0`), where nothing takes a click, it is that command as text. There the action row comes right
-after the gauges. In fullscreen the room under the input is about half the screen, less the prompt, two rows when a
+(`CLAUDE_CODE_NO_FLICKER=0`), where nothing takes a click, it is that command as text. There the action row (new failures, a cache
+warning, the handoff ask) comes first, right under the input, over the turn line and the gauges. In fullscreen the room under the input is about half the screen, less the prompt, two rows when a
 status line is set and one for the mod's pinned line; whatever else takes room, a draft of several lines or a taller
 status line, cuts the band at the screen's edge from its last row, `rules:` first. It was built on Claude Code 2.1.322.
 

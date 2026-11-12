@@ -310,16 +310,24 @@ function placeRow(b: BandInput): Line[] {
   const changes = place.changes
   const counted: Seg[] = place.branch === null || changes === undefined || changes.added + changes.removed === 0 ? []
     : [{ text: ' ' }, { text: `+${changes.added}`, tone: 'ok' }, { text: ' ' }, { text: `−${changes.removed}`, tone: 'fail' }]
-  const line = (folder: string | null, withChanges = true): Line => [
+  // Commits ahead of and behind the upstream, in the purple of git:( ), before the changes; a side at 0 left out (the
+  // user, 2026-11-12: 'git:(band-order) arrow-up-symbol 1 arrow-down-symbol 2 +41 −30')
+  const sync = place.sync
+  const synced: Seg[] = place.branch === null || sync === undefined ? [] : [
+    ...(sync.ahead > 0 ? [{ text: ' ' }, { text: `↑${sync.ahead}`, tone: 'git' as const }] : []),
+    ...(sync.behind > 0 ? [{ text: ' ' }, { text: `↓${sync.behind}`, tone: 'git' as const }] : []),
+  ]
+  const line = (folder: string | null, withChanges = true, withSync = true): Line => [
     { text: place.project },
     // git:( and ) purple, the branch yellow, the folder in the text's own colour (the user, 2026-11-11)
     ...(place.branch === null ? [] : [sep, { text: 'git:(', tone: 'git' as const }, { text: place.branch, tone: 'branch' as const }, { text: ')', tone: 'git' as const }]),
+    ...(withSync ? synced : []),
     ...(withChanges ? counted : []),
     ...(folder === null ? [] : [sep, dimSeg('folder: '), { text: folder }]),
   ]
   const folder = place.folder
-  // Short of width the folder goes first, then the changes
-  const forms = [...(folder === undefined ? [] : [line(fitFolder(folder, 40)), line(lastPart(folder))]), line(null), line(null, false)]
+  // Short of width the folder goes first, then the changes, then the commits ahead and behind
+  const forms = [...(folder === undefined ? [] : [line(fitFolder(folder, 40)), line(lastPart(folder))]), line(null), line(null, false), line(null, false, false)]
   const form = forms.find(f => widthOf(f) <= b.columns - ROW_LABEL) ?? forms[forms.length - 1] ?? []
   return [[rowLabel('project:'), ...form]]
 }
@@ -653,11 +661,12 @@ function bandBody(b: BandInput, isNarrow: boolean, k: Keep): Line[] {
   const warning = cacheWarning(b, true)
   const ask = handoffAsk(b)
   if (!isHot && b.newFailures === 0 && !b.isWorking && !agentsRun && warning === null && ask === null) {
-    const calm = isNarrow || b.mode === 'full' ? gaugeLine : withTimes(b, gaugeLine)
+    // Idle and healthy, the full band keeps its colours, as while it works (the user, 2026-11-12: 'colors by default ...
+    // not only when active work'); the calm band stays one dim line until something needs you
+    if (b.mode === 'full') return [[...gaugeLine, ...invalid], ...info]
+    const calm = isNarrow ? gaugeLine : withTimes(b, gaugeLine)
     const dim = (l: Line): Line => l.map(s => ('text' in s ? { text: s.text, tone: 'dim' as const } : s))
-    // The project and usage rows keep the user's colours, as the toggle's button kept its own (the user, 2026-11-11)
-    const lively = new Set([...place, ...counts])
-    return [[...dim(calm), ...invalid], ...info.map(l => (lively.has(l) ? l : dim(l)))]
+    return [[...dim(calm), ...invalid], ...info.map(dim)]
   }
   if (b.isWorking) return [working(b, isNarrow), line2, ...info]
   const failed: Line = b.newFailures > 0
@@ -665,10 +674,11 @@ function bandBody(b: BandInput, isNarrow: boolean, k: Keep): Line[] {
     : []
   const items = [warning, ask, failed].filter((l): l is Line => l !== null && l.length > 0)
   const joined: Line = items.flatMap((l, i) => (i === 0 ? l : [{ text: '    ' }, ...l]))
-  // Under the input (band-under U2), the action row follows the gauges, so a cut at the screen's edge takes the detail
-  // rows first; its commands are longer than the digits above, so the items take a row each when one row cannot hold them
+  // Under the input the action row comes first, nearest the input as above it is the last (the user, 2026-11-12, over
+  // band-under U2's place after the gauges), so a cut at the screen's edge takes the detail rows first; its commands are
+  // longer than the digits above, so the items take a row each when one row cannot hold them
   const action: Line[] = items.length === 0 ? [] : b.under !== undefined && cellsOf(joined) > b.columns ? items : [joined]
   const first = agentsRun ? working(b, isNarrow) : withPlanTail(b, lastTurn(b, isNarrow))
-  const out = b.under === undefined ? [first, line2, ...info, ...action] : [first, line2, ...action, ...info]
+  const out = b.under === undefined ? [first, line2, ...info, ...action] : [...action, first, line2, ...info]
   return out.filter(l => l.length > 0)
 }

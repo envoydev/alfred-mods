@@ -115,11 +115,11 @@ test("full mode: line 1 counts the turn's tools, line 2 adds today while it fits
   expect(text(needs(99)[1] ?? []).includes('$')).toBe(false)
 })
 
-test('full mode, idle and healthy: two dim lines and usage:, no times on the gauge line', () => {
+test('full mode, idle and healthy: two lines in their colours and usage:, no times on the gauge line', () => {
   const lines = bandLines(input())
   expect(texts(lines)).toHaveLength(3)
   expect(text(lines[2] ?? [])).toBe('usage:   [ 19 tools ]')
-  for (const s of lines.slice(0, 2).flat()) if ('text' in s) expect(s.tone).toBe('dim')
+  expect(lines[0]?.[0]).toEqual({ text: 'ctx ', tone: 'usage' })
   expect(text(lines[0] ?? []).includes('you ')).toBe(false)
   expect(text(lines[0] ?? []).endsWith('$1.29 · today $10.46')).toBe(true)
 })
@@ -186,7 +186,7 @@ test("usage: counts the session's tool calls and the main chat's skills, never a
   expect(text(infoLine(input()))).not.toContain('tools')
 })
 
-test('closed, the band draws no rows of tools; open, every tool and the skills under usage:, dim while quiet', () => {
+test('closed, the band draws no rows of tools; open, every tool and the skills under usage:, in their colours while quiet', () => {
   expect(texts(bandLines(input())).some(l => /^(tools|skills|agents|rules):/.test(l))).toBe(false)
   const open = bandLines(input({ isToolsOpen: true }))
   expect(texts(open).slice(1)).toEqual([
@@ -197,7 +197,8 @@ test('closed, the band draws no rows of tools; open, every tool and the skills u
     'agents:  none',
     'rules:   none loaded',
   ])
-  for (const s of open.filter(l => !text(l).startsWith('usage:')).flat()) if ('text' in s) expect(s.tone).toBe('dim')
+  const tools = open.find(l => text(l).startsWith('tools:')) ?? []
+  expect(tools.find(s => 'text' in s && s.text === 'Bash ×5')).toEqual({ text: 'Bash ×5' })
 })
 
 test('the skills row names each skill loaded in the main chat and how many the listing carries', () => {
@@ -278,7 +279,7 @@ test('from the first second the full band draws the model, the stored windows ma
   expect(lines[0]?.endsWith(' │ $0.00 · today $10.46')).toBe(true)
   expect(lines[1]).toBe('Sonnet 5.5 │ <1m │ CC 2.1.322')
   expect(lines[2]).toBe('project: alfred-mods │ git:(develop)')
-  for (const s of bandLines(input(AT_START)).slice(0, 2).flat()) if ('text' in s) expect(s.tone).toBe('dim')
+  expect(bandLines(input(AT_START))[1]?.[0]).toMatchObject({ tone: 'sonnet' })
   // Narrow, the same marks
   expect(texts(bandLines(input({ ...AT_START, columns: 80 })))[0]?.includes('5h ▱▱▱▱▱ ≈15%')).toBe(true)
   // A live reading's windows carry no mark
