@@ -1,7 +1,7 @@
 // F10's compact tool rows (brief 'Compact tool rows', Decisions 4 to 8): one line per call, runs of reads folded into
 // one, and the result block's preview emptied. Every line is drawn through drawLines, so REC masks it after compacting.
 import type { Line, Seg } from './band.ts'
-import { fitLine, widthOf } from './format.ts'
+import { duration, fitLine, widthOf } from './format.ts'
 
 // `outcome` and `reason`: a call the person denied or a rule, a hook or the classifier blocked, as Phase 1 settled it
 export type CompactCall = {
@@ -17,16 +17,24 @@ export const KEEPS_PREVIEW: readonly string[] = []
 
 // Tools whose emptied result drew something false or bare live (A3, 2026-10-28: Write 'Wrote 1 line to …' and '(No
 // content)' for three lines, Edit a lone ⎿): with "quiet" on their result block draws nothing, as an errored one does
-export const DROPS_RESULT: readonly string[] = ['Edit', 'Write']
+// WebFetch and WebSearch too: their own steps under the call say what came back (the user, 2026-11-12)
+export const DROPS_RESULT: readonly string[] = ['Edit', 'Write', 'WebFetch', 'WebSearch']
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const str = (v: unknown): string => (typeof v === 'string' ? v : '')
 const basename = (path: string): string => path.split(/[\\/]/).filter(p => p !== '').pop() ?? path
 const lineCount = (text: string): number => (text.trimEnd() === '' ? 0 : text.trimEnd().split('\n').length)
 
-// What the row names: Bash's description, else its command's first 60 characters; another tool's file, pattern or path
+// A URL as a person reads it: no scheme, no 'www.', no trailing slash
+const site = (url: string): string => url.trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '')
+const hostOf = (url: string): string => (site(url).split(/[/?#]/)[0] ?? '').toLowerCase()
+
+// What the row names: Bash's description, else its command's first 60 characters; a web call's page or query; another
+// tool's file, pattern or path
 function describe(c: CompactCall): string {
   const input = isRecord(c.input) ? c.input : {}
+  if (c.tool === 'WebFetch') return site(str(input.url))
+  if (c.tool === 'WebSearch') return str(input.query).trim() === '' ? '' : `"${str(input.query).trim()}"`
   if (c.tool === 'Bash') return str(input.description).trim() !== '' ? fitLine(str(input.description), 120) : fitLine(str(input.command), 60)
   const file = str(input.file_path) || str(input.notebook_path)
   return fitLine(file !== '' ? basename(file) : str(input.pattern) || str(input.path), 60)
@@ -70,14 +78,48 @@ function errorLines(c: CompactCall): Line[] {
   return lines.slice(-3).map(l => [{ text: `    ${l}`, tone: 'dim' }])
 }
 
-// `⏺ <tool> · <description> · <status>`, the description cut so the line fits `columns`, then any error lines
+const sizeOf = (bytes: number): string =>
+  bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`
+
+// A web call's steps, one `⎿` line each (the user, 2026-11-12: 'what source is agent fatching'): WebFetch what came
+// back, from where when it moved, and what it took from the page; WebSearch how many results and their sites. A failed
+// or stopped call has its error lines instead of what came back.
+function stepLines(c: CompactCall, columns: number): Line[] {
+  const step = (text: string): Line => [{ text: `  ⎿ ${fitLine(text, Math.max(1, columns - 4))}`, tone: 'dim' }]
+  const input = isRecord(c.input) ? c.input : {}
+  const out = isRecord(c.output) && !c.isErrored && c.outcome === null ? c.output : null
+  if (c.tool === 'WebFetch') {
+    const lines: Line[] = []
+    if (out !== null && typeof out.bytes === 'number') {
+      const moved = str(out.url) !== '' && site(str(out.url)) !== site(str(input.url)) ? ` from ${site(str(out.url))}` : ''
+      const code = typeof out.code === 'number' ? ` · ${out.code}${str(out.codeText) === '' ? '' : ` ${str(out.codeText)}`}` : ''
+      const time = typeof out.durationMs === 'number' ? ` · ${duration(out.durationMs)}` : ''
+      lines.push(step(`fetched ${sizeOf(out.bytes)}${moved}${code}${time}`))
+    }
+    const asked = str(input.prompt).trim()
+    if (asked !== '') lines.push(step(`took: ${asked}`))
+    return lines
+  }
+  if (c.tool === 'WebSearch' && out !== null && Array.isArray(out.results)) {
+    const urls = out.results.flatMap(r => (isRecord(r) && Array.isArray(r.content) ? r.content : []))
+      .map(h => (isRecord(h) ? str(h.url) : '')).filter(u => u !== '')
+    if (urls.length === 0) return [step('no results')]
+    const sites = [...new Set(urls.map(hostOf).filter(h => h !== ''))]
+    const more = sites.length > 3 ? ` +${sites.length - 3} more` : ''
+    return [step(`${urls.length} ${urls.length === 1 ? 'result' : 'results'} · ${sites.slice(0, 3).join(', ')}${more}`)]
+  }
+  return []
+}
+
+// `⏺ <tool> · <description> · <status>`, the description cut so the line fits `columns`, then a web call's steps and
+// any error lines
 export function callLine(c: CompactCall, columns: number, times = 1): Line[] {
   const tail: Seg[] = [{ text: ' · ' }, ...status(c), ...(times > 1 ? [{ text: ` ×${times}` }] : [])]
   const head: Seg[] = [{ text: '⏺ ' }, { text: c.tool, bold: true }]
   const desc = describe(c)
   const room = columns - widthOf(head) - widthOf(tail) - 3
   const named: Seg[] = desc === '' ? [] : [{ text: ` · ${fitLine(desc, Math.max(1, room))}` }]
-  return [[...head, ...named, ...tail], ...errorLines(c)]
+  return [[...head, ...named, ...tail], ...stepLines(c, columns), ...errorLines(c)]
 }
 
 // `⏺ <n> reads · <names> · ✓`, a name read more than once as `×N`, the names cut to fit; `✗ <k>` when k failed

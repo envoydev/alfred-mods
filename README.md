@@ -310,6 +310,18 @@ rule's first sentence. `false` draws Claude Code's full rows: the command and it
     FAIL tests/auth.test.ts
 ```
 
+A web call names its source and puts each step on a `⎿` line under it: WebFetch the page it read, what came back
+(and from where, when it was redirected) and what it took from the page; WebSearch its query, how many results and the
+sites they came from.
+
+```text
+⏺ WebFetch · code.claude.com/docs/en/plugins/mods/overview · ✓
+  ⎿ fetched 42.1 KB · 200 OK · 1s
+  ⎿ took: List the hook events and their limits
+⏺ WebSearch · "claude code mods api" · ✓
+  ⎿ 6 results · code.claude.com, github.com, anthropic.com +2 more
+```
+
 #### `rec` - masking for a recording or a shared screen
 
 `"off"` (the default) masks nothing. `"on"` masks keys, emails, phone numbers and your private words wherever the mod
