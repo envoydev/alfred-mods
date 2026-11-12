@@ -99,7 +99,8 @@ organization's managed settings allow only its own mods
 
 1. [Install](#install) it and run `/reload-plugins`. The band appears above the prompt; Ctrl+X Ctrl+A hides it and
    shows it again.
-2. Run `/inspect` for the pane with the details: Now, Usage, Agents, Tools, Cache, Timeline and Plan.
+2. Run `/inspect` for the pane with the details: Now, Usage, Agents, Tools, Cache, Timeline and Plan. Esc at an
+   empty prompt, or `/inspect close`, closes it.
 3. Change what you want in `~/.claude/settings.json`, under one `"alfred-mods"` key beside the keys the file already
    has. Add only the fields you change; here is every field with its default:
 
@@ -145,11 +146,14 @@ the band and gives each file's block to copy.
 - **`/inspect [now|usage|agents|tools|cache|timeline|plan [name]]`** opens the pane on a tab, Now when none is named.
   In the pane, `n`, `u`, `a`, `t`, `k`, `l` and `p` switch tabs. `/inspect plan <name>` pins the plan file
   `<name>.json`; `/inspect plan` alone returns to the newest.
+- **`/inspect close`** closes the pane. So does Esc at an idle, empty prompt, or in the pane while it has the keys
+  (Ctrl+X Tab). On the terminal's main screen, where nothing takes a click, these are the ways to close it; in
+  fullscreen its ✕ takes a click too.
 - **`/rec on`, `/rec strict`, `/rec off`** set [Recording mode](#recording-mode)'s level, the `"rec"` field, in your
   user file.
 - **`/rec`** reads the settings files again and prints the level, the file it comes from, the private-word count and
   what REC cannot hide. **`/rec test`** runs the masker over fake samples and your private words; **`/rec words`**
-  opens the private-words pane.
+  opens the private-words pane with the keys, so Esc closes it; **`/rec words close`** closes it from the prompt.
 - **`/auto-handoff ask`, `auto`, `off`** set the [handoff](#handoff)'s mode, the `"handoff"` field, in your user file.
   **`/auto-handoff at 70`** (or `/auto-handoff 70`) sets the percent it starts at, `"handoffAt"`, a whole number from
   10 to 95.

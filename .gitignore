@@ -19,3 +19,6 @@ node_modules/
 
 # the Phase 0 probe mod, kept machine-local (the brief cites it; Phase 1 reuses it for the classifier check)
 probe/
+
+# A local MCP config: the repo root is the plugin root, so a tracked .mcp.json would ship its servers to every install
+.mcp.json

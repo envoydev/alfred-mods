@@ -900,7 +900,8 @@ async function endTurn($: EngineInterface, turnId: string, durationMs: number, e
 // Opens the pane on a tab. The failures it shows are seen once a surface draws it, never while it waits undrawn.
 // The open starts before the first await: a Button's press counts as the person's only while its closure runs.
 async function openInspect($: EngineInterface, tab: Tab): Promise<UiOpenResult> {
-  const opening = $.ui.open({ id: 'inspect', title: 'Inspect' })
+  // Esc at an idle, empty prompt closes it: on the terminal's main screen nothing takes a click (the user, 2026-11-12)
+  const opening = $.ui.open({ id: 'inspect', title: 'Inspect', closeOnEscape: true })
   await update($, view, v => ({ ...v, tab }))
   // The Usage tab reads the context's parts again when the last read is over a minute old
   if (tab === 'usage' && (partsMem.lastAt === null || (await $.clock.now()) - partsMem.lastAt > 60_000)) readBreakdownSoon($)
@@ -910,6 +911,14 @@ async function openInspect($: EngineInterface, tab: Tab): Promise<UiOpenResult> 
     await update($, failures, list => (list.some(f => f.isNew) ? list.map(f => ({ ...f, isNew: false })) : list))
   }
   return opened
+}
+
+// '/inspect close' and '/rec words close': a pane closes from the prompt, as the main screen takes no click on its mark
+async function closePane($: EngineInterface, id: 'inspect' | 'rec', name: string): Promise<string> {
+  const panes = await $.ui.panes().catch(() => [])
+  if (!panes.some(p => p.id === id)) return `The ${name} is not open.`
+  await $.ui.close({ id })
+  return `Closed the ${name}.`
 }
 
 // The band's Inspect button: a pane the surface leaves undrawn says why
@@ -1850,8 +1859,8 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     const started = await next(e)
-    await $.command.register({ name: 'inspect', description: 'Session metrics, agents, tool failures, cache, the timeline and the plan in a pane', argumentHint: '[now|usage|agents|tools|cache|timeline|plan [name]]' })
-    await $.command.register({ name: 'rec', description: 'Recording mode: set "rec" in ~/.claude/settings.json, show the level, test it, or edit your private words', argumentHint: '[on|strict|off|test|words]' })
+    await $.command.register({ name: 'inspect', description: 'Session metrics, agents, tool failures, cache, the timeline and the plan in a pane', argumentHint: '[now|usage|agents|tools|cache|timeline|plan [name]|close]' })
+    await $.command.register({ name: 'rec', description: 'Recording mode: set "rec" in ~/.claude/settings.json, show the level, test it, or edit your private words', argumentHint: '[on|strict|off|test|words [close]]' })
     await $.command.register({ name: 'auto-handoff', description: 'Save a handoff now, set the handoff mode or first ask in ~/.claude/settings.json, or show them', argumentHint: '[ask|auto|off|at <percent>|now]' })
     recMem.home = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE')) ?? null
     await loadSettings($, true)
@@ -2082,8 +2091,9 @@ export const register: Register = (on, options) => {
   on('command.run', { command: 'inspect' }, async ($, e) => {
     const words = e.args.trim().split(/\s+/)
     const word = (words[0] ?? '').toLowerCase()
+    if (word === 'close') return { text: await closePane($, 'inspect', 'inspect pane') }
     const tab = TABS.find(t => t === (word === '' ? 'now' : word))
-    if (tab === undefined) return { text: 'Tabs: now, usage, agents, tools, cache, timeline, plan.' }
+    if (tab === undefined) return { text: 'Tabs: now, usage, agents, tools, cache, timeline, plan. /inspect close closes the pane.' }
     if (tab === 'plan') {
       const name = words[1] ?? null
       const good = (await read($, plans)).plans.filter(w => w.value !== null).map(w => w.name).sort()
@@ -2104,8 +2114,9 @@ export const register: Register = (on, options) => {
     const word = e.args.trim().toLowerCase()
     const target = LEVELS.find(l => l === word)
     if (target !== undefined) return { text: mask(await setField($, 'rec', target)) }
+    if (/^words\s+close$/.test(word)) return { text: await closePane($, 'rec', 'REC words pane') }
     if (word === 'words') {
-      const opened = await $.ui.open({ id: 'rec', title: 'REC words', focus: true })
+      const opened = await $.ui.open({ id: 'rec', title: 'REC words', focus: true, closeOnEscape: true })
       return { text: opened.isPlaced ? 'Opened the REC words pane.' : `The REC words pane is open but not drawn: ${opened.reason}.` }
     }
     await loadSettings($)
