@@ -60,7 +60,7 @@ export const gitResult = (stdout: string, exitCode = 0, stderr = ''): ProcessRun
 export type FileStub = { text: string; mtimeMs: number; size?: number }
 
 export function stubAll(on: On, o: Options = {}): {
-  clock: MockClock; toasts: string[]; toastMs: (number | undefined)[]; opened: string[]; copied: string[]; usage: { current: SessionUsage; breakdowns: number; refuse: boolean; fail: boolean }; panes: UiPane[]
+  clock: MockClock; toasts: string[]; toastMs: (number | undefined)[]; opened: string[]; escapes: string[]; closed: string[]; copied: string[]; usage: { current: SessionUsage; breakdowns: number; refuse: boolean; fail: boolean }; panes: UiPane[]
   listed: { current: AgentInfo[]; calls: number }; files: { current: Record<string, FileStub>; reads: string[]; writes: string[]; exists: string[]; lists: string[] }
   // `git.current` and `git.calls`; the draft a test types and the texts the mod filled
   git: { current: ProcessRunResult | string; calls: number; argv: readonly string[] | null; timeoutMs: number | null }; prompt: { draft: string; fills: string[] }
@@ -83,6 +83,9 @@ export function stubAll(on: On, o: Options = {}): {
   // Each toast's timeoutMs, in the order of `toasts`: undefined is the default 4 s
   const toastMs: (number | undefined)[] = []
   const opened: string[] = []
+  // The ids opened with closeOnEscape, and each id a close took down
+  const escapes: string[] = []
+  const closed: string[] = []
   // The engine's record of the open panes; a test places a waiting one by replacing its entry
   const panes: UiPane[] = []
   const copied: string[] = []
@@ -110,11 +113,21 @@ export function stubAll(on: On, o: Options = {}): {
   })
   on('ui.open', (_, e) => {
     opened.push(e.id)
+    if (e.closeOnEscape === true) escapes.push(e.id)
     const isPlaced = o.unplaced === undefined
     if (!panes.some(p => p.id === e.id)) panes.push({ id: e.id, title: e.title ?? e.id, isShown: isPlaced, isFocused: false, isPlaced })
     return { value: isPlaced ? { isPlaced: true as const } : { isPlaced: false as const, reason: o.unplaced ?? '' } }
   })
   on('ui.panes', () => ({ value: panes }))
+  // A close takes the pane off the list; an id not open is left alone, as Claude Code's is
+  on('ui.close', (_, e) => {
+    const at = panes.findIndex(p => p.id === e.id)
+    if (at >= 0) {
+      panes.splice(at, 1)
+      closed.push(e.id)
+    }
+    return { value: undefined }
+  })
   // A test changes the agents listed mid-test through `listed.current`
   const listed = { current: o.agents ?? [], calls: 0 }
   on('agent.list', () => {
@@ -282,7 +295,7 @@ export function stubAll(on: On, o: Options = {}): {
     writes,
   }
   mock.env(on, o.env ?? {})
-  return { clock, toasts, toastMs, opened, copied, usage, panes, listed, files, store, session, git, prompt, invalidates, statuses, sources, registered }
+  return { clock, toasts, toastMs, opened, escapes, closed, copied, usage, panes, listed, files, store, session, git, prompt, invalidates, statuses, sources, registered }
 }
 
 // Claude Code's own answers to the events a session raises, for a test that drives a whole turn. A test hooks an

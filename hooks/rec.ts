@@ -169,7 +169,7 @@ export function recStatus(level: Level, count: number): string {
   return `● REC ${level} · hiding ${parts.join(' · ')}`
 }
 
-export const REC_USAGE = 'Usage: /rec [on|strict|off|test|words]'
+export const REC_USAGE = 'Usage: /rec [on|strict|off|test|words [close]]'
 
 // The model's note for a level, which rides the person's next prompt (spec 'The model's note')
 const NOTE_ON = 'Screen recording is on (alfred-mods REC). Until told it is off, do not write secret values, API keys, tokens, passwords, email addresses or phone numbers in replies; refer to them by name, such as "the token in .env". Work on the task as usual.'
@@ -183,7 +183,7 @@ export function recNote(level: Level): string {
 // The /rec help text: the usage and what REC cannot hide (spec 'What REC cannot hide')
 export const REC_HELP = [
   REC_USAGE,
-  'The level is the "rec" field of "alfred-mods" in a settings file: "off", "on" or "strict". /rec on, strict and off set it in ~/.claude/settings.json, /rec test checks it, /rec words opens the private-words pane.',
+  'The level is the "rec" field of "alfred-mods" in a settings file: "off", "on" or "strict". /rec on, strict and off set it in ~/.claude/settings.json, /rec test checks it, /rec words opens the private-words pane and /rec words close closes it.',
   'REC cannot hide:',
   "- what you type in the prompt box",
   '- a prompt the mod fills into the prompt box',
