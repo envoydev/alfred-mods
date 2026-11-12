@@ -43,7 +43,9 @@ export type Meta = {
   // The folder holding the repository (or the working folder outside one) and its branch, read at start and every 30 s
   // `project`: the session's project root's name; `folder`: where Claude works when not that root, from it, or
   // '…/<name>' outside it; `branch`: the branch of the repository holding that folder
-  place?: { project: string; folder?: string; branch: string | null }
+  // `changes`: the repository's uncommitted lines against HEAD, a new untracked file's lines as added; absent until
+  // read, or when git refused
+  place?: { project: string; folder?: string; branch: string | null; changes?: { added: number; removed: number } }
   // Claude Code's version, read at start
   version?: string
   // A resumed or branched conversation: it holds skills loaded before the mod watched it, which no API lists

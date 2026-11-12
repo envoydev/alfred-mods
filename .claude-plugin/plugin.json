@@ -1,6 +1,6 @@
 {
   "name": "alfred-mods",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "description": "A Claude Code mod: context, usage, cost, tool failures, agents, cache and plan progress in one calm band and an /inspect pane. Works on Claude Code alone; with Alfred Code installed it also shows the stack's mode, runway and handoff.",
   "author": { "name": "envoydev" },
   "homepage": "https://github.com/envoydev/alfred-mods",

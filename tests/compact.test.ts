@@ -43,22 +43,23 @@ test('a failure draws ✗ exit 1 and up to 3 error lines', () => {
   expect(text(callLine(bash({ command: 'x' }, { isErrored: true, output: 'boom' }), 120))).toEqual(['⏺ Bash · x · ✗', '    boom'])
 })
 
-test("a blocked call draws ⊘ blocked: and the reason's first sentence; repeats in a group fold to ×2", () => {
+test("a blocked call draws ⊘ blocked: and the reason's first sentence; repeats in a group fold to 2 times in a row", () => {
   const blocked = bash({ command: 'sleep 25; gh run list' }, {
     isErrored: true, outcome: 'blocked', reason: 'blocked: use Monitor or run_in_background. Sleeping holds the turn.',
   })
   expect(text(callLine(blocked, 120))).toEqual(['⏺ Bash · sleep 25; gh run list · ⊘ blocked: use Monitor or run_in_background'])
-  expect(text(groupLines([blocked, blocked], 120))).toEqual(['⏺ Bash · sleep 25; gh run list · ⊘ blocked: use Monitor or run_in_background ×2'])
+  expect(text(groupLines([blocked, blocked], 120))).toEqual(['⏺ Bash · sleep 25; gh run list · ⊘ blocked: use Monitor or run_in_background · 2 times in a row'])
   expect(text(callLine(bash({ command: 'rm -rf dist' }, { isErrored: true, outcome: 'denied', reason: 'denied by you' }), 120)))
     .toEqual(['⏺ Bash · rm -rf dist · ⊘ denied by you'])
 })
 
-test('four reads draw ⏺ 4 reads · a, b, c ×2 · ✓', () => {
-  expect(text(groupLines([read('/w/a'), read('/w/b'), read('/w/c'), read('/w/c')], 120))).toEqual(['⏺ 4 reads · a, b, c ×2 · ✓'])
-  // Cut to the row width
-  const narrow = text(groupLines([read('/w/habits-scorer-card.test.js'), read('/w/secret-chain.js'), read('/w/layout.js')], 40))[0]!
-  expect(narrow.length <= 40).toBe(true)
-  expect(narrow.endsWith('… · ✓')).toBe(true)
+test('four reads draw ⏺ 4 reads · ✓ and a step per file, one read twice as 2 times', () => {
+  expect(text(groupLines([read('/w/a'), read('/w/b'), read('/w/c'), read('/w/c')], 120)))
+    .toEqual(['⏺ 4 reads · ✓', '  ⎿ read /w/a', '  ⎿ read /w/b', '  ⎿ read /w/c · 2 times'])
+  // Each step cut to the row width
+  const narrow = text(groupLines([read('/w/habits-scorer-card.test.js'), read('/w/secret-chain.js'), read('/w/layout.js')], 30))
+  expect(narrow.every(l => l.length <= 30)).toBe(true)
+  expect(narrow[1]!.endsWith('…')).toBe(true)
 })
 
 test('a non-text output draws its row without a count', () => {
@@ -72,7 +73,7 @@ test('an interrupted call draws ✗ interrupted', () => {
 
 test('a group draws one callLine per Bash and one reads line per run of reads', () => {
   const lines = groupLines([read('/w/a'), read('/w/b'), bash({ command: 'ls' }, { output: OUT('x') }), read('/w/c')], 120)
-  expect(text(lines)).toEqual(['⏺ 2 reads · a, b · ✓', '⏺ Bash · ls · 1 line ✓', '⏺ 1 read · c · ✓'])
+  expect(text(lines)).toEqual(['⏺ 2 reads · ✓', '  ⎿ read /w/a', '  ⎿ read /w/b', '⏺ Bash · ls · 1 line ✓', '⏺ 1 read · ✓', '  ⎿ read /w/c'])
 })
 
 // Claude Code's own drawing of each site, beneath the mod: the props it was handed, as JSON
@@ -121,10 +122,10 @@ for (const surface of SURFACES) {
 
   // Live, an emptied Write drew 'Wrote 1 line to …' and '(No content)' for three lines written, and an emptied Edit a
   // bare ⎿ (2026-10-28), so their result blocks draw nothing under the compact row
-  test(`with /quiet on, a Bash result draws next(e) with its preview emptied, Edit and Write an empty Box, other tools untouched (${surface})`, async ($, on) => {
+  test(`with /quiet on, Bash, Edit and Write results draw an empty Box, other tools untouched (${surface})`, async ($, on) => {
     await start($, on, QUIET)
     const b = await draw($, surface, 'ToolResult', { tool_use_id: 'c1', tool: 'Bash', output: OUT('a\nb', 'warn'), isErrored: false })
-    expect(b.props?.output).toEqual(OUT('', ''))
+    expect([b.props, b.lines.join('')]).toEqual([null, ''])
     const editOut = { filePath: '/w/a.ts', oldString: 'a', newString: 'b', originalFile: 'a', structuredPatch: [{ lines: ['-a', '+b'] }], userModified: false, replaceAll: false }
     const edit = await draw($, surface, 'ToolResult', { tool_use_id: 'c2', tool: 'Edit', output: editOut, isErrored: false })
     expect([edit.props, edit.lines.join('')]).toEqual([null, ''])
@@ -133,6 +134,16 @@ for (const surface of SURFACES) {
     expect([write.props, write.lines.join('')]).toEqual([null, ''])
     const readOut = { type: 'text', file: { filePath: '/w/c.md', content: 'hi', numLines: 1, startLine: 1, totalLines: 1 } }
     expect((await draw($, surface, 'ToolResult', { tool_use_id: 'c4', tool: 'Read', output: readOut, isErrored: false })).props?.output).toEqual(readOut)
+  })
+
+  test(`with /quiet on, a call auto mode allowed draws ⎿ allowed by auto mode under its row (${surface})`, async ($, on) => {
+    // The ask answered with no dialog, as tools.test.ts stands in for the classifier's allow
+    on('tool.check', () => ({ decision: 'ask' }))
+    on('classic.PermissionRequest', () => ({ decision: { behavior: 'allow' } }))
+    await start($, on, QUIET, () => ({ result: OUT('a\nb'), text: 'a\nb' }))
+    await $.classic.UserPromptSubmit({ prompt: 'q', permission_mode: 'auto' })
+    await $.tool.call({ tool: 'Bash', command: 'ls', description: 'List files', tool_use_id: 'c1' })
+    expect((await draw($, surface, 'ToolUse', BASH_USE)).lines).toEqual(['⏺ Bash · List files · 2 lines ✓', '  ⎿ allowed by auto mode'])
   })
 
   test(`with /quiet on, an errored result draws an empty Box under its compact row, for Bash and for Edit (${surface})`, async ($, on) => {
@@ -148,7 +159,8 @@ for (const surface of SURFACES) {
     await start($, on, QUIET)
     const calls = [groupCall('g1', 'Read', { file_path: '/w/a.ts' }), groupCall('g2', 'Read', { file_path: '/w/b.ts' }), groupCall('g3', 'Bash', { command: 'ls' }, { output: OUT('x') })]
     const group = await draw($, surface, 'ToolGroup', { calls, isActive: false, isExpanded: false, isCallsOnly: true })
-    expect(group.lines).toEqual(['⏺ 2 reads · a.ts, b.ts · ✓', '⏺ Bash · ls · 1 line ✓'])
+    // Each path read from the session's folder, /w
+    expect(group.lines).toEqual(['⏺ 2 reads · ✓', '  ⎿ read a.ts', '  ⎿ read b.ts', '⏺ Bash · ls · 1 line ✓'])
   })
 
   test(`a group with isCallsOnly false or absent passes next with isExpanded true (${surface})`, async ($, on) => {
