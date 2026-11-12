@@ -236,14 +236,124 @@ repo, and open it.
 `band`, `rec`, `handoff` and `handoffAt` can also be set by a command, which writes the field into your user file
 ([Commands](#commands)).
 
-With `quiet`, a failure keeps up to 3 error lines, runs of read-only calls fold into one line, and a blocked call
-shows the rule's first sentence; `"quiet": false`, Ctrl+O or `[Show]` in the Tools tab bring the full rows back.
+### Each field, with an example
+
+Each example shows the field inside the `"alfred-mods"` key of a settings file; keep the other keys and fields the
+file already has.
+
+#### `band` - how much the band shows
+
+`"full"` (the default) draws the turn, the gauges, an info line and the rows under it; `"calm"` keeps the first two
+lines; `"off"` draws no band at all. `/inspect band off|calm|full` sets it.
+
+```json
+{ "alfred-mods": { "band": "calm" } }
+```
+
+```text
+"full":                                                    "calm":
+⟳ Turn 2 · 0:14 · 18 tools                                 ⟳ Turn 2 · 0:14
+ctx ▰▱▱▱▱ 30% │ 5h 15% … │ $1.29 · today $10.46           ctx ▰▱▱▱▱ 30% │ 5h 15% … │ $1.29
+Sonnet 5.5 ◑ medium │ 59m │ ≈133 tok/s avg │ …
+usage:   [ 19 tools ]
+tools:   AskUserQuestion ×13 │ Bash ×5 │ Grep ×1
+…
+```
+
+#### `bandPlace` - above or under the prompt
+
+`"above"` (the default) draws the band over the input; `"under"` draws it below, in Claude Code's footer, on the
+terminal only (a Desktop tab keeps it above). Under, Claude Code's own mode line stays first, right under the prompt.
+
+```json
+{ "alfred-mods": { "bandPlace": "under" } }
+```
+
+```text
+❯ your prompt
+  ⏵⏵ auto mode on (shift+tab to cycle)
+  ⟳ Turn 2 · 0:14 · 18 tools
+  ctx ▰▱▱▱▱ 30% │ 5h 15% … │ $1.29 · today $10.46
+```
+
+#### `bandRows` - the detail rows
+
+`true` (the default) shows the `tools:`, `skills:`, `agents:` and `rules:` rows under the full band; `false` leaves
+them out, and `usage:` still counts them in one line.
+
+```json
+{ "alfred-mods": { "bandRows": false } }
+```
+
+```text
+⟳ Turn 2 · 0:14 · 18 tools
+ctx ▰▱▱▱▱ 30% │ 5h 15% … │ $1.29 · today $10.46
+Sonnet 5.5 ◑ medium │ 59m │ ≈133 tok/s avg │ cache warm 54m │ you 14:47 · Claude 15:58
+usage:   [ 19 tools ]
+```
+
+#### `quiet` - one line per tool call
+
+`true` (the default) draws each tool call in the conversation as one line: what it did, how many lines it printed,
+and ✓ or ✗. Runs of reads fold into one line, a failure keeps up to 3 error lines, and a blocked call shows the
+rule's first sentence. `false` draws Claude Code's full rows: the command and its output. Ctrl+O expands either, and
+`[Show]` in the Tools tab shows a failure's whole error.
+
+```json
+{ "alfred-mods": { "quiet": true } }
+```
 
 ```text
 ⏺ Bash · Show CI failure lines 1038-1042 · 30 lines ✓
 ⏺ 4 reads · scorer-card.test.js, chain.js, layout.js ×2 · ✓
 ⏺ Bash · npm test · ✗ exit 1
     FAIL tests/auth.test.ts
+```
+
+#### `rec` - masking for a recording or a shared screen
+
+`"off"` (the default) masks nothing. `"on"` masks keys, emails, phone numbers and your private words wherever the mod
+and Claude Code's message rows draw them, and leads the band with a red `● REC`; `"strict"` also masks your user
+name, home folder paths and dollar amounts. `/rec on|strict|off` sets it ([Recording mode](#recording-mode)).
+
+```json
+{ "alfred-mods": { "rec": "strict" } }
+```
+
+```text
+before:  export API_KEY=sk-live-4f9a… · jane.doe@example.com · /Users/jane/app · $12.40
+"on":    export API_KEY=‹key› · ‹email› · /Users/jane/app · $12.40
+"strict": export API_KEY=‹key› · ‹email› · ~/app · $••.••
+```
+
+#### `handoff` - saving a handoff before the context fills
+
+`"ask"` (the default) asks once the context passes `handoffAt`, in the band and the Now tab; `"auto"` saves by itself
+at each step; `"off"` never asks or saves (`/auto-handoff now` still saves). The handoff is
+`.claude/session-inspector/HANDOFF.md`, which the next session reads to carry on ([Handoff](#handoff)).
+`/auto-handoff ask|auto|off` sets it.
+
+```json
+{ "alfred-mods": { "handoff": "auto" } }
+```
+
+```text
+"ask":   ⚠ ctx past 80% 4: Handoff
+"auto":  Handoff saved to .claude/session-inspector/HANDOFF.md - /clear fills a resume prompt
+```
+
+#### `handoffAt` - when the handoff starts
+
+The context percent, a whole number from 10 to 95, where the handoff first asks or saves; after that it comes again
+every 5 points, up to 95. The percent is of the point where Claude Code compacts by itself, not of the model's
+window. `/auto-handoff at 70` sets it.
+
+```json
+{ "alfred-mods": { "handoffAt": 70 } }
+```
+
+```text
+⚠ ctx past 70% 4: Handoff        then again at 75%, 80%, … 95%
 ```
 
 ### Which file wins
