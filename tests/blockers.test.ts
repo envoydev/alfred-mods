@@ -71,7 +71,7 @@ for (const surface of SURFACES) {
       ['PreToolUse:Bash hook error: no rm', null],
     ])
     const lines = await toolsTab($, surface)
-    expect(lines.some(l => /^⊘ \d\d:\d\d Bash +Push +blocked by guard-bash\.js: use Monitor/.test(l))).toBe(true)
+    expect(lines.some(l => /^1 ⊘ \d\d:\d\d Bash +Push +blocked by guard-bash\.js: use Monitor/.test(l))).toBe(true)
     expect(lines.some(l => l.includes('/h/hooks'))).toBe(false)
   })
 
@@ -129,7 +129,7 @@ test('an old failure without by reads as null, and no blockers atom draws no lin
 
   for (const surface of SURFACES) {
     const lines = await toolsTab($, surface)
-    expect(lines.some(l => /^⊘ \d\d:\d\d Bash +Push +PreToolUse:Bash hook error: Blocked: use Monitor/.test(l))).toBe(true)
+    expect(lines.some(l => /^1 ⊘ \d\d:\d\d Bash +Push +PreToolUse:Bash hook error: Blocked: use Monitor/.test(l))).toBe(true)
     expect(lines.some(l => l.startsWith('Blocked by hooks'))).toBe(false)
   }
 })

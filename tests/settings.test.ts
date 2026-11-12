@@ -104,7 +104,7 @@ test('userFields lists the fields the user file gives', () => {
 
 test('the skipped toast names the file, the values and the value in use', () => {
   const r = resolve({ local: { band: 'compact' }, user: { band: 'calm' } }, {})
-  expect(skippedToast(skipOf(r), r)).toBe('"band" in .claude/settings.local.json takes "full" or "calm" - using "calm" from ~/.claude/settings.json')
+  expect(skippedToast(skipOf(r), r)).toBe('"band" in .claude/settings.local.json takes "full", "calm" or "off" - using "calm" from ~/.claude/settings.json')
   const at = resolve({ user: { handoffAt: 100 } }, {})
   const text = skippedToast(skipOf(at), at)
   expect(text).toBe('"handoffAt" in ~/.claude/settings.json takes a whole number from 10 to 95 - using 80 from the default')

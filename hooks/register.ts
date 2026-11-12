@@ -6,7 +6,7 @@ import type {
   EngineInterface, Register, SessionContextBreakdown, SessionRateLimit, SessionUsage, Timer, TurnStepInput, TurnStepResult, UiOpenResult,
 } from 'claude-code'
 
-import { actionOf, addLoopStep, isLive, newRow, refreshAgents, statusAt, upsertSpawn } from './agents.ts'
+import { actionOf, addLoopStep, agentTree, isLive, newRow, refreshAgents, statusAt, upsertSpawn } from './agents.ts'
 import { bandLines, spinnerSuffix, statusText, underRows } from './band.ts'
 import type { BandInput } from './band.ts'
 import {
@@ -20,7 +20,8 @@ import { NO_PARTS, linkedRules, partsOf, ruleName } from './parts.ts'
 import { clock, fingerprint, mins, oneLine, printable, tokens, usd, when } from './format.ts'
 import { mask, maskForFile, maskSpans, recLevel, setRec, toast } from './mask.ts'
 import { maskDeep, maskDialog, maskResult, neutralDialog, resultLines } from './sites.ts'
-import { DROPS_RESULT, callLine, emptyPreview, groupLines } from './compact.ts'
+import { DROPS_RESULT, callLine, groupLines } from './compact.ts'
+import { numstatTotals, textLines, untrackedNames } from './changes.ts'
 import type { CompactCall } from './compact.ts'
 import {
   FOREIGN, HANDOFF_PATH, HANDOFF_USAGE, MARKER, MODES, RESUME_PROMPT, TOASTS, gitPart, handoffText, nextStep,
@@ -35,10 +36,10 @@ import { PLANS_DIR, SCORES_DIR, readFolder } from './planfiles.ts'
 import { planLines, scoresLabel } from './planlines.ts'
 import { closeOf, closeSlices, closeWait, isAllWait, liveSpans, mineOf, openWait, overheadKey, sliceMs, staleKeys, stepKey, sumTimes, waitOf } from './steptime.ts'
 import type { Close } from './steptime.ts'
-import { agentsLines, cacheLines, nowLines, tabBar, timelineLines, toolsLines, usageLines } from './tabs.ts'
-import { classify, fold, targetOf, toolKey } from './outcome.ts'
+import { agentsLines, asCommands, cacheLines, nowLines, paneCommands, reportRows, tabBar, timelineLines, toolsLines, usageLines } from './tabs.ts'
+import { classify, fold, numberOf, targetOf, toolKey } from './outcome.ts'
 import { LEVELS, REC_HELP, addWord, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec.ts'
-import { DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast, writeField } from './settings.ts'
+import { BAND_MODES, DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast, writeField } from './settings.ts'
 import type { Field, From, Resolved, Source, Values } from './settings.ts'
 import { baseName, dropPassed, folderOf, gitDirOf, headBranch, nextWindows, parentOf, storedWindows } from './startup.ts'
 import type { CallFacts } from './outcome.ts'
@@ -189,7 +190,8 @@ async function addRow($: EngineInterface, id: string, call: Call, outcome: Exclu
     const rest = old === undefined ? list
       : old.count > 1 ? list.map(f => (f === old ? { ...f, count: f.count - 1 } : f))
       : list.filter(f => f !== old)
-    const out = fold(rest, row)
+    // A call settled again keeps its row's number
+    const out = fold(rest, old !== undefined && old.count === 1 && old.n !== undefined ? { ...row, n: old.n } : row)
     call.rowId = out[out.length - 1]?.id ?? null
     return out
   })
@@ -197,7 +199,7 @@ async function addRow($: EngineInterface, id: string, call: Call, outcome: Exclu
 
 // Compact rows' memory (Decisions 4 and 7): each settled call's outcome and reason, and the calls of a group the mod
 // unfolded, by call id, each the last 500. A reload empties both: a blocked call then draws ✗.
-const compactMem = { outcomes: new Map<string, { outcome: Outcome; reason: string }>(), marks: new Set<string>() }
+const compactMem = { outcomes: new Map<string, { outcome: Outcome; reason: string; isAutoAllowed: boolean }>(), marks: new Set<string>() }
 
 function keepLast<K>(items: Map<K, unknown> | Set<K>, limit = 500): void {
   for (const k of items.keys()) {
@@ -218,14 +220,20 @@ function mark(ids: string[]): void {
 function compactOf(id: string | undefined, c: { tool: string; input: unknown; output?: unknown; isErrored: boolean; isInterrupted: boolean }): CompactCall {
   const o = id === undefined ? undefined : compactMem.outcomes.get(id)
   const outcome = o?.outcome === 'denied' ? 'denied' : o?.outcome === 'blocked' || o?.outcome === 'refused' ? 'blocked' : null
-  return { tool: c.tool, input: c.input, output: c.output, isErrored: c.isErrored, isInterrupted: c.isInterrupted, outcome, reason: outcome === null ? null : o?.reason ?? null }
+  return {
+    tool: c.tool, input: c.input, output: c.output, isErrored: c.isErrored, isInterrupted: c.isInterrupted, outcome,
+    reason: outcome === null ? null : o?.reason ?? null, isAutoAllowed: o?.isAutoAllowed === true,
+  }
 }
 
 // Counts a settled call, or counts it again when a later event changed its outcome
 async function settle($: EngineInterface, id: string, call: Call): Promise<void> {
   const { outcome, reason, isNew, by } = classify(call.facts)
   compactMem.outcomes.delete(id)
-  compactMem.outcomes.set(id, { outcome, reason })
+  // In auto mode a check's ask that no one saw and no hook refused was the classifier's allow (outcome.ts)
+  const f = call.facts
+  const isAutoAllowed = outcome === 'ok' && f.autoMode && f.checked === 'ask' && !f.asked && f.hookDeny === null
+  compactMem.outcomes.set(id, { outcome, reason, isAutoAllowed })
   keepLast(compactMem.outcomes)
   const before = call.outcome
   call.settled = true
@@ -314,7 +322,10 @@ async function seedWindows($: EngineInterface): Promise<void> {
 // The HEAD file the place was read from, so the 30-second poll reads that one file for a checkout; the working folder
 // it was read with, as a move to another (a `cd`, a worktree, /cd) reads the place again; and the folder it shows, the
 // working folder or the folder of the file the main thread last edited or wrote
-const placeMem = { head: null as string | null, cwd: null as string | null, at: null as string | null }
+const placeMem = { head: null as string | null, cwd: null as string | null, at: null as string | null, repo: null as string | null }
+
+// The working folder the quiet rows read paths from, kept even when the place read is refused past it
+const rowsMem = { cwd: null as string | null }
 
 async function readText($: EngineInterface, path: string): Promise<string | null> {
   try {
@@ -327,7 +338,7 @@ async function readText($: EngineInterface, path: string): Promise<string | null
 const joinPath = (dir: string, name: string): string => (/[\\/]$/.test(dir) ? `${dir}${name}` : `${dir}/${name}`)
 
 // The folder holding `.git` at or above `cwd`, and its HEAD file and branch: a worktree's `.git` is a file naming its
-// git folder. No git process runs (spec: the user, 2026-11-11).
+// git folder. No git process runs for the branch (spec: the user, 2026-11-11); the change counts run their own two.
 async function findHead($: EngineInterface, cwd: string): Promise<{ dir: string; head: string; branch: string | null } | null> {
   let dir: string | null = cwd
   for (let depth = 0; dir !== null && depth < 40; depth += 1, dir = parentOf(dir)) {
@@ -341,15 +352,18 @@ async function findHead($: EngineInterface, cwd: string): Promise<{ dir: string;
   return null
 }
 
+// The counts stay until the next count replaces them
 const setPlace = (place: NonNullable<Meta['place']>) => (m: Meta): Meta =>
-  m.place?.project === place.project && m.place.folder === place.folder && m.place.branch === place.branch ? m : { ...m, place }
+  m.place?.project === place.project && m.place.folder === place.folder && m.place.branch === place.branch ? m
+    : { ...m, place: m.place?.changes === undefined ? place : { ...place, changes: m.place.changes } }
 
 // The session's project, the folder Claude works in when it is not the project's root, and the branch of the repository
 // holding that folder (the user, 2026-11-11): a Bash `cd` moves `$.session.cwd()` and leaves `$.session.root()`. With no
 // root read, the project is the repository's folder or the working folder, as before. A refused read leaves no place.
 async function readPlace($: EngineInterface, edited?: string): Promise<void> {
-  const repo = await $.session.repo()
   const cwd = await $.session.cwd()
+  rowsMem.cwd = cwd
+  const repo = await $.session.repo()
   const root = await $.session.root().catch(() => null)
   const at = edited ?? cwd
   placeMem.head = null
@@ -358,11 +372,14 @@ async function readPlace($: EngineInterface, edited?: string): Promise<void> {
   const folder = root === null ? null : folderOf(at, root)
   const shown = folder === null ? {} : { folder }
   if (repo === null && folder === null) {
+    placeMem.repo = null
     await update($, meta, setPlace({ project: baseName(root ?? cwd), branch: null }))
     return
   }
   const found = await findHead($, at)
   placeMem.head = found?.head ?? null
+  placeMem.repo = found?.dir ?? null
+  countSoon($)
   const project = root === null ? baseName(found?.dir ?? repo?.root ?? cwd) : baseName(root)
   await update($, meta, setPlace({ project, ...shown, branch: found?.branch ?? null }))
 }
@@ -373,11 +390,73 @@ async function editPlace($: EngineInterface, file: string): Promise<void> {
   const path = /^([\\/]|[A-Za-z]:)/.test(file) ? file : joinPath(await $.session.cwd(), file)
   const dir = parentOf(path)
   if (dir !== null && dir !== placeMem.at) await readPlace($, dir)
+  else countSoon($)
 }
 
-// A checkout since: the poll reads the HEAD file the place came from
+// The repository's uncommitted changes for the project row (the user, 2026-11-12): `git diff --numstat HEAD` from the
+// repository's folder, and each new untracked file's lines as added, the newest 200 files of 1 MiB or less, a file read
+// again only when its size or time moved. Off the hooks, one count at a time; one asked for while another runs follows
+// it. A refusal, a repository with no commit or a timeout leaves no counts. Nothing of a file is kept but its count.
+const changesMem = { isRunning: false, again: false, lines: new Map<string, { size: number; mtimeMs: number; lines: number }>() }
+
+function countSoon($: EngineInterface): void {
+  $.clock.after(0, () => {
+    countChanges($).catch(() => undefined)
+  })
+}
+
+async function countChanges($: EngineInterface): Promise<void> {
+  if (changesMem.isRunning) {
+    changesMem.again = true
+    return
+  }
+  changesMem.isRunning = true
+  try {
+    do {
+      changesMem.again = false
+      const changes = await readChanges($).catch(() => null)
+      await update($, meta, m => {
+        if (m.place === undefined) return m
+        const before = m.place.changes
+        if (changes === null) return before === undefined ? m : { ...m, place: { project: m.place.project, ...(m.place.folder === undefined ? {} : { folder: m.place.folder }), branch: m.place.branch } }
+        return before?.added === changes.added && before.removed === changes.removed ? m : { ...m, place: { ...m.place, changes } }
+      })
+    } while (changesMem.again)
+  } finally {
+    changesMem.isRunning = false
+  }
+}
+
+async function readChanges($: EngineInterface): Promise<{ added: number; removed: number } | null> {
+  const dir = placeMem.repo
+  if (dir === null) return null
+  const diff = await $.process.run(['git', '--no-optional-locks', 'diff', '--numstat', 'HEAD'], { cwd: dir, timeoutMs: 2000 })
+  if (diff.exitCode !== 0) return null
+  const totals = numstatTotals(diff.stdout)
+  const others = await $.process.run(['git', '--no-optional-locks', 'ls-files', '--others', '--exclude-standard', '-z'], { cwd: dir, timeoutMs: 2000 }).catch(() => null)
+  if (others === null || others.exitCode !== 0) return totals
+  const seen = new Map<string, { size: number; mtimeMs: number; lines: number }>()
+  for (const name of untrackedNames(others.stdout).slice(0, 200)) {
+    const path = joinPath(dir, name)
+    const stat = await $.fs.stat(path).catch(() => null)
+    if (stat === null || stat.kind !== 'file' || stat.size > 1024 * 1024) continue
+    const known = changesMem.lines.get(path)
+    if (known !== undefined && known.size === stat.size && known.mtimeMs === stat.mtimeMs) {
+      seen.set(path, known)
+      continue
+    }
+    const text = await $.fs.read(path).catch(() => null)
+    const lines = text === null ? null : textLines(text)
+    if (lines !== null) seen.set(path, { size: stat.size, mtimeMs: stat.mtimeMs, lines })
+  }
+  changesMem.lines = seen
+  return { added: totals.added + [...seen.values()].reduce((sum, f) => sum + f.lines, 0), removed: totals.removed }
+}
+
+// A checkout since: the poll reads the HEAD file the place came from, and counts the changes again
 async function pollPlace($: EngineInterface): Promise<void> {
   if (placeMem.cwd !== null && (await $.session.cwd()) !== placeMem.cwd) return readPlace($)
+  countSoon($)
   const head = placeMem.head
   if (head === null) return
   const text = await readText($, head)
@@ -921,6 +1000,76 @@ async function closePane($: EngineInterface, id: 'inspect' | 'rec', name: string
   return `Closed the ${name}.`
 }
 
+// The commands for what a click or a key does in the pane (the user, 2026-11-12: in iTerm's main screen, with tabs,
+// neither reaches the mod). Each answers with what it did, masked while REC is on.
+const INSPECT_HELP = 'Usage: /inspect [now|usage|agents|tools|cache|timeline|plan [name]] opens a tab, /inspect close closes the pane. ' +
+  '/inspect show [n] and copy [n] act on tool failure n (1 the newest), report [n] on agent report n (1 the top), ' +
+  "fill fills Alfred Code's resume prompt, band off|calm|full sets \"band\" in ~/.claude/settings.json."
+const BAND_HELP = '/inspect band off, calm or full sets "band" in ~/.claude/settings.json.'
+const COPY_WHY = { 'no-surface': 'no screen to copy on', 'no-clipboard': 'this terminal has no clipboard path', refused: 'the terminal refused it' } as const
+
+// '2' as 2; left out, 1; anything else, 0, which no item has
+const ordinal = (word: string | undefined): number => (word === undefined ? 1 : /^\d+$/.test(word) ? Number(word) : 0)
+const outOf = (what: string, word: string | undefined, count: number, first: string): string =>
+  `No ${what} ${oneLine(printable(word ?? ''), 20)}: there ${count === 1 ? 'is 1' : `are ${count}`}, 1 the ${first}.`
+
+// The pane on `tab`, unless it is open on one of `tabs` already: '' when drawn, else why not
+async function showOn($: EngineInterface, tab: Tab, tabs: Tab[]): Promise<string> {
+  const isOpen = (await $.ui.panes().catch(() => [])).some(p => p.id === 'inspect')
+  if (isOpen && tabs.includes((await read($, view)).tab)) return ''
+  const opened = await openInspect($, tab)
+  return opened.isPlaced ? '' : ` The pane is open but not drawn: ${opened.reason}.`
+}
+
+// '/inspect band [off|calm|full]': writes "band" into the user file, or names the mode in force and its source
+async function bandCommand($: EngineInterface, word: string): Promise<string> {
+  const mode = BAND_MODES.find(m => m === word)
+  if (mode !== undefined) return setField($, 'band', mode)
+  await loadSettings($)
+  const r = settingsMem.resolved
+  return `Band: ${r?.values.band ?? DEFAULTS.band} - from ${sourceName(r?.from.band ?? 'default', '/band')}. ${BAND_HELP}`
+}
+
+// '/inspect show [n]' and '/inspect copy [n]': the failure whose row starts with n, the newest when n is left out
+async function failureCommand($: EngineInterface, action: 'show' | 'copy', word: string | undefined): Promise<string> {
+  const list = (await read($, failures)).map((f, i) => ({ f, n: numberOf(f, i) }))
+  const newest = list[list.length - 1]
+  if (newest === undefined) return `No tool failure to ${action}.`
+  const n = word === undefined ? newest.n : ordinal(word)
+  const f = list.find(x => x.n === n)?.f
+  const oldest = list[0]?.n ?? newest.n
+  if (f === undefined) {
+    const range = oldest === newest.n ? `the pane lists failure ${oldest}` : `the pane lists failures ${oldest} to ${newest.n}`
+    return `No failure ${oneLine(printable(word ?? ''), 20)}: ${range}.`
+  }
+  const name = `failure ${n} (${f.tool}${f.target === '' ? '' : `  ${oneLine(printable(f.target), 40)}`})`
+  if (action === 'copy') {
+    if (f.outcome !== 'error') return `Nothing to copy: ${name} was ${f.outcome}, not an error.`
+    const done = await $.ui.copy({ text: f.detail })
+    return done.isCopied ? `Copied the error of ${name}.` : `Not copied: ${COPY_WHY[done.reason]}.`
+  }
+  if (f.outcome !== 'error' && f.outcome !== 'blocked') return `Nothing to show: ${name} was ${f.outcome}.`
+  return toggleCommand($, f.id, name, 'now', ['now', 'tools'])
+}
+
+// '/inspect report [n]': report n of the agents that finished with one, in the Agents tab's order, the top first
+async function reportCommand($: EngineInterface, word: string | undefined): Promise<string> {
+  const list = reportRows(await read($, agents))
+  if (list.length === 0) return 'No agent report to show.'
+  const n = ordinal(word)
+  const r = list[n - 1]
+  if (r === undefined) return outOf('report', word, list.length, 'top')
+  return toggleCommand($, `report:${r.id}`, `report ${n} (${r.type} · ${oneLine(printable(r.description), 40)})`, 'agents', ['agents'])
+}
+
+// Show and Hide as one toggle, as the button: shown, the pane comes up on a tab that lists it
+async function toggleCommand($: EngineInterface, id: string, name: string, tab: Tab, tabs: Tab[]): Promise<string> {
+  const isShown = (await read($, view)).shown.includes(id)
+  await toggleShown($, id)
+  if (isShown) return `Hid ${name}.`
+  return `Showing ${name} in the inspect pane.${await showOn($, tab, tabs)}`
+}
+
 // The band's Inspect button: a pane the surface leaves undrawn says why
 async function inspectFromBand($: EngineInterface): Promise<void> {
   const opened = await openInspect($, 'now')
@@ -1129,7 +1278,7 @@ async function removeRecWord($: EngineInterface, word: string): Promise<void> {
 const recOf = (r: RecState): { level: RecState['level']; words: number } => ({ level: r.level, words: r.count })
 
 // A source's name in the commands' answers: an earlier command's choice is named for its command (S7)
-const sourceName = (from: From, command: '/rec' | '/auto-handoff'): string => (from === 'legacy' ? `an earlier ${command}` : nameOf(from))
+const sourceName = (from: From, command: '/rec' | '/auto-handoff' | '/band'): string => (from === 'legacy' ? `an earlier ${command}` : nameOf(from))
 
 // The user settings file Claude Code reads: settings.json in CLAUDE_CONFIG_DIR when set, else in ~/.claude; null with no
 // home to find it from
@@ -1566,11 +1715,12 @@ async function followConversation($: EngineInterface, by: 'prompt' | null, calls
 
 // `f` in the ALFRED CODE section: the stack's resume prompt into an empty draft, never sent. A press from a frame drawn
 // before the prompt went away or the file stopped owning the full context fills nothing (Decision 7).
-async function fillStack($: EngineInterface): Promise<void> {
+// f, or '/inspect fill': what it did, which the press toasts and the command answers
+async function fillStack($: EngineInterface): Promise<string> {
   const text = stackMem.prompt
-  if (!fillReady(await read($, stack), text)) toast($, STACK_TOASTS.gone)
-  else if ((await $.prompt.read()).text.trim() !== '') toast($, STACK_TOASTS.notEmpty)
-  else toast($, fillToast(await $.prompt.fill({ text })))
+  if (!fillReady(await read($, stack), text)) return STACK_TOASTS.gone
+  if ((await $.prompt.read()).text.trim() !== '') return STACK_TOASTS.notEmpty
+  return fillToast(await $.prompt.fill({ text }))
 }
 
 // The Now tab's HANDOFF section reads the atom with F8's percent and the runway
@@ -1859,9 +2009,9 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     const started = await next(e)
-    await $.command.register({ name: 'inspect', description: 'Session metrics, agents, tool failures, cache, the timeline and the plan in a pane', argumentHint: '[now|usage|agents|tools|cache|timeline|plan [name]|close]' })
+    await $.command.register({ name: 'inspect', description: 'Session metrics, agents, tool failures, cache, the timeline and the plan in a pane', argumentHint: '[now|usage|agents|tools|cache|timeline|plan [name]|close|show [n]|copy [n]|report [n]|fill|band off|calm|full]' })
     await $.command.register({ name: 'rec', description: 'Recording mode: set "rec" in ~/.claude/settings.json, show the level, test it, or edit your private words', argumentHint: '[on|strict|off|test|words [close]]' })
-    await $.command.register({ name: 'auto-handoff', description: 'Save a handoff now, set the handoff mode or first ask in ~/.claude/settings.json, or show them', argumentHint: '[ask|auto|off|at <percent>|now]' })
+    await $.command.register({ name: 'auto-handoff', description: 'Save a handoff now, set the handoff mode or first ask in ~/.claude/settings.json, or show them', argumentHint: '[ask|auto|off|at <percent>|now|compact|later]' })
     recMem.home = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE')) ?? null
     await loadSettings($, true)
     await readStatus($)
@@ -2092,8 +2242,12 @@ export const register: Register = (on, options) => {
     const words = e.args.trim().split(/\s+/)
     const word = (words[0] ?? '').toLowerCase()
     if (word === 'close') return { text: await closePane($, 'inspect', 'inspect pane') }
+    if (word === 'band') return { text: mask(await bandCommand($, (words[1] ?? '').toLowerCase())) }
+    if (word === 'show' || word === 'copy') return { text: mask(await failureCommand($, word, words[1])) }
+    if (word === 'report') return { text: mask(await reportCommand($, words[1])) }
+    if (word === 'fill') return { text: await fillStack($) }
     const tab = TABS.find(t => t === (word === '' ? 'now' : word))
-    if (tab === undefined) return { text: 'Tabs: now, usage, agents, tools, cache, timeline, plan. /inspect close closes the pane.' }
+    if (tab === undefined) return { text: INSPECT_HELP }
     if (tab === 'plan') {
       const name = words[1] ?? null
       const good = (await read($, plans)).plans.filter(w => w.value !== null).map(w => w.name).sort()
@@ -2134,6 +2288,16 @@ export const register: Register = (on, options) => {
     if (args === 'now') {
       await saveNow($)
       return { text: `Saving a handoff to ${HANDOFF_PATH}.` }
+    }
+    // The ask's c and r, for a screen where its keys and clicks do not reach the mod (the user, 2026-11-12)
+    if (args === 'compact') {
+      void saveThenCompact($, held)
+      return { text: `Saving a handoff to ${HANDOFF_PATH}, then compacting.` }
+    }
+    if (args === 'later') {
+      if (!(await read($, handoff)).isAskUp) return { text: 'No handoff ask is up.' }
+      await dismissAsk($)
+      return { text: 'The handoff ask is down until the next step.' }
     }
     const mode = MODES.find(m => m === args)
     if (mode !== undefined) return { text: mask(await setField($, 'handoff', mode)) }
@@ -2244,7 +2408,7 @@ export const register: Register = (on, options) => {
     if (e.props.isErrored && typeof e.props.output === 'string' && !errorMem.has(e.props.tool_use_id)) keepError(e.props.tool_use_id, e.props.output)
     if ((await read($, quiet)).isOn && !e.props.isRunning && (e.props.isExpanded !== true || compactMem.marks.has(e.props.tool_use_id))) {
       const columns = e.viewport?.columns ?? 120
-      const lines = callLine(compactOf(e.props.tool_use_id, e.props), columns)
+      const lines = callLine(compactOf(e.props.tool_use_id, e.props), columns, { cwd: rowsMem.cwd })
       return drawLines($, e, lines, { noColor: await isNoColor($), press: {}, columns , fill: true })
     }
     if (!(await isRecOn($))) return next(e)
@@ -2257,7 +2421,7 @@ export const register: Register = (on, options) => {
         errorRows.add(e.props.tool_use_id)
         keepLast(errorRows)
         const columns = e.viewport?.columns ?? 120
-        const head = callLine(compactOf(e.props.tool_use_id, e.props), columns).slice(0, 1)
+        const head = callLine(compactOf(e.props.tool_use_id, e.props), columns, { cwd: rowsMem.cwd }).slice(0, 1)
         const isExpanded = e.props.isExpanded === true
         return drawLines($, e, [...head, ...resultLines(failed.text, { isExpanded, isErrored: true, gutter: e.surface === 'terminal' })], { noColor: await isNoColor($), press: {}, columns , fill: true })
       }
@@ -2269,24 +2433,20 @@ export const register: Register = (on, options) => {
   }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
 
   // With "quiet" on an errored result draws an empty Box, as Claude Code would draw its whole error text and the compact
-  // row above carries ✗ and its error lines, and so does an Edit or Write result (DROPS_RESULT); any other keeps
-  // next(e)'s tree, the classifier line in it, its preview gone. Under REC, so does an errored result whose row drew
-  // its masked error text
+  // row above carries ✗ and its error lines, and so does a result whose row carries what it said (DROPS_RESULT: Bash,
+  // Edit, Write and more); any other keeps next(e)'s tree, the classifier line in it. Under REC, so does an errored
+  // result whose row drew its masked error text
   on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {
     // Fullscreen's ctrl+o draws no group, so nothing there unmarks the rows a group unfolded; an expanded result draws
     // only in that view (an unfolded group draws its rows' output inline), so it unmarks its row and redraws it in full
     if (e.props.isExpanded === true && compactMem.marks.delete(e.props.tool_use_id)) $.ui.invalidate('ui.render')
-    let props = e.props
-    if ((await read($, quiet)).isOn && e.props.isExpanded !== true) {
-      if (e.props.isErrored || DROPS_RESULT.includes(e.props.tool)) return drawLines($, e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
-      const output = emptyPreview(e.props.tool, e.props.output)
-      if (output !== e.props.output) props = { ...e.props, output }
-    }
-    if (!(await isRecOn($))) return props === e.props ? next(e) : next({ ...e, props })
+    const isDropped = e.props.isErrored || DROPS_RESULT.includes(e.props.tool)
+    if (isDropped && e.props.isExpanded !== true && (await read($, quiet)).isOn) return drawLines($, e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
+    if (!(await isRecOn($))) return next(e)
     if (e.props.isErrored && errorRows.has(e.props.tool_use_id)) return drawLines($, e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
-    const masked = maskResult({ ...props, error: errorMem.get(e.props.tool_use_id) ?? null }, mask)
-    if (masked.kind === 'same') return props === e.props ? next(e) : next({ ...e, props })
-    if (masked.kind === 'output') return next({ ...e, props: { ...props, output: masked.output } })
+    const masked = maskResult({ ...e.props, error: errorMem.get(e.props.tool_use_id) ?? null }, mask)
+    if (masked.kind === 'same') return next(e)
+    if (masked.kind === 'output') return next({ ...e, props: { ...e.props, output: masked.output } })
     const lines = resultLines(masked.text, { isExpanded: e.props.isExpanded === true, isErrored: e.props.isErrored, gutter: e.surface === 'terminal' })
     return drawLines($, e, lines, { noColor: await isNoColor($), press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
   }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
@@ -2306,7 +2466,7 @@ export const register: Register = (on, options) => {
     }
     if (isQuiet && !e.props.isActive && e.props.isCallsOnly === true) {
       const columns = e.viewport?.columns ?? 120
-      const lines = groupLines(e.props.calls.map(c => compactOf(c.tool_use_id, c)), columns)
+      const lines = groupLines(e.props.calls.map(c => compactOf(c.tool_use_id, c)), columns, { cwd: rowsMem.cwd })
       return drawLines($, e, lines, { noColor: await isNoColor($), press: {}, columns , fill: true })
     }
     if (isQuiet && (isRec || !e.props.isActive)) mark(ids)
@@ -2357,7 +2517,7 @@ export const register: Register = (on, options) => {
       'tab-cache': () => openInspect($, 'cache'),
       compact: () => compactNow($, held),
       'handoff-save': () => saveNow($),
-      'stack-fill': () => fillStack($),
+      'stack-fill': async () => toast($, await fillStack($)),
       'handoff-compact': () => saveThenCompact($, held),
       'handoff-dismiss': () => dismissAsk($),
       'tab-timeline': () => openInspect($, 'timeline'),
@@ -2370,7 +2530,11 @@ export const register: Register = (on, options) => {
     for (const agent of input.agents) {
       if (agent.report !== null) press[`report-${agent.id}`] = () => toggleShown($, `report:${agent.id}`)
     }
-    return drawLines($, e, [...bar, ...body], { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
+    // On the terminal's main screen nothing takes a click, and the pane's keys may not reach the mod (the user,
+    // 2026-11-12): each button draws as its command
+    const isMain = e.surface === 'terminal' && e.viewport?.isFullscreen === false
+    const lines = isMain ? asCommands([...bar, ...body], paneCommands(rows, input.agents)) : [...bar, ...body]
+    return drawLines($, e, lines, { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
   }).catch(($, e, next) => drawNote($, e, paneFailed(next.error.kind, next.error.message, recLevel() !== 'off')))
 
   // The private-words pane: words are added only here, never through a command's arguments, which the transcript echoes

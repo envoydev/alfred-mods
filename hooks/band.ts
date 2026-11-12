@@ -16,8 +16,9 @@ export type Tone = 'ok' | 'warn' | 'fail' | 'dim' | 'usage' | 'skill' | 'agents'
 export type Seg =
   // With a `width`, a table cell: that many cells wide, its text cut with '…' when longer, at its end with `align: 'end'`
   | { text: string; tone?: Tone; bold?: boolean; width?: number; align?: 'start' | 'end' }
-  // A toned button draws its label bold in the colour of the feature it acts on; a plain one draws `<hotkey>: <label>`
-  | { button: { key: string; label: string; hotkey?: string; tone?: Tone; plain?: boolean } }
+  // A toned button draws its label bold in the colour of the feature it acts on; a plain one draws `<hotkey>: <label>`;
+  // `isText`, where nothing presses it, its label as dim text that keeps a button's place at the line's end
+  | { button: { key: string; label: string; hotkey?: string; tone?: Tone; plain?: boolean; isText?: boolean } }
   | { code: string }
   | { chart: number[] }
   // Agents on one time axis (spec C2), alone on its line: text lanes on the terminal and mobile, one Svg elsewhere
@@ -298,21 +299,27 @@ function planRow(b: BandInput): Line[] {
 const rowLabel = (text: string): Seg => ({ text: text.padEnd(ROW_LABEL), tone: 'dim' })
 const dimSeg = (text: string): Seg => ({ text, tone: 'dim' })
 
-// The project row (the user, 2026-11-11): 'project: my-app │ git:(develop) │ folder: .claude' - the session's
+// The project row (the user, 2026-11-11): 'project: my-app │ git:(develop) +12 −3 │ folder: .claude' - the session's
 // project, the branch of the repository holding the folder Claude works in, and that folder when it is not the
 // project's root, past 40 cells its last parts after '…/'; short of width the folder takes its last part, then goes
 function placeRow(b: BandInput): Line[] {
   const place = b.meta.place
   if (place === undefined) return []
   const sep = dimSeg(ROW_JOIN)
-  const line = (folder: string | null): Line => [
+  // The uncommitted changes after the branch, added in the OK colour and removed in the failure one; none when clean
+  const changes = place.changes
+  const counted: Seg[] = place.branch === null || changes === undefined || changes.added + changes.removed === 0 ? []
+    : [{ text: ' ' }, { text: `+${changes.added}`, tone: 'ok' }, { text: ' ' }, { text: `−${changes.removed}`, tone: 'fail' }]
+  const line = (folder: string | null, withChanges = true): Line => [
     { text: place.project },
     // git:( and ) purple, the branch yellow, the folder in the text's own colour (the user, 2026-11-11)
     ...(place.branch === null ? [] : [sep, { text: 'git:(', tone: 'git' as const }, { text: place.branch, tone: 'branch' as const }, { text: ')', tone: 'git' as const }]),
+    ...(withChanges ? counted : []),
     ...(folder === null ? [] : [sep, dimSeg('folder: '), { text: folder }]),
   ]
   const folder = place.folder
-  const forms = folder === undefined ? [line(null)] : [line(fitFolder(folder, 40)), line(lastPart(folder)), line(null)]
+  // Short of width the folder goes first, then the changes
+  const forms = [...(folder === undefined ? [] : [line(fitFolder(folder, 40)), line(lastPart(folder))]), line(null), line(null, false)]
   const form = forms.find(f => widthOf(f) <= b.columns - ROW_LABEL) ?? forms[forms.length - 1] ?? []
   return [[rowLabel('project:'), ...form]]
 }
@@ -589,6 +596,8 @@ const KEEP_ALL: Keep = { infoUpTo: 2, isPlaceKept: true, toolRowsKept: Infinity,
 // the body's first line follows them while it fits what is left, else they take line 1 alone and the body keeps the
 // full width, so no gauge, reset or the cost drops for them
 export function bandLines(b: BandInput): Line[] {
+  // "band": "off" draws none, above or under, and the pinned line counts it as out of view
+  if (b.mode === 'off') return []
   const max = b.maxRows
   if (max === undefined) return bandRows(b, KEEP_ALL)
   // Short of rows, the project row gives way first, then the info line's second row, then the open detail rows from

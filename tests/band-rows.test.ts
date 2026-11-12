@@ -405,6 +405,20 @@ test('the project row shows the session project, the branch, then the folder Cla
   expect(deep).toContain('project: w │ git:(main) │ folder: …/src/app/features/billing/invoices')
 })
 
+// The changes after the branch (the user, 2026-11-12), tests/changes.test.ts for how they are read
+test('the project row shows the changes after the branch, and none when the tree is clean', () => {
+  expect(placed({ project: 'alfred-mods', folder: 'hooks', branch: 'web-steps', changes: { added: 5323, removed: 123 } }))
+    .toContain('project: alfred-mods │ git:(web-steps) +5323 −123 │ folder: hooks')
+  expect(placed({ project: 'w', branch: 'main', changes: { added: 0, removed: 0 } })).toContain('project: w │ git:(main)\n')
+  expect(placed({ project: 'w', branch: 'main' })).toContain('project: w │ git:(main)\n')
+})
+
+test('narrow, the folder goes first, then the changes', () => {
+  const place = { project: 'Example', folder: 'Frontend/src/app', branch: 'develop', changes: { added: 12, removed: 3 } }
+  expect(placed(place, 50)).toContain('project: Example │ git:(develop) +12 −3\n')
+  expect(placed(place, 36)).toContain('project: Example │ git:(develop)\n')
+})
+
 test("narrow, the project row keeps the folder's last part, then drops the folder", () => {
   const place = { project: 'Example', folder: 'Frontend/src/app', branch: 'develop' }
   expect(placed(place, 100)).toContain('project: Example │ git:(develop) │ folder: Frontend/src/app')

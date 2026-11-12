@@ -80,19 +80,38 @@ export function statusGlyph(status: AgentStatus): Extract<Seg, { text: string }>
 // The time axis's lanes (spec C2): the 8 newest rows that have a start, oldest first; a live row has no end yet
 export function lanesOf(rows: AgentRow[], now: number): Lane[] {
   return rows.filter(r => r.startedAt > 0).sort((a, b) => a.startedAt - b.startedAt).slice(-8).map(r => ({
-    label: r.task === null ? r.type : `task ${r.task}`, startAt: r.startedAt,
+    label: laneLabel(r), startAt: r.startedAt,
     endAt: isLive(r.status) ? null : r.endedAt ?? now, status: r.status, time: agentTime(r, now),
   }))
 }
 
-// A lane's text widths at `columns` (spec C2): a glyph and a space, the label, the bar, a space and the time. The time
-// cell is as wide as the longest lane's, never cut; the label is 14 cells and gives way down to 6 so the bar keeps 10.
-// Null where even that does not fit: the pane draws no lanes.
+// A lane's label: what the agent was asked, its task id first, or its type when it was asked nothing (the user,
+// 2026-11-12: 'I want to see what agents are doing or did'; the type alone left eight lanes all 'general-purpo…')
+export function laneLabel(r: AgentRow): string {
+  const asked = oneLine(r.description, 200)
+  const what = asked === '' ? r.type : asked
+  return r.task === null ? what : `task ${r.task} · ${what}`
+}
+
+// A lane's text widths at `columns` (spec C2): a glyph and a space, the label and a space, the bar, a space and the time. The time
+// cell is as wide as the longest lane's, never cut; the label as wide as the longest, from 6 to 40 cells, giving way
+// down to 6 so the bar keeps 10; the bar takes the rest up to 40, so a wide pane is not a row of dots (the user,
+// 2026-11-12). Null where even that does not fit: the pane draws no lanes.
 export type LaneFit = { label: number; bar: number; time: number }
+const LANE_MAX = 40
 export function laneFit(lanes: Lane[], columns: number): LaneFit | null {
   const time = Math.max(0, ...lanes.map(l => [...l.time].length))
-  const label = Math.min(14, columns - 3 - time - 10)
-  return label < 6 ? null : { label, bar: columns - 3 - time - label, time }
+  const room = columns - 4 - time
+  const longest = Math.min(LANE_MAX, Math.max(6, ...lanes.map(l => [...l.label].length)))
+  const label = Math.min(longest, room - 10)
+  return label < 6 ? null : { label, bar: Math.min(LANE_MAX, room - label), time }
+}
+
+// A report's line in the tree: its first that is not a heading, a rule or a fence, else its first heading's words
+export function reportLine(report: string): string {
+  const lines = report.split('\n').map(l => l.trim()).filter(l => l !== '' && !/^([-*_=]\s*){3,}$/.test(l) && !l.startsWith('```'))
+  const isHeading = (l: string): boolean => /^#{1,6}\s/.test(l)
+  return (lines.find(l => !isHeading(l)) ?? lines[0] ?? '').replace(/^#{1,6}\s+/, '')
 }
 
 // Loops no spawn announced (spec C3): a step adds to its loop, or starts one; the newest 60 are kept

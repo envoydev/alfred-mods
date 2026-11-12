@@ -53,10 +53,11 @@ async function two($: Engine, on: On, o: Parameters<typeof stubAll>[1] = {}, tas
   return kit
 }
 
-// A glyph and a space, a 14-cell label, the bar, a space and the time in a cell as wide as the longest lane's ('done in
-// 4s', 10): at 60 columns the bar is 33 cells, the axis 8 s, the first lane 0-4 s of it and the second 2-8 s
-const LANE_1 = `✓ ${'Explore'.padEnd(14)}${'━'.repeat(17)}${'·'.repeat(16)} done in 4s`
-const LANE_2 = `⟳ ${'task T-7'.padEnd(14)}${'·'.repeat(8)}${'━'.repeat(25)} 6s`
+// A glyph and a space, the label as wide as the longest ('task T-7 · second', 17) and a space, the bar, a space and the
+// time in a cell as wide as the longest lane's ('done in 4s', 10): at 60 columns the bar is 29 cells, the axis 8 s, the
+// first lane 0-4 s of it and the second 2-8 s
+const LANE_1 = `✓ ${'first'.padEnd(17)} ${'━'.repeat(15)}${'·'.repeat(14)} done in 4s`
+const LANE_2 = `⟳ task T-7 · second ${'·'.repeat(7)}${'━'.repeat(22)} 6s`
 
 test('two agents draw lanes between the head and the tree at 60 columns and wider', { timeoutMs: 15_000 }, async ($, on) => {
   await two($, on)
@@ -67,8 +68,9 @@ test('two agents draw lanes between the head and the tree at 60 columns and wide
 
   const wide = await agentsTab($, 'terminal', 100)
   const at = wide.findIndex(l => l.startsWith('Agents (2)'))
-  expect(wide[at + 1]?.startsWith(`✓ ${'Explore'.padEnd(14)}━`)).toBe(true)
-  expect([...(wide[at + 1] ?? '')].filter(c => c === '━' || c === '·').length).toBe(100 - 3 - 14 - 10)
+  expect(wide[at + 1]?.startsWith(`✓ ${'first'.padEnd(17)} ━`)).toBe(true)
+  // The bar stops at 40 cells, however wide the pane
+  expect([...(wide[at + 1] ?? '')].filter(c => c === '━' || c === '·').length).toBe(40)
 })
 
 // A pane docked beside a 120-column terminal is about 49 columns: the lanes draw there with their whole label
@@ -77,8 +79,8 @@ test('a pane docked beside a 120-column terminal draws the lanes', { timeoutMs: 
   const lines = await agentsTab($, 'terminal', 49)
   const head = lines.findIndex(l => l.startsWith('Agents (2)'))
   expect(lines.slice(head + 1, head + 3)).toEqual([
-    `✓ ${'Explore'.padEnd(14)}${'━'.repeat(11)}${'·'.repeat(11)} done in 4s`,
-    `⟳ ${'task T-7'.padEnd(14)}${'·'.repeat(5)}${'━'.repeat(17)} 6s`,
+    `✓ ${'first'.padEnd(17)} ${'━'.repeat(9)}${'·'.repeat(9)} done in 4s`,
+    `⟳ task T-7 · second ${'·'.repeat(4)}${'━'.repeat(14)} 6s`,
   ])
 })
 
@@ -88,11 +90,11 @@ test('a narrow pane shortens the label to keep a 10-cell bar, and draws none bel
   const lines = await agentsTab($, 'terminal', 32)
   const head = lines.findIndex(l => l.startsWith('Agents (2)'))
   expect(lines.slice(head + 1, head + 3)).toEqual([
-    `✓ ${'Explore'.padEnd(9)}${'━'.repeat(5)}${'·'.repeat(5)} done in 4s`,
-    `⟳ ${'task T-7'.padEnd(9)}${'·'.repeat(2)}${'━'.repeat(8)} 6s`,
+    `✓ ${'first'.padEnd(8)} ${'━'.repeat(5)}${'·'.repeat(5)} done in 4s`,
+    `⟳ task T-… ${'·'.repeat(2)}${'━'.repeat(8)} 6s`,
   ])
-  expect((await agentsTab($, 'terminal', 29)).filter(l => l.includes('━'))).toHaveLength(2)
-  expect((await agentsTab($, 'terminal', 28)).some(l => l.includes('━'))).toBe(false)
+  expect((await agentsTab($, 'terminal', 30)).filter(l => l.includes('━'))).toHaveLength(2)
+  expect((await agentsTab($, 'terminal', 29)).some(l => l.includes('━'))).toBe(false)
 })
 
 test('one agent alone draws no lanes', { timeoutMs: 15_000 }, async ($, on) => {
@@ -128,11 +130,11 @@ test('the 8 newest rows only', { timeoutMs: 15_000 }, async ($, on) => {
   }
   const lanes = (await agentsTab($, 'terminal', 80)).filter(l => l.includes('━'))
   expect(lanes).toHaveLength(8)
-  expect(lanes[0]?.startsWith(`⟳ ${'Type2'.padEnd(14)}`)).toBe(true)
-  expect(lanes[7]?.startsWith(`⟳ ${'Type9'.padEnd(14)}`)).toBe(true)
+  expect(lanes[0]?.startsWith('⟳ agent 2 ')).toBe(true)
+  expect(lanes[7]?.startsWith('⟳ agent 9 ')).toBe(true)
 })
 
-test("a lane's label is task <id> or the type, 14 cells, through mask() under REC", { timeoutMs: 15_000 }, async ($, on) => {
+test("a lane's label is task <id> and what was asked, through mask() under REC", { timeoutMs: 15_000 }, async ($, on) => {
   await two($, on, { store: { 'settings:rec': 'on', 'rec:words': ['Zephyrine'] } }, 'T-Zephyrine')
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await mount($, surface, 80)
@@ -142,8 +144,7 @@ test("a lane's label is task <id> or the type, 14 cells, through mask() under RE
   const lines = await agentsTab($, 'terminal', 80)
   const lane = lines.find(l => l.startsWith('⟳ task T-'))
   expect(lane === undefined).toBe(false)
-  // The label is a 14-cell cell: the bar starts at cell 16 whatever the label's length
-  expect([...(lane ?? '')].slice(16, 17).join('')).toMatch(/[·━]/)
+  expect(lane?.includes(' · second ')).toBe(true)
 })
 
 test('terminal and mobile draw text lanes, mobile in its monospaced face', { timeoutMs: 15_000 }, async ($, on) => {
@@ -174,8 +175,8 @@ test('desktop and vscode draw one Svg with a rect per lane in fixed hex', { time
     // Completed green, running blue: flightdeck's SVG_COLORS, mid-tones that read on light and dark
     expect(source.includes('fill="#16a34a"')).toBe(true)
     expect(source.includes('fill="#3b82f6"')).toBe(true)
-    expect(source.includes('>Explore<')).toBe(true)
-    expect(source.includes('>task T-7<')).toBe(true)
+    expect(source.includes('>first<')).toBe(true)
+    expect(source.includes('>task T-7 · second<')).toBe(true)
     expect((await rows(ui)).some(l => l.includes('━'))).toBe(false)
     // In a Box as wide as the pane, so the drawing scales down to it rather than spilling past it (release 3 review)
     const slot = parentOf(tree, 'Svg')
@@ -200,4 +201,30 @@ test("a lane's time is never cut", { timeoutMs: 15_000 }, async ($, on) => {
   const lanes = (await agentsTab($, 'terminal', 60)).filter(l => l.includes('━'))
   expect(lanes[0]?.endsWith(' stopped after 12m 30s')).toBe(true)
   expect([...(lanes[0] ?? '')].length).toBe(60)
+})
+
+// The user, 2026-11-12: 'they cut in a half and a lot of dots are seeing - I want to see what agents are doing or did'.
+// A lane names what the agent was asked, the task id first; the label takes the longest's width up to 40 cells and the
+// bar at most 40, so a wide pane is not a row of dots
+test('a lane names what the agent was asked, the task id first', { timeoutMs: 15_000 }, async ($, on) => {
+  await two($, on)
+  const lanes = (await agentsTab($, 'terminal', 100)).filter(l => /[━·]{5}/.test(l))
+  expect(lanes[0]?.startsWith(`✓ ${'first'.padEnd(17)} ━`)).toBe(true)
+  expect(lanes[1]?.startsWith('⟳ task T-7 · second ·')).toBe(true)
+})
+
+test('a wide pane caps the bar at 40 cells and a label at 40', { timeoutMs: 15_000 }, async ($, on) => {
+  const { clock } = stubAll(on)
+  engine(on, ['agent.spawn'])
+  const long = 'Review the plan against the rubric and quote evidence for each check'
+  spawns(on, { [long]: { agentId: 'a1' }, short: { agentId: 'a2' } })
+  await clock.advance(1000)
+  await $.agent.spawn({ ...SPAWN, description: long })
+  await clock.advance(1000)
+  await $.agent.spawn({ ...SPAWN, description: 'short' })
+  const lanes = (await agentsTab($, 'terminal', 240)).filter(l => /[━·]{5}/.test(l))
+  expect(lanes).toHaveLength(2)
+  for (const lane of lanes) expect([...lane].filter(c => c === '━' || c === '·').length).toBe(40)
+  expect(lanes[0]?.startsWith(`⟳ ${long.slice(0, 39)}… ━`)).toBe(true)
+  expect(lanes[1]?.startsWith(`⟳ ${'short'.padEnd(40)} ·`)).toBe(true)
 })

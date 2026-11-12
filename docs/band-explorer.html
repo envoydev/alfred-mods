@@ -1759,6 +1759,8 @@ const KEEP_ALL       = { infoUpTo: 2, isPlaceKept: true, toolRowsKept: Infinity,
 // the body's first line follows them while it fits what is left, else they take line 1 alone and the body keeps the
 // full width, so no gauge, reset or the cost drops for them
 function bandLines(b           )         {
+  // "band": "off" draws none, above or under, and the pinned line counts it as out of view
+  if (b.mode === 'off') return []
   const max = b.maxRows
   if (max === undefined) return bandRows(b, KEEP_ALL)
   // Short of rows, the project row gives way first, then the info line's second row, then the open detail rows from
@@ -2216,7 +2218,7 @@ const BandAdapter = (() => {
       plan, planInvalid: false, score: null, ...(m.recLevel && m.recLevel !== 'off' ? { rec: { level: m.recLevel, words: 0 } } : m.rec && !m.recLevel ? { rec: { level: 'on', words: 0 } } : {}),
       forecast: runway && runway.at !== null ? { at: runway.at, label: `${num(d.trigger)}k` } : { at: askAt, label: `${askAt}%` },
       handoffAsk: !m.fresh && handoffMode === 'ask' && !runway && ask >= askAt ? Math.min(95, askAt + Math.floor((ask - askAt) / 5) * 5) : null,
-      runway, banner, mode: m.calm ? 'calm' : 'full',
+      runway, banner, mode: m.off ? 'off' : m.calm ? 'calm' : 'full',
       totals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, stepOutput: m.fresh ? 0 : num(d.tokS) * 100, stepMs: m.fresh ? 0 : 100_000 },
       stats, isToolsOpen: !!m.rowsOpen, listing: { listed: num(d.listed), total: num(d.ofSkills), tokens: 3200 },
       rules: { always: rules.filter(r => !r.isPath).map(r => r.name), byPath: rules.filter(r => r.isPath).map(r => r.name), isTracked: true },
@@ -2278,7 +2280,7 @@ const BandSettings = (() => {
   const steps = []
   for (let n = 10; n <= 95; n += 5) steps.push(n)
   const FIELDS = [
-    { key: 'band', values: ['full', 'calm'], def: 'full', bad: 'compact', what: 'full, with its info line, or calm, its two lines' },
+    { key: 'band', values: ['full', 'calm', 'off'], def: 'full', bad: 'compact', what: 'full, with its info line, calm, its two lines, or off, none' },
     { key: 'bandPlace', values: ['above', 'under'], def: 'above', bad: 'below', what: 'above the input, or under it (the terminal only)' },
     { key: 'bandRows', values: [true, false], def: true, bad: 'no', what: 'the tools, skills, agents and rules rows open' },
     { key: 'quiet', values: [true, false], def: true, bad: 'on', what: 'one line per tool call in the transcript' },
@@ -2341,7 +2343,7 @@ const BandSettings = (() => {
 
   // The resolved values as the band's switches (the explorer's modes)
   const asModes = v => ({
-    calm: v.band === 'calm', under: v.bandPlace === 'under', rowsOpen: v.bandRows === true, quiet: v.quiet === true,
+    calm: v.band === 'calm', off: v.band === 'off', under: v.bandPlace === 'under', rowsOpen: v.bandRows === true, quiet: v.quiet === true,
     rec: v.rec !== 'off', recLevel: v.rec, handoff: v.handoff, handoffOff: v.handoff === 'off', handoffAt: v.handoffAt,
   })
   return { FIELDS, FILES, NAME, isValid, show, resolve, fileText, oneLine, asModes }

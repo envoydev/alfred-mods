@@ -32,6 +32,9 @@ type Options = {
   // What `git status` answers, or a reason that rejects the call; the prompt box's draft; what `prompt.fill` answers,
   // filled by default. A refusal's cause cannot be staged: the site strips one a hook writes (types, PromptFillResult)
   git?: ProcessRunResult | string; draft?: string; fill?: { isFilled: boolean }
+  // What `git diff --numstat HEAD` and `git ls-files --others` print for the project row's changes; each absent
+  // refuses, so a test before the counts drew as it was written for
+  diff?: string; untracked?: string
   // What a read of `settings:band` answers while the test stored none: 'calm' by default, the band every test before
   // /band was written for; 'unset' answers nothing, as a fresh install's store does. The key is never added to the store.
   band?: 'full' | 'calm' | 'unset'
@@ -51,6 +54,8 @@ type Options = {
   refuseDelete?: string[]
   // Paths whose writes, or whose existence checks, are refused, as a guard or a read-only disk would
   refuseWrite?: string[]; refuseExists?: string[]
+  // Why `$.ui.copy` does not take, when a test gives one
+  copyRefused?: 'no-surface' | 'no-clipboard' | 'refused'
 }
 
 export const gitResult = (stdout: string, exitCode = 0, stderr = ''): ProcessRunResult =>
@@ -63,7 +68,8 @@ export function stubAll(on: On, o: Options = {}): {
   clock: MockClock; toasts: string[]; toastMs: (number | undefined)[]; opened: string[]; escapes: string[]; closed: string[]; copied: string[]; usage: { current: SessionUsage; breakdowns: number; refuse: boolean; fail: boolean }; panes: UiPane[]
   listed: { current: AgentInfo[]; calls: number }; files: { current: Record<string, FileStub>; reads: string[]; writes: string[]; exists: string[]; lists: string[] }
   // `git.current` and `git.calls`; the draft a test types and the texts the mod filled
-  git: { current: ProcessRunResult | string; calls: number; argv: readonly string[] | null; timeoutMs: number | null }; prompt: { draft: string; fills: string[] }
+  git: { current: ProcessRunResult | string; calls: number; argv: readonly string[] | null; timeoutMs: number | null }
+  changes: { diff: string | undefined; untracked: string | undefined; argv: (readonly string[])[]; cwd: string | null; timeoutMs: number | null }; prompt: { draft: string; fills: string[] }
   // Each `$.ui.invalidate` event the mod raised, in order
   invalidates: string[]
   // Each `$.ui.status` text the mod set, in order; undefined is a clear
@@ -214,7 +220,16 @@ export function stubAll(on: On, o: Options = {}): {
     return { value: undefined }
   })
   const git = { current: o.git ?? gitResult('## main\n'), calls: 0, argv: null as readonly string[] | null, timeoutMs: null as number | null }
+  const changes = { diff: o.diff, untracked: o.untracked, argv: [] as (readonly string[])[], cwd: null as string | null, timeoutMs: null as number | null }
   on('process.run', (_, e) => {
+    const isDiff = e.argv.includes('diff')
+    if (isDiff || e.argv.includes('ls-files')) {
+      changes.argv.push(e.argv)
+      changes.cwd = e.init?.cwd ?? null
+      changes.timeoutMs = e.init?.timeoutMs ?? null
+      const stdout = isDiff ? changes.diff : changes.untracked
+      return stdout === undefined ? { deny: 'test: no git diff' } : { value: gitResult(stdout) }
+    }
     git.calls++
     git.argv = e.argv
     git.timeoutMs = e.init?.timeoutMs ?? null
@@ -244,8 +259,9 @@ export function stubAll(on: On, o: Options = {}): {
     return { value: undefined }
   })
   on('ui.copy', (_, e) => {
+    if (o.copyRefused !== undefined) return { value: { isCopied: false as const, reason: o.copyRefused } }
     copied.push(e.text)
-    return { value: { isCopied: true } }
+    return { value: { isCopied: true as const } }
   })
   // The classic events the mod hooks have nothing beneath them in a test
   on('classic.PostToolUseFailure', () => ({}))
@@ -295,7 +311,7 @@ export function stubAll(on: On, o: Options = {}): {
     writes,
   }
   mock.env(on, o.env ?? {})
-  return { clock, toasts, toastMs, opened, escapes, closed, copied, usage, panes, listed, files, store, session, git, prompt, invalidates, statuses, sources, registered }
+  return { clock, toasts, toastMs, opened, escapes, closed, copied, usage, panes, listed, files, store, session, git, changes, prompt, invalidates, statuses, sources, registered }
 }
 
 // Claude Code's own answers to the events a session raises, for a test that drives a whole turn. A test hooks an
