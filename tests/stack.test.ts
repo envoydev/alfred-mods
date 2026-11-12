@@ -225,11 +225,11 @@ test('the stood-down HANDOFF row reads the runway', () => {
 })
 
 test('bannerSegs', () => {
-  expect(text(bannerSegs(STACK))).toBe('auto-run · scorer 80')
+  expect(text(bannerSegs(STACK))).toBe('auto-run · scoring 80')
   expect(bannerSegs(STACK)[0]).toEqual({ text: 'auto-run', tone: 'warn' })
   expect(text(bannerSegs({ ...STACK, scorer: { on: false, level: 80, rounds: 3 } }))).toBe('auto-run')
-  expect(text(bannerSegs({ ...STACK, autoRun: false }))).toBe('scorer 80')
-  expect(text(bannerSegs({ ...STACK, autoRun: null }))).toBe('scorer 80')
+  expect(text(bannerSegs({ ...STACK, autoRun: false }))).toBe('scoring 80')
+  expect(text(bannerSegs({ ...STACK, autoRun: null }))).toBe('scoring 80')
   expect(bannerSegs({ ...STACK, autoRun: false, scorer: null })).toEqual([])
   expect(bannerSegs({ ...STACK, autoRun: null, scorer: { on: false, level: 80, rounds: 3 } })).toEqual([])
   expect(bannerSegs({ ...STACK, state: 'ignored', reason: 'another session' })).toEqual([])
@@ -241,23 +241,23 @@ test('the banner leads line 1, after REC when it is on, calm and working, at 90 
     for (const isWorking of [false, true]) {
       const live = isWorking ? { ...BASE.live, turnId: 't1', startedAt: 0 } : BASE.live
       const plain = bandLines({ ...BASE, columns, isWorking, live, banner })
-      expect(text(plain[0]!).startsWith('auto-run · scorer 80 │ ')).toBe(true)
+      expect(text(plain[0]!).startsWith('auto-run · scoring 80 │ ')).toBe(true)
       const withRec = bandLines({ ...BASE, columns, isWorking, live, banner, rec: { level: 'on', words: 0 } })
-      expect(text(withRec[0]!).startsWith('● REC │ auto-run · scorer 80 │ ')).toBe(true)
+      expect(text(withRec[0]!).startsWith('● REC │ auto-run · scoring 80 │ ')).toBe(true)
     }
   }
 })
 
 test('with no reading yet, the banner alone', () => {
   const none = { ...BASE, usage: { ...USAGE, tokens: null, percent: null }, banner: bannerSegs(STACK) }
-  expect(bandLines(none).map(text)).toEqual(['auto-run · scorer 80'])
-  expect(bandLines({ ...none, rec: { level: 'on', words: 0 } }).map(text)).toEqual(['● REC │ auto-run · scorer 80'])
+  expect(bandLines(none).map(text)).toEqual(['auto-run · scoring 80'])
+  expect(bandLines({ ...none, rec: { level: 'on', words: 0 } }).map(text)).toEqual(['● REC │ auto-run · scoring 80'])
   expect(bandLines({ ...none, banner: [] })).toEqual([])
 })
 
 test('REC and the banner at 60 columns keep both marks', () => {
   const lines = bandLines({ ...BASE, columns: 60, banner: bannerSegs(STACK), rec: { level: 'on', words: 0 }, runway: RUNWAY, newFailures: 2 })
-  expect(text(lines[0]!).startsWith('● REC │ auto-run · scorer 80 │ ')).toBe(true)
+  expect(text(lines[0]!).startsWith('● REC │ auto-run · scoring 80 │ ')).toBe(true)
 })
 
 test('the marks take line 1 alone when the calm line does not fit beside them, and every gauge, reset and the cost stay', () => {
@@ -265,7 +265,7 @@ test('the marks take line 1 alone when the calm line does not fit beside them, a
   const usage = { ...USAGE, windows, costUsd: 1.23 }
   for (const columns of [90, 100]) {
     const lines = bandLines({ ...BASE, columns, usage, banner: bannerSegs(STACK), rec: { level: 'on', words: 0 }, runway: RUNWAY })
-    expect(text(lines[0]!)).toBe('● REC │ auto-run · scorer 80')
+    expect(text(lines[0]!)).toBe('● REC │ auto-run · scoring 80')
     expect(text(lines[1]!)).toMatch(/^ctx ▰▰▰▱▱ 62% of 150k.* 5h .*\(\d\d\.\d\d \d\d:\d\d\).* 7d .*\(\d\d\.\d\d \d\d:\d\d\)/)
     if (columns >= 100) expect(text(lines[1]!)).toContain('$1.23')
     for (const l of lines) expect(widthOf(l)).toBeLessThanOrEqual(columns)
@@ -310,11 +310,11 @@ test('autoCompact reads on and at, or null; a bad form is unknown and listed', (
 
 test('the banner orders auto-run, auto-compact and the scorer; auto-compact shows while on, in thousands', () => {
   const on = (at: number | null): Stack => ({ ...STACK, autoCompact: { on: true, at } })
-  expect(text(bannerSegs(on(490_000)))).toBe('auto-run · auto-compact 490k · scorer 80')
-  expect(text(bannerSegs(on(null)))).toBe('auto-run · auto-compact · scorer 80')
-  expect(text(bannerSegs(on(491_600)))).toBe('auto-run · auto-compact 492k · scorer 80')
-  expect(text(bannerSegs({ ...STACK, autoCompact: { on: false, at: 490_000 } }))).toBe('auto-run · scorer 80')
-  expect(text(bannerSegs({ ...STACK, autoCompact: null }))).toBe('auto-run · scorer 80')
+  expect(text(bannerSegs(on(490_000)))).toBe('auto-run · auto-compact 490k · scoring 80')
+  expect(text(bannerSegs(on(null)))).toBe('auto-run · auto-compact · scoring 80')
+  expect(text(bannerSegs(on(491_600)))).toBe('auto-run · auto-compact 492k · scoring 80')
+  expect(text(bannerSegs({ ...STACK, autoCompact: { on: false, at: 490_000 } }))).toBe('auto-run · scoring 80')
+  expect(text(bannerSegs({ ...STACK, autoCompact: null }))).toBe('auto-run · scoring 80')
   expect(text(bannerSegs({ ...on(490_000), autoRun: false, scorer: null }))).toBe('auto-compact 490k')
   // The existing tones: auto-run warn, the rest the text's own, the joiner dim
   expect(bannerSegs(on(490_000)).map(s => ('text' in s ? s.tone : undefined))).toEqual(['warn', 'dim', undefined, 'dim', undefined])

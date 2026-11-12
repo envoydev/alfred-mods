@@ -305,8 +305,9 @@ for (const surface of SURFACES) {
     await $.session.start(START)
     const lines = await rows(await mount($, surface))
     expect(lines[0]?.startsWith('ctx — │ 5h ▱▱▱▱▱ ≈15% (')).toBe(true)
-    // The detail rows open from the first draw (spec 2026-11-11, D1), under the project row; no usage: with nothing counted
-    expect(lines.slice(1)).toEqual(['Sonnet 5.5 │ <1m │ CC 2.1.322', 'project: w │ git:(main)', 'tools:   none', 'skills:  none loaded', 'agents:  none', 'rules:   none loaded'])
+    // The detail rows are open from the first draw (spec 2026-11-11, D1), but each waits for its first item (the user,
+    // 2026-11-12), and no usage: with nothing counted
+    expect(lines.slice(1)).toEqual(['Sonnet 5.5 │ <1m │ CC 2.1.322', 'project: w │ git:(main)'])
   })
 }
 

@@ -140,7 +140,9 @@ organization's managed settings allow only its own mods
 A command writes its field into `~/.claude/settings.json` for you. For one project only, put the field in that
 project's `.claude/settings.local.json`, which wins over your user file there ([Which file wins](#which-file-wins)).
 The [Band Explorer](docs/band-explorer.html), one page that runs in a browser, offline too, previews each setting on
-the band and gives each file's block to copy.
+the band and gives each file's block to copy. Its live terminal has example transcripts (reading and testing, editing,
+agents and skills, web research, questions and planning, failures), drawn as compact rows by the mod's own code or as
+Claude Code's own rows with `"quiet": false`.
 
 ## Commands
 
@@ -520,7 +522,9 @@ rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ w
   the times).
 - **`usage:`** in aqua, counts what the rows under it list: tool calls, skills, agents dispatched (and how many run)
   and rules. It shows whether the rows are open or not.
-- **The detail rows** are open by default; `"bandRows": false` closes them ([Settings](#settings)).
+- **The detail rows** are open by default; `"bandRows": false` closes them ([Settings](#settings)). Each row waits for
+  its first item: no `skills:` row until a skill is loaded, no `agents:` until one is dispatched, and so on, so a new
+  session shows none of them, and `usage:` none until something is counted.
 
 `×N` on these rows is how many times this session. `tools:` lists every tool by name with its calls, agents' calls
 included, an MCP tool as `<server>:<tool>`. `skills:`
@@ -532,7 +536,7 @@ then how many run. `rules:` lists the rule files in the main context: those load
 link there named by the file it reaches, and your own rules folder), then those loaded by path, when Claude reads,
 writes or edits a file their `paths:` match, in violet, then how many of each; a compaction
 keeps them. A resumed or branched conversation still holds the skills, agents and by-path rules from before it, which no
-mods API lists, so those rows count from the resume: `none seen since resume`, or what came since with `since resume`.
+mods API lists, so those rows count from the resume: what came since, with `since resume`, and no row until then.
 
 When the width runs out, the info line wraps onto a second row between items, and items drop whole only when two rows
 cannot hold them (the version first, then the times); `project:` shortens its folder to the last part, then leaves it
@@ -709,12 +713,12 @@ In a project where [Alfred Code](https://github.com/envoydev/alfred-code) publis
 `.claude/session-inspector/status/<session id>.json` for the session, the mod reads that one file at the session's
 start, every 30 seconds and after `/clear`, and shows more:
 
-- **The mode banner:** `auto-run · auto-compact 490k · scorer 80 │` leads the band from the session's start while the
-  stack's auto-run, auto-compact or scorer is on, after `● REC` while recording. `490k` is where Claude Code compacts
+- **The mode banner:** `auto-run · auto-compact 490k · scoring 80 │` leads the band from the session's start while the
+  stack's auto-run, auto-compact or scoring is on, after `● REC` while recording. `490k` is where Claude Code compacts
   for the session's model; `auto-compact` alone when the stack does not know it. Where the band's first line does not fit beside it, the banner takes that line alone.
 - **The runway:** while the stack offers a fresh session at a full context, the band's context gauge measures against
   the stack's trigger instead of the window, `ctx ▰▰▰▱▱ 62% of 150k`, and the turns forecast counts to it.
-- **The ALFRED CODE section** in `/inspect`'s Now tab: what the stack does at a full context, its auto-run, auto-compact and scorer,
+- **The ALFRED CODE section** in `/inspect`'s Now tab: what the stack does at a full context, its auto-run, auto-compact and scoring,
   the model it judges the session by, its resume prompt's first line and when it last wrote the file. A field the mod
   cannot use is named as ignored, and the rest still shows.
 - **The resume prompt:** while the pane has the focus (Ctrl+X Tab, or a click in fullscreen), `f` fills the stack's

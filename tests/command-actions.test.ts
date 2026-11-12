@@ -34,7 +34,8 @@ const footer = ($: Engine) =>
   $.ui.mount({ plugin: 'alfred-mods', surface: 'terminal', component: 'PromptHint', props: HINT, viewport: MAIN })
 const measure = ($: Engine, percent: number) =>
   $.session.measure({ context: { tokens: percent * 2000, window: 200_000, percent }, rateLimits: [], changed: ['context'] })
-const isBand = (lines: string[]): boolean => lines.some(l => l.startsWith('tools:'))
+// The band's gauge line: the detail rows wait for their first item (the user, 2026-11-12)
+const isBand = (lines: string[]): boolean => lines.some(l => l.startsWith('ctx '))
 
 test('"band" takes "off", and a bad value names it', () => {
   expect(resolve({ user: { band: 'off' } }, {}).values.band).toBe('off')
