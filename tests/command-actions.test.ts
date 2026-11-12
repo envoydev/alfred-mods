@@ -127,14 +127,31 @@ async function failing($: Engine, on: On, o: Parameters<typeof stubAll>[1] = {})
 
 test('/inspect show toggles the newest failure\'s detail and opens the pane on Now', async ($, on) => {
   const { view, opened } = await failing($, on)
-  expect(await run($, 'inspect', 'show')).toBe('Showing failure 1 (Bash  false two) in the inspect pane.')
+  expect(await run($, 'inspect', 'show')).toBe('Showing failure 2 (Bash  false two) in the inspect pane.')
   expect(view().shown).toEqual(['t1-1'])
   expect(view().tab).toBe('now')
   expect(opened).toEqual(['inspect'])
-  expect(await run($, 'inspect', 'show 1')).toBe('Hid failure 1 (Bash  false two).')
+  expect(await run($, 'inspect', 'show 2')).toBe('Hid failure 2 (Bash  false two).')
   expect(view().shown).toEqual([])
-  expect(await run($, 'inspect', 'show 2')).toBe('Showing failure 2 (Bash  false one) in the inspect pane.')
+  expect(await run($, 'inspect', 'show 1')).toBe('Showing failure 1 (Bash  false one) in the inspect pane.')
   expect(view().shown).toEqual(['t1-0'])
+})
+
+// The side note's catch, 2026-11-12: a number counted from the newest moves when a failure lands mid-turn
+test('a failure that lands later moves no other number', async ($, on) => {
+  const { copied } = await failing($, on)
+  await turn($, 't2', ['false three'])
+  expect(await run($, 'inspect', 'copy 1')).toBe('Copied the error of failure 1 (Bash  false one).')
+  expect(await run($, 'inspect', 'copy')).toBe('Copied the error of failure 3 (Bash  false three).')
+  expect(copied).toEqual(['Exit code 1\nfalse one', 'Exit code 1\nfalse three'])
+})
+
+test('past the last 10 the numbers go on, and an old one is out of the list', async ($, on) => {
+  failingCalls(on)
+  await start($, on, {}, ['tool.call'])
+  await turn($, 't1', Array.from({ length: 12 }, (_, i) => `false n${i}`))
+  expect(await run($, 'inspect', 'show 2')).toBe('No failure 2: the pane lists failures 3 to 12.')
+  expect(await run($, 'inspect', 'show 3')).toBe('Showing failure 3 (Bash  false n2) in the inspect pane.')
 })
 
 test('/inspect show keeps the Tools tab, and a number out of range says how many there are', async ($, on) => {
@@ -142,14 +159,14 @@ test('/inspect show keeps the Tools tab, and a number out of range says how many
   await run($, 'inspect', 'tools')
   await run($, 'inspect', 'show')
   expect(view().tab).toBe('tools')
-  expect(await run($, 'inspect', 'show 3')).toBe('No failure 3: there are 2, 1 the newest.')
-  expect(await run($, 'inspect', 'show x')).toBe('No failure x: there are 2, 1 the newest.')
+  expect(await run($, 'inspect', 'show 3')).toBe('No failure 3: the pane lists failures 1 to 2.')
+  expect(await run($, 'inspect', 'show x')).toBe('No failure x: the pane lists failures 1 to 2.')
 })
 
 test('/inspect copy copies a failure\'s error', async ($, on) => {
   const { copied } = await failing($, on)
-  expect(await run($, 'inspect', 'copy')).toBe('Copied the error of failure 1 (Bash  false two).')
-  expect(await run($, 'inspect', 'copy 2')).toBe('Copied the error of failure 2 (Bash  false one).')
+  expect(await run($, 'inspect', 'copy')).toBe('Copied the error of failure 2 (Bash  false two).')
+  expect(await run($, 'inspect', 'copy 1')).toBe('Copied the error of failure 1 (Bash  false one).')
   expect(copied).toEqual(['Exit code 1\nfalse two', 'Exit code 1\nfalse one'])
 })
 
@@ -233,4 +250,88 @@ test('/auto-handoff compact saves a handoff, then compacts', async ($, on) => {
   await until(clock, () => ((state.get('meta') as Meta | undefined)?.compactions ?? 0) > 0)
   expect(handoff()).toMatchObject({ isAskUp: false, lastSave: { isOk: true } })
   expect((state.get('meta') as Meta | undefined)?.compactions).toBe(1)
+})
+
+// Each failure and report carries the n its command takes, and on the terminal's main screen, where nothing takes a
+// click and the pane's keys may not reach the mod, each button draws as its command (the user, 2026-11-12: 'Becasue
+// right now I need to count and order')
+
+const PANE = { title: 'Inspect', isFocused: false, bodyColumns: 160, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 40 }, view: {} }
+const FULLSCREEN: RenderViewport = { columns: 200, rows: 50, isFullscreen: true }
+const pane = ($: Engine, viewport?: RenderViewport, surface: RenderSurface = 'terminal') =>
+  $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'inspect', props: PANE, ...(viewport === undefined ? {} : { viewport }) })
+// The pane's rows, mounted for the read alone
+async function look($: Engine, viewport?: RenderViewport): Promise<string[]> {
+  const ui = await pane($, viewport)
+  const lines = await rows(ui)
+  await ui.unmount()
+  return lines
+}
+
+test('each failure row starts with its number, the newest the highest and on top, on Now and on Tools', async ($, on) => {
+  await failing($, on)
+  await run($, 'inspect', 'now')
+  const now = await look($)
+  const at = (re: RegExp): number => now.findIndex(l => re.test(l))
+  expect(at(/^2 ✗ \S+ Bash +false two/)).toBeGreaterThan(-1)
+  expect(at(/^1 ✗ \S+ Bash +false one/)).toBe(at(/^2 ✗ /) + 1)
+  await run($, 'inspect', 'tools')
+  const tools = await look($)
+  expect(tools.some(l => /^2 ✗ \S+ Bash +false two/.test(l))).toBe(true)
+})
+
+test('from 10 failures the numbers line up', async ($, on) => {
+  failingCalls(on)
+  await start($, on, {}, ['tool.call'])
+  await turn($, 't1', Array.from({ length: 10 }, (_, i) => `false n${i}`))
+  await run($, 'inspect', 'now')
+  const lines = await look($)
+  expect(lines.some(l => /^10 ✗ \S+ Bash +false n9/.test(l))).toBe(true)
+  expect(lines.some(l => /^ 1 ✗ \S+ Bash +false n0/.test(l))).toBe(true)
+})
+
+test('on the main screen Show and Copy draw as their commands', async ($, on) => {
+  await failing($, on)
+  await run($, 'inspect', 'now')
+  const ui = await pane($, MAIN)
+  const lines = await rows(ui)
+  expect(lines.some(l => /^2 ✗ .*false two.*\/inspect show 2 · \/inspect copy 2$/.test(l))).toBe(true)
+  expect(lines.some(l => /^1 ✗ .*false one.*\/inspect show 1 · \/inspect copy 1$/.test(l))).toBe(true)
+  expect(await ui.find({ key: 'show-t1-1' })).toBeFalsy()
+})
+
+test('in fullscreen, on the Desktop and with no viewport they stay buttons', async ($, on) => {
+  await failing($, on)
+  await run($, 'inspect', 'now')
+  for (const [viewport, surface] of [[FULLSCREEN, 'terminal'], [MAIN, 'desktop'], [undefined, 'terminal']] as const) {
+    const ui = await pane($, viewport, surface)
+    expect(await ui.find({ key: 'show-t1-1' })).toBeTruthy()
+    expect((await rows(ui)).some(l => l.includes('/inspect show'))).toBe(false)
+    await ui.unmount()
+  }
+})
+
+test('a report\'s button carries its number, and on the main screen its command', async ($, on) => {
+  await start($, on)
+  await $.agent.spawn(SPAWN)
+  await $.turn.complete(complete('x1', { agentId: 'a1', answer: 'found it' }))
+  await run($, 'inspect', 'agents')
+  expect((await look($)).some(l => l.endsWith('result: found it Show report 1'))).toBe(true)
+  expect((await look($, MAIN)).some(l => l.endsWith('result: found it /inspect report 1'))).toBe(true)
+})
+
+test('on the main screen the handoff ask draws its commands', async ($, on) => {
+  await start($, on)
+  await at($, 82)
+  await run($, 'inspect', 'now')
+  const lines = await look($, MAIN)
+  expect(lines.some(l => /past 80% · \/auto-handoff now · \/auto-handoff compact · \/auto-handoff later$/.test(l))).toBe(true)
+})
+
+test('on the main screen Alfred Code\'s fill draws as /inspect fill', async ($, on) => {
+  await start($, on, { files: { [STATUS]: { text: JSON.stringify(FULL), mtimeMs: 1 } } })
+  await run($, 'inspect', 'now')
+  const lines = await look($, MAIN)
+  expect(lines.some(l => l.includes('/inspect fill'))).toBe(true)
+  expect(lines.some(l => l.includes('fill prompt'))).toBe(false)
 })

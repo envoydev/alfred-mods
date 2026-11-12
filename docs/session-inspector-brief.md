@@ -253,7 +253,12 @@ rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ w
   not working'): `"band": "off"` draws no band, above or under, and `/inspect band off|calm|full` writes `band`;
   `/inspect show [n]` and `copy [n]` act on tool failure n, the newest first; `/inspect report [n]` on agent report n,
   the Agents tab's top first; `/inspect fill` fills Alfred Code's resume prompt; `/auto-handoff compact` and `later` do
-  the ask's `c` and `r`. Private words stay pane-only, as a command's arguments reach the transcript. The band's rows follow the user's message the
+  the ask's `c` and `r`. Private words stay pane-only, as a command's arguments reach the transcript. Each failure
+  row starts with its number, counted up through the session and never changed (the user: 'right now I need to count
+  and order'; a number counted from the newest would move when a failure lands mid-turn), and each report button
+  carries its own; on the terminal's main screen the pane draws each button as its command (`/inspect show 23`). The
+  Agents tab's lanes name what each agent was asked, up to 40 cells, with a bar of at most 40, and `result:` is the
+  report's first line that is not a heading (the user: 'I want to see what agents are doing or did'). The band's rows follow the user's message the
   same day: the info line ends with `CC <version>`, then `project: <project> │ git:(<branch>) │ folder: <folder>`,
   `plan:`, `usage:   [ 45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ]` as text, then the detail rows; the toggle and
   its `t` are gone. Design, probes and rulings: the machine-local spec

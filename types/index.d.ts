@@ -6,6 +6,9 @@ export type Failure = {
   outcome: Exclude<Outcome, 'ok'>; reason: string; detail: string; count: number; isNew: boolean
   // The hook script that blocked the call (spec C6); absent in a row an earlier version kept
   by?: string | null
+  // Its number for '/inspect show <n>', counting up through the session and never changed, so a failure that lands
+  // while a turn runs moves no other row's; absent in a row an earlier version kept
+  n?: number
 }
 export type TurnEnd = 'answer' | 'aborted' | 'refusal' | 'error'
 export type Turn = {

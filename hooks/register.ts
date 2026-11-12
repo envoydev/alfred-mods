@@ -35,8 +35,8 @@ import { PLANS_DIR, SCORES_DIR, readFolder } from './planfiles.ts'
 import { planLines, scoresLabel } from './planlines.ts'
 import { closeOf, closeSlices, closeWait, isAllWait, liveSpans, mineOf, openWait, overheadKey, sliceMs, staleKeys, stepKey, sumTimes, waitOf } from './steptime.ts'
 import type { Close } from './steptime.ts'
-import { agentsLines, cacheLines, nowLines, tabBar, timelineLines, toolsLines, usageLines } from './tabs.ts'
-import { classify, fold, targetOf, toolKey } from './outcome.ts'
+import { agentsLines, asCommands, cacheLines, nowLines, paneCommands, reportRows, tabBar, timelineLines, toolsLines, usageLines } from './tabs.ts'
+import { classify, fold, numberOf, targetOf, toolKey } from './outcome.ts'
 import { LEVELS, REC_HELP, addWord, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec.ts'
 import { BAND_MODES, DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast, writeField } from './settings.ts'
 import type { Field, From, Resolved, Source, Values } from './settings.ts'
@@ -189,7 +189,8 @@ async function addRow($: EngineInterface, id: string, call: Call, outcome: Exclu
     const rest = old === undefined ? list
       : old.count > 1 ? list.map(f => (f === old ? { ...f, count: f.count - 1 } : f))
       : list.filter(f => f !== old)
-    const out = fold(rest, row)
+    // A call settled again keeps its row's number
+    const out = fold(rest, old !== undefined && old.count === 1 && old.n !== undefined ? { ...row, n: old.n } : row)
     call.rowId = out[out.length - 1]?.id ?? null
     return out
   })
@@ -951,13 +952,18 @@ async function bandCommand($: EngineInterface, word: string): Promise<string> {
   return `Band: ${r?.values.band ?? DEFAULTS.band} - from ${sourceName(r?.from.band ?? 'default', '/band')}. ${BAND_HELP}`
 }
 
-// '/inspect show [n]' and '/inspect copy [n]': tool failure n as the Now and Tools tabs list them, the newest first
+// '/inspect show [n]' and '/inspect copy [n]': the failure whose row starts with n, the newest when n is left out
 async function failureCommand($: EngineInterface, action: 'show' | 'copy', word: string | undefined): Promise<string> {
-  const list = [...(await read($, failures))].reverse()
-  if (list.length === 0) return `No tool failure to ${action}.`
-  const n = ordinal(word)
-  const f = list[n - 1]
-  if (f === undefined) return outOf('failure', word, list.length, 'newest')
+  const list = (await read($, failures)).map((f, i) => ({ f, n: numberOf(f, i) }))
+  const newest = list[list.length - 1]
+  if (newest === undefined) return `No tool failure to ${action}.`
+  const n = word === undefined ? newest.n : ordinal(word)
+  const f = list.find(x => x.n === n)?.f
+  const oldest = list[0]?.n ?? newest.n
+  if (f === undefined) {
+    const range = oldest === newest.n ? `the pane lists failure ${oldest}` : `the pane lists failures ${oldest} to ${newest.n}`
+    return `No failure ${oneLine(printable(word ?? ''), 20)}: ${range}.`
+  }
   const name = `failure ${n} (${f.tool}${f.target === '' ? '' : `  ${oneLine(printable(f.target), 40)}`})`
   if (action === 'copy') {
     if (f.outcome !== 'error') return `Nothing to copy: ${name} was ${f.outcome}, not an error.`
@@ -970,7 +976,7 @@ async function failureCommand($: EngineInterface, action: 'show' | 'copy', word:
 
 // '/inspect report [n]': report n of the agents that finished with one, in the Agents tab's order, the top first
 async function reportCommand($: EngineInterface, word: string | undefined): Promise<string> {
-  const list = agentTree(await read($, agents)).map(t => t.row).filter(r => !isLive(r.status) && r.report !== null)
+  const list = reportRows(await read($, agents))
   if (list.length === 0) return 'No agent report to show.'
   const n = ordinal(word)
   const r = list[n - 1]
@@ -2450,7 +2456,11 @@ export const register: Register = (on, options) => {
     for (const agent of input.agents) {
       if (agent.report !== null) press[`report-${agent.id}`] = () => toggleShown($, `report:${agent.id}`)
     }
-    return drawLines($, e, [...bar, ...body], { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
+    // On the terminal's main screen nothing takes a click, and the pane's keys may not reach the mod (the user,
+    // 2026-11-12): each button draws as its command
+    const isMain = e.surface === 'terminal' && e.viewport?.isFullscreen === false
+    const lines = isMain ? asCommands([...bar, ...body], paneCommands(rows, input.agents)) : [...bar, ...body]
+    return drawLines($, e, lines, { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
   }).catch(($, e, next) => drawNote($, e, paneFailed(next.error.kind, next.error.message, recLevel() !== 'off')))
 
   // The private-words pane: words are added only here, never through a command's arguments, which the transcript echoes

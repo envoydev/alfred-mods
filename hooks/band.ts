@@ -16,8 +16,9 @@ export type Tone = 'ok' | 'warn' | 'fail' | 'dim' | 'usage' | 'skill' | 'agents'
 export type Seg =
   // With a `width`, a table cell: that many cells wide, its text cut with '…' when longer, at its end with `align: 'end'`
   | { text: string; tone?: Tone; bold?: boolean; width?: number; align?: 'start' | 'end' }
-  // A toned button draws its label bold in the colour of the feature it acts on; a plain one draws `<hotkey>: <label>`
-  | { button: { key: string; label: string; hotkey?: string; tone?: Tone; plain?: boolean } }
+  // A toned button draws its label bold in the colour of the feature it acts on; a plain one draws `<hotkey>: <label>`;
+  // `isText`, where nothing presses it, its label as dim text that keeps a button's place at the line's end
+  | { button: { key: string; label: string; hotkey?: string; tone?: Tone; plain?: boolean; isText?: boolean } }
   | { code: string }
   | { chart: number[] }
   // Agents on one time axis (spec C2), alone on its line: text lanes on the terminal and mobile, one Svg elsewhere

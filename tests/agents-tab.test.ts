@@ -110,10 +110,21 @@ for (const surface of SURFACES) {
     await inspect($, 'agents')
     const ui = await pane($, surface)
 
-    expect((await rows(ui)).some(l => l.endsWith('result: 12 files, 3 untested services Show report'))).toBe(true)
+    expect((await rows(ui)).some(l => l.endsWith('result: 12 files, 3 untested services Show report 1'))).toBe(true)
     await ui.press({ key: 'report-a1' })
     expect((await ui.find({ type: 'Code' }))?.props.source).toBe('12 files, 3 untested services\nmore detail')
-    expect((await rows(ui)).some(l => l.endsWith('Hide report'))).toBe(true)
+    expect((await rows(ui)).some(l => l.endsWith('Hide report 1'))).toBe(true)
+  })
+
+  test(`a report's line is its first that is not a heading, as wide as the pane gives (${surface})`, async ($, on) => {
+    stubAll(on)
+    engine(on)
+    const first = 'C1.1 yes - the plan names every file it touches, and each task lists its tests before its code, as asked'
+    await $.agent.spawn(SPAWN)
+    await $.turn.complete(complete('x1', { agentId: 'a1', answer: `## Checks\n\n---\n${first}\nmore` }))
+    await inspect($, 'agents')
+    const wide = await $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'inspect', props: { ...PANE, bodyColumns: 200 } })
+    expect((await rows(wide)).some(l => l.includes(`result: ${first} Show report 1`))).toBe(true)
   })
 
   test(`an agent report's control characters are not drawn (${surface})`, async ($, on) => {
@@ -129,7 +140,7 @@ for (const surface of SURFACES) {
     const json = JSON.stringify(await ui.drawn())
     expect(json).not.toMatch(/\\u001b/)
     expect(json).not.toMatch(/\\r/)
-    expect((await rows(ui)).some(l => l.endsWith('result: FAIL one Hide report'))).toBe(true)
+    expect((await rows(ui)).some(l => l.endsWith('result: FAIL one Hide report 1'))).toBe(true)
   })
 
   test(`skills fired closes the Agents tab and the Now tab's AGENTS section (${surface})`, async ($, on) => {

@@ -149,11 +149,13 @@ the band and gives each file's block to copy.
   `<name>.json`; `/inspect plan` alone returns to the newest.
 - **`/inspect band off`, `calm`, `full`** set the band's mode, the `"band"` field, in your user file: `off` draws no
   band, above or under. **`/inspect band`** alone prints the mode and the file it comes from.
-- **`/inspect show [n]`** expands tool failure n's error in the pane, as its Show button does, and again hides it;
-  **`/inspect copy [n]`** puts that error on the clipboard, as Copy does. 1 is the newest failure, the top row of the
-  Now and Tools tabs, and the one meant when n is left out; show opens the pane on Now unless it is open on one of
-  those two.
-- **`/inspect report [n]`** shows or hides agent report n on the Agents tab, 1 the top, as Show report does.
+- **`/inspect show [n]`** expands the error of the failure whose row starts with n, as its Show button does, and
+  again hides it; **`/inspect copy [n]`** puts that error on the clipboard, as Copy does. Failures are numbered as
+  they happen, 1 the session's first, and a number never changes, so one that lands while Claude works moves no other
+  row's. The Now and Tools tabs list the last 10, the newest on top; left out, n is the newest. Show opens the pane on
+  Now unless it is open on one of those two.
+- **`/inspect report [n]`** shows or hides an agent's report on the Agents tab, as its `Show report n` button does,
+  1 the top.
 - **`/inspect fill`** fills Alfred Code's resume prompt into the empty prompt box, as `f` does
   ([With Alfred Code](#with-alfred-code)).
 - **`/inspect close`** closes the pane. So does Esc at an idle, empty prompt, or in the pane while it has the keys
@@ -168,7 +170,8 @@ the band and gives each file's block to copy.
   **`/auto-handoff at 70`** (or `/auto-handoff 70`) sets the percent it starts at, `"handoffAt"`, a whole number from
   10 to 95.
 - **`/auto-handoff now`** saves a handoff at once, in any mode. **`/auto-handoff compact`** saves one, then compacts,
-  as the ask's `c` does; **`/auto-handoff later`** takes the ask down until its next step, as `r` does. **`/auto-handoff`** reads the settings files again and
+  as the ask's `c` does; **`/auto-handoff later`** takes the ask down until its next step, as `r` does.
+  **`/auto-handoff`** reads the settings files again and
   prints the mode, the first ask and the file each comes from.
 
 A command that sets a field writes that one field under `"alfred-mods"` in `~/.claude/settings.json` (in
@@ -178,8 +181,19 @@ comes first, and the command says so. A file that does not parse as JSON, or who
 is never rewritten: the command says why, and you set the field by hand.
 
 Every button and key the mod draws has a command, so nothing needs a click or the pane's keys: in iTerm's main screen
-with tabs, for one, neither reaches the mod. The band's `[ /compact ]` and the Cache tab's Compact are Claude Code's
-own `/compact`. Every switch is a settings value ([Settings](#settings)).
+with tabs, for one, neither reaches the mod. On the terminal's main screen (`CLAUDE_CODE_NO_FLICKER=0`) the pane draws
+each button as that command, so the row tells you what to type:
+
+```text
+NEEDS A LOOK
+23 ✗ 14:58 Bash  Verify each grader finding   Exit code 1 /inspect show 23 · /inspect copy 23
+22 ⊘ 14:47 Bash  Check stamp lines            auto mode: Classifier unavailable /inspect show 22
+```
+
+An agent's report reads `/inspect report 1`, the handoff ask `/auto-handoff now · /auto-handoff compact ·
+/auto-handoff later`, and Alfred Code's fill `/inspect fill`. In fullscreen and on the Desktop they stay buttons. The
+tabs keep theirs, as each tab's name is its command's word (`/inspect usage`). The band's `[ /compact ]` and the Cache
+tab's Compact are Claude Code's own `/compact`. Every switch is a settings value ([Settings](#settings)).
 
 ## Settings
 
@@ -386,8 +400,11 @@ tokens. It reads again after a compaction, and when the tab opens a minute or
 more after the last read. A memory file outside the project is named by its type and base name, never its path.
 
 With two agents or more, the Agents tab draws them on one time axis above the tree, one lane each, the newest 8; the
-Desktop app and VS Code draw it as a picture. A narrow pane shortens the lane labels to keep a 10-cell bar, so a pane
-docked beside a 120-column terminal shows the lanes, and one under about 30 columns draws none. Model loops that no Agent call started are
+Desktop app and VS Code draw it as a picture. Each lane names what the agent was asked (`task T-7 · Review plan round
+1` when it has a task id), up to 40 cells, and its bar takes at most 40, so a wide pane is not a row of dots. A narrow
+pane shortens the labels to keep a 10-cell bar, so a pane docked beside a 120-column terminal shows the lanes, and one
+under 30 columns draws none. In the tree, a finished agent's `result:` is its report's first line that is not a
+heading, as wide as the pane allows. Model loops that no Agent call started are
 counted apart on one line, `Other loops 2 · 1 active · out 41k`; their tool calls are not counted.
 
 A call a hook blocked names the hook's script, `⊘ blocked by guard.js: …`, and the Tools tab counts blocks by script
