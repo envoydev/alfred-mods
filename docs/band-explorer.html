@@ -2219,7 +2219,8 @@ const BandAdapter = (() => {
       plan = BandCore.planView({ title: String(d.planTitle || 'Plan'), updatedAt: now, steps, changes: [] }, {}, 0, {}, now)
     }
     const banner = m.alfred
-      ? [m.autoRun && [{ text: 'auto-run', tone: 'warn' }], m.scorer && [{ text: `scorer ${num(d.scorerVal)}` }]].filter(Boolean)
+      ? [m.autoRun && [{ text: 'auto-run', tone: 'warn' }], m.autoCompact && [{ text: num(d.compactAt) > 0 ? `auto-compact ${Math.round(num(d.compactAt))}k` : 'auto-compact' }],
+        m.scorer && [{ text: `scorer ${num(d.scorerVal)}` }]].filter(Boolean)
         .flatMap((p, i) => (i === 0 ? p : [{ text: ' · ', tone: 'dim' }, ...p]))
       : []
     const g = geometry(m, isPinned)
@@ -2394,7 +2395,7 @@ const BAND_DATA0 = {
   ctxUsed: 140, window: 400, trigger: 180, h5: 54, h5Reset: '11.11 20:10', d7: 49, d7Reset: '16.11 03:00',
   cost: 1.26, today: 18.62, turn: 2, turnTime: '5:37', turnTools: 41,
   youAt: '17:15', claudeAt: '17:13', project: 'my-app', folder: '.claude', branch: 'develop', ahead: 1, behind: 2, added: 41, removed: 30, cc: '2.1.322',
-  scorerVal: 80, failures: 0, planTitle: 'Token refresh', planDone: 3, planTotal: 5, planStep: 'S4 Update interceptor',
+  compactAt: 490, scorerVal: 80, failures: 0, planTitle: 'Token refresh', planDone: 3, planTotal: 5, planStep: 'S4 Update interceptor',
   listed: 57, ofSkills: 60,
   tools: 'Bash 32\nAskUserQuestion 4\nRead 4\nWrite 4\nGrep 1',
   skills: 'superpowers:brainstorming 1\nsolve-task 2',
@@ -2403,11 +2404,11 @@ const BAND_DATA0 = {
 }
 // The session's situation: what is happening, not what the settings say
 const BAND_MODES0 = {
-  running: true, fullscreen: false, statusLine: false, alfred: true, autoRun: false, scorer: true, runway: false,
+  running: true, fullscreen: false, statusLine: false, alfred: true, autoRun: false, autoCompact: true, scorer: true, runway: false,
   upstream: true, plan: false, fresh: false, collapsed: false, cols: 150, rows: 12, termRows: 40
 }
 const BAND_BASE = {
-  running: false, fullscreen: false, statusLine: false, alfred: false, autoRun: false, scorer: false, runway: false,
+  running: false, fullscreen: false, statusLine: false, alfred: false, autoRun: false, autoCompact: false, scorer: false, runway: false,
   upstream: true, plan: false, fresh: false, collapsed: false, rows: 12, termRows: 40
 }
 // No settings file sets anything: every field takes its default
@@ -2420,7 +2421,7 @@ const BAND_PRESETS = [
   ['Detail rows closed', 'Set in this project\'s local file. The usage: row keeps the counts - not a button, no arrow, no t: the rows under it open and close only by the value.', { running: true }, null, { local: { bandRows: false } }],
   ['A local file over the user\'s', 'The user file puts the band under the input with its rows closed in every project; this project\'s local file opens the rows again. Each other field falls through to the user file, then the default.', { running: true, fullscreen: true }, null, { user: { bandPlace: 'under', bandRows: false }, local: { bandRows: true } }],
   ['A bad value falls through', 'The local file says "compact", which "band" does not take, so the user file\'s "calm" applies, and the mod says so once in a toast that never quotes the bad value.', { running: true }, null, { user: { band: 'calm' }, local: { band: 'compact' } }],
-  ['With Alfred Code: auto-run, scorer and the runway', "The mode banner leads line 1. With the runway, ctx is measured against Alfred Code's trigger, not the window.", { running: true, alfred: true, autoRun: true, scorer: true, runway: true }],
+  ['With Alfred Code: auto-run, auto-compact, scorer and the runway', "The mode banner leads line 1 from the session's start: auto-run, auto-compact with where Claude Code compacts for the session's model, and the scorer. With the runway, ctx is measured against Alfred Code's trigger, not the window.", { running: true, alfred: true, autoRun: true, autoCompact: true, scorer: true, runway: true }],
   ['A plan in progress', 'The plan row sits under the project row, above usage: - the title, the steps done and the step in progress.', { running: true, plan: true }],
   ['Context past 80%', 'Between turns the handoff ask takes the last row: 4, or a click, saves a handoff. It asks again every 5 points, up to 95.', {}, d => ({ ctxUsed: Math.ceil(Number(d.window) * 0.82), agents: noRun(d.agents) })],
   ['Handoff from 70%', 'The user file moves the first ask to 70%; it asks again every 5 points up to 95. "handoff": "auto" would save with no ask, "off" never.', {}, d => ({ ctxUsed: Math.ceil(Number(d.window) * 0.72), agents: noRun(d.agents) }), { user: { handoffAt: 70 } }],
@@ -2455,13 +2456,13 @@ const FIELDS = [
   ['youAt','Your last prompt'],['claudeAt','Claude last reply'],['project','Project'],['folder','Folder Claude works in (blank: the root)'],
   ['branch','Branch'],['ahead','Commits ahead of the upstream',1],['behind','Commits behind the upstream',1],
   ['added','Lines added, uncommitted',1],['removed','Lines removed, uncommitted',1],['cc','Claude Code version'],
-  ['scorerVal','Scorer bar',1],['failures','New tool failures',1],['planTitle','Plan title'],['planDone','Plan steps done',1],
+  ['compactAt','Auto-compact at, k (0: unknown)',1],['scorerVal','Scorer bar',1],['failures','New tool failures',1],['planTitle','Plan title'],['planDone','Plan steps done',1],
   ['planTotal','Plan steps',1],['planStep','Step in progress'],['listed','Skills listed',1],['ofSkills','of session skills',1]
 ];
 // What the session is doing; the mod's own switches are settings (BandSettings)
 const SWITCHES = [
   ['running','A turn is running'],['fullscreen','Fullscreen (CLAUDE_CODE_NO_FLICKER=1)'],
-  ['alfred','Alfred Code is installed'],['autoRun','auto-run on'],['scorer','scorer on'],['runway','Runway: fresh session at the trigger'],
+  ['alfred','Alfred Code is installed'],['autoRun','auto-run on'],['autoCompact','auto-compact on'],['scorer','scorer on'],['runway','Runway: fresh session at the trigger'],
   ['upstream','The branch has an upstream (pushed with -u)'],['plan','A plan file exists'],['fresh','First second of the session'],['collapsed','Band collapsed (Ctrl+X Ctrl+A, above only)']
 ];
 // The four sources the page edits, each the "alfred-mods" fields it sets
@@ -2806,7 +2807,8 @@ function tabNow(d, m, p, w) {
   else {
     const a = p.alfredCode || {};
     L.push([S('  full context: ', 'dim'), S(m.runway ? `fresh session at ${num(d.trigger)}k` : 'compact (Claude Code\'s own point)', '')]);
-    L.push([S('  modes: ', 'dim'), S(m.autoRun ? 'auto-run on' : 'auto-run off', m.autoRun ? 'warn' : ''), S(' · ', 'dim'), S(m.scorer ? `scorer ${num(d.scorerVal)}` : 'scorer off', '')]);
+    L.push([S('  modes: ', 'dim'), S(m.autoRun ? 'auto-run on' : 'auto-run off', m.autoRun ? 'warn' : ''), S(' · ', 'dim'),
+      S(!m.autoCompact ? 'auto-compact off' : num(d.compactAt) > 0 ? `auto-compact on (at ${Math.round(num(d.compactAt))}k)` : 'auto-compact on', ''), S(' · ', 'dim'), S(m.scorer ? `scorer ${num(d.scorerVal)}` : 'scorer off', '')]);
     L.push([S('  judged as: ', 'dim'), S(a.model || '-', modelCls(a.model))]);
     if (m.runway) L.push([S('  resume: ', 'dim'), S((a.resume || '-') + '   ', ''), S('f: fill prompt', 'bold')]);
     L.push([S(`  read ${a.read || '-'} · written ${a.written || '-'}`, 'dim')]);
