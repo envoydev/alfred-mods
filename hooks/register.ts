@@ -101,7 +101,7 @@ const INITIAL = {
     mode: 'ask', threshold: 80, point: null, handled: null, isAskUp: false, lastSave: null, alfred: { state: 'none', reason: null },
   } as Handoff,
   stack: {
-    state: 'none', reason: null, fullContext: null, model: null, window: null, resumeAt: null, noOffer: false, autoRun: null, scorer: null,
+    state: 'none', reason: null, fullContext: null, model: null, window: null, resumeAt: null, noOffer: false, autoRun: null, scorer: null, autoCompact: null,
     hasPrompt: false, updatedAt: null, readAt: null, ignored: [],
   } as Stack,
   blockers: {} as Record<string, number>,

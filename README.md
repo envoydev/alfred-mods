@@ -709,11 +709,12 @@ In a project where [Alfred Code](https://github.com/envoydev/alfred-code) publis
 `.claude/session-inspector/status/<session id>.json` for the session, the mod reads that one file at the session's
 start, every 30 seconds and after `/clear`, and shows more:
 
-- **The mode banner:** `auto-run · scorer 80 │` leads the band while the stack's auto-run or its scorer is on, after
-  `● REC` while recording. Where the band's first line does not fit beside it, the banner takes that line alone.
+- **The mode banner:** `auto-run · auto-compact 490k · scorer 80 │` leads the band from the session's start while the
+  stack's auto-run, auto-compact or scorer is on, after `● REC` while recording. `490k` is where Claude Code compacts
+  for the session's model; `auto-compact` alone when the stack does not know it. Where the band's first line does not fit beside it, the banner takes that line alone.
 - **The runway:** while the stack offers a fresh session at a full context, the band's context gauge measures against
   the stack's trigger instead of the window, `ctx ▰▰▰▱▱ 62% of 150k`, and the turns forecast counts to it.
-- **The ALFRED CODE section** in `/inspect`'s Now tab: what the stack does at a full context, its auto-run and scorer,
+- **The ALFRED CODE section** in `/inspect`'s Now tab: what the stack does at a full context, its auto-run, auto-compact and scorer,
   the model it judges the session by, its resume prompt's first line and when it last wrote the file. A field the mod
   cannot use is named as ignored, and the rest still shows.
 - **The resume prompt:** while the pane has the focus (Ctrl+X Tab, or a click in fullscreen), `f` fills the stack's

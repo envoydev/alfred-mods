@@ -23,7 +23,7 @@ test('a full valid file reads every field', () => {
     state: 'used',
     fields: {
       fullContext: 'fresh-session', model: 'claude-opus-5-5', window: 1000000, resumeAt: 150000, noOffer: false,
-      autoRun: true, scorer: { on: true, level: 80, rounds: 3 }, updatedAt: Date.parse('2026-10-29T14:03:00Z'), ignored: [],
+      autoRun: true, scorer: { on: true, level: 80, rounds: 3 }, autoCompact: null, updatedAt: Date.parse('2026-10-29T14:03:00Z'), ignored: [],
     },
     prompt: PROMPT,
   })
@@ -57,7 +57,7 @@ test('a missing field is unknown and not listed', () => {
   const r = parseStack(JSON.stringify({ schema: 1, session: 's1', fullContext: 'compact' }), 's1')
   expect(r).toEqual({
     state: 'used',
-    fields: { fullContext: 'compact', model: null, window: null, resumeAt: null, noOffer: false, autoRun: null, scorer: null, updatedAt: null, ignored: [] },
+    fields: { fullContext: 'compact', model: null, window: null, resumeAt: null, noOffer: false, autoRun: null, scorer: null, autoCompact: null, updatedAt: null, ignored: [] },
     prompt: null,
   })
 })
@@ -127,7 +127,7 @@ test("Phase 4's reasons come through", () => {
 // Task 4: the runway and the banner
 const STACK: Stack = {
   state: 'used', reason: null, fullContext: 'fresh-session', model: 'claude-opus-5-5', window: 1000000, resumeAt: 150000, noOffer: false,
-  autoRun: true, scorer: { on: true, level: 80, rounds: 3 }, hasPrompt: true, updatedAt: null, readAt: 0, ignored: [],
+  autoRun: true, scorer: { on: true, level: 80, rounds: 3 }, autoCompact: null, hasPrompt: true, updatedAt: null, readAt: 0, ignored: [],
 }
 const USAGE: Usage = { tokens: 93_000, window: 1_000_000, percent: 9, startedAt: 0, windows: [], costUsd: null, todayUsd: null, at: 0 }
 const BASE: BandInput = {
@@ -290,4 +290,32 @@ test('fillToast by outcome', () => {
   expect(fillToast({ isFilled: false })).toBe("Alfred Code's resume prompt was not filled")
   expect(STACK_TOASTS.notEmpty).toBe("Prompt not empty: clear it, then press f to fill Alfred Code's resume prompt")
   expect(STACK_TOASTS.gone).toBe('Alfred Code has no resume prompt now')
+})
+
+// Auto-compact beside auto-run and the scorer (the owner, 2026-11-12: '"auto-run | auto-compact 490k | scorer 80"'),
+// from alfred-code's status file, schema 1, add-only: `autoCompact: { on, at } | null`
+test('autoCompact reads on and at, or null; a bad form is unknown and listed', () => {
+  const at = (v: unknown) => {
+    const r = parseStack(file({ autoCompact: v }), 's1')
+    if (r.state !== 'used') throw new Error('not used')
+    return r.fields
+  }
+  expect(at({ on: true, at: 490000 }).autoCompact).toEqual({ on: true, at: 490000 })
+  expect(at({ on: false, at: null }).autoCompact).toEqual({ on: false, at: null })
+  expect(at(null)).toMatchObject({ autoCompact: null, ignored: [] })
+  for (const bad of [{ on: 'yes', at: 490000 }, { on: true, at: 0 }, { on: true, at: 1.5 }, { on: true, at: '490000' }, { on: true }, [], 'on', true]) {
+    expect(at(bad)).toMatchObject({ autoCompact: null, ignored: ['autoCompact'], fullContext: 'fresh-session', autoRun: true })
+  }
+})
+
+test('the banner orders auto-run, auto-compact and the scorer; auto-compact shows while on, in thousands', () => {
+  const on = (at: number | null): Stack => ({ ...STACK, autoCompact: { on: true, at } })
+  expect(text(bannerSegs(on(490_000)))).toBe('auto-run · auto-compact 490k · scorer 80')
+  expect(text(bannerSegs(on(null)))).toBe('auto-run · auto-compact · scorer 80')
+  expect(text(bannerSegs(on(491_600)))).toBe('auto-run · auto-compact 492k · scorer 80')
+  expect(text(bannerSegs({ ...STACK, autoCompact: { on: false, at: 490_000 } }))).toBe('auto-run · scorer 80')
+  expect(text(bannerSegs({ ...STACK, autoCompact: null }))).toBe('auto-run · scorer 80')
+  expect(text(bannerSegs({ ...on(490_000), autoRun: false, scorer: null }))).toBe('auto-compact 490k')
+  // The existing tones: auto-run warn, the rest the text's own, the joiner dim
+  expect(bannerSegs(on(490_000)).map(s => ('text' in s ? s.tone : undefined))).toEqual(['warn', 'dim', undefined, 'dim', undefined])
 })
