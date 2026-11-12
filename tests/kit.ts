@@ -51,6 +51,8 @@ type Options = {
   refuseDelete?: string[]
   // Paths whose writes, or whose existence checks, are refused, as a guard or a read-only disk would
   refuseWrite?: string[]; refuseExists?: string[]
+  // Why `$.ui.copy` does not take, when a test gives one
+  copyRefused?: 'no-surface' | 'no-clipboard' | 'refused'
 }
 
 export const gitResult = (stdout: string, exitCode = 0, stderr = ''): ProcessRunResult =>
@@ -244,8 +246,9 @@ export function stubAll(on: On, o: Options = {}): {
     return { value: undefined }
   })
   on('ui.copy', (_, e) => {
+    if (o.copyRefused !== undefined) return { value: { isCopied: false as const, reason: o.copyRefused } }
     copied.push(e.text)
-    return { value: { isCopied: true } }
+    return { value: { isCopied: true as const } }
   })
   // The classic events the mod hooks have nothing beneath them in a test
   on('classic.PostToolUseFailure', () => ({}))

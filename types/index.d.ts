@@ -6,6 +6,9 @@ export type Failure = {
   outcome: Exclude<Outcome, 'ok'>; reason: string; detail: string; count: number; isNew: boolean
   // The hook script that blocked the call (spec C6); absent in a row an earlier version kept
   by?: string | null
+  // Its number for '/inspect show <n>', counting up through the session and never changed, so a failure that lands
+  // while a turn runs moves no other row's; absent in a row an earlier version kept
+  n?: number
 }
 export type TurnEnd = 'answer' | 'aborted' | 'refusal' | 'error'
 export type Turn = {
@@ -128,8 +131,8 @@ export type Level = 'off' | 'on' | 'strict'
 export type RecState = { level: Level; count: number; note: string | null }
 // "quiet": compact tool rows on or off, from the settings files (spec settings-values S2)
 export type Quiet = { isOn: boolean }
-// "band": the full band with its info line, or calm, its two lines, from the settings files
-export type BandMode = 'full' | 'calm'
+// "band": the full band with its info line, calm, its two lines, or off, none, from the settings files
+export type BandMode = 'full' | 'calm' | 'off'
 // `isToolsOpen`: the full band's detail rows are open ("bandRows"); `isUnder`: the band draws under the input on the
 // terminal ("bandPlace": "under", spec 2026-11-11 band-under U1), set only while under
 export type BandSetting = { mode: BandMode; isToolsOpen?: boolean; isUnder?: boolean }

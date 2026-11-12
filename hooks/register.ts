@@ -6,7 +6,7 @@ import type {
   EngineInterface, Register, SessionContextBreakdown, SessionRateLimit, SessionUsage, Timer, TurnStepInput, TurnStepResult, UiOpenResult,
 } from 'claude-code'
 
-import { actionOf, addLoopStep, isLive, newRow, refreshAgents, statusAt, upsertSpawn } from './agents.ts'
+import { actionOf, addLoopStep, agentTree, isLive, newRow, refreshAgents, statusAt, upsertSpawn } from './agents.ts'
 import { bandLines, spinnerSuffix, statusText, underRows } from './band.ts'
 import type { BandInput } from './band.ts'
 import {
@@ -35,10 +35,10 @@ import { PLANS_DIR, SCORES_DIR, readFolder } from './planfiles.ts'
 import { planLines, scoresLabel } from './planlines.ts'
 import { closeOf, closeSlices, closeWait, isAllWait, liveSpans, mineOf, openWait, overheadKey, sliceMs, staleKeys, stepKey, sumTimes, waitOf } from './steptime.ts'
 import type { Close } from './steptime.ts'
-import { agentsLines, cacheLines, nowLines, tabBar, timelineLines, toolsLines, usageLines } from './tabs.ts'
-import { classify, fold, targetOf, toolKey } from './outcome.ts'
+import { agentsLines, asCommands, cacheLines, nowLines, paneCommands, reportRows, tabBar, timelineLines, toolsLines, usageLines } from './tabs.ts'
+import { classify, fold, numberOf, targetOf, toolKey } from './outcome.ts'
 import { LEVELS, REC_HELP, addWord, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec.ts'
-import { DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast, writeField } from './settings.ts'
+import { BAND_MODES, DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast, writeField } from './settings.ts'
 import type { Field, From, Resolved, Source, Values } from './settings.ts'
 import { baseName, dropPassed, folderOf, gitDirOf, headBranch, nextWindows, parentOf, storedWindows } from './startup.ts'
 import type { CallFacts } from './outcome.ts'
@@ -189,7 +189,8 @@ async function addRow($: EngineInterface, id: string, call: Call, outcome: Exclu
     const rest = old === undefined ? list
       : old.count > 1 ? list.map(f => (f === old ? { ...f, count: f.count - 1 } : f))
       : list.filter(f => f !== old)
-    const out = fold(rest, row)
+    // A call settled again keeps its row's number
+    const out = fold(rest, old !== undefined && old.count === 1 && old.n !== undefined ? { ...row, n: old.n } : row)
     call.rowId = out[out.length - 1]?.id ?? null
     return out
   })
@@ -921,6 +922,76 @@ async function closePane($: EngineInterface, id: 'inspect' | 'rec', name: string
   return `Closed the ${name}.`
 }
 
+// The commands for what a click or a key does in the pane (the user, 2026-11-12: in iTerm's main screen, with tabs,
+// neither reaches the mod). Each answers with what it did, masked while REC is on.
+const INSPECT_HELP = 'Usage: /inspect [now|usage|agents|tools|cache|timeline|plan [name]] opens a tab, /inspect close closes the pane. ' +
+  '/inspect show [n] and copy [n] act on tool failure n (1 the newest), report [n] on agent report n (1 the top), ' +
+  "fill fills Alfred Code's resume prompt, band off|calm|full sets \"band\" in ~/.claude/settings.json."
+const BAND_HELP = '/inspect band off, calm or full sets "band" in ~/.claude/settings.json.'
+const COPY_WHY = { 'no-surface': 'no screen to copy on', 'no-clipboard': 'this terminal has no clipboard path', refused: 'the terminal refused it' } as const
+
+// '2' as 2; left out, 1; anything else, 0, which no item has
+const ordinal = (word: string | undefined): number => (word === undefined ? 1 : /^\d+$/.test(word) ? Number(word) : 0)
+const outOf = (what: string, word: string | undefined, count: number, first: string): string =>
+  `No ${what} ${oneLine(printable(word ?? ''), 20)}: there ${count === 1 ? 'is 1' : `are ${count}`}, 1 the ${first}.`
+
+// The pane on `tab`, unless it is open on one of `tabs` already: '' when drawn, else why not
+async function showOn($: EngineInterface, tab: Tab, tabs: Tab[]): Promise<string> {
+  const isOpen = (await $.ui.panes().catch(() => [])).some(p => p.id === 'inspect')
+  if (isOpen && tabs.includes((await read($, view)).tab)) return ''
+  const opened = await openInspect($, tab)
+  return opened.isPlaced ? '' : ` The pane is open but not drawn: ${opened.reason}.`
+}
+
+// '/inspect band [off|calm|full]': writes "band" into the user file, or names the mode in force and its source
+async function bandCommand($: EngineInterface, word: string): Promise<string> {
+  const mode = BAND_MODES.find(m => m === word)
+  if (mode !== undefined) return setField($, 'band', mode)
+  await loadSettings($)
+  const r = settingsMem.resolved
+  return `Band: ${r?.values.band ?? DEFAULTS.band} - from ${sourceName(r?.from.band ?? 'default', '/band')}. ${BAND_HELP}`
+}
+
+// '/inspect show [n]' and '/inspect copy [n]': the failure whose row starts with n, the newest when n is left out
+async function failureCommand($: EngineInterface, action: 'show' | 'copy', word: string | undefined): Promise<string> {
+  const list = (await read($, failures)).map((f, i) => ({ f, n: numberOf(f, i) }))
+  const newest = list[list.length - 1]
+  if (newest === undefined) return `No tool failure to ${action}.`
+  const n = word === undefined ? newest.n : ordinal(word)
+  const f = list.find(x => x.n === n)?.f
+  const oldest = list[0]?.n ?? newest.n
+  if (f === undefined) {
+    const range = oldest === newest.n ? `the pane lists failure ${oldest}` : `the pane lists failures ${oldest} to ${newest.n}`
+    return `No failure ${oneLine(printable(word ?? ''), 20)}: ${range}.`
+  }
+  const name = `failure ${n} (${f.tool}${f.target === '' ? '' : `  ${oneLine(printable(f.target), 40)}`})`
+  if (action === 'copy') {
+    if (f.outcome !== 'error') return `Nothing to copy: ${name} was ${f.outcome}, not an error.`
+    const done = await $.ui.copy({ text: f.detail })
+    return done.isCopied ? `Copied the error of ${name}.` : `Not copied: ${COPY_WHY[done.reason]}.`
+  }
+  if (f.outcome !== 'error' && f.outcome !== 'blocked') return `Nothing to show: ${name} was ${f.outcome}.`
+  return toggleCommand($, f.id, name, 'now', ['now', 'tools'])
+}
+
+// '/inspect report [n]': report n of the agents that finished with one, in the Agents tab's order, the top first
+async function reportCommand($: EngineInterface, word: string | undefined): Promise<string> {
+  const list = reportRows(await read($, agents))
+  if (list.length === 0) return 'No agent report to show.'
+  const n = ordinal(word)
+  const r = list[n - 1]
+  if (r === undefined) return outOf('report', word, list.length, 'top')
+  return toggleCommand($, `report:${r.id}`, `report ${n} (${r.type} · ${oneLine(printable(r.description), 40)})`, 'agents', ['agents'])
+}
+
+// Show and Hide as one toggle, as the button: shown, the pane comes up on a tab that lists it
+async function toggleCommand($: EngineInterface, id: string, name: string, tab: Tab, tabs: Tab[]): Promise<string> {
+  const isShown = (await read($, view)).shown.includes(id)
+  await toggleShown($, id)
+  if (isShown) return `Hid ${name}.`
+  return `Showing ${name} in the inspect pane.${await showOn($, tab, tabs)}`
+}
+
 // The band's Inspect button: a pane the surface leaves undrawn says why
 async function inspectFromBand($: EngineInterface): Promise<void> {
   const opened = await openInspect($, 'now')
@@ -1129,7 +1200,7 @@ async function removeRecWord($: EngineInterface, word: string): Promise<void> {
 const recOf = (r: RecState): { level: RecState['level']; words: number } => ({ level: r.level, words: r.count })
 
 // A source's name in the commands' answers: an earlier command's choice is named for its command (S7)
-const sourceName = (from: From, command: '/rec' | '/auto-handoff'): string => (from === 'legacy' ? `an earlier ${command}` : nameOf(from))
+const sourceName = (from: From, command: '/rec' | '/auto-handoff' | '/band'): string => (from === 'legacy' ? `an earlier ${command}` : nameOf(from))
 
 // The user settings file Claude Code reads: settings.json in CLAUDE_CONFIG_DIR when set, else in ~/.claude; null with no
 // home to find it from
@@ -1566,11 +1637,12 @@ async function followConversation($: EngineInterface, by: 'prompt' | null, calls
 
 // `f` in the ALFRED CODE section: the stack's resume prompt into an empty draft, never sent. A press from a frame drawn
 // before the prompt went away or the file stopped owning the full context fills nothing (Decision 7).
-async function fillStack($: EngineInterface): Promise<void> {
+// f, or '/inspect fill': what it did, which the press toasts and the command answers
+async function fillStack($: EngineInterface): Promise<string> {
   const text = stackMem.prompt
-  if (!fillReady(await read($, stack), text)) toast($, STACK_TOASTS.gone)
-  else if ((await $.prompt.read()).text.trim() !== '') toast($, STACK_TOASTS.notEmpty)
-  else toast($, fillToast(await $.prompt.fill({ text })))
+  if (!fillReady(await read($, stack), text)) return STACK_TOASTS.gone
+  if ((await $.prompt.read()).text.trim() !== '') return STACK_TOASTS.notEmpty
+  return fillToast(await $.prompt.fill({ text }))
 }
 
 // The Now tab's HANDOFF section reads the atom with F8's percent and the runway
@@ -1859,9 +1931,9 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     const started = await next(e)
-    await $.command.register({ name: 'inspect', description: 'Session metrics, agents, tool failures, cache, the timeline and the plan in a pane', argumentHint: '[now|usage|agents|tools|cache|timeline|plan [name]|close]' })
+    await $.command.register({ name: 'inspect', description: 'Session metrics, agents, tool failures, cache, the timeline and the plan in a pane', argumentHint: '[now|usage|agents|tools|cache|timeline|plan [name]|close|show [n]|copy [n]|report [n]|fill|band off|calm|full]' })
     await $.command.register({ name: 'rec', description: 'Recording mode: set "rec" in ~/.claude/settings.json, show the level, test it, or edit your private words', argumentHint: '[on|strict|off|test|words [close]]' })
-    await $.command.register({ name: 'auto-handoff', description: 'Save a handoff now, set the handoff mode or first ask in ~/.claude/settings.json, or show them', argumentHint: '[ask|auto|off|at <percent>|now]' })
+    await $.command.register({ name: 'auto-handoff', description: 'Save a handoff now, set the handoff mode or first ask in ~/.claude/settings.json, or show them', argumentHint: '[ask|auto|off|at <percent>|now|compact|later]' })
     recMem.home = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE')) ?? null
     await loadSettings($, true)
     await readStatus($)
@@ -2092,8 +2164,12 @@ export const register: Register = (on, options) => {
     const words = e.args.trim().split(/\s+/)
     const word = (words[0] ?? '').toLowerCase()
     if (word === 'close') return { text: await closePane($, 'inspect', 'inspect pane') }
+    if (word === 'band') return { text: mask(await bandCommand($, (words[1] ?? '').toLowerCase())) }
+    if (word === 'show' || word === 'copy') return { text: mask(await failureCommand($, word, words[1])) }
+    if (word === 'report') return { text: mask(await reportCommand($, words[1])) }
+    if (word === 'fill') return { text: await fillStack($) }
     const tab = TABS.find(t => t === (word === '' ? 'now' : word))
-    if (tab === undefined) return { text: 'Tabs: now, usage, agents, tools, cache, timeline, plan. /inspect close closes the pane.' }
+    if (tab === undefined) return { text: INSPECT_HELP }
     if (tab === 'plan') {
       const name = words[1] ?? null
       const good = (await read($, plans)).plans.filter(w => w.value !== null).map(w => w.name).sort()
@@ -2134,6 +2210,16 @@ export const register: Register = (on, options) => {
     if (args === 'now') {
       await saveNow($)
       return { text: `Saving a handoff to ${HANDOFF_PATH}.` }
+    }
+    // The ask's c and r, for a screen where its keys and clicks do not reach the mod (the user, 2026-11-12)
+    if (args === 'compact') {
+      void saveThenCompact($, held)
+      return { text: `Saving a handoff to ${HANDOFF_PATH}, then compacting.` }
+    }
+    if (args === 'later') {
+      if (!(await read($, handoff)).isAskUp) return { text: 'No handoff ask is up.' }
+      await dismissAsk($)
+      return { text: 'The handoff ask is down until the next step.' }
     }
     const mode = MODES.find(m => m === args)
     if (mode !== undefined) return { text: mask(await setField($, 'handoff', mode)) }
@@ -2357,7 +2443,7 @@ export const register: Register = (on, options) => {
       'tab-cache': () => openInspect($, 'cache'),
       compact: () => compactNow($, held),
       'handoff-save': () => saveNow($),
-      'stack-fill': () => fillStack($),
+      'stack-fill': async () => toast($, await fillStack($)),
       'handoff-compact': () => saveThenCompact($, held),
       'handoff-dismiss': () => dismissAsk($),
       'tab-timeline': () => openInspect($, 'timeline'),
@@ -2370,7 +2456,11 @@ export const register: Register = (on, options) => {
     for (const agent of input.agents) {
       if (agent.report !== null) press[`report-${agent.id}`] = () => toggleShown($, `report:${agent.id}`)
     }
-    return drawLines($, e, [...bar, ...body], { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
+    // On the terminal's main screen nothing takes a click, and the pane's keys may not reach the mod (the user,
+    // 2026-11-12): each button draws as its command
+    const isMain = e.surface === 'terminal' && e.viewport?.isFullscreen === false
+    const lines = isMain ? asCommands([...bar, ...body], paneCommands(rows, input.agents)) : [...bar, ...body]
+    return drawLines($, e, lines, { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
   }).catch(($, e, next) => drawNote($, e, paneFailed(next.error.kind, next.error.message, recLevel() !== 'off')))
 
   // The private-words pane: words are added only here, never through a command's arguments, which the transcript echoes

@@ -1,11 +1,12 @@
 // Each /inspect tab, from the session's values to lines of styled segments.
-import { LOOPS_NOTE, agentTime, agentTree, isLive, laneFit, lanesOf, loopsLine, statusGlyph, toolSummary } from './agents.ts'
+import { LOOPS_NOTE, agentTime, agentTree, isLive, laneFit, lanesOf, loopsLine, reportLine, statusGlyph, toolSummary } from './agents.ts'
 import { REC_MARK, barSegs, cacheWarning, pctSeg, skillSegs, windowsInOrder, working, wrapRows } from './band.ts'
 import { IDLE_COMPACT_MS, billingOf, cacheLine, cacheView, selfCompacts, toastAt } from './cache.ts'
 import type { BandInput, Line, Seg, Tone } from './band.ts'
 import { clock, duration, fitLine, modelParts, modelText, printable, tokens, usd, when } from './format.ts'
 import { pace, turnsLeft } from './forecast.ts'
 import { handoffLines } from './handoff.ts'
+import { numberOf } from './outcome.ts'
 import { PARTS_LABEL, listedText, loadedTexts, partsLines } from './parts.ts'
 import type { HandoffView } from './handoff.ts'
 import { planSection } from './planlines.ts'
@@ -14,7 +15,7 @@ import { storedMark } from './startup.ts'
 import { stackLines } from './stack.ts'
 import type { Runway } from './stack.ts'
 
-import type { Failure, Loop, Parts, Stack, Tab, ToolStat, Totals, Turn, View } from '../types'
+import type { AgentRow, Failure, Loop, Parts, Stack, Tab, ToolStat, Totals, Turn, View } from '../types'
 
 // `stack`: Alfred Code's status as last read, its resume prompt from module memory, the runway and the session's model
 export type TabInput = BandInput & {
@@ -99,6 +100,8 @@ export function agentsLines(b: TabInput): Line[] {
   const lanes = lanesOf(b.agents, b.now)
   if (lanes.length >= 2 && laneFit(lanes, b.columns) !== null) out.push([{ lanes, now: b.now }])
   out.push(root)
+  // Report n as '/inspect report <n>' counts it: the finished agents with one, in this order
+  let reportN = 0
   for (const t of agentTree(b.agents)) {
     const r = t.row
     const line: Line = [{ text: t.prefix, tone: 'dim' }, statusGlyph(r.status), { text: ` ${r.type} · ` }, familySeg(r.model)]
@@ -114,10 +117,11 @@ export function agentsLines(b: TabInput): Line[] {
     out.push(doing)
     if (isLive(r.status) && r.action !== null) out.push([{ text: indent, tone: 'dim' }, { text: `▸ ${r.action}` }])
     if (!isLive(r.status) && r.report !== null) {
+      reportN++
       const isShown = b.view.shown.includes(`report:${r.id}`)
       out.push([
-        { text: indent, tone: 'dim' }, { text: `result${isCut ? ' (cut off)' : ''}: ${fitLine(printable(r.report), 60)}` }, { text: ' ' },
-        { button: { key: `report-${r.id}`, label: isShown ? 'Hide report' : 'Show report' } },
+        { text: indent, tone: 'dim' }, { text: `result${isCut ? ' (cut off)' : ''}: ${fitLine(reportLine(printable(r.report)), Math.max(40, b.columns - [...indent].length - 30))}` }, { text: ' ' },
+        { button: { key: `report-${r.id}`, label: `${isShown ? 'Hide' : 'Show'} report ${reportN}` } },
       ])
       if (isShown) out.push([{ code: r.report }])
     }
@@ -194,10 +198,54 @@ const parse = (iso: string | null): number | null => {
   return Number.isNaN(ms) ? null : ms
 }
 
+// The failures the newest first, each with the number '/inspect show <n>' and 'copy <n>' take (the user, 2026-11-12:
+// 'right now I need to count and order'), right-aligned to the widest
+function numberedFailures(b: TabInput): Line[] {
+  const listed = b.failures.map((f, i) => ({ f, n: numberOf(f, i) })).reverse()
+  const width = Math.max(0, ...listed.map(x => String(x.n).length))
+  return listed.flatMap(x => failureRows(x.f, b.view.shown, x.n, width))
+}
+
+// The finished agents with a report, in the Agents tab's order: report n is '/inspect report <n>'
+export function reportRows(agents: AgentRow[]): AgentRow[] {
+  return agentTree(agents).map(t => t.row).filter(r => !isLive(r.status) && r.report !== null)
+}
+
+// Each pane button's command, for the terminal's main screen, where nothing takes a click and the pane's keys may not
+// reach the mod: the tabs keep their buttons, as their names are the command's word
+export function paneCommands(failures: Failure[], agents: AgentRow[]): Record<string, string> {
+  const out: Record<string, string> = {
+    compact: '/compact', 'handoff-save': '/auto-handoff now', 'handoff-compact': '/auto-handoff compact',
+    'handoff-dismiss': '/auto-handoff later', 'stack-fill': '/inspect fill',
+  }
+  failures.forEach((f, i) => {
+    out[`show-${f.id}`] = `/inspect show ${numberOf(f, i)}`
+    out[`copy-${f.id}`] = `/inspect copy ${numberOf(f, i)}`
+  })
+  reportRows(agents).forEach((r, i) => {
+    out[`report-${r.id}`] = `/inspect report ${i + 1}`
+  })
+  return out
+}
+
+// Each button with a command drawn as that command's text, and the space between two such as ' · '
+export function asCommands(lines: Line[], commands: Record<string, string>): Line[] {
+  const isCommand = (seg: Seg | undefined): boolean => seg !== undefined && 'button' in seg && commands[seg.button.key] !== undefined
+  return lines.map(line => line.map((seg, i): Seg => {
+    if ('button' in seg) {
+      const command = commands[seg.button.key]
+      return command === undefined ? seg : { button: { key: seg.button.key, label: command, isText: true } }
+    }
+    if ('text' in seg && seg.text === ' ' && isCommand(line[i - 1]) && isCommand(line[i + 1])) return { text: ' · ' }
+    return seg
+  }))
+}
+
 // '<glyph> <clock> <tool>  <target>   <reason>', ×N for repeats, then its detail as code while shown
-function failureRows(f: Failure, shown: string[]): Line[] {
+function failureRows(f: Failure, shown: string[], n: number, width: number): Line[] {
   const isError = f.outcome === 'error'
   const line: Line = [
+    { text: `${String(n).padStart(width)} ` },
     { text: isError ? '✗ ' : '⊘ ', tone: isError ? 'fail' : 'warn' },
     { text: `${clock(f.at)} `, tone: 'dim' },
     { text: f.tool },
@@ -226,7 +274,7 @@ export function nowLines(b: TabInput): Line[] {
   const warning = cacheWarning(b, false)
   if (warning !== null) out.push(warning)
   if (b.failures.length === 0 && warning === null) out.push([{ text: 'Nothing needs a look.', tone: 'dim' }])
-  for (const f of [...b.failures].reverse()) out.push(...failureRows(f, b.view.shown))
+  out.push(...numberedFailures(b))
   return out
 }
 
@@ -311,7 +359,7 @@ export function toolsLines(b: TabInput): Line[] {
   if (named.length > 0) out.push([{ text: 'Blocked by hooks' }, { text: `  ${named.map(([name, n]) => `${name} ×${n}`).join(' · ')}` }])
   out.push([{ text: 'Last failures and blocks', bold: true }])
   if (b.failures.length === 0) out.push([{ text: 'None.', tone: 'dim' }])
-  for (const f of [...b.failures].reverse()) out.push(...failureRows(f, b.view.shown))
+  out.push(...numberedFailures(b))
   out.push([{ text: "Counts Claude's tool calls; ! commands are not seen.", tone: 'dim' }])
   return out
 }

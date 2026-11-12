@@ -1,7 +1,7 @@
 // The mod's switches as values under one "alfred-mods" key in Claude Code's settings files (spec 2026-11-11
 // settings-values, S1-S3): each field read per file, the first valid value in the order policy, flag, local, project,
 // user, then an earlier command's choice, then the default. Pure: register.ts reads the files and the store.
-import type { HandoffMode, Level } from '../types'
+import type { BandMode, HandoffMode, Level } from '../types'
 import { MODES, isThreshold } from './handoff.ts'
 import { LEVELS } from './rec.ts'
 
@@ -9,7 +9,7 @@ export type Field = 'band' | 'bandPlace' | 'bandRows' | 'quiet' | 'rec' | 'hando
 export type Source = 'policy' | 'flag' | 'local' | 'project' | 'user'
 export type From = Source | 'legacy' | 'default'
 export type Values = {
-  band: 'full' | 'calm'; bandPlace: 'above' | 'under'; bandRows: boolean; quiet: boolean; rec: Level
+  band: BandMode; bandPlace: 'above' | 'under'; bandRows: boolean; quiet: boolean; rec: Level
   handoff: HandoffMode; handoffAt: number
 }
 export type Skip = { field: Field; source: Source }
@@ -20,12 +20,15 @@ export const FIELDS: readonly Field[] = ['band', 'bandPlace', 'bandRows', 'quiet
 export const SOURCES: readonly Source[] = ['policy', 'flag', 'local', 'project', 'user']
 export const DEFAULTS: Values = { band: 'full', bandPlace: 'above', bandRows: true, quiet: true, rec: 'off', handoff: 'ask', handoffAt: 80 }
 
+// "off" draws no band, above or under (the user, 2026-11-12: '/inspect band off' hides it where nothing takes a key)
+export const BAND_MODES: readonly BandMode[] = ['full', 'calm', 'off']
+
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 const isBool = (v: unknown): v is boolean => typeof v === 'boolean'
 
 // Each field's test and the words its toast uses for the values it takes
 const RULES: Record<Field, { isValid: (v: unknown) => boolean; takes: string }> = {
-  band: { isValid: v => v === 'full' || v === 'calm', takes: '"full" or "calm"' },
+  band: { isValid: v => BAND_MODES.some(m => m === v), takes: '"full", "calm" or "off"' },
   bandPlace: { isValid: v => v === 'above' || v === 'under', takes: '"above" or "under"' },
   bandRows: { isValid: isBool, takes: 'true or false' },
   quiet: { isValid: isBool, takes: 'true or false' },
@@ -126,8 +129,8 @@ export function movedToast(kept: Partial<Values>): string {
   return `Add "alfred-mods": { ${fields} } to ~/.claude/settings.json - the choices your earlier commands made`
 }
 
-// One field of "alfred-mods" set in a settings file's text, for /rec on|strict|off and /auto-handoff ask|auto|off|at
-// (the user's ruling, 2026-11-12): every other key kept in its order, in the file's own indent, line ends and last
+// One field of "alfred-mods" set in a settings file's text, for /rec on|strict|off, /auto-handoff ask|auto|off|at and
+// /inspect band (the user's rulings, 2026-11-12): every other key kept in its order, in the file's own indent, line ends and last
 // newline; null or blank text makes the file. A file that is not one JSON object, or whose "alfred-mods" is not an
 // object, is never rewritten: 'parse' or 'key' says which.
 export function writeField<F extends Field>(text: string | null, field: F, value: Values[F]): { text: string } | { why: 'parse' | 'key' } {

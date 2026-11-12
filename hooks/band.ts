@@ -16,8 +16,9 @@ export type Tone = 'ok' | 'warn' | 'fail' | 'dim' | 'usage' | 'skill' | 'agents'
 export type Seg =
   // With a `width`, a table cell: that many cells wide, its text cut with '…' when longer, at its end with `align: 'end'`
   | { text: string; tone?: Tone; bold?: boolean; width?: number; align?: 'start' | 'end' }
-  // A toned button draws its label bold in the colour of the feature it acts on; a plain one draws `<hotkey>: <label>`
-  | { button: { key: string; label: string; hotkey?: string; tone?: Tone; plain?: boolean } }
+  // A toned button draws its label bold in the colour of the feature it acts on; a plain one draws `<hotkey>: <label>`;
+  // `isText`, where nothing presses it, its label as dim text that keeps a button's place at the line's end
+  | { button: { key: string; label: string; hotkey?: string; tone?: Tone; plain?: boolean; isText?: boolean } }
   | { code: string }
   | { chart: number[] }
   // Agents on one time axis (spec C2), alone on its line: text lanes on the terminal and mobile, one Svg elsewhere
@@ -589,6 +590,8 @@ const KEEP_ALL: Keep = { infoUpTo: 2, isPlaceKept: true, toolRowsKept: Infinity,
 // the body's first line follows them while it fits what is left, else they take line 1 alone and the body keeps the
 // full width, so no gauge, reset or the cost drops for them
 export function bandLines(b: BandInput): Line[] {
+  // "band": "off" draws none, above or under, and the pinned line counts it as out of view
+  if (b.mode === 'off') return []
   const max = b.maxRows
   if (max === undefined) return bandRows(b, KEEP_ALL)
   // Short of rows, the project row gives way first, then the info line's second row, then the open detail rows from

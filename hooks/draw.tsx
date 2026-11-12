@@ -59,7 +59,7 @@ function spans(lanes: Lane[], now: number, width: number): Span[] {
 function laneLine(l: Lane, s: Span, w: LaneFit): Line {
   const glyph = statusGlyph(l.status)
   return [
-    { ...glyph, text: `${glyph.text} ` }, { text: l.label, width: w.label },
+    { ...glyph, text: `${glyph.text} ` }, { text: l.label, width: w.label }, { text: ' ' },
     ...(s.before > 0 ? [{ text: '·'.repeat(s.before), tone: 'dim' as const }] : []),
     { text: '━'.repeat(s.bar), ...(glyph.tone === undefined ? { bold: true } : { tone: glyph.tone }) },
     ...(s.after > 0 ? [{ text: '·'.repeat(s.after), tone: 'dim' as const }] : []),
@@ -83,7 +83,8 @@ function lanesSvg(lanes: Lane[], now: number, noColor: boolean): string {
     const s = at[i] ?? { before: 0, bar: 1, after: 99 }
     const x = 150 + (s.before / 100) * (W - 160)
     const w = Math.max(3, (s.bar / 100) * (W - 160))
-    const label = xml([...show(l.label)].slice(0, 22).join(''))
+    const chars = [...show(l.label)]
+    const label = xml(chars.length > 22 ? `${chars.slice(0, 21).join('')}…` : chars.join(''))
     const fill = noColor ? 'currentColor' : laneHex(l.status)
     return `<text x="4" y="${i * ROW + 13}" font-size="11" fill="${noColor ? 'currentColor' : LANE_HEX.label}">${label}</text><rect x="${x.toFixed(1)}" y="${i * ROW + 4}" width="${w.toFixed(1)}" height="10" rx="3" fill="${fill}"/>`
   }).join('')
@@ -161,7 +162,7 @@ function piecesOf(line: Line, isSvg: boolean): Piece[] {
     }
     // A digit also answers from the empty prompt, so the terminal shows it plain, '3: Compact', where '[ Compact ]'
     // hides it; a letter answers only in the focused pane, and its button keeps the brackets
-    const isPlain = seg.button.plain === true || /^\d$/.test(seg.button.hotkey ?? '')
+    const isPlain = seg.button.plain === true || seg.button.isText === true || /^\d$/.test(seg.button.hotkey ?? '')
     return [{ kind: 'button', button: seg.button, label: show(seg.button.label), isPlain }]
   })
 }
@@ -248,6 +249,7 @@ export function drawLines(
       case 'chart': return <Box width={p.cells} flexShrink={0}>{chart($, e, p.values, o.noColor)}</Box>
       case 'code': return <Code source={p.source} />
       case 'button': {
+        if (p.button.isText === true) return <Box flexShrink={0}><Text {...style({ tone: 'dim' }, o.noColor)} {...face}>{p.label}</Text></Box>
         const { key, hotkey, tone } = p.button
         const press = () => {
           void o.press[key]?.()
