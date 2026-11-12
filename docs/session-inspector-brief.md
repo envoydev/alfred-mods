@@ -802,6 +802,7 @@ which then reads as unknown. Phase 5's reader and what it draws follow the table
 | `resumeAt`      | whole tokens over 0, or `null`                                 | The stack's fresh-session trigger after its clamps, a trigger and not a promise; `null` with no offer at this window tier |
 | `autoRun`       | boolean                                                        | The stack's auto-run is on for the session's current prompt, by `guard-answer.js` `autoRunNow()`          |
 | `scorer`        | `{ "on": boolean, "level": 1-100, "rounds": 1-10 }`, or `null` | The stack's output scorer for the current prompt, by `scorerNow()`; `null` when not usable                |
+| `autoCompact`   | `{ "on": boolean, "at": whole tokens over 0, or null }`, or `null` | Added in alfred-code 3.11.0, add-only: `on` while the project's `ALFRED_CODE_AUTO_COMPACT` is 1 or auto-run is on; `at` Claude Code's compaction point for the session's model, `null` when unknown |
 | `handoffPrompt` | string of 1 to 1000 characters, or `null`                      | A prompt for a fresh session, ready to send as it is, composed by the stack; `null` with no plan in progress |
 
 - **The prompt's text:** `Read <plan path>, check that branch <branch> is checked out, and continue from its Resume:
@@ -823,7 +824,8 @@ which then reads as unknown. Phase 5's reader and what it draws follow the table
   ALFRED CODE section's `ignored:` list; the rest of the file still counts. `model`: 1 to 100 characters, no control
   characters. `window`: a whole number from 1,000 to 10,000,000. `resumeAt`: a whole number from 1,000 up to and not
   including the file's own valid `window` (10,000,000 when `window` is unknown). `autoRun`: a boolean. `scorer`: `on`
-  a boolean, `level` a whole number from 1 to 100, `rounds` from 1 to 10. `handoffPrompt`: 1 to 1000 characters whose
+  a boolean, `level` a whole number from 1 to 100, `rounds` from 1 to 10. `autoCompact`: `on` a boolean, `at` a whole number from 1 to 10,000,000 or
+  `null`. `handoffPrompt`: 1 to 1000 characters whose
   only control characters are line feeds and tabs. Each but `autoRun` may be `null`; a missing field is unknown and
   not listed; a number sent as a string fails its rule; an `updatedAt` that does not parse shows no written time.
 - **The prompt's text** stays in module memory: never in `$.state`, `$.store`, a toast, a log or a file.
@@ -832,8 +834,12 @@ which then reads as unknown. Phase 5's reader and what it draws follow the table
   `ctx ▰▰▰▱▱ 62% of 150k`, past 100% past the trigger. Its tone, the band's hot state and the `≈N turns` forecast go
   by it, and the Usage tab counts turns to `150k`. Otherwise the core item: `compact` already measures against Claude
   Code's own compaction point, which the stack's installer seeds.
-- **The mode banner:** `auto-run` (warn tone) and `scorer 80`, joined by ` · ` and followed by ` │ `, lead band line
-  1 after `● REC` while the file is used and a mode is on, never dropped for width. Where the band's first line does
+- **The mode banner:** `auto-run` (warn tone), `auto-compact 490k` and `scorer 80`, in that order, joined by ` · ` and
+  followed by ` │ `, lead band line 1 after `● REC` from the session's first used file while a mode is on (the owner,
+  2026-11-12: '"auto-run | auto-compact 490k | scorer 80"'). `auto-compact` shows while `autoCompact.on`, its `at`
+  rounded to whole thousands, or alone when `at` is `null`; the ALFRED CODE section spells it out as `auto-compact on
+  (at 490k)` or `auto-compact off`. The scorer keeps the name `scorer` until alfred-code's rename to scoring is
+  settled. The banner is never dropped for width. Where the band's first line does
   not fit beside the marks, they take line 1 alone and the body keeps the full width, so no gauge, reset or the cost
   drops for them (agent).
 - **The ALFRED CODE section,** after HANDOFF in the Now tab, drawn in every session whatever `/auto-handoff`'s mode:

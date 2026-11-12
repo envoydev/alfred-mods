@@ -104,6 +104,9 @@ for (const surface of SURFACES) {
     expect((await at(without('autoRun')))[2]).toBe('scorer on (level 80, 3 rounds)')
     expect((await at(status({ autoRun: false, scorer: { on: false, level: 70, rounds: 1 } })))[2]).toBe('auto-run off · scorer off')
     expect((await at(status({ scorer: null })))[2]).toBe('auto-run on')
+    expect((await at(status({ autoCompact: { on: true, at: 490_000 } })))[2]).toBe('auto-run on · auto-compact on (at 490k) · scorer on (level 80, 3 rounds)')
+    expect((await at(status({ autoCompact: { on: true, at: null } })))[2]).toBe('auto-run on · auto-compact on · scorer on (level 80, 3 rounds)')
+    expect((await at(status({ autoCompact: { on: false, at: 490_000 } })))[2]).toBe('auto-run on · auto-compact off · scorer on (level 80, 3 rounds)')
     const noModes = await at(without('autoRun', 'scorer'))
     expect(noModes[2]).toBe('model claude-opus-5-5')
     const noModel = await at(without('model'))
@@ -111,9 +114,9 @@ for (const surface of SURFACES) {
     expect(noModel).toHaveLength(5)
     const noPrompt = await at(status({ handoffPrompt: null }))
     expect(noPrompt.some(l => l.startsWith('resume: '))).toBe(false)
-    // Each poll reads 30 s after the one before: this is the tenth, then the eleventh
-    expect((await at(status({ window: 'big' })))).toContain(`read ${clock(NOW + 10 * 30_000)} · written ${clock(Date.parse(WRITTEN))} · ignored: window`)
-    expect((await at(without('updatedAt'))).at(-1)).toBe(`read ${clock(NOW + 11 * 30_000)}`)
+    // Each poll reads 30 s after the one before: this is the thirteenth, then the fourteenth
+    expect((await at(status({ window: 'big' })))).toContain(`read ${clock(NOW + 13 * 30_000)} · written ${clock(Date.parse(WRITTEN))} · ignored: window`)
+    expect((await at(without('updatedAt'))).at(-1)).toBe(`read ${clock(NOW + 14 * 30_000)}`)
   })
 
   test(`a disagreeing model adds its warning and turns the runway off (${surface})`, async ($, on) => {
@@ -172,7 +175,7 @@ for (const surface of SURFACES) {
 
 const STACK: Stack = {
   state: 'used', reason: null, fullContext: 'fresh-session', model: 'claude-opus-5-5', window: 1000000, resumeAt: 150000, noOffer: false,
-  autoRun: true, scorer: { on: true, level: 80, rounds: 3 }, hasPrompt: true, updatedAt: null, readAt: NOW, ignored: [],
+  autoRun: true, scorer: { on: true, level: 80, rounds: 3 }, autoCompact: null, hasPrompt: true, updatedAt: null, readAt: NOW, ignored: [],
 }
 
 test('the heading is bold violet, the reason line and line 6 dim, the model warning warn', () => {

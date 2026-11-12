@@ -1,6 +1,6 @@
 // Alfred Code's status file past Phase 4's fields (Phase 5 spec 'The reader'): each field checked alone, a bad one
 // read as unknown and named in `ignored`, the rest of the file still used.
-import type { FullContext, Stack, StackScorer, Usage } from '../types'
+import type { FullContext, Stack, StackAutoCompact, StackScorer, Usage } from '../types'
 import type { Line, Seg } from './band.ts'
 import { clock, fitLine, tokens } from './format.ts'
 import { parseStatus } from './handoff.ts'
@@ -32,6 +32,11 @@ const scorerRule: Rule<StackScorer | null> = v => {
   if (!isRecord(v) || typeof v.on !== 'boolean' || !isWhole(v.level, 1, 100) || !isWhole(v.rounds, 1, 10)) return 'bad'
   return { on: v.on, level: v.level, rounds: v.rounds }
 }
+const autoCompactRule: Rule<StackAutoCompact | null> = v => {
+  if (v === null) return null
+  if (!isRecord(v) || typeof v.on !== 'boolean' || !(v.at === null || isWhole(v.at, 1, 10_000_000))) return 'bad'
+  return { on: v.on, at: v.at }
+}
 const promptRule: Rule<string | null> = v => v === null || (typeof v === 'string' && v.length >= 1 && v.length <= 1000 && !PROMPT_CONTROL.test(v)) ? v : 'bad'
 
 export function parseStack(text: string, session: string): StackRead {
@@ -55,11 +60,12 @@ export function parseStack(text: string, session: string): StackRead {
   const noOffer = v.resumeAt === null
   const autoRun = field('autoRun', autoRunRule)
   const scorer = field('scorer', scorerRule)
+  const autoCompact = field('autoCompact', autoCompactRule)
   const prompt = field('handoffPrompt', promptRule)
   const parsed = typeof v.updatedAt === 'string' ? Date.parse(v.updatedAt) : NaN
   return {
     state: 'used',
-    fields: { fullContext, model, window, resumeAt, noOffer, autoRun, scorer, updatedAt: Number.isNaN(parsed) ? null : parsed, ignored },
+    fields: { fullContext, model, window, resumeAt, noOffer, autoRun, scorer, autoCompact, updatedAt: Number.isNaN(parsed) ? null : parsed, ignored },
     prompt,
   }
 }
@@ -82,11 +88,16 @@ export function runwayOf(s: Stack, u: Usage, sessionModel: string | null): Runwa
   return { percent: Math.floor((u.tokens * 100) / s.resumeAt), resumeAt: s.resumeAt, at: u.window === null ? null : Math.round((s.resumeAt * 100) / u.window) }
 }
 
-// The mode banner (spec 'The mode banner'): `auto-run` in warn and `scorer <level>`, only while a mode is on
+// A compaction point in whole thousands, `490k`
+const thousands = (at: number): string => `${Math.round(at / 1000)}k`
+
+// The mode banner (spec 'The mode banner'): `auto-run` in warn, `auto-compact <at>` and `scorer <level>`, only while a
+// mode is on (the owner, 2026-11-12: '"auto-run | auto-compact 490k | scorer 80"')
 export function bannerSegs(s: Stack): Seg[] {
   if (s.state !== 'used') return []
   const parts: Seg[][] = []
   if (s.autoRun === true) parts.push([{ text: 'auto-run', tone: 'warn' }])
+  if (s.autoCompact?.on === true) parts.push([{ text: s.autoCompact.at === null ? 'auto-compact' : `auto-compact ${thousands(s.autoCompact.at)}` }])
   if (s.scorer?.on === true) parts.push([{ text: `scorer ${s.scorer.level}` }])
   return parts.flatMap((p, i) => (i === 0 ? p : [{ text: ' · ', tone: 'dim' as const }, ...p]))
 }
@@ -111,7 +122,9 @@ function contextLine(s: Stack, runway: Runway | null): string | null {
 function modesLine(s: Stack): string | null {
   const scorer = s.scorer === null ? null
     : s.scorer.on ? `scorer on (level ${s.scorer.level}, ${s.scorer.rounds} round${s.scorer.rounds === 1 ? '' : 's'})` : 'scorer off'
-  const parts = [s.autoRun === null ? null : `auto-run ${s.autoRun ? 'on' : 'off'}`, scorer].filter((p): p is string => p !== null)
+  const compact = s.autoCompact === null ? null
+    : !s.autoCompact.on ? 'auto-compact off' : s.autoCompact.at === null ? 'auto-compact on' : `auto-compact on (at ${thousands(s.autoCompact.at)})`
+  const parts = [s.autoRun === null ? null : `auto-run ${s.autoRun ? 'on' : 'off'}`, compact, scorer].filter((p): p is string => p !== null)
   return parts.length === 0 ? null : parts.join(' · ')
 }
 

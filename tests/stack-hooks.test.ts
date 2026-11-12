@@ -33,7 +33,7 @@ test('a valid file fills the stack atom at session start', async ($, on) => {
   const { s } = await start($, on, { files: { [STATUS]: status() }, now: 5000 })
   expect(s()).toEqual({
     state: 'used', reason: null, fullContext: 'fresh-session', model: 'claude-opus-5-5', window: 1000000, resumeAt: 150000,
-    noOffer: false, autoRun: true, scorer: { on: true, level: 80, rounds: 3 }, hasPrompt: true,
+    noOffer: false, autoRun: true, scorer: { on: true, level: 80, rounds: 3 }, autoCompact: null, hasPrompt: true,
     updatedAt: Date.parse('2026-10-29T14:03:00Z'), readAt: 5000, ignored: [],
   })
 })
@@ -222,6 +222,12 @@ for (const surface of SURFACES) {
     expect(lines[0]).toBe('auto-run · scorer 80')
     expect(lines[1]).toMatch(/^ctx ▰▰▰▱▱ 62% of 150k · 5h .* · 7d ▰▱▱▱▱ 20% \(\d\d\.\d\d \d\d:\d\d\)$/)
     for (const l of lines) expect(l.length).toBeLessThanOrEqual(90)
+  })
+
+  test(`a fresh session's first file draws the whole banner before any prompt (${surface})`, async ($, on) => {
+    await start($, on, { files: { [STATUS]: status({ autoCompact: { on: true, at: 490_000 } }) } })
+    const lines = await rows(await band($, surface))
+    expect(lines[0]?.startsWith('auto-run · auto-compact 490k · scorer 80')).toBe(true)
   })
 
   test(`an ignored file draws no runway and no banner (${surface})`, async ($, on) => {

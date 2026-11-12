@@ -153,10 +153,13 @@ export type Handoff = {
 // The resume prompt's text is never here: module memory only, `hasPrompt` says whether it is known.
 export type FullContext = 'fresh-session' | 'compact' | 'off'
 export type StackScorer = { on: boolean; level: number; rounds: number }
+// Auto-compact as the stack reports it (alfred-code's status file, schema 1, add-only): `on` while the project's
+// ALFRED_CODE_AUTO_COMPACT or auto-run is on, `at` Claude Code's compaction point for the session's model, null unknown
+export type StackAutoCompact = { on: boolean; at: number | null }
 export type Stack = {
   state: 'none' | 'used' | 'ignored'; reason: string | null
   fullContext: FullContext | null; model: string | null; window: number | null; resumeAt: number | null; noOffer: boolean
-  autoRun: boolean | null; scorer: StackScorer | null; hasPrompt: boolean
+  autoRun: boolean | null; scorer: StackScorer | null; autoCompact: StackAutoCompact | null; hasPrompt: boolean
   updatedAt: number | null; readAt: number | null; ignored: string[]
 }
 
