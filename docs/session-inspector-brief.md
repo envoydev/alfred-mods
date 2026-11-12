@@ -143,7 +143,7 @@ Hooks only update the shared state. Every surface reads that state and passes it
 
 **Design rules**
 
-- **Calm by default:** idle and healthy, the band is one dim line. Colour appears only when a threshold is crossed. (Until 2026-11-10; the user then chose the full band by default, `/band calm` for this rule's band.)
+- **Calm by default:** idle and healthy, the band is one dim line. Colour appears only when a threshold is crossed. (Until 2026-11-10; the user then chose the full band by default, `/band calm` for this rule's band. Since 2026-11-12 the full band keeps its colours when idle, the user's 'colors by default ... not only when active work'; this rule holds for the calm band alone.)
 - **Now first:** while Claude works, line 1 shows what is running: the plan step, each agent's current action, and a running Bash command with its elapsed time. When idle, it shows the last turn: duration, tool calls, failures, and the time of your last prompt and of Claude's reply.
 - **Room left:** line 2 holds the gauges. Context and 5h get bars because they move within a session; the 7d window and cost are numbers. Each window shows when it resets after its percent, as its day, month and clock in brackets, such as (31.10 09:00) (the user, 2026-10-28).
 - **Bars:** one bar everywhere, in the band and the pane: 5 cells of 20%, one character each, ▰ filled and ▱ empty, with no gaps, such as ▰▰▱▱▱ at 40% (the user, 2026-10-28). A cell fills only when its share is reached, the filled part takes the threshold colour and the empty part stays dim, so the shape reads without colour.
@@ -228,7 +228,7 @@ rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ w
   in a `PromptHint` hook on the terminal, composing Claude Code's own footer element first, then the band's lines at
   the site above's width; the site above passes once the footer has drawn this session. No key arms the footer, so the
   buttons name their commands - clicked in fullscreen, drawn as text on the main screen - `/band rows on|off` stands in
-  for `t`, and the action row follows the gauges, so a cut at the screen's edge takes the detail rows first. The
+  for `t`, and the action row comes first, right under the input (the user, 2026-11-12: '✗ 3 new /inspect' over '✓ Turn 18'; it followed the gauges before), so a cut at the screen's edge takes the detail rows first. The
   fullscreen budget is half the screen less 6 rows, 2 for a set `statusLine` and 1 for the pinned line. A Desktop tab
   keeps the band above until its footer is probed. Design, probes and rulings: the machine-local spec
   `docs/superpowers/specs/2026-11-11-band-under-design.md`. (agent)
@@ -1437,7 +1437,7 @@ The Claude Code limits below are from the mods reference; the right column is ho
 
 **Security**
 
-- **Network and processes:** no `$.http.fetch` and no `$.model` calls. The `$.process` calls allowed are fixed, read-only git commands, each with a 2 s timeout and `--no-optional-locks`, run off the hooks: one `git status` for the extractive handoff, and for the project row's change counts (the user, 2026-11-12: 'project: alfred-mods │ git:(web-steps) +5323 -123') `git diff --numstat HEAD` and `git ls-files --others --exclude-standard -z` from the repository's folder, after a main-thread Bash call, edit or write and on the 30 s poll. A new untracked file's lines count as added: up to 200 files of 1 MiB or less are read through `$.fs.read`, and only their line counts are kept, in memory.
+- **Network and processes:** no `$.http.fetch` and no `$.model` calls. The `$.process` calls allowed are fixed, read-only git commands, each with a 2 s timeout and `--no-optional-locks`, run off the hooks: one `git status` for the extractive handoff, and for the project row's change counts (the user, 2026-11-12: 'project: alfred-mods │ git:(web-steps) +5323 -123') `git diff --numstat HEAD` and `git ls-files --others --exclude-standard -z` from the repository's folder, and for its commits ahead of and behind the upstream (the user, 2026-11-12: 'git:(band-order) arrow-up-symbol 1 arrow-down-symbol 2') `git rev-list --left-right --count @{upstream}...HEAD`, as of the last fetch (no `git fetch`, ever), after a main-thread Bash call, edit or write and on the 30 s poll. A new untracked file's lines count as added: up to 200 files of 1 MiB or less are read through `$.fs.read`, and only their line counts are kept, in memory.
 - **Approvals:** the mod never approves, denies or rewrites a tool call; F8 writes HANDOFF.md and fills an empty prompt, and F9 rewrites only what rows draw, as the 'F8 and F9 behaviour' section says. (agent)
 - **Files written:** one `$.fs.write`, of `.claude/session-inspector/HANDOFF.md`, and never over a file without its marker. (agent)
 - **Private data:** private words live only in `$.store`, never in code, logs or `$.state`.

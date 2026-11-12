@@ -366,11 +366,11 @@ test('idle with a failure, line 1 carries no PLAN in full mode; the calm band ke
   expect(planRowOf(calm)).toBeUndefined()
 })
 
-test('the plan row shows with the rows closed, and dims with the band while calm', () => {
+test('the plan row shows with the rows closed, and keeps its colours while the band is idle', () => {
   const lines = bandLines(input({ plan: planNamed(), isToolsOpen: false }))
   const row = lines.find(l => text(l).startsWith('plan:')) ?? []
   expect(row.length).toBeGreaterThan(0)
-  for (const seg of row) if ('text' in seg) expect(seg.tone).toBe('dim')
+  expect(row.some(seg => 'text' in seg && seg.tone !== 'dim')).toBe(true)
 })
 
 test('short of rows, the plan row goes after usage: and before the info line', () => {
@@ -419,6 +419,26 @@ test('narrow, the folder goes first, then the changes', () => {
   expect(placed(place, 36)).toContain('project: Example │ git:(develop)\n')
 })
 
+// Commits ahead of and behind the branch's upstream, as of the last fetch (the user, 2026-11-12: 'git:(band-order)
+// arrow-up-symbol 1 arrow-down-symbol 2 +41 −30'), between the branch and the changes; a side at 0 is left out
+test('the project row shows commits ahead and behind after the branch, a side at 0 left out', () => {
+  const place = { project: 'alfred-mods', branch: 'band-order', sync: { ahead: 1, behind: 2 }, changes: { added: 41, removed: 30 } }
+  expect(placed(place)).toContain('project: alfred-mods │ git:(band-order) ↑1 ↓2 +41 −30\n')
+  expect(placed({ ...place, sync: { ahead: 0, behind: 3 } })).toContain('git:(band-order) ↓3 +41 −30\n')
+  expect(placed({ ...place, sync: { ahead: 4, behind: 0 } })).toContain('git:(band-order) ↑4 +41 −30\n')
+  expect(placed({ ...place, sync: { ahead: 0, behind: 0 } })).toContain('git:(band-order) +41 −30\n')
+  const row = bandLines(input({ meta: { ...input().meta, place } })).find(l => text(l).startsWith('project:')) ?? []
+  expect(row.find(s => 'text' in s && s.text === '↑1')).toEqual({ text: '↑1', tone: 'git' })
+  expect(row.find(s => 'text' in s && s.text === '↓2')).toEqual({ text: '↓2', tone: 'git' })
+})
+
+test('narrow, the folder goes first, then the changes, then the commits ahead and behind', () => {
+  const place = { project: 'Example', folder: 'Frontend/src/app', branch: 'develop', sync: { ahead: 1, behind: 2 }, changes: { added: 12, removed: 3 } }
+  expect(placed(place, 50)).toContain('project: Example │ git:(develop) ↑1 ↓2 +12 −3\n')
+  expect(placed(place, 40)).toContain('project: Example │ git:(develop) ↑1 ↓2\n')
+  expect(placed(place, 36)).toContain('project: Example │ git:(develop)\n')
+})
+
 test("narrow, the project row keeps the folder's last part, then drops the folder", () => {
   const place = { project: 'Example', folder: 'Frontend/src/app', branch: 'develop' }
   expect(placed(place, 100)).toContain('project: Example │ git:(develop) │ folder: Frontend/src/app')
@@ -434,9 +454,12 @@ test("narrow, the project row keeps the folder's last part, then drops the folde
 const textOf = (l: Line): string => l.map(s => ('text' in s ? s.text : 'button' in s ? `[${s.button.label}]` : '')).join('')
 const buttonsOf = (lines: Line[]) => lines.flat().flatMap(s => ('button' in s ? [s.button] : []))
 
-test('under, the action row follows the gauges; above it stays last', () => {
+// The user, 2026-11-12: under the input the action row comes first, over the turn line ('✗ 3 new /inspect' then
+// '✓ Turn 18 · 41s · 4 tools' then the gauges), the line nearest the input as above it is the last
+test('under, the action row comes first, over the turn line and the gauges; above it stays last', () => {
   const under = bandLines(input({ newFailures: 1, under: { buttons: 'click' } }))
-  expect(under.findIndex(l => textOf(l).startsWith('✗ 1 new'))).toBe(2)
+  expect(under.findIndex(l => textOf(l).startsWith('✗ 1 new'))).toBe(0)
+  expect(textOf(under[1]!)).toMatch(/^✓ /)
   const above = bandLines(input({ newFailures: 1 }))
   expect(above.findIndex(l => textOf(l).startsWith('✗ 1 new'))).toBe(above.length - 1)
 })
@@ -616,11 +639,15 @@ for (const noColor of [false, true]) {
   })
 }
 
-// The user's colours hold in the band's quiet state too: the toggle, a button, kept its aqua while the rest dimmed
-test('idle and healthy, the band dims but the project and usage rows keep their colours', () => {
+// Idle and healthy, the full band keeps its colours, not only while it works (the user, 2026-11-12: 'these values have
+// colors by default ... not only when active work'); the calm band stays the one dim line
+test('idle and healthy, the full band keeps its colours on every row', () => {
   const lines = bandLines(input({ stats: TARGET_STATS, meta: { ...input().meta, place: { project: 'my-app', folder: '.claude', branch: 'develop' } } }))
   expect(texts(lines).slice(2)).toEqual(['project: my-app │ git:(develop) │ folder: .claude', 'usage:   [ 45 tools ]'])
-  for (const l of lines.slice(0, 2)) for (const s of l) if ('text' in s) expect(s.tone).toBe('dim')
+  for (const l of lines.slice(0, 2)) expect(l.some(s => 'text' in s && s.tone !== undefined && s.tone !== 'dim')).toBe(true)
+  expect(lines[0]?.find(s => 'text' in s && s.text.startsWith('ctx'))).toMatchObject({ tone: 'usage' })
+  const calm = bandLines(input({ mode: 'calm' }))
+  for (const l of calm) for (const s of l) if ('text' in s) expect(s.tone).toBe('dim')
   const project = lines[2] ?? []
   expect(project.find(s => 'text' in s && s.text === 'my-app')).toEqual({ text: 'my-app' })
   expect(project.find(s => 'text' in s && s.text === 'develop')).toEqual({ text: 'develop', tone: 'branch' })

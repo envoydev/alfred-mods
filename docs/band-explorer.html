@@ -397,19 +397,38 @@ function statusGlyph(status             )                                 {
 // The time axis's lanes (spec C2): the 8 newest rows that have a start, oldest first; a live row has no end yet
 function lanesOf(rows            , now        )         {
   return rows.filter(r => r.startedAt > 0).sort((a, b) => a.startedAt - b.startedAt).slice(-8).map(r => ({
-    label: r.task === null ? r.type : `task ${r.task}`, startAt: r.startedAt,
+    label: laneLabel(r), startAt: r.startedAt,
     endAt: isLive(r.status) ? null : r.endedAt ?? now, status: r.status, time: agentTime(r, now),
   }))
 }
 
-// A lane's text widths at `columns` (spec C2): a glyph and a space, the label, the bar, a space and the time. The time
-// cell is as wide as the longest lane's, never cut; the label is 14 cells and gives way down to 6 so the bar keeps 10.
-// Null where even that does not fit: the pane draws no lanes.
+// A lane's label: what the agent was asked, its task id first, or its type when it was asked nothing (the user,
+// 2026-11-12: 'I want to see what agents are doing or did'; the type alone left eight lanes all 'general-purpo…')
+function laneLabel(r          )         {
+  const asked = oneLine(r.description, 200)
+  const what = asked === '' ? r.type : asked
+  return r.task === null ? what : `task ${r.task} · ${what}`
+}
+
+// A lane's text widths at `columns` (spec C2): a glyph and a space, the label and a space, the bar, a space and the time. The time
+// cell is as wide as the longest lane's, never cut; the label as wide as the longest, from 6 to 40 cells, giving way
+// down to 6 so the bar keeps 10; the bar takes the rest up to 40, so a wide pane is not a row of dots (the user,
+// 2026-11-12). Null where even that does not fit: the pane draws no lanes.
                                                                   
+const LANE_MAX = 40
 function laneFit(lanes        , columns        )                 {
   const time = Math.max(0, ...lanes.map(l => [...l.time].length))
-  const label = Math.min(14, columns - 3 - time - 10)
-  return label < 6 ? null : { label, bar: columns - 3 - time - label, time }
+  const room = columns - 4 - time
+  const longest = Math.min(LANE_MAX, Math.max(6, ...lanes.map(l => [...l.label].length)))
+  const label = Math.min(longest, room - 10)
+  return label < 6 ? null : { label, bar: Math.min(LANE_MAX, room - label), time }
+}
+
+// A report's line in the tree: its first that is not a heading, a rule or a fence, else its first heading's words
+function reportLine(report        )         {
+  const lines = report.split('\n').map(l => l.trim()).filter(l => l !== '' && !/^([-*_=]\s*){3,}$/.test(l) && !l.startsWith('```'))
+  const isHeading = (l        )          => /^#{1,6}\s/.test(l)
+  return (lines.find(l => !isHeading(l)) ?? lines[0] ?? '').replace(/^#{1,6}\s+/, '')
 }
 
 // Loops no spawn announced (spec C3): a step adds to its loop, or starts one; the newest 60 are kept
@@ -486,7 +505,7 @@ function toolSummary(tools                          )                           
   return out
 }
 
-return { promptLines, newRow, upsertSpawn, isLive, keepRows, refreshAgents, agentTime, statusGlyph, lanesOf, laneFit, addLoopStep, LOOPS_NOTE, loopsLine, statusAt, actionOf, agentTree, toolSummary };
+return { promptLines, newRow, upsertSpawn, isLive, keepRows, refreshAgents, agentTime, statusGlyph, lanesOf, laneLabel, laneFit, reportLine, addLoopStep, LOOPS_NOTE, loopsLine, statusAt, actionOf, agentTree, toolSummary };
 })();
 // ---- hooks/cache.ts
 __m['cache.ts'] = (() => {
@@ -1186,8 +1205,9 @@ const { storedMark } = __m['startup.ts'];
                  
                                                                                                                           
                                                                                           
-                                                                                                                       
-                                                                                             
+                                                                                                                        
+                                                                                                            
+                                                                                                               
                     
                        
                                                                                                                    
@@ -1468,21 +1488,35 @@ function planRow(b           )         {
 const rowLabel = (text        )      => ({ text: text.padEnd(ROW_LABEL), tone: 'dim' })
 const dimSeg = (text        )      => ({ text, tone: 'dim' })
 
-// The project row (the user, 2026-11-11): 'project: my-app │ git:(develop) │ folder: .claude' - the session's
+// The project row (the user, 2026-11-11): 'project: my-app │ git:(develop) +12 −3 │ folder: .claude' - the session's
 // project, the branch of the repository holding the folder Claude works in, and that folder when it is not the
 // project's root, past 40 cells its last parts after '…/'; short of width the folder takes its last part, then goes
 function placeRow(b           )         {
   const place = b.meta.place
   if (place === undefined) return []
   const sep = dimSeg(ROW_JOIN)
-  const line = (folder               )       => [
+  // The uncommitted changes after the branch, added in the OK colour and removed in the failure one; none when clean
+  const changes = place.changes
+  const counted        = place.branch === null || changes === undefined || changes.added + changes.removed === 0 ? []
+    : [{ text: ' ' }, { text: `+${changes.added}`, tone: 'ok' }, { text: ' ' }, { text: `−${changes.removed}`, tone: 'fail' }]
+  // Commits ahead of and behind the upstream, in the purple of git:( ), before the changes; a side at 0 left out (the
+  // user, 2026-11-12: 'git:(band-order) arrow-up-symbol 1 arrow-down-symbol 2 +41 −30')
+  const sync = place.sync
+  const synced        = place.branch === null || sync === undefined ? [] : [
+    ...(sync.ahead > 0 ? [{ text: ' ' }, { text: `↑${sync.ahead}`, tone: 'git'          }] : []),
+    ...(sync.behind > 0 ? [{ text: ' ' }, { text: `↓${sync.behind}`, tone: 'git'          }] : []),
+  ]
+  const line = (folder               , withChanges = true, withSync = true)       => [
     { text: place.project },
     // git:( and ) purple, the branch yellow, the folder in the text's own colour (the user, 2026-11-11)
     ...(place.branch === null ? [] : [sep, { text: 'git:(', tone: 'git'          }, { text: place.branch, tone: 'branch'          }, { text: ')', tone: 'git'          }]),
+    ...(withSync ? synced : []),
+    ...(withChanges ? counted : []),
     ...(folder === null ? [] : [sep, dimSeg('folder: '), { text: folder }]),
   ]
   const folder = place.folder
-  const forms = folder === undefined ? [line(null)] : [line(fitFolder(folder, 40)), line(lastPart(folder)), line(null)]
+  // Short of width the folder goes first, then the changes, then the commits ahead and behind
+  const forms = [...(folder === undefined ? [] : [line(fitFolder(folder, 40)), line(lastPart(folder))]), line(null), line(null, false), line(null, false, false)]
   const form = forms.find(f => widthOf(f) <= b.columns - ROW_LABEL) ?? forms[forms.length - 1] ?? []
   return [[rowLabel('project:'), ...form]]
 }
@@ -1816,11 +1850,12 @@ function bandBody(b           , isNarrow         , k      )         {
   const warning = cacheWarning(b, true)
   const ask = handoffAsk(b)
   if (!isHot && b.newFailures === 0 && !b.isWorking && !agentsRun && warning === null && ask === null) {
-    const calm = isNarrow || b.mode === 'full' ? gaugeLine : withTimes(b, gaugeLine)
+    // Idle and healthy, the full band keeps its colours, as while it works (the user, 2026-11-12: 'colors by default ...
+    // not only when active work'); the calm band stays one dim line until something needs you
+    if (b.mode === 'full') return [[...gaugeLine, ...invalid], ...info]
+    const calm = isNarrow ? gaugeLine : withTimes(b, gaugeLine)
     const dim = (l      )       => l.map(s => ('text' in s ? { text: s.text, tone: 'dim'          } : s))
-    // The project and usage rows keep the user's colours, as the toggle's button kept its own (the user, 2026-11-11)
-    const lively = new Set([...place, ...counts])
-    return [[...dim(calm), ...invalid], ...info.map(l => (lively.has(l) ? l : dim(l)))]
+    return [[...dim(calm), ...invalid], ...info.map(dim)]
   }
   if (b.isWorking) return [working(b, isNarrow), line2, ...info]
   const failed       = b.newFailures > 0
@@ -1828,11 +1863,12 @@ function bandBody(b           , isNarrow         , k      )         {
     : []
   const items = [warning, ask, failed].filter((l)            => l !== null && l.length > 0)
   const joined       = items.flatMap((l, i) => (i === 0 ? l : [{ text: '    ' }, ...l]))
-  // Under the input (band-under U2), the action row follows the gauges, so a cut at the screen's edge takes the detail
-  // rows first; its commands are longer than the digits above, so the items take a row each when one row cannot hold them
+  // Under the input the action row comes first, nearest the input as above it is the last (the user, 2026-11-12, over
+  // band-under U2's place after the gauges), so a cut at the screen's edge takes the detail rows first; its commands are
+  // longer than the digits above, so the items take a row each when one row cannot hold them
   const action         = items.length === 0 ? [] : b.under !== undefined && cellsOf(joined) > b.columns ? items : [joined]
   const first = agentsRun ? working(b, isNarrow) : withPlanTail(b, lastTurn(b, isNarrow))
-  const out = b.under === undefined ? [first, line2, ...info, ...action] : [first, line2, ...action, ...info]
+  const out = b.under === undefined ? [first, line2, ...info, ...action] : [...action, first, line2, ...info]
   return out.filter(l => l.length > 0)
 }
 
@@ -2188,7 +2224,10 @@ const BandAdapter = (() => {
       : []
     const g = geometry(m, isPinned)
     const place = String(d.project || '') === '' ? undefined
-      : { project: String(d.project), ...(String(d.folder || '') === '' ? {} : { folder: String(d.folder) }), branch: String(d.branch || '') || null }
+      : {
+        project: String(d.project), ...(String(d.folder || '') === '' ? {} : { folder: String(d.folder) }), branch: String(d.branch || '') || null,
+        changes: { added: num(d.added), removed: num(d.removed) }, ...(m.upstream ? { sync: { ahead: num(d.ahead), behind: num(d.behind) } } : {}),
+      }
     return {
       now, columns: g.columns, maxRows: g.maxRows, isWorking: !!m.running && !m.fresh,
       live: m.running && !m.fresh
@@ -2354,7 +2393,7 @@ const BAND_DATA0 = {
   model: 'Sonnet 5.5', effort: 'high', sessionTime: '9m', tokS: 119, cacheMin: 60,
   ctxUsed: 140, window: 400, trigger: 180, h5: 54, h5Reset: '11.11 20:10', d7: 49, d7Reset: '16.11 03:00',
   cost: 1.26, today: 18.62, turn: 2, turnTime: '5:37', turnTools: 41,
-  youAt: '17:15', claudeAt: '17:13', project: 'my-app', folder: '.claude', branch: 'develop', cc: '2.1.322',
+  youAt: '17:15', claudeAt: '17:13', project: 'my-app', folder: '.claude', branch: 'develop', ahead: 1, behind: 2, added: 41, removed: 30, cc: '2.1.322',
   scorerVal: 80, failures: 0, planTitle: 'Token refresh', planDone: 3, planTotal: 5, planStep: 'S4 Update interceptor',
   listed: 57, ofSkills: 60,
   tools: 'Bash 32\nAskUserQuestion 4\nRead 4\nWrite 4\nGrep 1',
@@ -2365,18 +2404,18 @@ const BAND_DATA0 = {
 // The session's situation: what is happening, not what the settings say
 const BAND_MODES0 = {
   running: true, fullscreen: false, statusLine: false, alfred: true, autoRun: false, scorer: true, runway: false,
-  plan: false, fresh: false, collapsed: false, cols: 150, rows: 12, termRows: 40
+  upstream: true, plan: false, fresh: false, collapsed: false, cols: 150, rows: 12, termRows: 40
 }
 const BAND_BASE = {
   running: false, fullscreen: false, statusLine: false, alfred: false, autoRun: false, scorer: false, runway: false,
-  plan: false, fresh: false, collapsed: false, rows: 12, termRows: 40
+  upstream: true, plan: false, fresh: false, collapsed: false, rows: 12, termRows: 40
 }
 // No settings file sets anything: every field takes its default
 const BAND_CFG0 = { user: {}, project: {}, local: {}, legacy: {} }
 const noRun = s => String(s || '').split('\n').map(l => l.replace(/\s+running(\s.*)?$/i, '')).join('\n')
 // [name, what it shows, the situation, the data, the settings files]
 const BAND_PRESETS = [
-  ['Between turns, nothing to act on', 'Claude has answered and nothing needs you, so the band dims and leads with the gauges. No file sets anything, so every field takes its default: above the input, full, detail rows open.', {}, d => ({ agents: noRun(d.agents) })],
+  ['Between turns, nothing to act on', 'Claude has answered and nothing needs you, so the band leads with the gauges, in their colours as while a turn runs (the calm band dims instead). No file sets anything, so every field takes its default: above the input, full, detail rows open.', {}, d => ({ agents: noRun(d.agents) })],
   ['A turn is running', 'Line 1 counts the turn: ⟳, its time and its tool calls, with an agent at work beside it. Asks and their buttons wait for the turn to end.', { running: true }],
   ['Detail rows closed', 'Set in this project\'s local file. The usage: row keeps the counts - not a button, no arrow, no t: the rows under it open and close only by the value.', { running: true }, null, { local: { bandRows: false } }],
   ['A local file over the user\'s', 'The user file puts the band under the input with its rows closed in every project; this project\'s local file opens the rows again. Each other field falls through to the user file, then the default.', { running: true, fullscreen: true }, null, { user: { bandPlace: 'under', bandRows: false }, local: { bandRows: true } }],
@@ -2389,13 +2428,14 @@ const BAND_PRESETS = [
   ['REC from a project file', 'A committed .claude/settings.json says "on" over a user file saying "off": the order holds for REC as for every field. Mid-session REC never falls because a file went quiet - a typo drops the whole file - so it holds until that file says a lower level or the next claude run.', { running: true }, null, { user: { rec: 'off' }, project: { rec: 'on' } }],
   ['Band collapsed', 'Ctrl+X Ctrl+A hides the band above the input. The pinned line then carries REC, and ctx from 60%, since nothing else shows them.', { collapsed: true }, d => ({ ctxUsed: Math.ceil(Number(d.window) * 0.7), agents: noRun(d.agents) }), { user: { rec: 'on' } }],
   ['Tool failures', 'Between turns, ✗ 2 new and Inspect take the last row, and the pinned line says it too. /inspect lists the reasons.', {}, d => ({ failures: 2, agents: noRun(d.agents) })],
-  ['Claude works in another folder', "The project row follows Claude's last cd or the last file it edited: the project, the branch of the repository holding the folder, then the folder; at the project's root the folder is left out.", { running: true }, () => ({ folder: 'src/app/auth' })],
+  ['Claude works in another folder', "The project row follows Claude's last cd or the last file it edited: the project, the branch of the repository holding the folder with ↑ commits ahead of and ↓ behind its upstream as of the last fetch and the uncommitted +added −removed lines, then the folder; at the project's root the folder is left out.", { running: true }, () => ({ folder: 'src/app/auth' })],
+  ['A branch never pushed', 'A local branch has no upstream, so the project row draws no arrows; its uncommitted changes still show. git push -u origin <branch> gives it one.', { running: true, upstream: false }],
   ['Terminal 100 columns wide', 'Under 100 columns the gauges take their narrow form and line 1 shortens. The info line breaks between items onto a second row, the version giving way first; the project row shortens its folder.', { running: true, cols: 100 }],
   ['Terminal 48 columns wide', 'Each detail row wraps under its first item. Short of rows, the info line keeps one row and the detail rows go from the last.', { running: true, cols: 48 }],
   ['Short on rows (a tall draft)', "With 4 rows free: the project row goes first, then the info line's second row, then the detail rows from the last (rules:, agents:, skills:, tools:), then usage:, then the plan row, then the info line.", { running: true, rows: 4, plan: true }],
   ['Calm band', "Two lines: no tool count, no today's cost, no info line and no detail rows.", { running: true }, null, { user: { band: 'calm' } }],
   ['Full tool rows', 'Each tool call draws its own rows in the transcript above, with its output preview; the band does not change.', { running: true }, null, { user: { quiet: false } }],
-  ['Under the input, fullscreen', "On the terminal only. Claude Code's own mode line stays the footer's first row - it draws it first whatever order a mod gives - and the band follows it, the action row right after the gauges; each button names its command and is pressed by a click.", { fullscreen: true }, d => ({ failures: 1, agents: noRun(d.agents) }), { user: { bandPlace: 'under' } }],
+  ['Under the input, fullscreen', "On the terminal only. Claude Code's own mode line stays the footer's first row - it draws it first whatever order a mod gives - and the band follows it, the action row first, right under the input; each button names its command and is pressed by a click.", { fullscreen: true }, d => ({ failures: 1, agents: noRun(d.agents) }), { user: { bandPlace: 'under' } }],
   ['Under the input, main screen', 'The main screen takes no clicks, so each button is its command as text to type.', {}, d => ({ failures: 1, agents: noRun(d.agents) }), { user: { bandPlace: 'under' } }],
   ['Under, fullscreen, a 24-row window', 'Fullscreen gives everything under the input about half the window. Less the prompt and Claude Code\'s own footer line, 6 band rows remain here; the rest give way in the band\'s order, the project row first.', { fullscreen: true, termRows: 24, running: true }, null, { user: { bandPlace: 'under' } }],
   ['Choices from the old commands', 'Someone who ran /rec strict and /band rows off on 0.7 keeps both after the update. One toast gives the line to paste, and each old choice retires once the user file sets that field.', { running: true }, null, { legacy: { rec: 'strict', bandRows: false } }],
@@ -2413,7 +2453,8 @@ const FIELDS = [
   ['h5','5h used, %',1],['h5Reset','5h resets'],['d7','7d used, %',1],['d7Reset','7d resets'],
   ['cost','Session cost, $',1],['today','Today, $',1],['turn','Turn number',1],['turnTime','Turn time'],['turnTools','Turn tool calls',1],
   ['youAt','Your last prompt'],['claudeAt','Claude last reply'],['project','Project'],['folder','Folder Claude works in (blank: the root)'],
-  ['branch','Branch'],['cc','Claude Code version'],
+  ['branch','Branch'],['ahead','Commits ahead of the upstream',1],['behind','Commits behind the upstream',1],
+  ['added','Lines added, uncommitted',1],['removed','Lines removed, uncommitted',1],['cc','Claude Code version'],
   ['scorerVal','Scorer bar',1],['failures','New tool failures',1],['planTitle','Plan title'],['planDone','Plan steps done',1],
   ['planTotal','Plan steps',1],['planStep','Step in progress'],['listed','Skills listed',1],['ofSkills','of session skills',1]
 ];
@@ -2421,7 +2462,7 @@ const FIELDS = [
 const SWITCHES = [
   ['running','A turn is running'],['fullscreen','Fullscreen (CLAUDE_CODE_NO_FLICKER=1)'],
   ['alfred','Alfred Code is installed'],['autoRun','auto-run on'],['scorer','scorer on'],['runway','Runway: fresh session at the trigger'],
-  ['plan','A plan file exists'],['fresh','First second of the session'],['collapsed','Band collapsed (Ctrl+X Ctrl+A, above only)']
+  ['upstream','The branch has an upstream (pushed with -u)'],['plan','A plan file exists'],['fresh','First second of the session'],['collapsed','Band collapsed (Ctrl+X Ctrl+A, above only)']
 ];
 // The four sources the page edits, each the "alfred-mods" fields it sets
 const SOURCES = ['legacy', 'user', 'project', 'local'];

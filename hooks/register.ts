@@ -21,7 +21,7 @@ import { clock, fingerprint, mins, oneLine, printable, tokens, usd, when } from 
 import { mask, maskForFile, maskSpans, recLevel, setRec, toast } from './mask.ts'
 import { maskDeep, maskDialog, maskResult, neutralDialog, resultLines } from './sites.ts'
 import { DROPS_RESULT, callLine, groupLines } from './compact.ts'
-import { numstatTotals, textLines, untrackedNames } from './changes.ts'
+import { aheadBehind, numstatTotals, textLines, untrackedNames } from './changes.ts'
 import type { CompactCall } from './compact.ts'
 import {
   FOREIGN, HANDOFF_PATH, HANDOFF_USAGE, MARKER, MODES, RESUME_PROMPT, TOASTS, gitPart, handoffText, nextStep,
@@ -355,7 +355,7 @@ async function findHead($: EngineInterface, cwd: string): Promise<{ dir: string;
 // The counts stay until the next count replaces them
 const setPlace = (place: NonNullable<Meta['place']>) => (m: Meta): Meta =>
   m.place?.project === place.project && m.place.folder === place.folder && m.place.branch === place.branch ? m
-    : { ...m, place: m.place?.changes === undefined ? place : { ...place, changes: m.place.changes } }
+    : { ...m, place: { ...place, ...(m.place?.changes === undefined ? {} : { changes: m.place.changes }), ...(m.place?.sync === undefined ? {} : { sync: m.place.sync }) } }
 
 // The session's project, the folder Claude works in when it is not the project's root, and the branch of the repository
 // holding that folder (the user, 2026-11-11): a Bash `cd` moves `$.session.cwd()` and leaves `$.session.root()`. With no
@@ -415,11 +415,19 @@ async function countChanges($: EngineInterface): Promise<void> {
     do {
       changesMem.again = false
       const changes = await readChanges($).catch(() => null)
+      const sync = await readSync($).catch(() => null)
       await update($, meta, m => {
         if (m.place === undefined) return m
-        const before = m.place.changes
-        if (changes === null) return before === undefined ? m : { ...m, place: { project: m.place.project, ...(m.place.folder === undefined ? {} : { folder: m.place.folder }), branch: m.place.branch } }
-        return before?.added === changes.added && before.removed === changes.removed ? m : { ...m, place: { ...m.place, changes } }
+        const p = m.place
+        const isSame = JSON.stringify(p.changes ?? null) === JSON.stringify(changes) && JSON.stringify(p.sync ?? null) === JSON.stringify(sync)
+        if (isSame) return m
+        return {
+          ...m,
+          place: {
+            project: p.project, ...(p.folder === undefined ? {} : { folder: p.folder }), branch: p.branch,
+            ...(changes === null ? {} : { changes }), ...(sync === null ? {} : { sync }),
+          },
+        }
       })
     } while (changesMem.again)
   } finally {
@@ -451,6 +459,16 @@ async function readChanges($: EngineInterface): Promise<{ added: number; removed
   }
   changesMem.lines = seen
   return { added: totals.added + [...seen.values()].reduce((sum, f) => sum + f.lines, 0), removed: totals.removed }
+}
+
+// Commits ahead of and behind the branch's upstream (the user, 2026-11-12: 'git:(band-order) arrow-up-symbol 1
+// arrow-down-symbol 2'), as of the last fetch: the mod never fetches. No upstream, a detached HEAD, a refusal or a
+// timeout leaves them out
+async function readSync($: EngineInterface): Promise<{ ahead: number; behind: number } | null> {
+  const dir = placeMem.repo
+  if (dir === null) return null
+  const r = await $.process.run(['git', '--no-optional-locks', 'rev-list', '--left-right', '--count', '@{upstream}...HEAD'], { cwd: dir, timeoutMs: 2000 })
+  return r.exitCode === 0 ? aheadBehind(r.stdout) : null
 }
 
 // A checkout since: the poll reads the HEAD file the place came from, and counts the changes again

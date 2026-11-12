@@ -25,3 +25,10 @@ export function textLines(text: string): number | null {
   if (text === '') return 0
   return text.split('\n').length - (text.endsWith('\n') ? 1 : 0)
 }
+
+// Commits ahead of and behind the upstream (the user, 2026-11-12: 'git:(band-order) arrow-up-symbol 1
+// arrow-down-symbol 2'): `git rev-list --left-right --count @{upstream}...HEAD` prints behind, a tab, then ahead
+export function aheadBehind(stdout: string): { ahead: number; behind: number } | null {
+  const m = /^(\d+)\t(\d+)\s*$/.exec(stdout)
+  return m === null ? null : { ahead: Number(m[2]), behind: Number(m[1]) }
+}
