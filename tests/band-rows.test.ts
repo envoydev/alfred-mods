@@ -103,8 +103,21 @@ test('a type whose rows were all dropped reads ✓', () => {
   expect(texts(agentSegs([], { Explore: 3 }, false))).toEqual(['✓ Explore ×3', '0 running'])
 })
 
+// Each detail row waits for its category's first item (the user, 2026-11-12: 'leave empty until at least one of
+// category is appeared, for example if skill is appeared this show skills, if rules then rules')
+test('an empty session draws no detail row; each row comes with its first item', () => {
+  const rowsOf = (o: Partial<BandInput>) => texts(bandLines(input({ isToolsOpen: true, ...o }))).filter(l => /^(tools|skills|agents|rules):/.test(l))
+  expect(rowsOf({ stats: {}, listing: { listed: 60, total: 60, tokens: 3200 }, meta: { ...input().meta, isResumed: true } })).toEqual([])
+  expect(rowsOf({ stats: {}, meta: { ...input().meta, skills: { 'solve-task': 1 } } })).toEqual(['skills:  solve-task ×1'])
+  expect(rowsOf({ stats: {}, rules: { always: ['a.md'], byPath: [], isTracked: true } })).toEqual(['rules:   a.md │ 1 always-on · 0 by path'])
+  expect(rowsOf({ stats: {}, meta: { ...input().meta, agentTypes: { Explore: 1 } } })).toEqual(['agents:  ✓ Explore ×1 │ 0 running'])
+  expect(rowsOf({ stats: { Bash: { calls: 2, failures: 0 } as never } })).toEqual(['tools:   Bash ×2'])
+  // Untracked by path, with no always-on rule: nothing appeared
+  expect(rowsOf({ stats: {}, rules: { always: [], byPath: [], isTracked: false } })).toEqual([])
+})
+
 test('no dispatch reads none, with no running count; after a resume, none seen since resume, or the types since', () => {
-  expect(agentsRow(input({ isToolsOpen: true }))).toBe('agents:  none')
+  expect(agentsRow(input({ isToolsOpen: true }))).toBeUndefined()
   expect(texts(agentSegs([], undefined, false))).toEqual(['none'])
   expect(texts(agentSegs([], undefined, true))).toEqual(['none seen since resume'])
   expect(texts(agentSegs([agent('a1', 'Explore', 'running')], { Explore: 1 }, true))).toEqual(['◐ Explore ×1', 'since resume', '1 running'])
@@ -165,8 +178,8 @@ test('a name loaded both always-on and by path is drawn and counted once', () =>
   expect(texts(ruleSegs({ always: ['a.md'], byPath: ['a.md', 'b.md'], isTracked: true }, false))).toEqual(['a.md', 'b.md', '1 always-on · 1 by path'])
 })
 
-test('no rule known reads none loaded, also from a state kept before the rules row', () => {
-  expect(rulesRow(input({ isToolsOpen: true }))).toBe('rules:   none loaded')
+test('no rule known draws no rules row, also from a state kept before the rules row', () => {
+  expect(rulesRow(input({ isToolsOpen: true }))).toBeUndefined()
   expect(texts(ruleSegs({ always: [], byPath: [], isTracked: true }, false))).toEqual(['none loaded'])
 })
 
@@ -288,7 +301,7 @@ test('a part at 0 is left out; with none, no counts, open or closed', () => {
 // the last; the four rows draw at 24, 48 and 100 columns under usage:
 const open = (o: Partial<BandInput> = {}) => input({
   isToolsOpen: true, agents: TARGET_AGENTS, rules: { always: ['a.md', 'b.md', 'c.md'], byPath: ['d.md', 'e.md'], isTracked: true },
-  meta: { ...input().meta, agentTypes: TARGET_TYPES }, ...o,
+  meta: { ...input().meta, agentTypes: TARGET_TYPES, skills: { 'superpowers:brainstorming': 1, 'solve-task': 2 } }, ...o,
 })
 const ROW = /^(tools|skills|agents|rules):/
 const labelsOf = (lines: Line[]): string[] => texts(lines).filter(l => ROW.test(l)).map(l => l.slice(0, l.indexOf(':')))

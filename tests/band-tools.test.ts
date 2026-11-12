@@ -50,7 +50,7 @@ for (const surface of SURFACES) {
     await setUser($, kit, { bandRows: true })
     const open = await rows(ui)
     expect(open).toContain('tools:   Bash ×1 │ Context7:query-docs ×1')
-    expect(open).toContain('skills:  none loaded')
+    expect(open.some(l => l.startsWith('skills:'))).toBe(false)
 
     // usage: is text now (spec settings-values, S6): no tools button to press, and nothing written
     expect(open).toContain('usage:   [ 2 tools ]')

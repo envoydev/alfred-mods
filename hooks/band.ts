@@ -213,20 +213,27 @@ function underButton(b: BandInput, button: ButtonSeg, command: string): Seg {
 }
 
 // The open rows (spec 2026-11-11, D2): every tool by name with its calls, then the skills the main chat loaded and how
-// many the listing carries, each under its label, as many to a row as the width holds, joined by ' │ '
+// many the listing carries, each under its label, as many to a row as the width holds, joined by ' │ '. Each row waits
+// for its category's first item (the user, 2026-11-12: 'leave empty until at least one of category is appeared'): a
+// skills listing alone is no skill, and with by path untracked, no always-on rule is no rule
 export function toolRows(b: BandInput): Line[] {
   const used = toolsByCalls(b.stats)
-  const tools: Seg[] = used.length === 0 ? [{ text: 'none', tone: 'dim' }] : used.map(([key, s]) => ({ text: `${key} ×${s.calls}` }))
-  const skills = skillSegs(b.meta.skills, b.meta.isResumed === true)
+  const isResumed = b.meta.isResumed === true
+  const hasSkills = Object.keys(b.meta.skills ?? {}).length > 0
+  const hasAgents = Object.keys(b.meta.agentTypes ?? {}).length > 0
+  const drawn = rulesDrawn(b.rules ?? NO_RULES)
+  const hasRules = drawn.always.length + drawn.byPath.length > 0
+  const skills = skillSegs(b.meta.skills, isResumed)
   if (b.listing !== undefined && b.listing !== null) skills.push({ text: listedText(b.listing), tone: 'dim' })
   const label = (text: string): Seg => ({ text: text.padEnd(ROW_LABEL), tone: 'dim' })
   const under: Seg = { text: ' '.repeat(ROW_LABEL) }
   const row = (name: string, items: Line[]): Line[] => wrapRows(label(name), under, items, b.columns, ROW_JOIN)
   const one = (segs: Seg[]): Line[] => segs.map(s => [s])
   return [
-    ...row('tools:', one(tools)), ...row('skills:', one(skills)),
-    ...row('agents:', agentSegs(b.agents, b.meta.agentTypes, b.meta.isResumed === true)),
-    ...row('rules:', ruleSegs(b.rules ?? NO_RULES, b.meta.isResumed === true)),
+    ...(used.length === 0 ? [] : row('tools:', one(used.map(([key, s]): Seg => ({ text: `${key} ×${s.calls}` }))))),
+    ...(hasSkills ? row('skills:', one(skills)) : []),
+    ...(hasAgents ? row('agents:', agentSegs(b.agents, b.meta.agentTypes, isResumed)) : []),
+    ...(hasRules ? row('rules:', ruleSegs(b.rules ?? NO_RULES, isResumed)) : []),
   ]
 }
 

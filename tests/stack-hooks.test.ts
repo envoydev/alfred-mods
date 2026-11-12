@@ -207,7 +207,7 @@ for (const surface of SURFACES) {
     await start($, on, { files: { [STATUS]: status() }, usage: reading(93_000) })
     for (const columns of [120, 90]) {
       const lines = await rows(await band($, surface, columns))
-      expect(lines[0]!.startsWith('auto-run · scorer 80 │ ')).toBe(true)
+      expect(lines[0]!.startsWith('auto-run · scoring 80 │ ')).toBe(true)
       expect(lines.join('\n')).toContain('ctx ▰▰▰▱▱ 62% of 150k')
     }
   })
@@ -219,7 +219,7 @@ for (const surface of SURFACES) {
     }
     await start($, on, { files: { [STATUS]: status() }, usage: windowed })
     const lines = await rows(await band($, surface, 90))
-    expect(lines[0]).toBe('auto-run · scorer 80')
+    expect(lines[0]).toBe('auto-run · scoring 80')
     expect(lines[1]).toMatch(/^ctx ▰▰▰▱▱ 62% of 150k · 5h .* · 7d ▰▱▱▱▱ 20% \(\d\d\.\d\d \d\d:\d\d\)$/)
     for (const l of lines) expect(l.length).toBeLessThanOrEqual(90)
   })
@@ -227,7 +227,7 @@ for (const surface of SURFACES) {
   test(`a fresh session's first file draws the whole banner before any prompt (${surface})`, async ($, on) => {
     await start($, on, { files: { [STATUS]: status({ autoCompact: { on: true, at: 490_000 } }) } })
     const lines = await rows(await band($, surface))
-    expect(lines[0]?.startsWith('auto-run · auto-compact 490k · scorer 80')).toBe(true)
+    expect(lines[0]?.startsWith('auto-run · auto-compact 490k · scoring 80')).toBe(true)
   })
 
   test(`an ignored file draws no runway and no banner (${surface})`, async ($, on) => {

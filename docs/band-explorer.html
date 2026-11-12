@@ -9,7 +9,7 @@
 </head>
 <body>
 <style>
-/* Layout: a sticky live terminal on top, the editor under it, then a gallery of every band state built from the same data. */
+/* Layout: a live terminal on top (pinned while scrolling only on request), the editor under it, then a gallery of every band state built from the same data. */
 :root {
   --bg: #f3f4f6; --panel: #ffffff; --fg: #1d2330; --muted: #5d6677; --line: #d9dde5; --accent: #3b5bdb; --chip: #e8ecf8; --bad: #c92a2a;
   --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -25,11 +25,27 @@ body { background: var(--bg); color: var(--fg); font-family: var(--sans); font-s
 .wrap { max-width: 1240px; margin: 0 auto; padding-block: 20px 60px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 20px; }
 h1 { font-size: 22px; margin: 0; text-wrap: balance; font-weight: 600; }
 h2 { font-size: 16px; margin: 0 0 4px; font-weight: 600; text-wrap: balance; }
-p { margin: 0; max-width: 72ch; }
+/* Descriptions take their container's whole width (the user, 2026-11-12) */
+p { margin: 0; }
 .muted { color: var(--muted); }
 .legend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; color: var(--muted); }
 .legend b { color: var(--fg); font-weight: 500; }
-.live { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding-block: 8px; display: grid; gap: 6px; }
+.live { background: var(--bg); padding-block: 8px; display: grid; gap: 6px; }
+.live.pinned { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; max-height: 60vh; overflow-y: auto; border-bottom: 1px solid var(--line); }
+.live-tools { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+.live-tools label { display: inline-flex; align-items: center; gap: 8px; }
+/* As the settings table's selects: the browser's arrow off, a drawn chevron 10px in from the right edge */
+.live-tools select { -webkit-appearance: none; appearance: none; box-sizing: border-box; height: 28px; min-width: 220px; font: inherit; font-size: 13px; color: var(--fg); background-color: var(--bg); background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%); background-position: calc(100% - 15px) 50%, calc(100% - 10px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; border: 1px solid var(--line); border-radius: 6px; padding: 0 30px 0 10px; cursor: pointer; }
+.live-tools select option { color: var(--fg); background: var(--bg); }
+.live-tools select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* The pin as a switch: a track that fills with the accent and a knob that slides right while on */
+.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+.switch input { -webkit-appearance: none; appearance: none; position: relative; flex: none; width: 34px; height: 20px; margin: 0; border-radius: 999px; background: var(--line); border: 1px solid var(--line); cursor: pointer; transition: background .15s, border-color .15s; }
+.switch input::before { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--fg); opacity: .75; transition: transform .15s, opacity .15s; }
+.switch input:checked { background: var(--accent); border-color: var(--accent); }
+.switch input:checked::before { transform: translateX(14px); background: var(--panel); opacity: 1; }
+.switch input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.switch:has(input:checked) { color: var(--accent); }
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
 .live-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; align-items: baseline; font-size: 13px; }
 .term-scroll { overflow-x: auto; border-radius: 8px; border: 1px solid var(--t-edge); background: var(--t-bg); }
@@ -76,7 +92,7 @@ button:hover { background: var(--chip); } button:focus-visible { outline: 2px so
 .card-head p { font-size: 13px; color: var(--muted); }
 .n { font-family: var(--mono); color: var(--muted); font-size: 12px; margin-right: 6px; }
 .approx { font-size: 12px; color: var(--muted); }
-.note { font-size: 13px; padding: 8px 12px; border-radius: 8px; background: var(--chip); border: 1px solid var(--line); max-width: 72ch; }
+.note { font-size: 13px; padding: 8px 12px; border-radius: 8px; background: var(--chip); border: 1px solid var(--line); }
 .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
 table.settings { border-collapse: collapse; width: 100%; min-width: 860px; font-size: 13px; table-layout: fixed; }
 table.settings col.c-field { width: 21%; } table.settings col.c-src { width: 15%; } table.settings col.c-use { width: 19%; }
@@ -113,12 +129,17 @@ table.settings select:focus-visible { outline: 2px solid var(--accent); outline-
   <header style="display:grid;gap:8px">
     <h1>alfred-mods Band Explorer</h1>
     <p class="muted">How the alfred-mods band looks with its switches moved into settings files: the mod reads them from an <code>"alfred-mods"</code> key in <code>~/.claude/settings.json</code>, <code>.claude/settings.json</code> and <code>.claude/settings.local.json</code>, the local file first. Every band row and the pinned line are drawn by the mod's own code, bundled into this page, so a change to a setting, a number or a list redraws them as a session would.</p>
-    <p class="note">This page shows alfred-mods 0.8.0. Open it in a browser, offline too (the fonts then fall back to the system's): change a setting, and the band redraws as a session would.</p>
+    <p class="note">This page shows alfred-mods 0.8.4. Open it in a browser, offline too (the fonts then fall back to the system's): change a setting, and the band redraws as a session would.</p>
     <div class="legend"><span><b>Exact</b>: every band row, how it wraps, what it drops when short of room, and the pinned line's text, from the mod's own code; the settings' order and toasts, as the mod settles them</span><span><b>Sketched</b>: the frame around the band (the transcript, the prompt box, Claude Code's own footer line) and the band's width, taken as the terminal's less 4 columns above and less 5 under</span><span><b>Default</b>: no file sets anything - above the input, full, detail rows open, compact tool rows, REC off, handoff ask from 80%</span></div>
   </header>
 
   <section class="live" aria-label="Live terminal">
     <div class="live-head"><strong>Live terminal</strong><span class="muted" id="liveInfo"></span></div>
+    <div class="live-tools">
+      <label for="liveExample">Transcript <select id="liveExample"></select></label>
+      <label class="switch" for="livePinned"><input type="checkbox" role="switch" id="livePinned">Pin to the top while scrolling</label>
+      <span class="muted" id="liveExampleNote"></span>
+    </div>
     <div class="term-scroll"><div class="term" id="liveTerm"></div></div>
   </section>
 
@@ -173,7 +194,7 @@ table.settings select:focus-visible { outline: 2px solid var(--accent); outline-
 </div>
 
 <script>
-// alfred-mods band code, bundled from hooks/ (format.ts, agents.ts, cache.ts, forecast.ts, startup.ts, parts.ts, planlines.ts, band.ts, plan.ts)
+// alfred-mods band code, bundled from hooks/ (format.ts, agents.ts, cache.ts, forecast.ts, startup.ts, parts.ts, planlines.ts, band.ts, compact.ts, plan.ts)
 const BandCore = (() => {
 const __m = {};
 // ---- hooks/format.ts
@@ -1402,20 +1423,27 @@ function underButton(b           , button           , command        )      {
 }
 
 // The open rows (spec 2026-11-11, D2): every tool by name with its calls, then the skills the main chat loaded and how
-// many the listing carries, each under its label, as many to a row as the width holds, joined by ' │ '
+// many the listing carries, each under its label, as many to a row as the width holds, joined by ' │ '. Each row waits
+// for its category's first item (the user, 2026-11-12: 'leave empty until at least one of category is appeared'): a
+// skills listing alone is no skill, and with by path untracked, no always-on rule is no rule
 function toolRows(b           )         {
   const used = toolsByCalls(b.stats)
-  const tools        = used.length === 0 ? [{ text: 'none', tone: 'dim' }] : used.map(([key, s]) => ({ text: `${key} ×${s.calls}` }))
-  const skills = skillSegs(b.meta.skills, b.meta.isResumed === true)
+  const isResumed = b.meta.isResumed === true
+  const hasSkills = Object.keys(b.meta.skills ?? {}).length > 0
+  const hasAgents = Object.keys(b.meta.agentTypes ?? {}).length > 0
+  const drawn = rulesDrawn(b.rules ?? NO_RULES)
+  const hasRules = drawn.always.length + drawn.byPath.length > 0
+  const skills = skillSegs(b.meta.skills, isResumed)
   if (b.listing !== undefined && b.listing !== null) skills.push({ text: listedText(b.listing), tone: 'dim' })
   const label = (text        )      => ({ text: text.padEnd(ROW_LABEL), tone: 'dim' })
   const under      = { text: ' '.repeat(ROW_LABEL) }
   const row = (name        , items        )         => wrapRows(label(name), under, items, b.columns, ROW_JOIN)
   const one = (segs       )         => segs.map(s => [s])
   return [
-    ...row('tools:', one(tools)), ...row('skills:', one(skills)),
-    ...row('agents:', agentSegs(b.agents, b.meta.agentTypes, b.meta.isResumed === true)),
-    ...row('rules:', ruleSegs(b.rules ?? NO_RULES, b.meta.isResumed === true)),
+    ...(used.length === 0 ? [] : row('tools:', one(used.map(([key, s])      => ({ text: `${key} ×${s.calls}` }))))),
+    ...(hasSkills ? row('skills:', one(skills)) : []),
+    ...(hasAgents ? row('agents:', agentSegs(b.agents, b.meta.agentTypes, isResumed)) : []),
+    ...(hasRules ? row('rules:', ruleSegs(b.rules ?? NO_RULES, isResumed)) : []),
   ]
 }
 
@@ -1874,6 +1902,289 @@ function bandBody(b           , isNarrow         , k      )         {
 
 return { pct, pctSeg, barSegs, windowsInOrder, fiveHourPace, cellsOf, toggleForms, toolRows, rulesDrawn, ruleSegs, agentSegs, ROW_JOIN, skillSegs, wrapRows, infoLine, infoRows, working, spinnerSuffix, cacheWarning, REC_MARK, statusText, underRows, bandLines };
 })();
+// ---- hooks/compact.ts
+__m['compact.ts'] = (() => {
+// F10's compact tool rows (brief 'Compact tool rows', Decisions 4 to 8): one line per call, runs of reads folded into
+// one, and the result block's preview emptied. Every line is drawn through drawLines, so REC masks it after compacting.
+                                          
+const { reportLine } = __m['agents.ts'];
+const { duration, fitLine, tokens, widthOf } = __m['format.ts'];
+
+// `outcome` and `reason`: a call the person denied or a rule, a hook or the classifier blocked, as Phase 1 settled it
+// `isAutoAllowed`: auto mode's classifier let the call run, no one asked
+                           
+                                                                                           
+                                                                                      
+ 
+
+// Tools a group folds into one reads line (Decision 8)
+const READ_ONLY = ['Read', 'Grep', 'Glob', 'LS', 'NotebookRead']
+
+// Tools whose emptied result drew something false or bare live (A3, 2026-10-28: Write 'Wrote 1 line to …' and '(No
+// content)' for three lines, Edit a lone ⎿): with "quiet" on their result block draws nothing, as an errored one does
+// WebFetch, WebSearch, Agent and AskUserQuestion too: their own steps under the call say what came back (the user,
+// 2026-11-12). And Bash: emptied, its result drew '(No output)' over a call that printed lines, above auto mode's line
+// (live, 2026-11-12); the row carries that line and a background run as steps of its own
+const DROPS_RESULT                    = ['Bash', 'Edit', 'Write', 'WebFetch', 'WebSearch', 'Agent', 'AskUserQuestion']
+
+// What a row knows besides the call: the project folder, so a path reads from it, and how many times it ran in a row
+                                                                
+
+// Steps a run of reads draws before `+k more`
+const READ_STEPS = 4
+
+const isRecord = (v         )                               => typeof v === 'object' && v !== null && !Array.isArray(v)
+const str = (v         )         => (typeof v === 'string' ? v : '')
+const basename = (path        )         => path.split(/[\\/]/).filter(p => p !== '').pop() ?? path
+const lineCount = (text        )         => (text.trimEnd() === '' ? 0 : text.trimEnd().split('\n').length)
+
+// A URL as a person reads it: no scheme, no 'www.', no trailing slash
+const site = (url        )         => url.trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '')
+const hostOf = (url        )         => (site(url).split(/[/?#]/)[0] ?? '').toLowerCase()
+
+// What the row names: Bash's description, else its command's first 60 characters; a web call's page or query; another
+// tool's file, pattern or path
+function describe(c             )         {
+  const input = isRecord(c.input) ? c.input : {}
+  const out = isRecord(c.output) ? c.output : {}
+  if (c.tool === 'Agent') return str(out.agentType) || str(input.subagent_type) || 'general-purpose'
+  if (c.tool === 'Skill') return str(input.skill)
+  if (c.tool === 'Monitor') return fitLine(str(input.description), 120)
+  if (c.tool === 'TodoWrite') return todoCounts(input.todos)
+  if (c.tool === 'ToolSearch') return str(input.query).trim() === '' ? '' : `"${fitLine(str(input.query).trim(), 60)}"`
+  if (c.tool === 'AskUserQuestion' || c.tool.startsWith('mcp__')) return ''
+  if (c.tool === 'WebFetch') return site(str(input.url))
+  if (c.tool === 'WebSearch') return str(input.query).trim() === '' ? '' : `"${str(input.query).trim()}"`
+  if (c.tool === 'Bash') return str(input.description).trim() !== '' ? fitLine(str(input.description), 120) : fitLine(str(input.command), 60)
+  const file = str(input.file_path) || str(input.notebook_path)
+  return fitLine(file !== '' ? basename(file) : str(input.pattern) || str(input.path), 60)
+}
+
+// `5 todos · 2 done, 1 in progress`
+function todoCounts(todos         )         {
+  const list = Array.isArray(todos) ? todos.filter(isRecord) : []
+  const done = list.filter(t => t.status === 'completed').length
+  const now = list.filter(t => t.status === 'in_progress').length
+  const parts = [...(done > 0 ? [`${done} done`] : []), ...(now > 0 ? [`${now} in progress`] : [])]
+  return `${list.length} ${list.length === 1 ? 'todo' : 'todos'}${parts.length === 0 ? '' : ` · ${parts.join(', ')}`}`
+}
+
+// A path as read from the project folder; outside it, the path as it is
+function fromProject(path        , cwd                           )         {
+  if (cwd === null || cwd === undefined || cwd === '') return path
+  const base = cwd.replace(/[\\/]+$/, '')
+  return path.startsWith(`${base}/`) || path.startsWith(`${base}\\`) ? path.slice(base.length + 1) : path === base ? '.' : path
+}
+
+// `+3 −1`: the lines a patch added and removed
+function patchCounts(patch         )                {
+  if (!Array.isArray(patch)) return null
+  const lines = patch.flatMap(h => (isRecord(h) && Array.isArray(h.lines) ? h.lines : [])).map(str)
+  return `+${lines.filter(l => l.startsWith('+')).length} −${lines.filter(l => l.startsWith('-')).length}`
+}
+
+// Lines of Bash's stdout and stderr, or of a string output; any other output has no count
+function countOf(c             )                {
+  if (typeof c.output === 'string') return lineCount(c.output)
+  if (c.tool === 'Bash' && isRecord(c.output)) return lineCount(str(c.output.stdout)) + lineCount(str(c.output.stderr))
+  return null
+}
+
+const errorText = (c             )         => (typeof c.output === 'string' ? c.output : isRecord(c.output) ? str(c.output.stderr) : '')
+
+// The reason's first sentence, its closing stop dropped
+function firstSentence(text        )         {
+  return (text.split(/(?<=[.!?])\s+/)[0] ?? '').replace(/[.!?]$/, '')
+}
+
+// ✓ with the line count; ✗, ✗ exit <n> or ✗ interrupted; ⊘ for a denied or blocked call
+function status(c             )        {
+  if (c.outcome === 'denied') return [{ text: '⊘ denied by you', tone: 'warn' }]
+  if (c.outcome === 'blocked') {
+    const reason = firstSentence((c.reason ?? '').replace(/^blocked:\s*/, ''))
+    return [{ text: reason === '' ? '⊘ blocked' : /^blocked\b/.test(reason) ? `⊘ ${reason}` : `⊘ blocked: ${reason}`, tone: 'warn' }]
+  }
+  if (c.isInterrupted) return [{ text: '✗ interrupted', tone: 'fail' }]
+  if (c.isErrored) {
+    const exit = /^Exit code (\d+)/.exec(errorText(c))
+    return [{ text: exit === null ? '✗' : `✗ exit ${exit[1]}`, tone: 'fail' }]
+  }
+  const n = countOf(c)
+  return [...(n === null || n === 0 ? [] : [{ text: `${n} ${n === 1 ? 'line' : 'lines'} ` }]), { text: '✓', tone: 'ok' }]
+}
+
+// Up to 3 indented lines under a failure: the last non-empty lines of stderr, else of the error text past its exit code
+function errorLines(c             )         {
+  if (!c.isErrored || c.isInterrupted || c.outcome !== null) return []
+  const lines = errorText(c).split('\n').map(l => l.trimEnd()).filter(l => l.trim() !== '')
+  if (/^Exit code \d+$/.test(lines[0] ?? '')) lines.shift()
+  return lines.slice(-3).map(l => [{ text: `    ${l}`, tone: 'dim' }])
+}
+
+const sizeOf = (bytes        )         =>
+  bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`
+
+// A web call's steps, one `⎿` line each (the user, 2026-11-12: 'what source is agent fatching'): WebFetch what came
+// back, from where when it moved, and what it took from the page; WebSearch how many results and their sites. A failed
+// or stopped call has its error lines instead of what came back.
+const stepOf = (text        , columns        )       => [{ text: `  ⎿ ${fitLine(text, Math.max(1, columns - 4))}`, tone: 'dim' }]
+
+// Any other call's steps (the user, 2026-11-12: 'What agent ... what job is done; What skill; What and where writing;
+// What is asking and what is the responce; What doc mcp queryng; What monitoring'): what it was given, then what came
+// back once it has
+function stepLines(c             , columns        , cwd                )         {
+  const step = (text        )       => stepOf(text, columns)
+  const input = isRecord(c.input) ? c.input : {}
+  const out = isRecord(c.output) && !c.isErrored && c.outcome === null ? c.output : null
+  if (c.tool === 'Agent') {
+    const lines         = []
+    if (str(input.description).trim() !== '') lines.push(step(`asked: ${str(input.description).trim()}`))
+    if (out?.status === 'async_launched') lines.push(step('running in the background'))
+    if (out?.status === 'remote_launched') lines.push(step('running in the cloud'))
+    if (out?.status === 'completed') {
+      const said = (Array.isArray(out.content) ? out.content : []).map(b => (isRecord(b) ? str(b.text) : '')).join('\n')
+      const found = reportLine(said)
+      if (found !== '') lines.push(step(`result: ${found}`))
+      const uses = typeof out.totalToolUseCount === 'number' ? [`${out.totalToolUseCount} tool ${out.totalToolUseCount === 1 ? 'use' : 'uses'}`] : []
+      const spent = typeof out.totalTokens === 'number' ? [`${tokens(out.totalTokens)} tokens`] : []
+      const took = typeof out.totalDurationMs === 'number' ? [duration(out.totalDurationMs)] : []
+      if (uses.length + spent.length + took.length > 0) lines.push(step([...uses, ...spent, ...took].join(' · ')))
+    }
+    return lines
+  }
+  if (c.tool === 'Bash') {
+    if (out === null) return []
+    return [
+      ...(str(out.backgroundTaskId) !== '' ? [step('running in the background')] : []),
+      ...(typeof out.timedOutAfterMs === 'number' ? [step(`timed out after ${duration(out.timedOutAfterMs)}`)] : []),
+      ...(str(out.returnCodeInterpretation).trim() !== '' ? [step(str(out.returnCodeInterpretation).trim())] : []),
+    ]
+  }
+  if (c.tool === 'Skill') return str(input.args).trim() === '' ? [] : [step(`with: ${str(input.args).trim()}`)]
+  if (c.tool === 'Write' && out !== null) {
+    const where = fromProject(str(out.filePath) || str(input.file_path), cwd)
+    if (out.type === 'create') return [step(`created ${where} · ${lineCount(str(input.content))} lines`)]
+    const counts = patchCounts(out.structuredPatch)
+    return [step(`rewrote ${where}${counts === null ? '' : ` · ${counts}`}`)]
+  }
+  if (c.tool === 'Edit' && out !== null) {
+    const counts = patchCounts(out.structuredPatch)
+    return [step(`changed ${fromProject(str(out.filePath) || str(input.file_path), cwd)}${counts === null ? '' : ` · ${counts}`}${out.replaceAll === true ? ' · every match' : ''}`)]
+  }
+  if (c.tool === 'TodoWrite') {
+    const now = (Array.isArray(input.todos) ? input.todos : []).find(t => isRecord(t) && t.status === 'in_progress')
+    return isRecord(now) && str(now.activeForm).trim() !== '' ? [step(`now: ${str(now.activeForm).trim()}`)] : []
+  }
+  if (c.tool === 'ToolSearch' && out !== null && Array.isArray(out.matches)) {
+    const found = out.matches.map(str).filter(m => m !== '')
+    return [step(found.length === 0 ? 'found nothing' : `found ${found.join(', ')}`)]
+  }
+  if (c.tool === 'AskUserQuestion') {
+    const answers = out !== null && isRecord(out.answers) ? out.answers : {}
+    return (Array.isArray(input.questions) ? input.questions : []).filter(isRecord).flatMap(q => {
+      const asked = str(q.question).trim()
+      const answer = answers[str(q.question)]
+      const said = Array.isArray(answer) ? answer.map(str).join(', ') : str(answer)
+      return [...(asked === '' ? [] : [step(asked)]), ...(said.trim() === '' ? [] : [step(`answered: ${said.trim()}`)])]
+    })
+  }
+  if (c.tool.startsWith('mcp__')) {
+    const scalar = (v         )                                 => (typeof v === 'string' && v.trim() !== '') || typeof v === 'number' || typeof v === 'boolean'
+    return Object.entries(input).filter(([, v]) => scalar(v)).slice(0, 3).map(([k, v]) => step(`${k}: ${String(v).trim()}`))
+  }
+  if (c.tool === 'Monitor') {
+    const watched = str(input.command).trim() || (isRecord(input.ws) ? str(input.ws.url) : '')
+    return watched === '' ? [] : [step(`watches: ${watched}`)]
+  }
+  if (c.tool === 'WebFetch') {
+    const lines         = []
+    if (out !== null && typeof out.bytes === 'number') {
+      const moved = str(out.url) !== '' && site(str(out.url)) !== site(str(input.url)) ? ` from ${site(str(out.url))}` : ''
+      const code = typeof out.code === 'number' ? ` · ${out.code}${str(out.codeText) === '' ? '' : ` ${str(out.codeText)}`}` : ''
+      const time = typeof out.durationMs === 'number' ? ` · ${duration(out.durationMs)}` : ''
+      lines.push(step(`fetched ${sizeOf(out.bytes)}${moved}${code}${time}`))
+    }
+    const asked = str(input.prompt).trim()
+    if (asked !== '') lines.push(step(`took: ${asked}`))
+    return lines
+  }
+  if (c.tool === 'WebSearch' && out !== null && Array.isArray(out.results)) {
+    const urls = out.results.flatMap(r => (isRecord(r) && Array.isArray(r.content) ? r.content : []))
+      .map(h => (isRecord(h) ? str(h.url) : '')).filter(u => u !== '')
+    if (urls.length === 0) return [step('no results')]
+    const sites = [...new Set(urls.map(hostOf).filter(h => h !== ''))]
+    const more = sites.length > 3 ? ` +${sites.length - 3} more` : ''
+    return [step(`${urls.length} ${urls.length === 1 ? 'result' : 'results'} · ${sites.slice(0, 3).join(', ')}${more}`)]
+  }
+  return []
+}
+
+// `⏺ <tool> · <description> · <status>`, the description cut so the line fits `columns`, then the call's steps and any
+// error lines. A repeat says what its count means (the user, 2026-11-12: 'What is means x3?')
+function callLine(c             , columns        , at             = {})         {
+  const times = at.times ?? 1
+  const tail        = [{ text: ' · ' }, ...status(c), ...(times > 1 ? [{ text: ` · ${times} times in a row` }] : [])]
+  const head        = [{ text: '⏺ ' }, { text: c.tool, bold: true }]
+  const desc = describe(c)
+  const room = columns - widthOf(head) - widthOf(tail) - 3
+  const named        = desc === '' ? [] : [{ text: ` · ${fitLine(desc, Math.max(1, room))}` }]
+  // Auto mode's line, on a row whose result block draws nothing; any other result block draws Claude Code's own
+  const allowed = c.isAutoAllowed === true && DROPS_RESULT.includes(c.tool) ? [stepOf('allowed by auto mode', columns)] : []
+  return [[...head, ...named, ...tail], ...stepLines(c, columns, at.cwd), ...allowed, ...errorLines(c)]
+}
+
+// What one read did, and where: `read src/a.ts`, `grep "x" in src`, `glob src/**/*.ts`
+function readStep(c             , cwd                           )         {
+  const input = isRecord(c.input) ? c.input : {}
+  const file = str(input.file_path) || str(input.notebook_path)
+  if (file !== '') return `read ${fromProject(file, cwd)}`
+  const where = str(input.path) === '' ? '' : ` in ${fromProject(str(input.path), cwd)}`
+  if (c.tool === 'Grep') return `grep "${str(input.pattern)}"${where}`
+  if (c.tool === 'Glob') return `glob ${str(input.pattern)}${where}`
+  return `${c.tool.toLowerCase()} ${fromProject(str(input.path) || str(input.pattern), cwd)}`.trimEnd()
+}
+
+// `⏺ <n> reads · ✓`, then one step per thing read or searched (`· 2 times` when read more than once), 4 at most and
+// then `+k more`; `✗ <k>` when k failed
+function readsLines(run               , columns        , cwd                           )         {
+  const counts = new Map                ()
+  for (const c of run) counts.set(readStep(c, cwd), (counts.get(readStep(c, cwd)) ?? 0) + 1)
+  const items = [...counts].map(([name, n]) => (n > 1 ? `${name} · ${n} times` : name))
+  const failed = run.filter(c => c.isErrored || c.outcome !== null).length
+  const head       = [{ text: '⏺ ' }, { text: `${run.length} ${run.length === 1 ? 'read' : 'reads'}`, bold: true }, { text: ' · ' },
+    failed > 0 ? { text: `✗ ${failed}`, tone: 'fail' } : { text: '✓', tone: 'ok' }]
+  const shown = items.length > READ_STEPS + 1 ? items.slice(0, READ_STEPS) : items
+  const more = items.length - shown.length
+  return [head, ...shown.map(i => stepOf(i, columns)), ...(more > 0 ? [stepOf(`+${more} more`, columns)] : [])]
+}
+
+// A repeat: the same tool, description and outcome, back to back
+// back to back, its steps the same too (two agents of one type with different jobs stay two rows)
+const sameAs = (a             , b             )          =>
+  a.tool === b.tool && describe(a) === describe(b) && a.outcome === b.outcome && a.isErrored === b.isErrored && a.isInterrupted === b.isInterrupted &&
+  JSON.stringify(stepLines(a, 200)) === JSON.stringify(stepLines(b, 200))
+
+// A settled group's lines: each run of reads as one reads line and its steps, every other call its own lines, repeats
+// as `N times in a row`
+function groupLines(calls               , columns        , at             = {})         {
+  const out         = []
+  for (let i = 0; i < calls.length;) {
+    const c = calls[i] 
+    let j = i + 1
+    if (READ_ONLY.includes(c.tool)) {
+      while (j < calls.length && READ_ONLY.includes(calls[j] .tool)) j++
+      out.push(...readsLines(calls.slice(i, j), columns, at.cwd))
+    } else {
+      while (j < calls.length && sameAs(calls[j] , c)) j++
+      out.push(...callLine(c, columns, { cwd: at.cwd, times: j - i }))
+    }
+    i = j
+  }
+  return out
+}
+
+return { DROPS_RESULT, callLine, groupLines };
+})();
 // ---- hooks/plan.ts
 __m['plan.ts'] = (() => {
 // Plan and scores files: their parse, the plan view and the scores view. The contract is the README's 'Plan and score
@@ -2129,7 +2440,7 @@ function taskView(items            , liveMs                        )           {
 
 return { parsePlan, parseScores, isFinishedStep, runs, shownPlan, creditedPlan, planView, scoresView, tasksAfter, taskView };
 })();
-return { bandLines: __m['band.ts'].bandLines, statusText: __m['band.ts'].statusText, underRows: __m['band.ts'].underRows, cellsOf: __m['band.ts'].cellsOf, planView: __m['plan.ts'].planView, newRow: __m['agents.ts'].newRow };
+return { bandLines: __m['band.ts'].bandLines, statusText: __m['band.ts'].statusText, underRows: __m['band.ts'].underRows, cellsOf: __m['band.ts'].cellsOf, groupLines: __m['compact.ts'].groupLines, planView: __m['plan.ts'].planView, newRow: __m['agents.ts'].newRow };
 })();
 
 // The explorer's numbers and switches as the band's input, the way hooks/register.ts' bandInputOf builds it, and the
@@ -2220,7 +2531,7 @@ const BandAdapter = (() => {
     }
     const banner = m.alfred
       ? [m.autoRun && [{ text: 'auto-run', tone: 'warn' }], m.autoCompact && [{ text: num(d.compactAt) > 0 ? `auto-compact ${Math.round(num(d.compactAt))}k` : 'auto-compact' }],
-        m.scorer && [{ text: `scorer ${num(d.scorerVal)}` }]].filter(Boolean)
+        m.scorer && [{ text: `scoring ${num(d.scorerVal)}` }]].filter(Boolean)
         .flatMap((p, i) => (i === 0 ? p : [{ text: ' · ', tone: 'dim' }, ...p]))
       : []
     const g = geometry(m, isPinned)
@@ -2421,7 +2732,7 @@ const BAND_PRESETS = [
   ['Detail rows closed', 'Set in this project\'s local file. The usage: row keeps the counts - not a button, no arrow, no t: the rows under it open and close only by the value.', { running: true }, null, { local: { bandRows: false } }],
   ['A local file over the user\'s', 'The user file puts the band under the input with its rows closed in every project; this project\'s local file opens the rows again. Each other field falls through to the user file, then the default.', { running: true, fullscreen: true }, null, { user: { bandPlace: 'under', bandRows: false }, local: { bandRows: true } }],
   ['A bad value falls through', 'The local file says "compact", which "band" does not take, so the user file\'s "calm" applies, and the mod says so once in a toast that never quotes the bad value.', { running: true }, null, { user: { band: 'calm' }, local: { band: 'compact' } }],
-  ['With Alfred Code: auto-run, auto-compact, scorer and the runway', "The mode banner leads line 1 from the session's start: auto-run, auto-compact with where Claude Code compacts for the session's model, and the scorer. With the runway, ctx is measured against Alfred Code's trigger, not the window.", { running: true, alfred: true, autoRun: true, autoCompact: true, scorer: true, runway: true }],
+  ['With Alfred Code: auto-run, auto-compact, scoring and the runway', "The mode banner leads line 1 from the session's start: auto-run, auto-compact with where Claude Code compacts for the session's model, and scoring. With the runway, ctx is measured against Alfred Code's trigger, not the window.", { running: true, alfred: true, autoRun: true, autoCompact: true, scorer: true, runway: true }],
   ['A plan in progress', 'The plan row sits under the project row, above usage: - the title, the steps done and the step in progress.', { running: true, plan: true }],
   ['Context past 80%', 'Between turns the handoff ask takes the last row: 4, or a click, saves a handoff. It asks again every 5 points, up to 95.', {}, d => ({ ctxUsed: Math.ceil(Number(d.window) * 0.82), agents: noRun(d.agents) })],
   ['Handoff from 70%', 'The user file moves the first ask to 70%; it asks again every 5 points up to 95. "handoff": "auto" would save with no ask, "off" never.', {}, d => ({ ctxUsed: Math.ceil(Number(d.window) * 0.72), agents: noRun(d.agents) }), { user: { handoffAt: 70 } }],
@@ -2456,13 +2767,13 @@ const FIELDS = [
   ['youAt','Your last prompt'],['claudeAt','Claude last reply'],['project','Project'],['folder','Folder Claude works in (blank: the root)'],
   ['branch','Branch'],['ahead','Commits ahead of the upstream',1],['behind','Commits behind the upstream',1],
   ['added','Lines added, uncommitted',1],['removed','Lines removed, uncommitted',1],['cc','Claude Code version'],
-  ['compactAt','Auto-compact at, k (0: unknown)',1],['scorerVal','Scorer bar',1],['failures','New tool failures',1],['planTitle','Plan title'],['planDone','Plan steps done',1],
+  ['compactAt','Auto-compact at, k (0: unknown)',1],['scorerVal','Scoring bar',1],['failures','New tool failures',1],['planTitle','Plan title'],['planDone','Plan steps done',1],
   ['planTotal','Plan steps',1],['planStep','Step in progress'],['listed','Skills listed',1],['ofSkills','of session skills',1]
 ];
 // What the session is doing; the mod's own switches are settings (BandSettings)
 const SWITCHES = [
   ['running','A turn is running'],['fullscreen','Fullscreen (CLAUDE_CODE_NO_FLICKER=1)'],
-  ['alfred','Alfred Code is installed'],['autoRun','auto-run on'],['autoCompact','auto-compact on'],['scorer','scorer on'],['runway','Runway: fresh session at the trigger'],
+  ['alfred','Alfred Code is installed'],['autoRun','auto-run on'],['autoCompact','auto-compact on'],['scorer','scoring on'],['runway','Runway: fresh session at the trigger'],
   ['upstream','The branch has an upstream (pushed with -u)'],['plan','A plan file exists'],['fresh','First second of the session'],['collapsed','Band collapsed (Ctrl+X Ctrl+A, above only)']
 ];
 // The four sources the page edits, each the "alfred-mods" fields it sets
@@ -2518,26 +2829,123 @@ function fitBand(line, max) {
   return out;
 }
 
+// ---------- the transcript above the band ----------
+// A few calls of one kind of work, as Claude Code draws them (sketched), and with "quiet" as the mod draws them: its own
+// groupLines from hooks/compact.ts, bundled above, from the same calls. Paths read from the project folder.
+const CWD = '/w/my-app';
+const call = (tool, input, output, more) => Object.assign({ tool, input, output, isErrored: false, isInterrupted: false, outcome: null, reason: null }, more || {});
+const textOf = n => Array.from({ length: n }, (_, i) => `line ${i + 1}`).join('\n');
+// Claude Code's own call: the call, then its result lines under ⎿
+const cc = (head, ...result) => [[S('⏺ ', 'ok'), S(head, '')], ...result.map((r, i) => [S(i === 0 ? '  ⎿  ' : '     ', 'dim'), ...(Array.isArray(r) ? r : [S(r, 'dim')])])];
+const ccBad = (head, ...result) => [[S('⏺ ', 'bad'), S(head, '')], ...result.map((r, i) => [S(i === 0 ? '  ⎿  ' : '     ', 'dim'), S(r, i === 0 ? 'bad' : 'dim')])];
+const patch = (add, del) => [{ oldStart: 1, oldLines: del, newStart: 1, newLines: add, lines: [...Array(del).fill('-x'), ...Array(add).fill('+y')] }];
+const TRANSCRIPTS = [
+  {
+    name: 'Reading and testing', note: 'A run of reads folds into one row with a step per file or search; Bash shows its line count and that auto mode let it run.',
+    calls: [
+      call('Read', { file_path: `${CWD}/src/app/layout.js` }, { type: 'text' }),
+      call('Read', { file_path: `${CWD}/src/app/chain.js` }, { type: 'text' }),
+      call('Read', { file_path: `${CWD}/src/app/chain.js` }, { type: 'text' }),
+      call('Grep', { pattern: 'refreshToken', path: `${CWD}/src` }, { mode: 'files_with_matches' }),
+      call('Bash', { command: 'npm test', description: 'Run the tests' }, { stdout: textOf(14), stderr: '' }, { isAutoAllowed: true }),
+    ],
+    full: [
+      ...cc('Read(src/app/layout.js)', 'Read 84 lines'), ...cc('Read(src/app/chain.js)', 'Read 212 lines'), ...cc('Read(src/app/chain.js)', 'Read 212 lines'),
+      ...cc('Search(pattern: "refreshToken", path: "src")', 'Found 6 files'),
+      ...cc('Bash(npm test)', '> app@1.4.0 test', 'Tests  981 passed (981)', '… +12 lines (ctrl+o to expand)', 'Allowed by auto mode'),
+    ],
+  },
+  {
+    name: 'Editing files', note: 'Each change says where and how many lines it added and removed; the same command three times is one row.',
+    calls: [
+      call('Edit', { file_path: `${CWD}/src/app/chain.js`, old_string: 'x', new_string: 'y' }, { filePath: `${CWD}/src/app/chain.js`, structuredPatch: patch(3, 1), replaceAll: false }),
+      call('Write', { file_path: `${CWD}/docs/plan.md`, content: textOf(42) + '\n' }, { type: 'create', filePath: `${CWD}/docs/plan.md`, content: '', structuredPatch: [] }),
+      ...[1, 2, 3].map(() => call('Bash', { command: 'git status --short', description: 'Show working tree status' }, { stdout: ' M src/app/chain.js', stderr: '' })),
+    ],
+    full: [
+      ...cc('Update(src/app/chain.js)', 'Updated src/app/chain.js with 3 additions and 1 removal', [S('12 ', 'dim'), S('-   return token', 'bad')], [S('12 ', 'dim'), S('+   const next = await refresh(token)', 'ok')], [S('13 ', 'dim'), S('+   cache.set(next)', 'ok')], [S('14 ', 'dim'), S('+   return next', 'ok')]),
+      ...cc('Write(docs/plan.md)', 'Wrote 42 lines to docs/plan.md', '# Token refresh', '', '## Steps', '… +38 lines (ctrl+o to expand)'),
+      ...cc('Bash(git status --short)', 'M src/app/chain.js'), ...cc('Bash(git status --short)', 'M src/app/chain.js'), ...cc('Bash(git status --short)', 'M src/app/chain.js'),
+    ],
+  },
+  {
+    name: 'Agents and skills', note: 'An agent names its type, what it was asked, what it found and what it took; a skill names itself and what it was given.',
+    calls: [
+      call('Skill', { skill: 'solve-task', args: 'Move the switches into settings' }, { success: true, commandName: 'solve-task' }),
+      call('Agent', { description: 'Review plan round 1', prompt: 'p', subagent_type: 'alfred-code:output-scorer' }, {
+        status: 'completed', agentType: 'alfred-code:output-scorer', totalToolUseCount: 12, totalTokens: 31200, totalDurationMs: 80000,
+        content: [{ type: 'text', text: '## Verdict\n\nC1.1 yes - the plan names every file it touches' }],
+      }),
+      call('Agent', { description: 'Watch CI', prompt: 'p' }, { status: 'async_launched', agentId: 'a2', description: 'Watch CI', prompt: 'p', outputFile: '/t/o' }),
+    ],
+    full: [
+      ...cc('Skill(solve-task)', 'Successfully loaded skill'),
+      ...cc('alfred-code:output-scorer(Review plan round 1)', 'Done (12 tool uses · 31.2k tokens · 1m 20s)'),
+      ...cc('Agent(Watch CI)', 'Backgrounded agent (↓ to manage · ctrl+o to expand)'),
+    ],
+  },
+  {
+    name: 'Web research', note: 'A search says how many results and from which sites; a fetch says what came back and what was taken from the page.',
+    calls: [
+      call('WebSearch', { query: 'claude code mods hooks' }, { query: 'q', results: [{ tool_use_id: 'w', content: [
+        { title: 'a', url: 'https://code.claude.com/docs/en/plugins/mods/overview' }, { title: 'b', url: 'https://code.claude.com/docs/en/plugins/mods/reference' },
+        { title: 'c', url: 'https://github.com/anthropics/claude-code/issues/1' }, { title: 'd', url: 'https://www.reddit.com/r/ClaudeAI/x' } ] }], durationSeconds: 2 }),
+      call('WebFetch', { url: 'https://code.claude.com/docs/en/plugins/mods/reference', prompt: 'the events a mod can hook' },
+        { bytes: 48213, code: 200, codeText: 'OK', result: 'r', durationMs: 1400, url: 'https://code.claude.com/docs/en/plugins/mods/reference' }),
+    ],
+    full: [
+      ...cc('Web Search("claude code mods hooks")', 'Did 1 search in 2s'),
+      ...cc('Fetch(https://code.claude.com/docs/en/plugins/mods/reference)', 'Received 47.1KB (200 OK)'),
+    ],
+  },
+  {
+    name: 'Asking you and planning', note: 'A question shows what was asked and your answer; todos, a tool search, an MCP call and a monitor each say what they worked on.',
+    calls: [
+      call('AskUserQuestion', { questions: [{ question: 'Which band mode?', header: 'Band', options: [], multiSelect: false }] }, { questions: [], answers: { 'Which band mode?': 'Full' } }),
+      call('TodoWrite', { todos: [
+        { content: 'a', status: 'completed', activeForm: 'a' }, { content: 'b', status: 'completed', activeForm: 'b' },
+        { content: 'c', status: 'in_progress', activeForm: 'Writing the tests' }, { content: 'd', status: 'pending', activeForm: 'd' }, { content: 'e', status: 'pending', activeForm: 'e' } ] }),
+      call('ToolSearch', { query: 'select:WebFetch', max_results: 5 }, { matches: ['WebFetch'], query: 'q', total_deferred_tools: 9 }),
+      call('mcp__context7__query-docs', { libraryId: '/vercel/next.js', query: 'app router caching', tokens: 2000 }, textOf(40)),
+      call('Monitor', { description: 'Watch the build', command: 'gh run watch 42', timeout_ms: 1 }),
+    ],
+    full: [
+      ...cc('User answered Claude\'s questions:', '· Which band mode? → Full'),
+      ...cc('Update Todos', '☒ a', '☒ b', '☐ Writing the tests', '☐ d', '☐ e'),
+      ...cc('ToolSearch(select:WebFetch)', 'Found 1 tool'),
+      ...cc('context7 - query-docs (MCP)(libraryId: "/vercel/next.js", query: "app router caching", tokens: 2000)', '# App Router caching', '… +38 lines (ctrl+o to expand)'),
+      ...cc('Monitor(Watch the build)', 'Monitor started'),
+    ],
+  },
+  {
+    name: 'Failures and blocks', note: 'A failure shows its exit code and last error lines; a call you denied or a hook blocked says so with ⊘.',
+    calls: [
+      call('Bash', { command: 'npm run build', description: 'Build the app' }, 'Exit code 1\nsrc/app/chain.ts(12,5): error TS2322: Type \'string\' is not assignable to type \'Token\'.\nFound 1 error.', { isErrored: true }),
+      call('Edit', { file_path: `${CWD}/.env`, old_string: 'a', new_string: 'b' }, undefined, { outcome: 'denied' }),
+      call('Bash', { command: 'rm -rf ../dist', description: 'Clean the parent dist' }, undefined, { outcome: 'blocked', reason: 'blocked: shell-guards.js: a delete outside the project. Ask the user first.' }),
+    ],
+    full: [
+      ...ccBad('Bash(npm run build)', 'Error: Exit code 1', "src/app/chain.ts(12,5): error TS2322: Type 'string' is not assignable to type 'Token'.", 'Found 1 error.'),
+      ...cc('Update(.env)', [S('User rejected update to .env', 'warn')]),
+      ...ccBad('Bash(rm -rf ../dist)', 'PreToolUse:Bash hook error: shell-guards.js: a delete outside the project. Ask the user first.'),
+    ],
+  },
+];
+let liveEx = 0;
+
 // The band in a sketch of the terminal: above, between the transcript and the prompt with Claude Code's [-] on its first
 // row; under, after Claude Code's own footer line, which Claude Code keeps first whatever order a mod gives (probed
 // 2026-11-11, both layouts). `m` is the situation with the settings applied (eff).
-function terminal(d, m) {
+function terminal(d, m, ex) {
   const r = BandAdapter.draw(d, m), cols = m.cols, out = [];
+  const t = TRANSCRIPTS[ex || 0] || TRANSCRIPTS[0];
+  const calls = () => m.quiet ? BandCore.groupLines(t.calls, Math.max(20, cols - 2), { cwd: CWD }).map(l => BandAdapter.lineHtml(l)) : t.full.map(html);
   const lines = r.lines.map(l => fitBand(l, r.input.columns));
   const edge = `<span class="edge">${'─'.repeat(cols)}</span>`;
-  if (m.running && !m.fresh) {
-    if (m.quiet) {
-      out.push(html([S('⏺ ', 'ok'), S('4 reads · layout.js, chain.js ×2 · ✓', 'dim')]));
-      out.push(html([S('⏺ ', 'ok'), S('Bash · npm test · ✓', 'dim')]));
-    } else {
-      out.push(html([S('⏺ ', 'ok'), S('Read(src/app/layout.js)', '')]), html([S('  ⎿  ', 'dim'), S('Read 84 lines', 'dim')]));
-      out.push(html([S('⏺ ', 'ok'), S('Read(src/app/chain.js)', '')]), html([S('  ⎿  ', 'dim'), S('Read 212 lines', 'dim')]));
-      out.push(html([S('⏺ ', 'ok'), S('Bash(npm test)', '')]), html([S('  ⎿  ', 'dim'), S('> app@1.4.0 test', 'dim')]),
-        html([S('     ', ''), S('Tests  981 passed (981)', 'dim')]), html([S('     ', ''), S('… +12 lines (ctrl+o to expand)', 'dim')]));
-    }
-    out.push(html([S('· ', 'warn'), S(`Actioning… (${d.turnTime} · ↓ 19.6k tokens)`, 'warn')]));
-  } else {
-    out.push(html([S('⏺ ', 'ok'), S(m.fresh ? 'New session' : 'Claude finished the reply', 'dim')]));
+  if (m.fresh) out.push(html([S('⏺ ', 'ok'), S('New session', 'dim')]));
+  else {
+    out.push(...calls());
+    out.push(m.running ? html([S('· ', 'warn'), S(`Actioning… (${d.turnTime} · ↓ 19.6k tokens)`, 'warn')]) : html([S('⏺ ', 'ok'), S('Claude finished the reply', 'dim')]));
   }
   if (!m.under) {
     if (m.collapsed) out.push(html([S('(band collapsed - Ctrl+X Ctrl+A brings it back)', 'zone')]));
@@ -2556,8 +2964,8 @@ function terminal(d, m) {
   foot.forEach(f => out.push('  ' + f));
   return { text: out.join('\n'), r };
 }
-function terminalOrNote(d, m) {
-  try { return terminal(d, m); }
+function terminalOrNote(d, m, ex) {
+  try { return terminal(d, m, ex); }
   catch (e) { return { text: html([S('The band could not draw from these values: ' + e.message, 'bad')]), r: null }; }
 }
 
@@ -2691,8 +3099,10 @@ function drawGallery() {
 function draw() {
   $('colsOut').textContent = modes.cols; $('rowsOut').textContent = modes.rows; $('termRowsOut').textContent = modes.termRows;
   const m = eff(modes, cfg);
-  const t = terminalOrNote(data, m);
+  const t = terminalOrNote(data, m, liveEx);
   $('liveTerm').innerHTML = t.text;
+  const ex = TRANSCRIPTS[liveEx] || TRANSCRIPTS[0];
+  $('liveExampleNote').textContent = (m.quiet ? 'Quiet rows, drawn by the mod: ' : 'Claude Code\'s own rows ("quiet" off): ') + ex.note;
   if (t.r) {
     const n = t.r.lines.length;
     const notes = [m.under ? 'under the input' : 'above the input', `band ${n} row${n === 1 ? '' : 's'} of ${t.r.input.maxRows} it may use`, `${t.r.input.columns} columns wide`];
@@ -2808,7 +3218,7 @@ function tabNow(d, m, p, w) {
     const a = p.alfredCode || {};
     L.push([S('  full context: ', 'dim'), S(m.runway ? `fresh session at ${num(d.trigger)}k` : 'compact (Claude Code\'s own point)', '')]);
     L.push([S('  modes: ', 'dim'), S(m.autoRun ? 'auto-run on' : 'auto-run off', m.autoRun ? 'warn' : ''), S(' · ', 'dim'),
-      S(!m.autoCompact ? 'auto-compact off' : num(d.compactAt) > 0 ? `auto-compact on (at ${Math.round(num(d.compactAt))}k)` : 'auto-compact on', ''), S(' · ', 'dim'), S(m.scorer ? `scorer ${num(d.scorerVal)}` : 'scorer off', '')]);
+      S(!m.autoCompact ? 'auto-compact off' : num(d.compactAt) > 0 ? `auto-compact on (at ${Math.round(num(d.compactAt))}k)` : 'auto-compact on', ''), S(' · ', 'dim'), S(m.scorer ? `scoring ${num(d.scorerVal)}` : 'scoring off', '')]);
     L.push([S('  judged as: ', 'dim'), S(a.model || '-', modelCls(a.model))]);
     if (m.runway) L.push([S('  resume: ', 'dim'), S((a.resume || '-') + '   ', ''), S('f: fill prompt', 'bold')]);
     L.push([S(`  read ${a.read || '-'} · written ${a.written || '-'}`, 'dim')]);
@@ -2932,7 +3342,23 @@ function drawPanes() {
   }).join('');
 }
 
-buildEditor(); buildSettings(); fill(); draw();
+// The transcript example and whether the live terminal stays pinned: this viewer's choice, kept in this browser only
+function buildLive() {
+  $('liveExample').innerHTML = TRANSCRIPTS.map((t, i) => `<option value="${i}">${esc(t.name)}</option>`).join('');
+  const ex = store.get('liveEx'), pinned = store.get('livePinned') === true;
+  liveEx = Number.isInteger(ex) && ex >= 0 && ex < TRANSCRIPTS.length ? ex : 0;
+  $('liveExample').value = String(liveEx);
+  $('livePinned').checked = pinned;
+  document.querySelector('.live').classList.toggle('pinned', pinned);
+  $('liveExample').addEventListener('change', () => { liveEx = +$('liveExample').value; store.set('liveEx', liveEx); draw(); });
+  $('livePinned').addEventListener('change', () => {
+    const on = $('livePinned').checked;
+    document.querySelector('.live').classList.toggle('pinned', on);
+    store.set('livePinned', on);
+  });
+}
+
+buildEditor(); buildSettings(); buildLive(); fill(); draw();
 </script>
 
 </body></html>

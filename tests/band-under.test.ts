@@ -26,6 +26,13 @@ const first = async (ui: { drawn: () => Promise<unknown> }): Promise<string> =>
 const isEngineOnly = async (ui: { drawn: () => Promise<unknown> }): Promise<boolean> =>
   ((await ui.drawn()) as { type?: string }).type === 'Text' && JSON.stringify(await ui.drawn()).includes('? for shortcuts')
 const isBand = (lines: string[]): boolean => lines.some(l => l.startsWith('tools:'))
+// A session with something in three detail rows, which wait for their first item (the user, 2026-11-12): one tool
+// call, one skill and one rule loaded by path
+async function busy($: Engine): Promise<void> {
+  await $.tool.call({ tool: 'Bash', command: 'ls', tool_use_id: 'b1' })
+  await $.tool.call({ tool: 'Skill', skill: 'solve-task', tool_use_id: 's1' })
+  await $.classic.InstructionsLoaded({ file_path: '/w/.claude/rules/web.md', memory_type: 'Project', load_reason: 'path_glob_match', globs: ['src/**'], trigger_file_path: '/w/src/a.ts' } as never)
+}
 
 test("under, the footer draws Claude Code's line, then the band, and the site above passes", async ($, on) => {
   const kit = stubAll(on, { band: 'full', store: UNDER })
@@ -33,6 +40,7 @@ test("under, the footer draws Claude Code's line, then the band, and the site ab
   engine(on)
   await $.session.start(START)
   await measure($, 40)
+  await busy($)
   const { invalidates } = kit
   const low = await footer($)
   expect(await first(low)).toContain('? for shortcuts')
@@ -50,6 +58,7 @@ test('before the footer runs, the band stays above', async ($, on) => {
   engine(on)
   await $.session.start(START)
   await measure($, 40)
+  await busy($)
   const high = await above($)
   expect(isBand(await rows(high))).toBe(true)
   const low = await footer($)
@@ -67,6 +76,7 @@ test('the desktop keeps the band above, under or not', async ($, on) => {
   engine(on)
   await $.session.start(START)
   await measure($, 40)
+  await busy($)
   const low = await footer($, 'desktop')
   expect(await isEngineOnly(low)).toBe(true)
   const high = await above($, 'desktop')
@@ -81,6 +91,7 @@ test("above, the footer is Claude Code's alone", async ($, on) => {
   engine(on)
   await $.session.start(START)
   await measure($, 40)
+  await busy($)
   const low = await footer($)
   expect(await isEngineOnly(low)).toBe(true)
   await low.unmount()
@@ -92,6 +103,7 @@ test('the width follows the site above, and redraws once per change', async ($, 
   engine(on)
   await $.session.start(START)
   await measure($, 40)
+  await busy($)
   const low = await footer($, 'terminal', { columns: 130, rows: 40, isFullscreen: false })
   expect((await rows(low)).every(r => [...r].length <= 125)).toBe(true)
   const wide = await rows(low)
@@ -125,6 +137,7 @@ test('fullscreen at 20 rows draws at most 4 band rows, dropping the open rows fr
   engine(on)
   await $.session.start(START)
   await measure($, 40)
+  await busy($)
   const low = await footer($, 'terminal', { columns: 130, rows: 20, isFullscreen: true })
   const drawn = await rows(low)
   expect(drawn).toHaveLength(4)
@@ -140,6 +153,7 @@ test('fullscreen at 24 rows draws 6 band rows, 4 with a status line set', async 
   engine(on)
   await $.session.start(START)
   await measure($, 40)
+  await busy($)
   const low = await footer($, 'terminal', { columns: 130, rows: 24, isFullscreen: true })
   expect(await rows(low)).toHaveLength(6)
   await low.unmount()
@@ -151,6 +165,7 @@ test('a status line set leaves the band two rows fewer in fullscreen', async ($,
   engine(on)
   await $.session.start(START)
   await measure($, 40)
+  await busy($)
   const low = await footer($, 'terminal', { columns: 130, rows: 24, isFullscreen: true })
   expect(await rows(low)).toHaveLength(4)
   await low.unmount()
@@ -162,6 +177,7 @@ test('under, the pinned line leaves REC out while the footer draws the band', { 
   engine(on)
   await $.session.start(START)
   await measure($, 40)
+  await busy($)
   const low = await footer($)
   await clock.advance(1000)
   expect(statuses[statuses.length - 1]).toBeUndefined()
@@ -179,6 +195,7 @@ test("a refused read under keeps Claude Code's line and shows the failure note",
   engine(on)
   await $.session.start(START)
   await measure($, 40)
+  await busy($)
   const low = await footer($)
   fail.key = 'band'
   await low.redraw()
@@ -199,6 +216,7 @@ test('a refused read above leaves the footer as Claude Code drew it', async ($, 
   engine(on)
   await $.session.start(START)
   await measure($, 40)
+  await busy($)
   fail.key = 'band'
   const low = await footer($)
   expect(await isEngineOnly(low)).toBe(true)
@@ -212,6 +230,7 @@ test('a survey above is never hidden', async ($, on) => {
   engine(on)
   await $.session.start(START)
   await measure($, 40)
+  await busy($)
   fail.key = 'band'
   const high = await above($, 'terminal', { ...ABOVE, hasSurvey: true })
   expect(JSON.stringify(await high.drawn())).not.toContain('the band failed to draw')
@@ -224,6 +243,7 @@ test("calm under draws the calm band's lines under Claude Code's line", async ($
   engine(on)
   await $.session.start(START)
   await measure($, 40)
+  await busy($)
   const low = await footer($)
   expect(await first(low)).toContain('? for shortcuts')
   // The same lines the calm band draws above, where the desktop keeps it
@@ -241,10 +261,12 @@ test('a new session starts with no footer seen', async ($, on) => {
   engine(on)
   await $.session.start(START)
   await measure($, 40)
+  await busy($)
   const low = await footer($)
   await low.unmount()
   await $.session.start(START)
   await measure($, 40)
+  await busy($)
   const high = await above($)
   expect(isBand(await rows(high))).toBe(true)
   await high.unmount()

@@ -76,7 +76,7 @@ for (const surface of SURFACES) {
     const { ui } = await now($, on, surface, { files: { [STATUS]: status() } })
     const lines = await section(ui)
     expect(lines.slice(0, 4)).toEqual([
-      'ALFRED CODE', 'fresh session offered from 150k of 1.0M · ctx 62% of it', 'auto-run on · scorer on (level 80, 3 rounds)', 'model claude-opus-5-5',
+      'ALFRED CODE', 'fresh session offered from 150k of 1.0M · ctx 62% of it', 'auto-run on · scoring on (level 80, 3 rounds)', 'model claude-opus-5-5',
     ])
     expect(lines[4]!.startsWith('resume: Read docs/work/plans/inspector.md, check that branch feat/x is checke')).toBe(true)
     expect(lines[4]!.endsWith('…  fill prompt')).toBe(true)
@@ -101,12 +101,12 @@ for (const surface of SURFACES) {
     expect((await at(status({ fullContext: 'compact' })))[1]).toBe('compacts where Claude Code compacts')
     expect((await at(status({ fullContext: 'off' })))[1]).toBe('full context: off · Handoff runs')
     expect((await at(without('window')))[1]).toBe('fresh session offered from 150k · ctx 62% of it')
-    expect((await at(without('autoRun')))[2]).toBe('scorer on (level 80, 3 rounds)')
-    expect((await at(status({ autoRun: false, scorer: { on: false, level: 70, rounds: 1 } })))[2]).toBe('auto-run off · scorer off')
+    expect((await at(without('autoRun')))[2]).toBe('scoring on (level 80, 3 rounds)')
+    expect((await at(status({ autoRun: false, scorer: { on: false, level: 70, rounds: 1 } })))[2]).toBe('auto-run off · scoring off')
     expect((await at(status({ scorer: null })))[2]).toBe('auto-run on')
-    expect((await at(status({ autoCompact: { on: true, at: 490_000 } })))[2]).toBe('auto-run on · auto-compact on (at 490k) · scorer on (level 80, 3 rounds)')
-    expect((await at(status({ autoCompact: { on: true, at: null } })))[2]).toBe('auto-run on · auto-compact on · scorer on (level 80, 3 rounds)')
-    expect((await at(status({ autoCompact: { on: false, at: 490_000 } })))[2]).toBe('auto-run on · auto-compact off · scorer on (level 80, 3 rounds)')
+    expect((await at(status({ autoCompact: { on: true, at: 490_000 } })))[2]).toBe('auto-run on · auto-compact on (at 490k) · scoring on (level 80, 3 rounds)')
+    expect((await at(status({ autoCompact: { on: true, at: null } })))[2]).toBe('auto-run on · auto-compact on · scoring on (level 80, 3 rounds)')
+    expect((await at(status({ autoCompact: { on: false, at: 490_000 } })))[2]).toBe('auto-run on · auto-compact off · scoring on (level 80, 3 rounds)')
     const noModes = await at(without('autoRun', 'scorer'))
     expect(noModes[2]).toBe('model claude-opus-5-5')
     const noModel = await at(without('model'))
@@ -169,7 +169,7 @@ for (const surface of SURFACES) {
 
   test(`the banner draws unchanged under /rec strict (${surface})`, async ($, on) => {
     await now($, on, surface, { files: { [STATUS]: status() }, store: { 'settings:rec': 'strict' } })
-    expect((await rows(await band($, surface)))[0]!.startsWith('● REC │ auto-run · scorer 80 │ ctx ▰▰▰▱▱ 62% of 150k')).toBe(true)
+    expect((await rows(await band($, surface)))[0]!.startsWith('● REC │ auto-run · scoring 80 │ ctx ▰▰▰▱▱ 62% of 150k')).toBe(true)
   })
 }
 

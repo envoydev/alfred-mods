@@ -91,14 +91,15 @@ export function runwayOf(s: Stack, u: Usage, sessionModel: string | null): Runwa
 // A compaction point in whole thousands, `490k`
 const thousands = (at: number): string => `${Math.round(at / 1000)}k`
 
-// The mode banner (spec 'The mode banner'): `auto-run` in warn, `auto-compact <at>` and `scorer <level>`, only while a
-// mode is on (the owner, 2026-11-12: '"auto-run | auto-compact 490k | scorer 80"')
+// The mode banner (spec 'The mode banner'): `auto-run` in warn, `auto-compact <at>` and `scoring <level>`, only while
+// a mode is on (the owner, 2026-11-12: '"auto-run | auto-compact 490k | scorer 80"'; the scorer named scoring as
+// alfred-code 3.11.0 names it, the user, 2026-11-12). The status file's field keeps its schema 1 name, `scorer`
 export function bannerSegs(s: Stack): Seg[] {
   if (s.state !== 'used') return []
   const parts: Seg[][] = []
   if (s.autoRun === true) parts.push([{ text: 'auto-run', tone: 'warn' }])
   if (s.autoCompact?.on === true) parts.push([{ text: s.autoCompact.at === null ? 'auto-compact' : `auto-compact ${thousands(s.autoCompact.at)}` }])
-  if (s.scorer?.on === true) parts.push([{ text: `scorer ${s.scorer.level}` }])
+  if (s.scorer?.on === true) parts.push([{ text: `scoring ${s.scorer.level}` }])
   return parts.flatMap((p, i) => (i === 0 ? p : [{ text: ' · ', tone: 'dim' as const }, ...p]))
 }
 
@@ -121,7 +122,7 @@ function contextLine(s: Stack, runway: Runway | null): string | null {
 // Line 3: the modes known, joined
 function modesLine(s: Stack): string | null {
   const scorer = s.scorer === null ? null
-    : s.scorer.on ? `scorer on (level ${s.scorer.level}, ${s.scorer.rounds} round${s.scorer.rounds === 1 ? '' : 's'})` : 'scorer off'
+    : s.scorer.on ? `scoring on (level ${s.scorer.level}, ${s.scorer.rounds} round${s.scorer.rounds === 1 ? '' : 's'})` : 'scoring off'
   const compact = s.autoCompact === null ? null
     : !s.autoCompact.on ? 'auto-compact off' : s.autoCompact.at === null ? 'auto-compact on' : `auto-compact on (at ${thousands(s.autoCompact.at)})`
   const parts = [s.autoRun === null ? null : `auto-run ${s.autoRun ? 'on' : 'off'}`, compact, scorer].filter((p): p is string => p !== null)

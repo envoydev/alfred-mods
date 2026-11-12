@@ -193,9 +193,6 @@ test('closed, the band draws no rows of tools; open, every tool and the skills u
     text(infoLine(input({ isToolsOpen: true }))),
     'usage:   [ 19 tools ]',
     'tools:   AskUserQuestion ×13 │ Bash ×5 │ Grep ×1',
-    'skills:  none loaded',
-    'agents:  none',
-    'rules:   none loaded',
   ])
   const tools = open.find(l => text(l).startsWith('tools:')) ?? []
   expect(tools.find(s => 'text' in s && s.text === 'Bash ×5')).toEqual({ text: 'Bash ×5' })
@@ -206,7 +203,8 @@ test('the skills row names each skill loaded in the main chat and how many the l
   const row = (o: Partial<BandInput>) => texts(bandLines(input({ isToolsOpen: true, ...o }))).find(l => l.startsWith('skills:'))
   expect(row({ meta })).toBe('skills:  superpowers:brainstorming ×1 │ solve-task ×2')
   expect(row({ meta, listing: { listed: 57, total: 60, tokens: 3200 } })).toBe('skills:  superpowers:brainstorming ×1 │ solve-task ×2 │ 57 of 60 listed')
-  expect(row({ listing: { listed: 60, total: 60, tokens: 3200 } })).toBe('skills:  none loaded │ 60 listed')
+  // The listing alone is no skill: the row waits for the first
+  expect(row({ listing: { listed: 60, total: 60, tokens: 3200 } })).toBeUndefined()
   // Busy, the skills keep their colour
   const busy = bandLines(input({ isToolsOpen: true, meta, newFailures: 1 })).find(l => text(l).startsWith('skills:'))
   expect(busy?.find(s => 'text' in s && s.text === 'solve-task ×2')).toEqual({ text: 'solve-task ×2', tone: 'skill' })
@@ -217,7 +215,7 @@ test('the skills row names each skill loaded in the main chat and how many the l
 test('after a resume the skills row counts from it', () => {
   const resumed = { ...input().meta, isResumed: true }
   const row = (o: Partial<BandInput>) => texts(bandLines(input({ isToolsOpen: true, ...o }))).find(l => l.startsWith('skills:'))
-  expect(row({ meta: resumed, listing: { listed: 60, total: 60, tokens: 3200 } })).toBe('skills:  none seen since resume │ 60 listed')
+  expect(row({ meta: resumed, listing: { listed: 60, total: 60, tokens: 3200 } })).toBeUndefined()
   expect(row({ meta: { ...resumed, skills: { 'solve-task': 1 } } })).toBe('skills:  solve-task ×1 │ since resume')
 })
 
@@ -229,13 +227,18 @@ test('the rows wrap whole names under their label, each row in the width', () =>
   for (const l of lines.slice(i)) expect(cellsOf(l)).toBeLessThanOrEqual(41)
 })
 
+const FOUR: Partial<BandInput> = {
+  rules: { always: ['a.md'], byPath: [], isTracked: true }, meta: { ...input().meta, skills: { 'solve-task': 1 }, agentTypes: { Explore: 1 } },
+}
+
 test('short of rows, the open rows give way first, then usage:, then the info line, and the buttons stay in view', () => {
   const inspect = (lines: Line[]): boolean => (lines[lines.length - 1] ?? []).some(s => 'button' in s && s.button.key === 'inspect')
-  const at = (maxRows: number) => bandLines(input({ isToolsOpen: true, newFailures: 1, maxRows }))
+  // Something in each of the four rows, which wait for their first item (the user, 2026-11-12)
+  const at = (maxRows: number) => bandLines(input({ ...FOUR, isToolsOpen: true, newFailures: 1, maxRows }))
   expect(texts(at(7)).filter(l => /^(tools|skills|agents|rules):/.test(l))).toHaveLength(2)
   expect(texts(at(6)).filter(l => /^(tools|skills|agents|rules):/.test(l))).toEqual(['tools:   AskUserQuestion ×13 │ Bash ×5 │ Grep ×1'])
   expect(texts(at(5)).some(l => /^(tools|skills|agents|rules):/.test(l))).toBe(false)
-  expect(texts(at(5))).toContain('usage:   [ 19 tools ]')
+  expect(texts(at(5))).toContain('usage:   [ 19 tools · 1 skill · 1 agent · 1 rule ]')
   expect(texts(at(4)).some(l => l.startsWith('usage:'))).toBe(false)
   expect(texts(at(4)).includes(FULL)).toBe(true)
   expect(texts(at(3)).some(l => l.startsWith(HEAD))).toBe(false)
@@ -325,8 +328,8 @@ test('the info line wraps onto a second row, between items, before one drops', (
 })
 
 test('short of rows, the project row goes first, then the second info row, before the open rows of tools', () => {
-  const meta = { ...input().meta, ...PLACED }
-  const at = (maxRows: number) => texts(bandLines(input({ columns: 80, meta, isToolsOpen: true, newFailures: 1, maxRows })))
+  const meta = { ...FOUR.meta!, ...PLACED }
+  const at = (maxRows: number) => texts(bandLines(input({ ...FOUR, columns: 80, meta, isToolsOpen: true, newFailures: 1, maxRows })))
   const second = `you ${clock(P)} · Claude ${clock(R)} │ CC 2.1.322`
   const open = 4
   // Line 1, the gauges, two info rows, the project row, usage:, four rows, the action row

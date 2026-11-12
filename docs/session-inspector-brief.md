@@ -301,8 +301,9 @@ rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ w
   empties the skills; the list outlives a compaction, as the mod has no word of what one drops. A resume or a branch
   (`classic.SessionStart`, a start-over that is not a /clear, or a process whose first `$.state` holds no reading while
   `$.session.turns()` is above 0) sets `meta.isResumed`: the context holds skills loaded before, which no API lists,
-  so the row reads `none seen since resume`, or the skills since with `since resume` after them; the agents and by-path
-  rules rows count from it the same way. Where a managed plugin
+  so the row shows the skills since with `since resume` after them; the agents and by-path rules rows count from it
+  the same way. Each detail row waits for its category's first item (the user, 2026-11-12: 'leave empty until at
+  least one of category is appeared'): a skills listing alone is no skill, and no row reads `none`. Where a managed plugin
   skips `skill.prompt`, a `/name` is missing from the list (README). Idle and healthy, the band is the gauge line and the info
   line, both dim, the times on the info line only. Today's cost follows the session's while line 2 fits, never on the
   narrow form; it is the mod's own count (F1 note).
@@ -834,12 +835,13 @@ which then reads as unknown. Phase 5's reader and what it draws follow the table
   `ctx ▰▰▰▱▱ 62% of 150k`, past 100% past the trigger. Its tone, the band's hot state and the `≈N turns` forecast go
   by it, and the Usage tab counts turns to `150k`. Otherwise the core item: `compact` already measures against Claude
   Code's own compaction point, which the stack's installer seeds.
-- **The mode banner:** `auto-run` (warn tone), `auto-compact 490k` and `scorer 80`, in that order, joined by ` · ` and
+- **The mode banner:** `auto-run` (warn tone), `auto-compact 490k` and `scoring 80`, in that order, joined by ` · ` and
   followed by ` │ `, lead band line 1 after `● REC` from the session's first used file while a mode is on (the owner,
   2026-11-12: '"auto-run | auto-compact 490k | scorer 80"'). `auto-compact` shows while `autoCompact.on`, its `at`
   rounded to whole thousands, or alone when `at` is `null`; the ALFRED CODE section spells it out as `auto-compact on
-  (at 490k)` or `auto-compact off`. The scorer keeps the name `scorer` until alfred-code's rename to scoring is
-  settled. The banner is never dropped for width. Where the band's first line does
+  (at 490k)` or `auto-compact off`. The scorer shows as `scoring`, as alfred-code 3.11.0
+  names it (the user, 2026-11-12), `scoring on (level 80, 3 rounds)` or `scoring off` in the section; the status
+  file's field keeps its schema 1 name, `scorer`. The banner is never dropped for width. Where the band's first line does
   not fit beside the marks, they take line 1 alone and the body keeps the full width, so no gauge, reset or the cost
   drops for them (agent).
 - **The ALFRED CODE section,** after HANDOFF in the Now tab, drawn in every session whatever `/auto-handoff`'s mode:
