@@ -295,9 +295,9 @@ usage:   [ 19 tools ]
 #### `quiet` - one line per tool call
 
 `true` (the default) draws each tool call in the conversation as one line: what it did, how many lines it printed,
-and ✓ or ✗. Runs of reads fold into one line, a failure keeps up to 3 error lines, and a blocked call shows the
-rule's first sentence. `false` draws Claude Code's full rows: the command and its output. Ctrl+O expands either, and
-`[Show]` in the Tools tab shows a failure's whole error.
+and ✓ or ✗, with the steps that say what it worked on in `⎿` lines under it. Runs of reads fold into one line, a
+failure keeps up to 3 error lines, and a blocked call shows the rule's first sentence. `false` draws Claude Code's full
+rows: the command and its output. Ctrl+O expands either, and `[Show]` in the Tools tab shows a failure's whole error.
 
 ```json
 { "alfred-mods": { "quiet": true } }
@@ -305,14 +305,20 @@ rule's first sentence. `false` draws Claude Code's full rows: the command and it
 
 ```text
 ⏺ Bash · Show CI failure lines 1038-1042 · 30 lines ✓
-⏺ 4 reads · scorer-card.test.js, chain.js, layout.js ×2 · ✓
+⏺ Bash · Show working tree status · 1 line ✓ · 3 times in a row
 ⏺ Bash · npm test · ✗ exit 1
     FAIL tests/auth.test.ts
+⏺ 4 reads · ✓
+  ⎿ read src/a.ts · 2 times
+  ⎿ grep "refreshToken" in src
+  ⎿ glob src/**/*.spec.ts
+⏺ Edit · token.interceptor.ts · ✓
+  ⎿ changed src/app/token.interceptor.ts · +3 −1
+⏺ Write · plan.md · ✓
+  ⎿ created docs/plan.md · 42 lines
 ```
 
-A web call names its source and puts each step on a `⎿` line under it: WebFetch the page it read, what came back
-(and from where, when it was redirected) and what it took from the page; WebSearch its query, how many results and the
-sites they came from.
+Every other call names what it worked on the same way:
 
 ```text
 ⏺ WebFetch · code.claude.com/docs/en/plugins/mods/overview · ✓
@@ -320,7 +326,43 @@ sites they came from.
   ⎿ took: List the hook events and their limits
 ⏺ WebSearch · "claude code mods api" · ✓
   ⎿ 6 results · code.claude.com, github.com, anthropic.com +2 more
+⏺ Agent · alfred-code:output-scorer · ✓
+  ⎿ asked: Review plan round 1
+  ⎿ result: C1.1 yes - the plan names every file it touches
+  ⎿ 12 tool uses · 31k tokens · 1m 20s
+⏺ Skill · superpowers:brainstorming · ✓
+⏺ TodoWrite · 5 todos · 2 done, 1 in progress · ✓
+  ⎿ now: Writing the tests
+⏺ ToolSearch · "select:WebFetch" · ✓
+  ⎿ found WebFetch
+⏺ AskUserQuestion · ✓
+  ⎿ Which band mode?
+  ⎿ answered: Full
+⏺ mcp__context7__query-docs · 12 lines ✓
+  ⎿ libraryId: /vercel/next.js
+  ⎿ query: app router caching
+⏺ Monitor · Watch the build · ✓
+  ⎿ watches: gh run watch 42
 ```
+
+How to read a row:
+
+| Mark                     | Meaning                                                                                      |
+|--------------------------|----------------------------------------------------------------------------------------------|
+| `⏺ <tool> · <what>`      | the tool, then what it worked on: a description, file, page, query, agent type or skill      |
+| `⎿`                      | one step of the call: what it was given, what it did or what came back                       |
+| `30 lines ✓`             | done, and how many lines it printed                                                          |
+| `✗`, `✗ exit 1`          | failed (with its exit code), up to 3 error lines under it                                    |
+| `✗ interrupted`          | stopped before it finished                                                                   |
+| `⊘ denied by you`        | you said no to it                                                                            |
+| `⊘ blocked: <reason>`    | a rule, a hook or the permission classifier stopped it                                       |
+| `⎿ allowed by auto mode` | auto mode's classifier let the call run without asking you                                   |
+| `· 3 times in a row`     | the same call with the same result ran 3 times back to back, drawn once                      |
+| `4 reads`, `· 2 times`   | 4 reads or searches in a row folded into one row; a file read twice among them               |
+| `+3 −1`                  | lines the edit or write added and removed                                                    |
+| `+2 more`                | steps left out to keep the row short; Ctrl+O shows them all                                  |
+
+Paths read from the session's working folder; one outside it shows in full.
 
 #### `rec` - masking for a recording or a shared screen
 
@@ -450,7 +492,7 @@ By default the band has an info line under its gauges, and rows under that:
 
 ```text
 Sonnet 5.5 ◑ high │ 9m │ ≈119 tok/s avg │ cache warm ≈60m │ you 17:15 · Claude 17:13 │ CC 2.1.322
-project: my-app │ git:(develop) │ folder: .claude
+project: my-app │ git:(develop) +12 −3 │ folder: .claude
 plan:    Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update interceptor
 usage:   [ 45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ]
 tools:   Bash ×32 │ AskUserQuestion ×4 │ Read ×4 │ Write ×4 │ Grep ×1
@@ -464,18 +506,22 @@ rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ w
   tool calls, and the gauges add today's cost. Today's cost is the mod's own count on this machine: sessions it did not
   run in are not in it, so it can read lower than a status line's that counts every session.
 - **`project:`** the folder the session started in, then `git:(<branch>)`, the branch of the repository holding the
-  folder Claude works in (left out outside a repository), then `folder:`, that folder when it is not the project's
+  folder Claude works in (left out outside a repository), then that repository's uncommitted changes as `+added
+  −removed` lines against the last commit, a new untracked file's lines counted as added (left out when there are
+  none), then `folder:`, that folder when it is not the project's
   root. The folder follows Claude: where a Bash `cd` went, or the folder of the last file Claude edited or wrote,
   whichever came last (a folder outside the project shows as `…/<name>`); it is re-read after each Bash call, edit and
-  write, and every 30 s. `git:(` and `)` are purple, the branch yellow, the project and the folder in your text's own
-  colour.
+  write, and every 30 s. `git:(` and `)` are purple, the branch yellow, the added lines green and the removed red, the
+  project and the folder in your text's own colour. The counts come from `git diff --numstat HEAD` and `git ls-files`,
+  each with a 2 s timeout; short of width the folder goes first, then the counts.
 - **`plan:`** while a plan runs: its title, bar, steps done and the step in progress (the Plan tab has the percent and
   the times).
 - **`usage:`** in aqua, counts what the rows under it list: tool calls, skills, agents dispatched (and how many run)
   and rules. It shows whether the rows are open or not.
 - **The detail rows** are open by default; `"bandRows": false` closes them ([Settings](#settings)).
 
-`tools:` lists every tool by name with its calls, agents' calls included, an MCP tool as `<server>:<tool>`. `skills:`
+`×N` on these rows is how many times this session. `tools:` lists every tool by name with its calls, agents' calls
+included, an MCP tool as `<server>:<tool>`. `skills:`
 lists the skills loaded into the main chat's context this conversation, by Claude's Skill tool or by you as `/name` (a
 subagent's Skill calls are on its Agents row, and a skill that runs forked is in its own subagent, never listed here),
 then how many skills the context's listing carries, of the session's. `agents:` lists each agent type in the order it

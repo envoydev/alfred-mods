@@ -276,7 +276,7 @@ rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ w
   `alfred-mods ▸ hooks git:(main)`; with no root, the repo folder's name or the working folder's, as before. The
   folder keeps its last parts after `…/` within 40 cells, and narrows to `…/<last>` before the place drops whole. The
   30 s poll re-reads that `HEAD`, or the whole place when `$.session.cwd()` moved, and a main-thread Bash call, edit
-  or write re-reads it at once after it ends, so a move shows within the turn. No git process runs. A `/model` switch (`classic.PostModelSwitch`) names the new model at
+  or write re-reads it at once after it ends, so a move shows within the turn. No git process runs for the branch; the change counts after it run their own (the user, 2026-11-12, under 'Security'). A `/model` switch (`classic.PostModelSwitch`) names the new model at
   once. Each turn's `session.measure` with windows stores them in `$.store` `usage:windows` (`{ at, windows }`, only
   when a percent as shown, a kind or a reset changed: every write rewrites the file the machine's sessions share); a
   session with none of its own shows the stored ones whose reset is ahead, each marked `≈`, in the band and the Usage
@@ -1437,7 +1437,7 @@ The Claude Code limits below are from the mods reference; the right column is ho
 
 **Security**
 
-- **Network and processes:** no `$.http.fetch` and no `$.model` calls. The only `$.process` call allowed is one fixed, read-only `git status` for the extractive handoff, with a timeout.
+- **Network and processes:** no `$.http.fetch` and no `$.model` calls. The `$.process` calls allowed are fixed, read-only git commands, each with a 2 s timeout and `--no-optional-locks`, run off the hooks: one `git status` for the extractive handoff, and for the project row's change counts (the user, 2026-11-12: 'project: alfred-mods │ git:(web-steps) +5323 -123') `git diff --numstat HEAD` and `git ls-files --others --exclude-standard -z` from the repository's folder, after a main-thread Bash call, edit or write and on the 30 s poll. A new untracked file's lines count as added: up to 200 files of 1 MiB or less are read through `$.fs.read`, and only their line counts are kept, in memory.
 - **Approvals:** the mod never approves, denies or rewrites a tool call; F8 writes HANDOFF.md and fills an empty prompt, and F9 rewrites only what rows draw, as the 'F8 and F9 behaviour' section says. (agent)
 - **Files written:** one `$.fs.write`, of `.claude/session-inspector/HANDOFF.md`, and never over a file without its marker. (agent)
 - **Private data:** private words live only in `$.store`, never in code, logs or `$.state`.

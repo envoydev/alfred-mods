@@ -299,21 +299,27 @@ function planRow(b: BandInput): Line[] {
 const rowLabel = (text: string): Seg => ({ text: text.padEnd(ROW_LABEL), tone: 'dim' })
 const dimSeg = (text: string): Seg => ({ text, tone: 'dim' })
 
-// The project row (the user, 2026-11-11): 'project: my-app │ git:(develop) │ folder: .claude' - the session's
+// The project row (the user, 2026-11-11): 'project: my-app │ git:(develop) +12 −3 │ folder: .claude' - the session's
 // project, the branch of the repository holding the folder Claude works in, and that folder when it is not the
 // project's root, past 40 cells its last parts after '…/'; short of width the folder takes its last part, then goes
 function placeRow(b: BandInput): Line[] {
   const place = b.meta.place
   if (place === undefined) return []
   const sep = dimSeg(ROW_JOIN)
-  const line = (folder: string | null): Line => [
+  // The uncommitted changes after the branch, added in the OK colour and removed in the failure one; none when clean
+  const changes = place.changes
+  const counted: Seg[] = place.branch === null || changes === undefined || changes.added + changes.removed === 0 ? []
+    : [{ text: ' ' }, { text: `+${changes.added}`, tone: 'ok' }, { text: ' ' }, { text: `−${changes.removed}`, tone: 'fail' }]
+  const line = (folder: string | null, withChanges = true): Line => [
     { text: place.project },
     // git:( and ) purple, the branch yellow, the folder in the text's own colour (the user, 2026-11-11)
     ...(place.branch === null ? [] : [sep, { text: 'git:(', tone: 'git' as const }, { text: place.branch, tone: 'branch' as const }, { text: ')', tone: 'git' as const }]),
+    ...(withChanges ? counted : []),
     ...(folder === null ? [] : [sep, dimSeg('folder: '), { text: folder }]),
   ]
   const folder = place.folder
-  const forms = folder === undefined ? [line(null)] : [line(fitFolder(folder, 40)), line(lastPart(folder)), line(null)]
+  // Short of width the folder goes first, then the changes
+  const forms = [...(folder === undefined ? [] : [line(fitFolder(folder, 40)), line(lastPart(folder))]), line(null), line(null, false)]
   const form = forms.find(f => widthOf(f) <= b.columns - ROW_LABEL) ?? forms[forms.length - 1] ?? []
   return [[rowLabel('project:'), ...form]]
 }

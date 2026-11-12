@@ -20,7 +20,8 @@ import { NO_PARTS, linkedRules, partsOf, ruleName } from './parts.ts'
 import { clock, fingerprint, mins, oneLine, printable, tokens, usd, when } from './format.ts'
 import { mask, maskForFile, maskSpans, recLevel, setRec, toast } from './mask.ts'
 import { maskDeep, maskDialog, maskResult, neutralDialog, resultLines } from './sites.ts'
-import { DROPS_RESULT, callLine, emptyPreview, groupLines } from './compact.ts'
+import { DROPS_RESULT, callLine, groupLines } from './compact.ts'
+import { numstatTotals, textLines, untrackedNames } from './changes.ts'
 import type { CompactCall } from './compact.ts'
 import {
   FOREIGN, HANDOFF_PATH, HANDOFF_USAGE, MARKER, MODES, RESUME_PROMPT, TOASTS, gitPart, handoffText, nextStep,
@@ -198,7 +199,7 @@ async function addRow($: EngineInterface, id: string, call: Call, outcome: Exclu
 
 // Compact rows' memory (Decisions 4 and 7): each settled call's outcome and reason, and the calls of a group the mod
 // unfolded, by call id, each the last 500. A reload empties both: a blocked call then draws ✗.
-const compactMem = { outcomes: new Map<string, { outcome: Outcome; reason: string }>(), marks: new Set<string>() }
+const compactMem = { outcomes: new Map<string, { outcome: Outcome; reason: string; isAutoAllowed: boolean }>(), marks: new Set<string>() }
 
 function keepLast<K>(items: Map<K, unknown> | Set<K>, limit = 500): void {
   for (const k of items.keys()) {
@@ -219,14 +220,20 @@ function mark(ids: string[]): void {
 function compactOf(id: string | undefined, c: { tool: string; input: unknown; output?: unknown; isErrored: boolean; isInterrupted: boolean }): CompactCall {
   const o = id === undefined ? undefined : compactMem.outcomes.get(id)
   const outcome = o?.outcome === 'denied' ? 'denied' : o?.outcome === 'blocked' || o?.outcome === 'refused' ? 'blocked' : null
-  return { tool: c.tool, input: c.input, output: c.output, isErrored: c.isErrored, isInterrupted: c.isInterrupted, outcome, reason: outcome === null ? null : o?.reason ?? null }
+  return {
+    tool: c.tool, input: c.input, output: c.output, isErrored: c.isErrored, isInterrupted: c.isInterrupted, outcome,
+    reason: outcome === null ? null : o?.reason ?? null, isAutoAllowed: o?.isAutoAllowed === true,
+  }
 }
 
 // Counts a settled call, or counts it again when a later event changed its outcome
 async function settle($: EngineInterface, id: string, call: Call): Promise<void> {
   const { outcome, reason, isNew, by } = classify(call.facts)
   compactMem.outcomes.delete(id)
-  compactMem.outcomes.set(id, { outcome, reason })
+  // In auto mode a check's ask that no one saw and no hook refused was the classifier's allow (outcome.ts)
+  const f = call.facts
+  const isAutoAllowed = outcome === 'ok' && f.autoMode && f.checked === 'ask' && !f.asked && f.hookDeny === null
+  compactMem.outcomes.set(id, { outcome, reason, isAutoAllowed })
   keepLast(compactMem.outcomes)
   const before = call.outcome
   call.settled = true
@@ -315,7 +322,10 @@ async function seedWindows($: EngineInterface): Promise<void> {
 // The HEAD file the place was read from, so the 30-second poll reads that one file for a checkout; the working folder
 // it was read with, as a move to another (a `cd`, a worktree, /cd) reads the place again; and the folder it shows, the
 // working folder or the folder of the file the main thread last edited or wrote
-const placeMem = { head: null as string | null, cwd: null as string | null, at: null as string | null }
+const placeMem = { head: null as string | null, cwd: null as string | null, at: null as string | null, repo: null as string | null }
+
+// The working folder the quiet rows read paths from, kept even when the place read is refused past it
+const rowsMem = { cwd: null as string | null }
 
 async function readText($: EngineInterface, path: string): Promise<string | null> {
   try {
@@ -328,7 +338,7 @@ async function readText($: EngineInterface, path: string): Promise<string | null
 const joinPath = (dir: string, name: string): string => (/[\\/]$/.test(dir) ? `${dir}${name}` : `${dir}/${name}`)
 
 // The folder holding `.git` at or above `cwd`, and its HEAD file and branch: a worktree's `.git` is a file naming its
-// git folder. No git process runs (spec: the user, 2026-11-11).
+// git folder. No git process runs for the branch (spec: the user, 2026-11-11); the change counts run their own two.
 async function findHead($: EngineInterface, cwd: string): Promise<{ dir: string; head: string; branch: string | null } | null> {
   let dir: string | null = cwd
   for (let depth = 0; dir !== null && depth < 40; depth += 1, dir = parentOf(dir)) {
@@ -342,15 +352,18 @@ async function findHead($: EngineInterface, cwd: string): Promise<{ dir: string;
   return null
 }
 
+// The counts stay until the next count replaces them
 const setPlace = (place: NonNullable<Meta['place']>) => (m: Meta): Meta =>
-  m.place?.project === place.project && m.place.folder === place.folder && m.place.branch === place.branch ? m : { ...m, place }
+  m.place?.project === place.project && m.place.folder === place.folder && m.place.branch === place.branch ? m
+    : { ...m, place: m.place?.changes === undefined ? place : { ...place, changes: m.place.changes } }
 
 // The session's project, the folder Claude works in when it is not the project's root, and the branch of the repository
 // holding that folder (the user, 2026-11-11): a Bash `cd` moves `$.session.cwd()` and leaves `$.session.root()`. With no
 // root read, the project is the repository's folder or the working folder, as before. A refused read leaves no place.
 async function readPlace($: EngineInterface, edited?: string): Promise<void> {
-  const repo = await $.session.repo()
   const cwd = await $.session.cwd()
+  rowsMem.cwd = cwd
+  const repo = await $.session.repo()
   const root = await $.session.root().catch(() => null)
   const at = edited ?? cwd
   placeMem.head = null
@@ -359,11 +372,14 @@ async function readPlace($: EngineInterface, edited?: string): Promise<void> {
   const folder = root === null ? null : folderOf(at, root)
   const shown = folder === null ? {} : { folder }
   if (repo === null && folder === null) {
+    placeMem.repo = null
     await update($, meta, setPlace({ project: baseName(root ?? cwd), branch: null }))
     return
   }
   const found = await findHead($, at)
   placeMem.head = found?.head ?? null
+  placeMem.repo = found?.dir ?? null
+  countSoon($)
   const project = root === null ? baseName(found?.dir ?? repo?.root ?? cwd) : baseName(root)
   await update($, meta, setPlace({ project, ...shown, branch: found?.branch ?? null }))
 }
@@ -374,11 +390,73 @@ async function editPlace($: EngineInterface, file: string): Promise<void> {
   const path = /^([\\/]|[A-Za-z]:)/.test(file) ? file : joinPath(await $.session.cwd(), file)
   const dir = parentOf(path)
   if (dir !== null && dir !== placeMem.at) await readPlace($, dir)
+  else countSoon($)
 }
 
-// A checkout since: the poll reads the HEAD file the place came from
+// The repository's uncommitted changes for the project row (the user, 2026-11-12): `git diff --numstat HEAD` from the
+// repository's folder, and each new untracked file's lines as added, the newest 200 files of 1 MiB or less, a file read
+// again only when its size or time moved. Off the hooks, one count at a time; one asked for while another runs follows
+// it. A refusal, a repository with no commit or a timeout leaves no counts. Nothing of a file is kept but its count.
+const changesMem = { isRunning: false, again: false, lines: new Map<string, { size: number; mtimeMs: number; lines: number }>() }
+
+function countSoon($: EngineInterface): void {
+  $.clock.after(0, () => {
+    countChanges($).catch(() => undefined)
+  })
+}
+
+async function countChanges($: EngineInterface): Promise<void> {
+  if (changesMem.isRunning) {
+    changesMem.again = true
+    return
+  }
+  changesMem.isRunning = true
+  try {
+    do {
+      changesMem.again = false
+      const changes = await readChanges($).catch(() => null)
+      await update($, meta, m => {
+        if (m.place === undefined) return m
+        const before = m.place.changes
+        if (changes === null) return before === undefined ? m : { ...m, place: { project: m.place.project, ...(m.place.folder === undefined ? {} : { folder: m.place.folder }), branch: m.place.branch } }
+        return before?.added === changes.added && before.removed === changes.removed ? m : { ...m, place: { ...m.place, changes } }
+      })
+    } while (changesMem.again)
+  } finally {
+    changesMem.isRunning = false
+  }
+}
+
+async function readChanges($: EngineInterface): Promise<{ added: number; removed: number } | null> {
+  const dir = placeMem.repo
+  if (dir === null) return null
+  const diff = await $.process.run(['git', '--no-optional-locks', 'diff', '--numstat', 'HEAD'], { cwd: dir, timeoutMs: 2000 })
+  if (diff.exitCode !== 0) return null
+  const totals = numstatTotals(diff.stdout)
+  const others = await $.process.run(['git', '--no-optional-locks', 'ls-files', '--others', '--exclude-standard', '-z'], { cwd: dir, timeoutMs: 2000 }).catch(() => null)
+  if (others === null || others.exitCode !== 0) return totals
+  const seen = new Map<string, { size: number; mtimeMs: number; lines: number }>()
+  for (const name of untrackedNames(others.stdout).slice(0, 200)) {
+    const path = joinPath(dir, name)
+    const stat = await $.fs.stat(path).catch(() => null)
+    if (stat === null || stat.kind !== 'file' || stat.size > 1024 * 1024) continue
+    const known = changesMem.lines.get(path)
+    if (known !== undefined && known.size === stat.size && known.mtimeMs === stat.mtimeMs) {
+      seen.set(path, known)
+      continue
+    }
+    const text = await $.fs.read(path).catch(() => null)
+    const lines = text === null ? null : textLines(text)
+    if (lines !== null) seen.set(path, { size: stat.size, mtimeMs: stat.mtimeMs, lines })
+  }
+  changesMem.lines = seen
+  return { added: totals.added + [...seen.values()].reduce((sum, f) => sum + f.lines, 0), removed: totals.removed }
+}
+
+// A checkout since: the poll reads the HEAD file the place came from, and counts the changes again
 async function pollPlace($: EngineInterface): Promise<void> {
   if (placeMem.cwd !== null && (await $.session.cwd()) !== placeMem.cwd) return readPlace($)
+  countSoon($)
   const head = placeMem.head
   if (head === null) return
   const text = await readText($, head)
@@ -2330,7 +2408,7 @@ export const register: Register = (on, options) => {
     if (e.props.isErrored && typeof e.props.output === 'string' && !errorMem.has(e.props.tool_use_id)) keepError(e.props.tool_use_id, e.props.output)
     if ((await read($, quiet)).isOn && !e.props.isRunning && (e.props.isExpanded !== true || compactMem.marks.has(e.props.tool_use_id))) {
       const columns = e.viewport?.columns ?? 120
-      const lines = callLine(compactOf(e.props.tool_use_id, e.props), columns)
+      const lines = callLine(compactOf(e.props.tool_use_id, e.props), columns, { cwd: rowsMem.cwd })
       return drawLines($, e, lines, { noColor: await isNoColor($), press: {}, columns , fill: true })
     }
     if (!(await isRecOn($))) return next(e)
@@ -2343,7 +2421,7 @@ export const register: Register = (on, options) => {
         errorRows.add(e.props.tool_use_id)
         keepLast(errorRows)
         const columns = e.viewport?.columns ?? 120
-        const head = callLine(compactOf(e.props.tool_use_id, e.props), columns).slice(0, 1)
+        const head = callLine(compactOf(e.props.tool_use_id, e.props), columns, { cwd: rowsMem.cwd }).slice(0, 1)
         const isExpanded = e.props.isExpanded === true
         return drawLines($, e, [...head, ...resultLines(failed.text, { isExpanded, isErrored: true, gutter: e.surface === 'terminal' })], { noColor: await isNoColor($), press: {}, columns , fill: true })
       }
@@ -2355,24 +2433,20 @@ export const register: Register = (on, options) => {
   }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
 
   // With "quiet" on an errored result draws an empty Box, as Claude Code would draw its whole error text and the compact
-  // row above carries ✗ and its error lines, and so does an Edit or Write result (DROPS_RESULT); any other keeps
-  // next(e)'s tree, the classifier line in it, its preview gone. Under REC, so does an errored result whose row drew
-  // its masked error text
+  // row above carries ✗ and its error lines, and so does a result whose row carries what it said (DROPS_RESULT: Bash,
+  // Edit, Write and more); any other keeps next(e)'s tree, the classifier line in it. Under REC, so does an errored
+  // result whose row drew its masked error text
   on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {
     // Fullscreen's ctrl+o draws no group, so nothing there unmarks the rows a group unfolded; an expanded result draws
     // only in that view (an unfolded group draws its rows' output inline), so it unmarks its row and redraws it in full
     if (e.props.isExpanded === true && compactMem.marks.delete(e.props.tool_use_id)) $.ui.invalidate('ui.render')
-    let props = e.props
-    if ((await read($, quiet)).isOn && e.props.isExpanded !== true) {
-      if (e.props.isErrored || DROPS_RESULT.includes(e.props.tool)) return drawLines($, e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
-      const output = emptyPreview(e.props.tool, e.props.output)
-      if (output !== e.props.output) props = { ...e.props, output }
-    }
-    if (!(await isRecOn($))) return props === e.props ? next(e) : next({ ...e, props })
+    const isDropped = e.props.isErrored || DROPS_RESULT.includes(e.props.tool)
+    if (isDropped && e.props.isExpanded !== true && (await read($, quiet)).isOn) return drawLines($, e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
+    if (!(await isRecOn($))) return next(e)
     if (e.props.isErrored && errorRows.has(e.props.tool_use_id)) return drawLines($, e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
-    const masked = maskResult({ ...props, error: errorMem.get(e.props.tool_use_id) ?? null }, mask)
-    if (masked.kind === 'same') return props === e.props ? next(e) : next({ ...e, props })
-    if (masked.kind === 'output') return next({ ...e, props: { ...props, output: masked.output } })
+    const masked = maskResult({ ...e.props, error: errorMem.get(e.props.tool_use_id) ?? null }, mask)
+    if (masked.kind === 'same') return next(e)
+    if (masked.kind === 'output') return next({ ...e, props: { ...e.props, output: masked.output } })
     const lines = resultLines(masked.text, { isExpanded: e.props.isExpanded === true, isErrored: e.props.isErrored, gutter: e.surface === 'terminal' })
     return drawLines($, e, lines, { noColor: await isNoColor($), press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
   }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
@@ -2392,7 +2466,7 @@ export const register: Register = (on, options) => {
     }
     if (isQuiet && !e.props.isActive && e.props.isCallsOnly === true) {
       const columns = e.viewport?.columns ?? 120
-      const lines = groupLines(e.props.calls.map(c => compactOf(c.tool_use_id, c)), columns)
+      const lines = groupLines(e.props.calls.map(c => compactOf(c.tool_use_id, c)), columns, { cwd: rowsMem.cwd })
       return drawLines($, e, lines, { noColor: await isNoColor($), press: {}, columns , fill: true })
     }
     if (isQuiet && (isRec || !e.props.isActive)) mark(ids)
