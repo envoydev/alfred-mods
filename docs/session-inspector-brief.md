@@ -247,7 +247,13 @@ rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ w
   in settings json must have an affect on it'): `/rec on|strict|off` sets `rec` and `/auto-handoff ask|auto|off|at
   <percent>` sets `handoff` or `handoffAt` under `"alfred-mods"` in the user file (`$CLAUDE_CONFIG_DIR/settings.json`,
   else `~/.claude/settings.json`), every other key, the indent and the line ends kept; a file that does not parse, or
-  whose `"alfred-mods"` is not an object, is never rewritten. `classic.ConfigChange` brings the change in. The band's rows follow the user's message the
+  whose `"alfred-mods"` is not an object, is never rewritten. `classic.ConfigChange` brings the change in. Every
+  click and key has a command too (the user, 2026-11-12: 'Each thing that can be activated/deactivated with keyboard
+  shortcut must be activated/deactivated with command / Because in iterm with tabs shell keyboard and mouse clicks are
+  not working'): `"band": "off"` draws no band, above or under, and `/inspect band off|calm|full` writes `band`;
+  `/inspect show [n]` and `copy [n]` act on tool failure n, the newest first; `/inspect report [n]` on agent report n,
+  the Agents tab's top first; `/inspect fill` fills Alfred Code's resume prompt; `/auto-handoff compact` and `later` do
+  the ask's `c` and `r`. Private words stay pane-only, as a command's arguments reach the transcript. The band's rows follow the user's message the
   same day: the info line ends with `CC <version>`, then `project: <project> │ git:(<branch>) │ folder: <folder>`,
   `plan:`, `usage:   [ 45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ]` as text, then the detail rows; the toggle and
   its `t` are gone. Design, probes and rulings: the machine-local spec

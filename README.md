@@ -97,8 +97,8 @@ organization's managed settings allow only its own mods
 
 ## Quick start
 
-1. [Install](#install) it and run `/reload-plugins`. The band appears above the prompt; Ctrl+X Ctrl+A hides it and
-   shows it again.
+1. [Install](#install) it and run `/reload-plugins`. The band appears above the prompt; Ctrl+X Ctrl+A folds it away
+   and back, and `/inspect band off` hides it until `/inspect band full`.
 2. Run `/inspect` for the pane with the details: Now, Usage, Agents, Tools, Cache, Timeline and Plan. Esc at an
    empty prompt, or `/inspect close`, closes it.
 3. Change what you want in `~/.claude/settings.json`, under one `"alfred-mods"` key beside the keys the file already
@@ -126,7 +126,8 @@ organization's managed settings allow only its own mods
 | You want                                             | In `"alfred-mods"`     | Or run                |
 |------------------------------------------------------|------------------------|-----------------------|
 | The band under the prompt (the terminal only)        | `"bandPlace": "under"` | -                     |
-| The short, two-line band                             | `"band": "calm"`       | -                     |
+| The short, two-line band                             | `"band": "calm"`       | `/inspect band calm`  |
+| No band at all                                       | `"band": "off"`        | `/inspect band off`   |
 | No `tools:`, `skills:`, `agents:` and `rules:` rows  | `"bandRows": false`    | -                     |
 | Each tool call's full command and output             | `"quiet": false`       | -                     |
 | Keys, emails and phones masked for a recording       | `"rec": "on"`          | `/rec on`             |
@@ -146,6 +147,15 @@ the band and gives each file's block to copy.
 - **`/inspect [now|usage|agents|tools|cache|timeline|plan [name]]`** opens the pane on a tab, Now when none is named.
   In the pane, `n`, `u`, `a`, `t`, `k`, `l` and `p` switch tabs. `/inspect plan <name>` pins the plan file
   `<name>.json`; `/inspect plan` alone returns to the newest.
+- **`/inspect band off`, `calm`, `full`** set the band's mode, the `"band"` field, in your user file: `off` draws no
+  band, above or under. **`/inspect band`** alone prints the mode and the file it comes from.
+- **`/inspect show [n]`** expands tool failure n's error in the pane, as its Show button does, and again hides it;
+  **`/inspect copy [n]`** puts that error on the clipboard, as Copy does. 1 is the newest failure, the top row of the
+  Now and Tools tabs, and the one meant when n is left out; show opens the pane on Now unless it is open on one of
+  those two.
+- **`/inspect report [n]`** shows or hides agent report n on the Agents tab, 1 the top, as Show report does.
+- **`/inspect fill`** fills Alfred Code's resume prompt into the empty prompt box, as `f` does
+  ([With Alfred Code](#with-alfred-code)).
 - **`/inspect close`** closes the pane. So does Esc at an idle, empty prompt, or in the pane while it has the keys
   (Ctrl+X Tab). On the terminal's main screen, where nothing takes a click, these are the ways to close it; in
   fullscreen its ✕ takes a click too.
@@ -157,7 +167,8 @@ the band and gives each file's block to copy.
 - **`/auto-handoff ask`, `auto`, `off`** set the [handoff](#handoff)'s mode, the `"handoff"` field, in your user file.
   **`/auto-handoff at 70`** (or `/auto-handoff 70`) sets the percent it starts at, `"handoffAt"`, a whole number from
   10 to 95.
-- **`/auto-handoff now`** saves a handoff at once, in any mode. **`/auto-handoff`** reads the settings files again and
+- **`/auto-handoff now`** saves a handoff at once, in any mode. **`/auto-handoff compact`** saves one, then compacts,
+  as the ask's `c` does; **`/auto-handoff later`** takes the ask down until its next step, as `r` does. **`/auto-handoff`** reads the settings files again and
   prints the mode, the first ask and the file each comes from.
 
 A command that sets a field writes that one field under `"alfred-mods"` in `~/.claude/settings.json` (in
@@ -166,7 +177,9 @@ The band follows within seconds, as for an edit by hand. If a project or local f
 comes first, and the command says so. A file that does not parse as JSON, or whose `"alfred-mods"` is not an object,
 is never rewritten: the command says why, and you set the field by hand.
 
-The band's buttons and the pane's keys are actions; every switch is a settings value ([Settings](#settings)).
+Every button and key the mod draws has a command, so nothing needs a click or the pane's keys: in iTerm's main screen
+with tabs, for one, neither reaches the mod. The band's `[ /compact ]` and the Cache tab's Compact are Claude Code's
+own `/compact`. Every switch is a settings value ([Settings](#settings)).
 
 ## Settings
 
@@ -198,7 +211,7 @@ repo, and open it.
 
 | Field       | Values                       | Default   | Decides                                                            |
 |-------------|------------------------------|-----------|--------------------------------------------------------------------|
-| `band`      | `"full"`, `"calm"`           | `"full"`  | `"full"` adds the info line and the rows under it; `"calm"` keeps two lines |
+| `band`      | `"full"`, `"calm"`, `"off"`  | `"full"`  | `"full"` adds the info line and the rows under it; `"calm"` keeps two lines; `"off"` draws none |
 | `bandPlace` | `"above"`, `"under"`         | `"above"` | the band above the input, or under it (the terminal only)          |
 | `bandRows`  | `true`, `false`              | `true`    | the `tools:`, `skills:`, `agents:` and `rules:` rows open or closed |
 | `quiet`     | `true`, `false`              | `true`    | one line per tool call in place of the command and its output      |
@@ -206,7 +219,7 @@ repo, and open it.
 | `handoff`   | `"ask"`, `"auto"`, `"off"`   | `"ask"`   | how a [handoff](#handoff) is saved before the context fills        |
 | `handoffAt` | a whole number from 10 to 95 | `80`      | the context percent where the handoff first asks or saves          |
 
-`rec`, `handoff` and `handoffAt` can also be set by a command, which writes the field into your user file
+`band`, `rec`, `handoff` and `handoffAt` can also be set by a command, which writes the field into your user file
 ([Commands](#commands)).
 
 With `quiet`, a failure keeps up to 3 error lines, runs of read-only calls fold into one line, and a blocked call
@@ -406,7 +419,7 @@ the empty box, never sent. What it cannot tell without those hooks:
 A call that fails in auto mode still counts as new, and an interrupt is read from the mod's own tool hook.
 
 While something needs you - recording mode on, the context at 60% or more, new failures - the mod pins one line under
-the prompt, `⚠ alfred-mods: ● REC · ctx 82% · ✗ 2 new`, which stays while the band is collapsed (Ctrl+X Ctrl+A).
+the prompt, `⚠ alfred-mods: ● REC · ctx 82% · ✗ 2 new`, which stays while the band is collapsed (Ctrl+X Ctrl+A) or off (`"band": "off"`).
 While the band is in view it shows REC and the context itself, so from Claude Code 2.1.321, which tells the mod the
 band is collapsed, the line leaves them out then and keeps the new failures; collapsed, under a survey, where no band
 draws (`-p`, an SDK session) or on an earlier build, it shows all three. Where two surfaces draw one session, the one
@@ -476,8 +489,9 @@ the ask comes before that compaction.
 - **Ask mode** (the default): past 80% (`"handoffAt"`), the band shows `⚠ ctx past 80% [4 Handoff]`, a toast names
   `/auto-handoff now`, and the Now tab's HANDOFF row offers `h: save handoff`, `c: compact` (save, then compact) and
   `r: remind at 85%`. Letter keys work while the pane has the focus (Ctrl+X Tab moves it to the band's buttons,
-  then to the pane; a click works in fullscreen); from the prompt, press 4 or run `/auto-handoff now`. It asks
-  again at each step 5 points higher, up to 95.
+  then to the pane; a click works in fullscreen). From the prompt, press 4 or run `/auto-handoff now`; the commands
+  `/auto-handoff compact` and `/auto-handoff later` do `c` and `r`. It asks again at each step 5 points higher, up
+  to 95.
 - **Auto mode** saves at each step by itself, with a toast on the first save of the session.
 - **The file** is `.claude/session-inspector/HANDOFF.md`. It holds only what is already on disk or what the mod counts:
   the plan file's path, title, steps, statuses and times, and a count of notes per step; the latest scores round's
@@ -516,7 +530,8 @@ start, every 30 seconds and after `/clear`, and shows more:
   cannot use is named as ignored, and the rest still shows.
 - **The resume prompt:** while the pane has the focus (Ctrl+X Tab, or a click in fullscreen), `f` fills the stack's
   prompt into an empty prompt box, never sending it. Enter in the prompt box sends it; in the terminal the focus is
-  back there after the fill. With something already typed, a toast says to clear it first.
+  back there after the fill. `/inspect fill` does the same from the prompt. With something already typed, a toast says
+  to clear it first.
 
 The stack's own parts show as any plugin's do, the status file aside: the Usage tab names `alfred-code` with its
 agents' tokens, the Tools tab names its guards (`blocked by shell-guards.js: …`), and its dispatched agents take their

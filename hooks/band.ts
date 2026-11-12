@@ -589,6 +589,8 @@ const KEEP_ALL: Keep = { infoUpTo: 2, isPlaceKept: true, toolRowsKept: Infinity,
 // the body's first line follows them while it fits what is left, else they take line 1 alone and the body keeps the
 // full width, so no gauge, reset or the cost drops for them
 export function bandLines(b: BandInput): Line[] {
+  // "band": "off" draws none, above or under, and the pinned line counts it as out of view
+  if (b.mode === 'off') return []
   const max = b.maxRows
   if (max === undefined) return bandRows(b, KEEP_ALL)
   // Short of rows, the project row gives way first, then the info line's second row, then the open detail rows from

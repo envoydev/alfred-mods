@@ -246,7 +246,7 @@ test('the session\'s first read toasts nothing, REC on included', async ($, on) 
 })
 
 // S3: a skipped value is told once, when the set of skipped fields changes, and never quoted
-const BAND_SKIP = '"band" in .claude/settings.local.json takes "full" or "calm" - using "full" from the default'
+const BAND_SKIP = '"band" in .claude/settings.local.json takes "full", "calm" or "off" - using "full" from the default'
 const REC_SKIP = '"rec" in .claude/settings.local.json takes "off", "on" or "strict" - using "off" from the default'
 
 test('a bad value toasts once', async ($, on) => {
