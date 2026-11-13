@@ -13,18 +13,18 @@ const KEPT_MS = 30 * 86_400_000
 // is overhead while an agent built a named step during it, else split among the running steps, else overhead while
 // the plan is begun and not finished. The caller passes only a plan that runs this session.
 export function targetsOf(name: string, plan: Plan, loop: NamedStep | null, isAgentBuilt: boolean): CloseTarget {
-  if (loop !== null && loop.plan === name && plan.steps.some(s => s.id === loop.task)) return { steps: [loop.task as string], isShared: false }
+  if (loop !== null && loop.plan === name && plan.steps.some(step => step.id === loop.task)) return { steps: [loop.task as string], isShared: false }
   if (isAgentBuilt) return 'overhead'
-  const running = plan.steps.filter(s => s.status === 'in_progress').map(s => s.id)
+  const running = plan.steps.filter(step => step.status === 'in_progress').map(step => step.id)
   if (running.length > 0) return { steps: running, isShared: running.length > 1 }
-  const isBegun = plan.steps.some(s => s.status !== 'pending')
+  const isBegun = plan.steps.some(step => step.status !== 'pending')
   return isBegun && !plan.steps.every(isFinishedStep) ? 'overhead' : null
 }
 
 // A slice's working time: its age less the waits settled in it and the part of each open wait (`waits`, by call id,
 // with its start) that falls inside it
 export function sliceMs(slice: Slice, now: number): number {
-  const open = Object.values(slice.openWaits ?? {}).reduce((n, start) => n + Math.max(0, now - Math.max(start, slice.openedAt)), 0)
+  const open = Object.values(slice.openWaits ?? {}).reduce((total, start) => total + Math.max(0, now - Math.max(start, slice.openedAt)), 0)
   return Math.max(0, now - slice.openedAt - slice.waitMs - open)
 }
 
@@ -86,9 +86,9 @@ export function staleKeys(entries: CostEntries, now: number): string[] {
 // For `update`'s change function, so it stays pure: each named loop still open gives its span, split among its keys
 // into this session's totals; its slice ends, or with `reopen` starts over at `now` keeping its marks. A slice another
 // closer took first gives nothing, so a span is never counted twice.
-export function closeSlices(c: Credit, closes: SliceClose[], now: number, reopen: boolean): { credit: Credit; spans: Record<string, number> } {
-  const slices = { ...c.slices }
-  const mine = { ...c.sessionTimes }
+export function closeSlices(before: Credit, closes: SliceClose[], now: number, reopen: boolean): { credit: Credit; spans: Record<string, number> } {
+  const slices = { ...before.slices }
+  const mine = { ...before.sessionTimes }
   const spans: Record<string, number> = {}
   for (const close of closes) {
     const slice = slices[close.loop]
@@ -121,11 +121,11 @@ export function liveSpans(credit: Credit, closes: SliceClose[], now: number): Re
 // Phase 0 answer 11: a call the person was asked about waited its time less the tool's own `duration_ms`, or all of it
 // when declined, as a declined call has none; null while its `duration_ms` has yet to arrive. An all-wait call waited
 // all of it.
-export function waitMsOf(c: CallWait): number | null {
-  if (isAllWait(c.tool, c.isMain)) return c.ms
-  if (!c.isAsked) return 0
-  if (c.outcome === 'denied') return c.ms
-  return c.durationMs === null ? null : Math.max(0, c.ms - c.durationMs)
+export function waitMsOf(call: CallWait): number | null {
+  if (isAllWait(call.tool, call.isMain)) return call.ms
+  if (!call.isAsked) return 0
+  if (call.outcome === 'denied') return call.ms
+  return call.durationMs === null ? null : Math.max(0, call.ms - call.durationMs)
 }
 
 // A session resumed under its own id starts its totals from what it stored before
@@ -146,13 +146,13 @@ export function closeTargetOf(loop: string, slice: Slice, lines: NamedStep | nul
   if (lines === undefined) return none
   if (lines !== null && lines.plan !== null && lines.task !== null) {
     const named = files.find(file => file.name === lines.plan)
-    if (named?.value != null && isPlanRunning(named, since) && named.value.steps.some(s => s.id === lines.task)) {
+    if (named?.value != null && isPlanRunning(named, since) && named.value.steps.some(step => step.id === lines.task)) {
       return { loop, keys: [stepKey(named.name, lines.task, session)], isShared: false }
     }
   }
   if (shown === null || shown.value === null || !isPlanRunning(shown, since)) return none
   const plan = shown.value
-  const isAgentBuilt = slice.namedSteps.some(m => plan.steps.some(s => m === `${shown.name}:${s.id}`))
+  const isAgentBuilt = slice.namedSteps.some(mark => plan.steps.some(step => mark === `${shown.name}:${step.id}`))
   const target = targetsOf(shown.name, plan, lines, isAgentBuilt)
   if (target === null) return none
   if (target === 'overhead') return { loop, keys: [overheadKey(shown.name, session)], isShared: false }

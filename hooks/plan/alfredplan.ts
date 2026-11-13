@@ -7,8 +7,8 @@ type Obj = Record<string, unknown>
 const isObj = (value: unknown): value is Obj => typeof value === 'object' && value !== null && !Array.isArray(value)
 const isWhole = (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value) && value >= 0
 const time = (value: unknown): number | null => {
-  const t = typeof value === 'string' ? Date.parse(value) : NaN
-  return Number.isFinite(t) ? t : null
+  const parsed = typeof value === 'string' ? Date.parse(value) : NaN
+  return Number.isFinite(parsed) ? parsed : null
 }
 
 function json(text: string): Obj | null {
@@ -35,7 +35,7 @@ export function parseAlfredStatus(text: string): Plan | null {
   const value = json(text)
   if (value === null || value.schema !== 1 || typeof value.title !== 'string' || value.title === '' || !Array.isArray(value.tasks) || value.tasks.length === 0) return null
   const steps = value.tasks.map(taskOf)
-  if (steps.some(s => s === null)) return null
+  if (steps.some(step => step === null)) return null
   return {
     title: value.title, updatedAt: time(value.updatedAt), steps: steps as PlanStep[], changes: [],
     approvedAt: time(value.approvedAt), completedAt: time(value.completedAt),
@@ -47,7 +47,7 @@ const SEVERITIES: readonly Severity[] = ['BLOCKER', 'MATERIAL', 'MINOR']
 function roundOf(value: unknown): ScoreRound | null {
   if (!isObj(value) || !isWhole(value.round) || typeof value.total !== 'number' || !Number.isFinite(value.total)) return null
   const counts: Partial<Record<Severity, number>> = {}
-  if (isObj(value.severities)) for (const s of SEVERITIES) if (isWhole(value.severities[s])) counts[s] = value.severities[s]
+  if (isObj(value.severities)) for (const severity of SEVERITIES) if (isWhole(value.severities[severity])) counts[severity] = value.severities[severity]
   return { round: value.round, at: time(value.at), total: value.total, criteria: {}, findings: [], counts }
 }
 
@@ -56,10 +56,10 @@ export function parseAlfredScoring(text: string, ref: string): Scores | null {
   const value = json(text)
   if (value === null || value.schema !== 1 || typeof value.scale !== 'number' || !(value.scale > 0) || !Array.isArray(value.rounds)) return null
   const rounds = value.rounds.map(roundOf)
-  if (rounds.some(r => r === null)) return null
-  const sorted = (rounds as ScoreRound[]).sort((a, b) => a.round - b.round)
+  if (rounds.some(round => round === null)) return null
+  const sorted = (rounds as ScoreRound[]).sort((first, second) => first.round - second.round)
   const released = value.released ?? null
-  if (released !== null && !sorted.some(r => r.round === released)) return null
-  const newest = sorted.reduce<number | null>((n, r) => (r.at !== null && (n === null || r.at > n) ? r.at : n), null)
+  if (released !== null && !sorted.some(round => round.round === released)) return null
+  const newest = sorted.reduce<number | null>((latest, round) => (round.at !== null && (latest === null || round.at > latest) ? round.at : latest), null)
   return { subject: { kind: 'plan', ref }, updatedAt: newest, scale: value.scale, rounds: sorted, released: released as number | null }
 }

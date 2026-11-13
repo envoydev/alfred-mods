@@ -13,17 +13,17 @@ const GLYPH: Record<StepStatus, Seg> = {
 }
 
 // A total or a change: whole, or to one decimal on a 10-point scale
-const num = (n: number): string => String(Math.round(n * 10) / 10)
+const num = (value: number): string => String(Math.round(value * 10) / 10)
 // '×1.2'; under 0.1 its first significant digit, '×0.01', never '×0.0'
-const ratioText = (r: number): string => (r >= 0.1 ? r.toFixed(1) : r.toPrecision(1))
+const ratioText = (ratio: number): string => (ratio >= 0.1 ? ratio.toFixed(1) : ratio.toPrecision(1))
 // Cut on the masked text, never inside a REC token
 const cut = (text: string, max: number): string => fitLine(text, Math.max(2, max))
-const agentCount = (k: number): string => `${k} ${k === 1 ? 'agent' : 'agents'}`
+const agentCount = (count: number): string => `${count} ${count === 1 ? 'agent' : 'agents'}`
 
 // Some open step has an estimate, or the task list has its 3 completed: the time left is known
 const hasLeft = (view: PlanView): boolean => view.total - view.finished > view.unestimated
 // The task list: no step has an estimate, and it never calibrates
-const isTasks = (view: PlanView): boolean => view.isCalibrated && view.rows.every(r => r.step.estimateMin === null)
+const isTasks = (view: PlanView): boolean => view.isCalibrated && view.rows.every(row => row.step.estimateMin === null)
 
 function planBar(percent: number): Line {
   const [filled, empty] = barText(percent)
@@ -99,39 +99,39 @@ export function narrowPlan(view: PlanView, agents: number): Line {
 }
 
 // 'done in 24m', '12m of ≈24m', '≈18m', with 'shared' after a shared step's time
-function timeOf(r: StepRow): string {
-  const s = r.step
-  const forecast = r.forecastMs === null ? null : `≈${minutesText(r.forecastMs)}`
-  const time = s.status === 'done' ? (r.actualMs > 0 ? `done in ${minutesText(r.actualMs)}` : 'done')
-    : s.status === 'skipped' ? 'skipped'
-    : s.status === 'in_progress' || r.actualMs > 0 ? `${minutesText(r.actualMs)}${forecast === null ? '' : ` of ${forecast}`}`
+function timeOf(row: StepRow): string {
+  const step = row.step
+  const forecast = row.forecastMs === null ? null : `≈${minutesText(row.forecastMs)}`
+  const time = step.status === 'done' ? (row.actualMs > 0 ? `done in ${minutesText(row.actualMs)}` : 'done')
+    : step.status === 'skipped' ? 'skipped'
+    : step.status === 'in_progress' || row.actualMs > 0 ? `${minutesText(row.actualMs)}${forecast === null ? '' : ` of ${forecast}`}`
     : forecast ?? ''
-  return r.isShared && time !== '' ? `${time} shared` : time
+  return row.isShared && time !== '' ? `${time} shared` : time
 }
 
 // A row per step in columns: glyph, id and title with ✎ when a note of yours names it, the time, and the estimate.
 // Wider than `columns`, the titles are cut and the mark is ✎ alone, so the time and estimate stay in view.
 function stepRows(rows: StepRow[], indent: string, withEstimate: boolean, columns: number): Line[] {
   const times = rows.map(timeOf)
-  const timeWidth = Math.max(0, ...times.map(t => t.length))
-  const ests = rows.map(r => (withEstimate && r.step.estimateMin !== null ? `est ${minutesText(r.step.estimateMin * MIN)}` : ''))
+  const timeWidth = Math.max(0, ...times.map(text => text.length))
+  const ests = rows.map(row => (withEstimate && row.step.estimateMin !== null ? `est ${minutesText(row.step.estimateMin * MIN)}` : ''))
   const rights = rows.map((_, i) => (ests[i] === '' ? times[i] ?? '' : `${(times[i] ?? '').padEnd(timeWidth)}   ${ests[i] ?? ''}`))
-  const rightWidth = Math.max(0, ...rights.map(t => t.length))
-  const natural = rows.map(r => `${fitLine(r.step.id, 12)} ${fitLine(r.step.title, 60)}`.length + (r.notes.length > 0 ? NOTE.length + 3 : 0))
+  const rightWidth = Math.max(0, ...rights.map(text => text.length))
+  const natural = rows.map(row => `${fitLine(row.step.id, 12)} ${fitLine(row.step.title, 60)}`.length + (row.notes.length > 0 ? NOTE.length + 3 : 0))
   const room = Math.max(12, columns - indent.length - 2 - (rightWidth > 0 ? rightWidth + 3 : 0))
   const isTight = Math.max(0, ...natural) > room
   const mark = isTight ? '✎' : NOTE
-  const lefts = rows.map(r => {
-    const id = fitLine(r.step.id, 12)
-    const marked = r.notes.length > 0 ? mark.length + (isTight ? 1 : 3) : 0
-    return `${id} ${isTight ? cut(fitLine(r.step.title, 60), room - id.length - 1 - marked) : fitLine(r.step.title, 60)}`
+  const lefts = rows.map(row => {
+    const id = fitLine(row.step.id, 12)
+    const marked = row.notes.length > 0 ? mark.length + (isTight ? 1 : 3) : 0
+    return `${id} ${isTight ? cut(fitLine(row.step.title, 60), room - id.length - 1 - marked) : fitLine(row.step.title, 60)}`
   })
-  const widths = rows.map((r, i) => (lefts[i] ?? '').length + (r.notes.length > 0 ? mark.length + (isTight ? 1 : 3) : 0))
+  const widths = rows.map((row, i) => (lefts[i] ?? '').length + (row.notes.length > 0 ? mark.length + (isTight ? 1 : 3) : 0))
   const leftWidth = Math.max(0, ...widths)
   const out: Line[] = []
-  rows.forEach((r, i) => {
-    const line: Line = [{ text: indent }, GLYPH[r.step.status], { text: ` ${lefts[i] ?? ''}` }]
-    if (r.notes.length > 0) line.push({ text: isTight ? ' ' : '   ' }, { text: mark, tone: 'plan' })
+  rows.forEach((row, i) => {
+    const line: Line = [{ text: indent }, GLYPH[row.step.status], { text: ` ${lefts[i] ?? ''}` }]
+    if (row.notes.length > 0) line.push({ text: isTight ? ' ' : '   ' }, { text: mark, tone: 'plan' })
     // The time and estimate start at one column: the gap a margin, the time a cell as wide as the longest
     const gap = leftWidth - (widths[i] ?? 0) + 3
     const time = times[i] ?? ''
@@ -142,7 +142,7 @@ function stepRows(rows: StepRow[], indent: string, withEstimate: boolean, column
       line.push({ text: `   ${est}` })
     } else if (time !== '') line.push({ text: `${' '.repeat(gap)}${time}` })
     out.push(line)
-    if (withEstimate) for (const note of r.notes) out.push([{ text: `${indent}     '${fitLine(note, 200)}'` }])
+    if (withEstimate) for (const note of row.notes) out.push([{ text: `${indent}     '${fitLine(note, 200)}'` }])
   })
   return out
 }
@@ -153,7 +153,7 @@ export function planSection(view: PlanView, columns: number): Line[] {
   const head: Line = [{ text: 'PLAN', bold: true, tone: 'plan' }, { text: `   ${fitLine(view.title, 60)} · ${view.finished}/${view.total}` }]
   if (view.isFinished) head.push({ text: ` · done in ${minutesText(view.workedMs)}` })
   else if (hasLeft(view)) head.push({ text: ` · ≈${minutesText(view.leftMs)} left of ≈${minutesText(view.totalMs)}` })
-  const shown = [view.lastFinished, ...view.running, view.next].filter((r, i, all): r is StepRow => r !== null && all.indexOf(r) === i)
+  const shown = [view.lastFinished, ...view.running, view.next].filter((row, i, all): row is StepRow => row !== null && all.indexOf(row) === i)
   return [head, ...stepRows(shown, '  ', false, columns)]
 }
 
@@ -163,7 +163,7 @@ function deltaSegs(delta: number | null): Line {
   return delta < 0 ? [{ text: ` ▼${num(-delta)}`, tone: 'fail' }] : [{ text: ' =', tone: 'dim' }]
 }
 
-const arrow = (d: number): Seg => (d > 0 ? { text: ' ▲', tone: 'ok' } : d < 0 ? { text: ' ▼', tone: 'fail' } : { text: ' =', tone: 'dim' })
+const arrow = (delta: number): Seg => (delta > 0 ? { text: ' ▲', tone: 'ok' } : delta < 0 ? { text: ' ▼', tone: 'fail' } : { text: ' =', tone: 'dim' })
 
 // The band's 'score 81 ▲13': the shown round's total (Alfred Code's released round, else the last), a dim 'grading'
 // while Alfred Code's grading runs, and the change from the round before; against `level`, Alfred Code's scoring
@@ -180,7 +180,8 @@ export function scoresLabel(name: string, scores: Scores): string {
   return `${name} (${scores.subject.kind})${last === undefined ? '' : ` R${last.round} ${num(last.total)}`}`
 }
 
-const findingText = (f: Finding): string => `${f.id === null ? '' : `${fitLine(f.id, 12)} `}${fitLine(f.text, 80)}${f.by === null ? '' : ` (${fitLine(f.by, 12)})`}`
+const findingText = (finding: Finding): string =>
+  `${finding.id === null ? '' : `${fitLine(finding.id, 12)} `}${fitLine(finding.text, 80)}${finding.by === null ? '' : ` (${fitLine(finding.by, 12)})`}`
 
 // '  fixed:  F1 No migration rollback (S3)', the label once and the rest beneath it
 function findingRows(label: string, texts: string[]): Line[] {
@@ -191,16 +192,16 @@ function findingRows(label: string, texts: string[]): Line[] {
 // open findings
 function scoreLines(scoresView: ScoresView): Line[] {
   const out: Line[] = [[
-    { text: 'Scores', bold: true }, { text: `   ${scoresView.totals.map(t => `R${t.round} ${num(t.total)}`).join(' → ')}` },
+    { text: 'Scores', bold: true }, { text: `   ${scoresView.totals.map(point => `R${point.round} ${num(point.total)}`).join(' → ')}` },
     ...deltaSegs(scoresView.delta), { text: `   (scale ${num(scoresView.scale)})`, tone: 'dim' },
   ]]
   if (scoresView.criteria.length > 0) {
     const line: Line = []
-    for (const c of scoresView.criteria) {
-      line.push({ text: `${line.length === 0 ? '  ' : '   '}${c.name} ` })
-      if (scoresView.delta === null) line.push({ text: num(c.last) })
-      else if (c.prev === null) line.push({ text: `${num(c.last)} new`, tone: 'dim' })
-      else line.push({ text: `${num(c.prev)}→${num(c.last)}` }, arrow(c.last - c.prev))
+    for (const criterion of scoresView.criteria) {
+      line.push({ text: `${line.length === 0 ? '  ' : '   '}${criterion.name} ` })
+      if (scoresView.delta === null) line.push({ text: num(criterion.last) })
+      else if (criterion.prev === null) line.push({ text: `${num(criterion.last)} new`, tone: 'dim' })
+      else line.push({ text: `${num(criterion.prev)}→${num(criterion.last)}` }, arrow(criterion.last - criterion.prev))
     }
     out.push(line)
   }
@@ -220,7 +221,7 @@ function scoreLines(scoresView: ScoresView): Line[] {
 // the last update (amber when stale) and the other plans
 export function planLines(
   view: PlanView | null, scoresView: ScoresView | null,
-  o: { invalid: boolean; others: string[]; otherScores: string[]; updatedAt: number | null; now: number; columns: number },
+  options: { invalid: boolean; others: string[]; otherScores: string[]; updatedAt: number | null; now: number; columns: number },
 ): Line[] {
   const out: Line[] = []
   if (view === null) out.push([{ text: 'No plan file in .claude/session-inspector/plans/, and no task list this session.', tone: 'dim' }])
@@ -233,16 +234,16 @@ export function planLines(
     }
     if (!isTasks(view) && view.unestimated > 0) head.push({ text: ` · ${view.unestimated} without an estimate`, tone: 'dim' })
     out.push(head)
-    if (o.invalid) out.push([{ text: 'plan file invalid: showing the last good read', tone: 'warn' }])
-    out.push(...stepRows(view.rows, '', true, o.columns))
+    if (options.invalid) out.push([{ text: 'plan file invalid: showing the last good read', tone: 'warn' }])
+    out.push(...stepRows(view.rows, '', true, options.columns))
     for (const note of view.planNotes) out.push([{ text: '✎ ', tone: 'plan' }, { text: `'${fitLine(note, 200)}'` }])
     if (view.overheadMs > 0) out.push([{ text: `Overhead  ${minutesText(view.overheadMs)}` }])
   }
   if (scoresView !== null) out.push(...scoreLines(scoresView))
-  for (const label of o.otherScores.slice(0, 3)) out.push([{ text: label, tone: 'dim' }])
-  if (view !== null && o.updatedAt !== null) {
-    out.push([{ text: `last update ${minutesText(Math.max(0, o.now - o.updatedAt))} ago`, tone: view.staleMs === null ? 'dim' : 'warn' }])
+  for (const label of options.otherScores.slice(0, 3)) out.push([{ text: label, tone: 'dim' }])
+  if (view !== null && options.updatedAt !== null) {
+    out.push([{ text: `last update ${minutesText(Math.max(0, options.now - options.updatedAt))} ago`, tone: view.staleMs === null ? 'dim' : 'warn' }])
   }
-  if (o.others.length > 0) out.push([{ text: `Other plans: ${o.others.join(', ')}   /inspect plan <name>`, tone: 'dim' }])
+  if (options.others.length > 0) out.push([{ text: `Other plans: ${options.others.join(', ')}   /inspect plan <name>`, tone: 'dim' }])
   return out
 }

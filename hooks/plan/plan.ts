@@ -15,8 +15,8 @@ type Obj = Record<string, unknown>
 const isObj = (value: unknown): value is Obj => typeof value === 'object' && value !== null && !Array.isArray(value)
 const str = (value: unknown): string | null => (typeof value === 'string' ? value : null)
 const time = (value: unknown): number | null => {
-  const t = typeof value === 'string' ? Date.parse(value) : NaN
-  return Number.isFinite(t) ? t : null
+  const parsed = typeof value === 'string' ? Date.parse(value) : NaN
+  return Number.isFinite(parsed) ? parsed : null
 }
 const num = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
 
@@ -53,7 +53,7 @@ export function parsePlan(text: string): Plan | null {
   const value = json(text)
   if (value === null || value.version !== 1 || str(value.title) === null || !Array.isArray(value.steps) || value.steps.length === 0) return null
   const steps = value.steps.map(stepOf)
-  if (steps.some(s => s === null)) return null
+  if (steps.some(step => step === null)) return null
   const changes = Array.isArray(value.changes) ? value.changes.map(changeOf).filter((change): change is PlanChange => change !== null) : []
   return { title: value.title as string, updatedAt: time(value.updatedAt), steps: steps as PlanStep[], changes }
 }
@@ -74,7 +74,7 @@ function roundOf(value: unknown): ScoreRound | null {
   if (!isObj(value) || !num(value.round) || !Number.isInteger(value.round) || !num(value.total)) return null
   const criteria: Record<string, number> = {}
   if (isObj(value.criteria)) for (const [name, score] of Object.entries(value.criteria)) if (num(score)) criteria[name] = score
-  const findings = Array.isArray(value.findings) ? value.findings.map(findingOf).filter((f): f is Finding => f !== null) : []
+  const findings = Array.isArray(value.findings) ? value.findings.map(findingOf).filter((finding): finding is Finding => finding !== null) : []
   return { round: value.round, at: time(value.at), total: value.total, criteria, findings }
 }
 
@@ -84,17 +84,17 @@ export function parseScores(text: string): Scores | null {
   const { kind, ref } = value.subject
   if (typeof kind !== 'string' || !SUBJECTS.includes(kind) || typeof ref !== 'string') return null
   const rounds = value.rounds.map(roundOf)
-  if (rounds.some(r => r === null)) return null
+  if (rounds.some(round => round === null)) return null
   return {
     subject: { kind: kind as Scores['subject']['kind'], ref }, updatedAt: time(value.updatedAt), scale: value.scale,
-    rounds: (rounds as ScoreRound[]).sort((a, b) => a.round - b.round),
+    rounds: (rounds as ScoreRound[]).sort((first, second) => first.round - second.round),
   }
 }
 
 
 const MIN = 60_000
 const STALE_MS = 20 * MIN
-export const isFinishedStep = (s: PlanStep): boolean => s.status === 'done' || s.status === 'skipped'
+export const isFinishedStep = (step: PlanStep): boolean => step.status === 'done' || step.status === 'skipped'
 // A plan is done when every step is, or when Alfred Code closed it
 export const isPlanDone = (plan: Plan): boolean => typeof plan.completedAt === 'number' || plan.steps.every(isFinishedStep)
 
@@ -103,22 +103,22 @@ export const isPlanDone = (plan: Plan): boolean => typeof plan.completedAt === '
 // plan needs no fresh write: its status file naming it this session is the evidence.
 export function isPlanRunning(file: Watched<Plan>, since: number | null): boolean {
   const plan = file.value
-  if (plan === null || !plan.steps.some(s => s.status !== 'pending') || isPlanDone(plan)) return false
+  if (plan === null || !plan.steps.some(step => step.status !== 'pending') || isPlanDone(plan)) return false
   return file.isNamed === true || (since !== null && file.mtimeMs >= since)
 }
 
 // Which plan the Plan tab shows (Decision 5): the pinned one while it parses; else Alfred Code's named plan; else the
 // newest that runs; else the task list when it has items, so a plan an earlier session left never hides this session's; else the newest good plan
 export function shownPlan(plans: Plans, pinned: string | null, hasTasks: boolean): Watched<Plan> | 'tasks' | null {
-  const good = plans.planFiles.filter(w => w.value !== null)
+  const good = plans.planFiles.filter(file => file.value !== null)
   const newest = (list: Watched<Plan>[]): Watched<Plan> | null =>
-    list.reduce<Watched<Plan> | null>((a, w) => (a === null || w.mtimeMs > a.mtimeMs ? w : a), null)
-  const pin = pinned === null ? undefined : good.find(w => w.name === pinned)
+    list.reduce<Watched<Plan> | null>((newestFile, file) => (newestFile === null || file.mtimeMs > newestFile.mtimeMs ? file : newestFile), null)
+  const pin = pinned === null ? undefined : good.find(file => file.name === pinned)
   if (pin !== undefined) return pin
   // The plan Alfred Code's status file names comes before the rest, begun or not
-  const named = plans.alfredFolder === null || plans.alfredFolder === undefined ? undefined : good.find(w => w.name === plans.alfredFolder?.name)
+  const named = plans.alfredFolder === null || plans.alfredFolder === undefined ? undefined : good.find(file => file.name === plans.alfredFolder?.name)
   if (named !== undefined) return named
-  const running = newest(good.filter(w => isPlanRunning(w, plans.watchedSince)))
+  const running = newest(good.filter(file => isPlanRunning(file, plans.watchedSince)))
   if (running !== null) return running
   if (hasTasks) return 'tasks'
   return newest(good)
@@ -136,34 +136,36 @@ export function creditedPlan(plans: Plans, pinned: string | null, hasTasks: bool
 // main loop's overhead. A skipped step is finished, but says nothing of the estimates, so it never calibrates.
 export function planView(plan: Plan, times: Record<string, StepTime>, overheadMs: number, liveMs: Record<string, number>, now: number): PlanView {
   const notes = (step: string | null): string[] =>
-    plan.changes.filter(c => c.kind === 'integrated' && c.source === 'user' && c.note !== null && c.step === step).map(change => change.note as string)
-  const actual = (s: PlanStep): number => (times[s.id]?.ms ?? 0) + (liveMs[s.id] ?? 0)
-  const calibrating = plan.steps.filter(s => s.status === 'done' && s.estimateMin !== null && actual(s) > 0)
+    plan.changes.filter(planChange => planChange.kind === 'integrated' && planChange.source === 'user' && planChange.note !== null && planChange.step === step)
+      .map(change => change.note as string)
+  const actual = (step: PlanStep): number => (times[step.id]?.ms ?? 0) + (liveMs[step.id] ?? 0)
+  const calibrating = plan.steps.filter(step => step.status === 'done' && step.estimateMin !== null && actual(step) > 0)
   const isCalibrated = calibrating.length >= 2
   const ratio = isCalibrated
-    ? calibrating.reduce((n, s) => n + actual(s), 0) / calibrating.reduce((n, s) => n + (s.estimateMin as number) * MIN, 0)
+    ? calibrating.reduce((total, step) => total + actual(step), 0) / calibrating.reduce((total, step) => total + (step.estimateMin as number) * MIN, 0)
     : 1
   const rows: StepRow[] = plan.steps.map(step => ({
     step, actualMs: actual(step),
     forecastMs: isFinishedStep(step) || step.estimateMin === null ? null : Math.round(step.estimateMin * MIN * ratio),
     isShared: times[step.id]?.isShared ?? false, notes: notes(step.id),
   }))
-  const open = rows.filter(r => !isFinishedStep(r.step))
-  const finishedRows = rows.filter(r => isFinishedStep(r.step))
+  const open = rows.filter(row => !isFinishedStep(row.step))
+  const finishedRows = rows.filter(row => isFinishedStep(row.step))
   // The last finished: the newest `doneAt`, else the last in the plan's order
-  const lastFinished = finishedRows.reduce<StepRow | null>((last, r) =>
-    last === null || (r.step.doneAt ?? -Infinity) >= (last.step.doneAt ?? -Infinity) ? r : last, null)
-  const isRunning = rows.some(r => r.step.status === 'in_progress')
+  const lastFinished = finishedRows.reduce<StepRow | null>((last, row) =>
+    last === null || (row.step.doneAt ?? -Infinity) >= (last.step.doneAt ?? -Infinity) ? row : last, null)
+  const isRunning = rows.some(row => row.step.status === 'in_progress')
   const stale = plan.updatedAt === null ? null : now - plan.updatedAt
   return {
     title: plan.title, finished: finishedRows.length, total: rows.length,
     percent: Math.round((finishedRows.length / rows.length) * 100),
-    running: rows.filter(r => r.step.status === 'in_progress'), next: rows.find(r => r.step.status === 'pending') ?? null,
+    running: rows.filter(row => row.step.status === 'in_progress'), next: rows.find(row => row.step.status === 'pending') ?? null,
     lastFinished, rows,
-    workedMs: rows.reduce((n, r) => n + r.actualMs, 0) + overheadMs, overheadMs,
-    leftMs: open.reduce((n, r) => n + Math.max(0, (r.forecastMs ?? 0) - r.actualMs), 0),
-    totalMs: finishedRows.reduce((n, r) => n + r.actualMs, 0) + open.reduce((n, r) => n + Math.max(r.forecastMs ?? 0, r.actualMs), 0) + overheadMs,
-    ratio, isCalibrated, unestimated: open.filter(r => r.step.estimateMin === null).length,
+    workedMs: rows.reduce((total, row) => total + row.actualMs, 0) + overheadMs, overheadMs,
+    leftMs: open.reduce((total, row) => total + Math.max(0, (row.forecastMs ?? 0) - row.actualMs), 0),
+    totalMs: finishedRows.reduce((total, row) => total + row.actualMs, 0)
+      + open.reduce((total, row) => total + Math.max(row.forecastMs ?? 0, row.actualMs), 0) + overheadMs,
+    ratio, isCalibrated, unestimated: open.filter(row => row.step.estimateMin === null).length,
     isFinished: open.length === 0 || typeof plan.completedAt === 'number', isAwaiting: plan.approvedAt === null, staleMs: isRunning && stale !== null && stale > STALE_MS ? stale : null, planNotes: notes(null),
   }
 }
@@ -175,26 +177,28 @@ const SEVERITY_ORDER: readonly Severity[] = ['BLOCKER', 'MATERIAL', 'MINOR']
 // counted; the fixed and improved lists only when the writer recognised findings across rounds and set a status.
 export function scoresView(scores: Scores): ScoresView | null {
   // Alfred Code's released round, else the newest; the arrow against the round graded just before it
-  const at = typeof scores.released === 'number' ? scores.rounds.findIndex(r => r.round === scores.released) : -1
-  const i = at >= 0 ? at : scores.rounds.length - 1
-  const last = scores.rounds[i]
+  const at = typeof scores.released === 'number' ? scores.rounds.findIndex(round => round.round === scores.released) : -1
+  const shownIndex = at >= 0 ? at : scores.rounds.length - 1
+  const last = scores.rounds[shownIndex]
   if (last === undefined) return null
-  const prev = scores.rounds[i - 1] ?? null
-  const count = (r: ScoreRound | null, severity: Severity): number =>
-    r === null ? 0 : r.counts !== undefined ? r.counts[severity] ?? 0 : r.findings.filter(f => f.severity === severity && f.status !== 'fixed').length
-  const present = (r: ScoreRound | null, severity: Severity): boolean =>
-    r !== null && (r.counts !== undefined ? r.counts[severity] !== undefined : r.findings.some(f => f.severity === severity))
+  const prev = scores.rounds[shownIndex - 1] ?? null
+  const count = (round: ScoreRound | null, severity: Severity): number =>
+    round === null ? 0 : round.counts !== undefined ? round.counts[severity] ?? 0
+      : round.findings.filter(finding => finding.severity === severity && finding.status !== 'fixed').length
+  const present = (round: ScoreRound | null, severity: Severity): boolean =>
+    round !== null && (round.counts !== undefined ? round.counts[severity] !== undefined : round.findings.some(finding => finding.severity === severity))
   return {
     scale: scores.scale,
-    totals: scores.rounds.slice(-4).map(r => ({ round: r.round, total: r.total })),
+    totals: scores.rounds.slice(-4).map(round => ({ round: round.round, total: round.total })),
     shown: { round: last.round, total: last.total }, isGrading: scores.released === null,
     delta: prev === null ? null : last.total - prev.total,
     criteria: Object.entries(last.criteria).map(([name, score]) => ({ name, prev: prev?.criteria[name] ?? null, last: score })),
-    severities: SEVERITY_ORDER.filter(v => present(prev, v) || present(last, v)).map(value => ({ severity: value, prev: count(prev, value), last: count(last, value) })),
-    fixed: last.findings.filter(f => f.status === 'fixed'),
-    improved: last.findings.filter(f => f.status === 'improved'),
-    open: last.findings.filter(f => f.status === null || f.status === 'open'),
-    hasStatus: last.findings.some(f => f.status !== null),
+    severities: SEVERITY_ORDER.filter(severity => present(prev, severity) || present(last, severity))
+      .map(value => ({ severity: value, prev: count(prev, value), last: count(last, value) })),
+    fixed: last.findings.filter(finding => finding.status === 'fixed'),
+    improved: last.findings.filter(finding => finding.status === 'improved'),
+    open: last.findings.filter(finding => finding.status === null || finding.status === 'open'),
+    hasStatus: last.findings.some(finding => finding.status !== null),
   }
 }
 
@@ -211,17 +215,17 @@ export function tasksAfter(items: TaskItem[], tool: string, input: Record<string
   }
   if (tool === 'TaskUpdate') {
     const id = str(input.taskId)
-    if (input.status === 'deleted') return items.filter(t => t.id !== id)
+    if (input.status === 'deleted') return items.filter(task => task.id !== id)
     const status = typeof input.status === 'string' && TASK_STATUSES.includes(input.status) ? (input.status as TaskItem['status']) : null
     const subject = str(input.subject)
-    return items.map(t => (t.id === id ? { ...t, status: status ?? t.status, subject: subject ?? t.subject } : t))
+    return items.map(task => (task.id === id ? { ...task, status: status ?? task.status, subject: subject ?? task.subject } : task))
   }
   if (tool === 'TodoWrite') {
     if (!Array.isArray(input.todos)) return items
     return input.todos.filter(isObj).map((todo, i) => {
       const subject = str(todo.content) ?? ''
       const status = typeof todo.status === 'string' && TASK_STATUSES.includes(todo.status) ? (todo.status as TaskItem['status']) : 'pending'
-      return { id: String(i), subject, status, workedMs: items.find(t => t.subject === subject)?.workedMs ?? 0 }
+      return { id: String(i), subject, status, workedMs: items.find(listed => listed.subject === subject)?.workedMs ?? 0 }
     })
   }
   return null
@@ -234,13 +238,13 @@ export function taskView(items: TaskItem[], liveMs: Record<string, number>): Pla
     step: { id: task.id, title: task.subject, status: task.status === 'completed' ? 'done' : task.status, estimateMin: null, startedAt: null, doneAt: null },
     actualMs: task.workedMs + (liveMs[task.id] ?? 0), forecastMs: null, isShared: false, notes: [],
   }))
-  const done = rows.filter(r => r.step.status === 'done')
-  const open = rows.filter(r => r.step.status !== 'done')
-  const workedMs = rows.reduce((n, r) => n + r.actualMs, 0)
-  const leftMs = done.length >= 3 ? Math.round((done.reduce((n, r) => n + r.actualMs, 0) / done.length) * open.length) : 0
+  const done = rows.filter(row => row.step.status === 'done')
+  const open = rows.filter(row => row.step.status !== 'done')
+  const workedMs = rows.reduce((total, row) => total + row.actualMs, 0)
+  const leftMs = done.length >= 3 ? Math.round((done.reduce((total, row) => total + row.actualMs, 0) / done.length) * open.length) : 0
   return {
     title: 'Tasks', finished: done.length, total: rows.length, percent: rows.length === 0 ? 0 : Math.round((done.length / rows.length) * 100),
-    running: rows.filter(r => r.step.status === 'in_progress'), next: rows.find(r => r.step.status === 'pending') ?? null,
+    running: rows.filter(row => row.step.status === 'in_progress'), next: rows.find(row => row.step.status === 'pending') ?? null,
     lastFinished: done[done.length - 1] ?? null, rows, workedMs, overheadMs: 0, leftMs, totalMs: workedMs + leftMs,
     ratio: 1, isCalibrated: true, unestimated: done.length >= 3 ? 0 : open.length,
     isFinished: rows.length > 0 && open.length === 0, staleMs: null, planNotes: [], isAwaiting: false,
@@ -250,20 +254,20 @@ export function taskView(items: TaskItem[], liveMs: Record<string, number>): Pla
 export const taskStatusKey = (items: TaskItem[]): string => JSON.stringify(items.map(task => [task.id, task.status]))
 
 export const stepStatusKey = (files: Watched<Plan>[]): string =>
-  JSON.stringify(files.map(file => [file.name, file.value?.steps.map(s => [s.id, s.status]) ?? null]))
+  JSON.stringify(files.map(file => [file.name, file.value?.steps.map(step => [step.id, step.status]) ?? null]))
 
 export const FINISH_SHOWN_MS = 10 * 60_000
 
 // The user's notes in `after` that `before` lacks, each counted by its time, step and text, so two alike are two
 export function newUserNotes(before: PlanChange[], after: PlanChange[]): PlanChange[] {
-  const idOf = (c: PlanChange): string => JSON.stringify([c.at, c.step, c.note])
-  const isNote = (c: PlanChange): boolean => c.kind === 'integrated' && c.source === 'user' && c.note !== null
+  const idOf = (note: PlanChange): string => JSON.stringify([note.at, note.step, note.note])
+  const isNote = (note: PlanChange): boolean => note.kind === 'integrated' && note.source === 'user' && note.note !== null
   const left = new Map<string, number>()
-  for (const c of before.filter(isNote)) left.set(idOf(c), (left.get(idOf(c)) ?? 0) + 1)
+  for (const note of before.filter(isNote)) left.set(idOf(note), (left.get(idOf(note)) ?? 0) + 1)
   return after.filter(isNote).filter(change => {
-    const n = left.get(idOf(change)) ?? 0
-    if (n > 0) left.set(idOf(change), n - 1)
-    return n === 0
+    const count = left.get(idOf(change)) ?? 0
+    if (count > 0) left.set(idOf(change), count - 1)
+    return count === 0
   })
 }
 
