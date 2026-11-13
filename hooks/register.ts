@@ -14,12 +14,12 @@ import { drawLines, drawNote, drawUnder, drawUnderNote, drawWithInput } from './
 import { localDate } from './core/forecast'
 import { REC_HIDDEN, SPINNER_WORD, bandFailed, paneFailed } from './core/failsafe'
 import { clock, fingerprint, oneLine, printable, tokens, usd, when } from './core/format'
-import { mask, maskForFile, maskSpans, recLevel, setRec } from './rec/mask'
+import { mask, maskSpans, recLevel, setRec } from './rec/mask'
 import { maskDeep, maskDialog, maskResult, neutralDialog, resultLines } from './rec/sites'
 import { DROPS_RESULT, callLine, groupLines } from './tools/compact'
-import { FOREIGN, HANDOFF_PATH, HANDOFF_USAGE, MARKER, MODES, RESUME_PROMPT, TOASTS, gitPart, handoffText, nextStep, parseStatus, percentOf, statusPath, stepUnder, stepsOf, windowThreshold } from './handoff/handoff'
+import { HANDOFF_PATH, HANDOFF_USAGE, MODES, forecastOf, handoffView, parseStatus, statusPath } from './handoff/handoff'
 import { NO_FILE, STACK_TOASTS, UNREADABLE, bannerSegs, fillReady, fillToast, parseStack, runwayOf } from './stack/stack'
-import { PLANS_DIR, creditedPlan, runs, scoresView, statusesOfTasks, tasksAfter } from './plan/plan'
+import { PLANS_DIR, runs, statusesOfTasks, tasksAfter } from './plan/plan'
 import { planLines } from './plan/planlines'
 import { closeWait, isAllWait, openWait, staleKeys, waitOf } from './plan/steptime'
 import { agentsLines, asCommands, cacheLines, nowLines, paneCommands, reportRows, tabBar, timelineLines, toolsLines, usageLines } from './inspect/tabs'
@@ -31,21 +31,21 @@ import { compactMem, errorMem, errorRows, modeMem, readBlockers, readFailures, r
 import { FRESH_EVERY_MS, freshMem, readLive, readMeta, readPace, readTick, readTotals, readTurns, readUsage, resetLive, resetMeta, resetPace, resetTotals, resetTurns, resetUsage, spendMem, updateLive, updateMeta, updatePace, updateTick, updateTotals, updateTurns, updateUsage, windowsMem } from './session/effects'
 import { agentStep, isCounted, readAgents, readLoops, resetAgents, resetLoops, trackSpawn, updateAgents, updateLoops, updateRow } from './agents/effects'
 import { afterModelSwitch, armCacheClose, beforeModelSwitch, compactNow, followCompaction, readCache, readCacheConfig, resetCache, updateCache } from './cache/effects'
-import { addMark, addWait, closeLoops, drawnPlan, openSlice, planDraw, queueReload, readPlans, readTasks, resetCredit, resetPlans, resetTasks, scheduleReload, seedMine, storedTimes, updateCredit, updatePlans, updateTasks } from './plan/effects'
+import { addMark, addWait, closeLoops, openSlice, planDraw, queueReload, readPlans, readTasks, resetCredit, resetPlans, resetTasks, scheduleReload, seedMine, storedTimes, updateCredit, updatePlans, updateTasks } from './plan/effects'
 import { INITIAL_STACK, readStack, resetStack, stackMem, updateStack } from './stack/effects'
-import { handoffMem, readHandoff, resetHandoff, updateHandoff } from './handoff/effects'
+import { dismissAsk, fillResume, handoffMem, handoffState, loadHandoff, readHandoff, resetHandoff, saveNow, saveThenCompact, stepHandoff, updateHandoff } from './handoff/effects'
 import { noteMem, readRec, recMem, resetRec, updateRec } from './rec/effects'
 import { bandMem, isPassingAbove, loadBand, readBandSetting, statusMem, syncStatus } from './band/effects'
-import { noteLoadedRule, partsMem, readBreakdown, readBreakdownSoon, readParts, resetParts } from './context/effects'
+import { noteLoadedRule, partsMem, readBreakdownSoon, readParts, resetParts } from './context/effects'
 import { readView, resetView, updateView } from './inspect/effects'
 import type { BandInput } from './band/types'
-import type { Handoff, HandoffView, PlanPart, SaveBy, SaveInput, SaveResult, ScoresPart } from './handoff/types'
+import type { Handoff } from './handoff/types'
 import type { Tab } from './inspect/types'
 import type { Plans } from './plan/types'
 import type { RecState } from './rec/types'
 import type { Turn, Usage, Window } from './session/types'
 import type { Field, From, Resolved, Source, Values } from './settings/types'
-import type { Runway, Stack } from './stack/types'
+import type { Stack } from './stack/types'
 import type { Call, CallFacts, CompactCall, Failure, Outcome, ToolStat } from './tools/types'
 import type { Held } from './core/types'
 import { editPlace, pollPlace, readPlace, rowsMem } from './place/effects'
@@ -687,12 +687,6 @@ async function addSkill($: EngineInterface, name: string): Promise<void> {
   await updateMeta($, m => ({ ...m, skills: { ...m.skills, [name]: (m.skills?.[name] ?? 0) + 1 } }))
 }
 
-// Only ask mode keeps an ask up: a change to auto or off, here or polled from another session, takes it down
-async function loadHandoff($: EngineInterface): Promise<void> {
-  const s = { mode: settingsNow().handoff, threshold: settingsNow().handoffAt }
-  await updateHandoff($, h => (h.mode === s.mode && h.threshold === s.threshold ? h : { ...h, ...s, isAskUp: s.mode === 'ask' && h.isAskUp }))
-}
-
 // Reads run one at a time; each resolves to whether the session's status file exists
 function readStatus($: EngineInterface, keep = false): Promise<boolean> {
   const next = stackMem.reading.then(() => readStatusNow($, keep))
@@ -753,163 +747,6 @@ async function writeStackFrom($: EngineInterface, r: { exists: boolean; text: st
   stackMem.prompt = parsed?.state === 'used' ? parsed.prompt : null
   stackMem.last = next
   await updateStack($, s => (JSON.stringify(s) === JSON.stringify(next) ? s : next))
-}
-
-// The tokens where Claude Code compacts by itself (Decision 12): the breakdown's `autoCompactThreshold`, else the
-// window; read at the first reading and again when the model or the window changes. A read with no breakdown, or one
-// that fails, gives the window for that reading alone and counts a miss; the third miss for one model and window
-// keeps the window as the point and asks no more.
-async function pointOf($: EngineInterface, window: number): Promise<number> {
-  const key = `${(await readMeta($)).model ?? ''}:${window}`
-  const known = (await readHandoff($)).point
-  if (handoffMem.pointKey === key && known !== null) return known
-  if (handoffMem.pointMiss.key !== key) handoffMem.pointMiss = { key, count: 0 }
-  const b = await readBreakdown($)
-  if (b === null) {
-    const count = ++handoffMem.pointMiss.count
-    const point = count >= 3 ? window : null
-    if (point !== null) handoffMem.pointKey = key
-    await updateHandoff($, h => (h.point === point ? h : { ...h, point }))
-    return window
-  }
-  const point = b.isAutoCompactEnabled && b.autoCompactThreshold !== undefined ? b.autoCompactThreshold : window
-  handoffMem.pointKey = key
-  await updateHandoff($, h => (h.point === point ? h : { ...h, point }))
-  return point
-}
-
-// A save runs from a 0 ms timer, so no hook waits on git; a request while one runs joins it
-function startSave($: EngineInterface, by: SaveBy): Promise<SaveResult> {
-  if (handoffMem.saving !== null) return handoffMem.saving
-  const saving = new Promise<SaveResult>(resolve => {
-    $.clock.after(0, () => {
-      writeHandoff($, by).then(resolve, () => resolve({ at: 0, isOk: false, reason: 'unknown' })).finally(() => {
-        handoffMem.saving = null
-      })
-    })
-  })
-  handoffMem.saving = saving
-  return saving
-}
-
-// What a save writes (spec 'What a save writes'): never over a file without the marker; the one git call; the text
-// masked for keys, emails and phones whatever REC's level. A save arms the resume prompt unless the stack stood F8 down.
-async function writeHandoff($: EngineInterface, by: SaveBy): Promise<SaveResult> {
-  const at = await $.clock.now()
-  const before = await readHandoff($)
-  let result: SaveResult
-  let percent: number | null = null
-  try {
-    if (await isForeign($)) result = { at, isOk: false, reason: FOREIGN }
-    else {
-      const git = await $.process.run(['git', '--no-optional-locks', 'status', '--porcelain=v1', '--branch'], { timeoutMs: 2000 })
-        .then(gitPart, (err: unknown) => gitPart(err instanceof Error ? err : new Error(String(err))))
-      const input = await saveInput($, at, git)
-      percent = input.percent
-      await $.fs.write(HANDOFF_PATH, maskForFile(handoffText(input)))
-      result = { at, isOk: true, reason: null }
-    }
-  } catch (err) {
-    result = { at, isOk: false, reason: (err instanceof Error ? err.message : String(err)).split('\n')[0] || 'unknown' }
-  }
-  await updateHandoff($, h => ({ ...h, lastSave: result }))
-  if (!result.isOk) {
-    toast($, TOASTS.failed(result.reason ?? 'unknown'))
-    return result
-  }
-  handoffMem.savedStep = (await readHandoff($)).handled
-  if (!handoffMem.stoodDown) handoffMem.armedAt = at
-  if (by === 'compact') toast($, TOASTS.compacting())
-  else if (by === 'press') toast($, handoffMem.stoodDown ? TOASTS.savedOnly() : TOASTS.saved())
-  else if (before.lastSave?.isOk !== true && percent !== null) toast($, TOASTS.autoFirst(percent))
-  return result
-}
-
-// A file at the path whose first line is not the marker is the person's own; no file is none
-// A file there that the mod cannot read (over 4 MiB, locked, no access) is foreign too: only a missing file is none
-async function isForeign($: EngineInterface): Promise<boolean> {
-  if (!(await $.fs.exists(HANDOFF_PATH))) return false
-  let text: string
-  try {
-    text = await $.fs.read(HANDOFF_PATH)
-  } catch {
-    return true
-  }
-  return text.split('\n')[0]?.trimEnd() !== MARKER
-}
-
-// What a save copies: the plan this session works on, its scores, git and the mod's counts. A plan file written
-// before this session began is none of this session's.
-async function saveInput($: EngineInterface, at: number, git: string[]): Promise<SaveInput> {
-  const h = await readHandoff($)
-  const u = await readUsage($)
-  const m = await readMeta($)
-  const p = await readPlans($)
-  const items = await readTasks($)
-  const w = creditedPlan(p, (await readView($)).planSlug, items.length > 0)
-  let plan: SaveInput['plan'] = w === 'tasks' ? 'tasks' : null
-  let scores: ScoresPart | null = null
-  if (w !== null && w !== 'tasks' && w.value !== null && p.since !== null && w.mtimeMs >= p.since) {
-    const v = (await drawnPlan($, p, items, w, at)).v
-    if (v !== null) {
-      const steps: PlanPart['steps'] = v.rows.map(r => ({
-        id: r.step.id, title: r.step.title, status: r.step.status, actualMs: r.actualMs, forecastMs: r.forecastMs, notes: r.notes.length,
-      }))
-      plan = { file: `${PLANS_DIR}/${w.name}.json`, title: v.title, finished: v.finished, total: v.total, steps }
-      const own = p.scores.find(s => s.value !== null && s.value.subject.kind === 'plan' && s.value.subject.ref === w.name)
-      const sv = own === undefined || own.value === null ? null : scoresView(own.value)
-      if (own !== undefined && sv !== null) {
-        scores = { name: own.name, totals: sv.totals, open: sv.open.map(f => ({ id: f.id, text: f.text, severity: f.severity })) }
-      }
-    }
-  }
-  const counted = Object.values(await readStats($))
-  const isWorking = (await readLive($)).turnId !== null
-  const point = h.point ?? u.window
-  return {
-    at, percent: u.tokens === null || point === null ? null : percentOf(u.tokens, point), threshold: h.threshold,
-    session: await $.session.id(), model: m.model, git, plan, scores,
-    counts: {
-      turn: m.turnCount + (isWorking ? 1 : 0), durationMs: u.startedAt === null ? null : at - u.startedAt,
-      calls: counted.reduce((n, t) => n + t.calls, 0), failed: counted.reduce((n, t) => n + t.failed, 0),
-      agents: (await readAgents($)).length, costUsd: u.costUsd, isEstimate: u.windows.length > 0,
-    },
-  }
-}
-
-// h, 4 and `/auto-handoff now`: the ask comes down and a save starts
-async function saveNow($: EngineInterface): Promise<void> {
-  await updateHandoff($, h => (h.isAskUp ? { ...h, isAskUp: false } : h))
-  void startSave($, 'press')
-}
-
-// r: the ask comes down until the next step
-async function dismissAsk($: EngineInterface): Promise<void> {
-  await updateHandoff($, h => (h.isAskUp ? { ...h, isAskUp: false } : h))
-}
-
-// c: a save first, unless one was made at this step, then Phase 2's compaction; a failed save compacts nothing, so
-// the context is never lost without its handoff
-async function saveThenCompact($: EngineInterface, held: Held): Promise<void> {
-  const h = await readHandoff($)
-  await dismissAsk($)
-  if (!(h.lastSave?.isOk === true && handoffMem.savedStep === h.handled)) {
-    if (!(await startSave($, 'compact')).isOk) return
-  }
-  await compactNow($, held)
-}
-
-const RESUME_MS = 2 * 60 * 60_000
-
-// A /clear within 2 hours of the last save fills the resume prompt into an empty draft, once; a draft that is not
-// empty, or a fill a dialog refuses, gets the toast that names the file. A stood-down session fills nothing.
-async function fillResume($: EngineInterface): Promise<void> {
-  const at = handoffMem.armedAt
-  handoffMem.armedAt = null
-  if (at === null || handoffMem.stoodDown || (await $.clock.now()) - at > RESUME_MS) return
-  const draft = await $.prompt.read()
-  if (draft.text.trim() === '' && (await $.prompt.fill({ text: RESUME_PROMPT })).isFilled) toast($, TOASTS.filled(at))
-  else toast($, TOASTS.fallback(at))
 }
 
 // A /clear, a resume or a branch starts the session over under a new id: Claude Code resets $.state itself, and the
@@ -981,54 +818,6 @@ async function fillStack($: EngineInterface): Promise<string> {
   if (!fillReady(await readStack($), text)) return STACK_TOASTS.gone
   if ((await $.prompt.read()).text.trim() !== '') return STACK_TOASTS.notEmpty
   return fillToast(await $.prompt.fill({ text }))
-}
-
-// The Now tab's HANDOFF section reads the atom with F8's percent and the runway
-function handoffView(h: Handoff, u: Usage, isWorking: boolean, runway: Runway | null): HandoffView {
-  const point = h.point ?? u.window
-  return { ...h, percent: u.tokens === null || point === null ? null : percentOf(u.tokens, point), window: u.window, isWorking, runway }
-}
-
-// A main-loop reading against F8's steps: ask mode puts up the ask, auto mode saves, once per step
-async function stepHandoff($: EngineInterface, tokens: number | undefined, window: number): Promise<void> {
-  if (tokens === undefined) return
-  const percent = percentOf(tokens, await pointOf($, window))
-  const h = await readHandoff($)
-  const steps = stepsOf(h.threshold)
-  if (handoffMem.rearm) {
-    handoffMem.rearm = false
-    await updateHandoff($, x => ({ ...x, handled: stepUnder(percent, steps) }))
-    return
-  }
-  if (h.mode === 'off' || h.alfred.state === 'stood-down') return
-  const step = nextStep(h.handled, percent, steps)
-  if (step === null) return
-  await updateHandoff($, x => ({ ...x, handled: step, isAskUp: x.mode === 'ask' }))
-  if (h.mode === 'ask') toast($, TOASTS.ask(step))
-  else void startSave($, 'auto')
-}
-
-// The state line a bare /auto-handoff prints: the mode, the threshold, F8's context percent and the last save; stood
-// down, the runway while it applies, as the HANDOFF row
-async function handoffState($: EngineInterface): Promise<string> {
-  const h = await readHandoff($)
-  const u = await readUsage($)
-  const point = h.point ?? u.window
-  const ctx = u.tokens === null || point === null ? 'ctx –' : `ctx ${percentOf(u.tokens, point)}%`
-  if (h.alfred.state === 'stood-down') {
-    const runway = runwayOf(await readStack($), u, (await readMeta($)).model)
-    return `${runway === null ? ctx : `ctx ${runway.percent}% of ${tokens(runway.resumeAt)}`} · handoff by Alfred Code`
-  }
-  if (h.mode === 'off') return `Handoff: off · ${ctx}`
-  const saved = h.lastSave?.isOk === true ? ` · last save ${clock(h.lastSave.at)} (${HANDOFF_PATH})` : ''
-  return `Handoff: ${h.mode} at ${h.threshold}% · ${ctx}${saved}`
-}
-
-// What the forecast counts to: the stack's resume trigger over the window while the runway applies and the window is
-// known, else F8's threshold over the window, to the compaction point's moment
-function forecastOf(h: Handoff, u: Usage, runway: Runway | null): { at: number; label: string } {
-  if (runway !== null && runway.at !== null) return { at: runway.at, label: tokens(runway.resumeAt) }
-  return { at: h.point !== null && u.window !== null ? windowThreshold(h.threshold, h.point, u.window) : h.threshold, label: `${h.threshold}%` }
 }
 
 export const register: Register = (on, options) => {

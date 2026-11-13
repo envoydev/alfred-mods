@@ -9,6 +9,7 @@ import type { Line, Seg } from '../core/types'
 import type { Handoff, HandoffMode, HandoffView, PlanPart, SaveInput, SaveResult } from './types'
 import type { Severity, StepStatus } from '../plan/types'
 import type { Runway } from '../stack/types'
+import type { Usage } from '../session/types'
 
 export const MODES: HandoffMode[] = ['ask', 'auto', 'off']
 
@@ -115,7 +116,6 @@ function branchOf(git: string[]): string | null {
   return line.slice(3).replace(/^No commits yet on /, '').split('...')[0]?.split(' ')[0] || null
 }
 
-
 const pad = (n: number): string => String(n).padStart(2, '0')
 const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`
 
@@ -177,7 +177,6 @@ export function handoffText(s: SaveInput): string {
   return out.join('\n')
 }
 
-
 const button = (key: string, hotkey: string, label: string): Seg => ({ button: { key, label, hotkey, tone: 'handoff', plain: true } })
 const SEP: Seg = { text: ' · ' }
 
@@ -219,4 +218,19 @@ export function handoffLines(h: HandoffView, _columns: number): Line[] {
   if (last !== null && !last.isOk) out.push([{ text: `✗ save failed ${clock(last.at)}: ${last.reason ?? 'unknown'}`, tone: 'fail' }])
   else if (last !== null) out.push([{ text: `last save ${clock(last.at)} · ${HANDOFF_PATH}`, tone: 'dim' }])
   return out
+}
+
+export const RESUME_MS = 2 * 60 * 60_000
+
+// The Now tab's HANDOFF section reads the atom with F8's percent and the runway
+export function handoffView(h: Handoff, u: Usage, isWorking: boolean, runway: Runway | null): HandoffView {
+  const point = h.point ?? u.window
+  return { ...h, percent: u.tokens === null || point === null ? null : percentOf(u.tokens, point), window: u.window, isWorking, runway }
+}
+
+// What the forecast counts to: the stack's resume trigger over the window while the runway applies and the window is
+// known, else F8's threshold over the window, to the compaction point's moment
+export function forecastOf(h: Handoff, u: Usage, runway: Runway | null): { at: number; label: string } {
+  if (runway !== null && runway.at !== null) return { at: runway.at, label: tokens(runway.resumeAt) }
+  return { at: h.point !== null && u.window !== null ? windowThreshold(h.threshold, h.point, u.window) : h.threshold, label: `${h.threshold}%` }
 }
