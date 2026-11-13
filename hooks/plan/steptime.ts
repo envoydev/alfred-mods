@@ -23,9 +23,9 @@ export function targetsOf(name: string, plan: Plan, loop: NamedStep | null, isAg
 
 // A slice's working time: its age less the waits settled in it and the part of each open wait (`waits`, by call id,
 // with its start) that falls inside it
-export function sliceMs(s: Slice, now: number): number {
-  const open = Object.values(s.waits ?? {}).reduce((n, start) => n + Math.max(0, now - Math.max(start, s.at)), 0)
-  return Math.max(0, now - s.at - s.waitMs - open)
+export function sliceMs(slice: Slice, now: number): number {
+  const open = Object.values(slice.waits ?? {}).reduce((n, start) => n + Math.max(0, now - Math.max(start, slice.at)), 0)
+  return Math.max(0, now - slice.at - slice.waitMs - open)
 }
 
 // A call that is all wait: AskUserQuestion, and an Agent call the main loop waits inside, whose agent's own turns
@@ -33,27 +33,27 @@ export function sliceMs(s: Slice, now: number): number {
 export const isAllWait = (tool: string, isMain: boolean): boolean => tool === 'AskUserQuestion' || (isMain && tool === 'Agent')
 
 // For `update`: an all-wait call opens on its loop's slice, so a close while it runs leaves it out
-export function openWait(c: Credit, loop: string, id: string, at: number): Credit {
-  const s = c.slices[loop]
-  return s === undefined ? c : { ...c, slices: { ...c.slices, [loop]: { ...s, waits: { ...s.waits, [id]: at } } } }
+export function openWait(credit: Credit, loop: string, id: string, at: number): Credit {
+  const slice = credit.slices[loop]
+  return slice === undefined ? credit : { ...credit, slices: { ...credit.slices, [loop]: { ...slice, waits: { ...slice.waits, [id]: at } } } }
 }
 
 // For `update`: the call settles, and the part of it inside the slice now open becomes settled wait; null when its
 // slice holds no such open wait, as when the slice opened after the call began
-export function closeWait(c: Credit, loop: string, id: string, now: number): Credit | null {
-  const s = c.slices[loop]
-  const start = s?.waits?.[id]
-  if (s === undefined || start === undefined) return null
-  const waits = Object.fromEntries(Object.entries(s.waits ?? {}).filter(([key]) => key !== id))
-  return { ...c, slices: { ...c.slices, [loop]: { ...s, waits, waitMs: s.waitMs + Math.max(0, now - Math.max(start, s.at)) } } }
+export function closeWait(credit: Credit, loop: string, id: string, now: number): Credit | null {
+  const slice = credit.slices[loop]
+  const start = slice?.waits?.[id]
+  if (slice === undefined || start === undefined) return null
+  const waits = Object.fromEntries(Object.entries(slice.waits ?? {}).filter(([key]) => key !== id))
+  return { ...credit, slices: { ...credit.slices, [loop]: { ...slice, waits, waitMs: slice.waitMs + Math.max(0, now - Math.max(start, slice.at)) } } }
 }
 
 export const stepKey = (name: string, step: string, session: string): string => `step:${name}:${step}:${session}`
 export const overheadKey = (name: string, session: string): string => `overhead:${name}:${session}`
 
-const msOf = (v: unknown): number | null =>
-  typeof v === 'object' && v !== null && typeof (v as { ms?: unknown }).ms === 'number' && Number.isFinite((v as { ms: number }).ms)
-    ? (v as { ms: number }).ms
+const msOf = (value: unknown): number | null =>
+  typeof value === 'object' && value !== null && typeof (value as { ms?: unknown }).ms === 'number' && Number.isFinite((value as { ms: number }).ms)
+    ? (value as { ms: number }).ms
     : null
 
 // Every session's time for one plan
@@ -106,10 +106,10 @@ export function closeSlices(c: Credit, closes: SliceClose[], now: number, reopen
 }
 
 // What each key would take if every open slice closed now, for a drawing; no slice closes
-export function liveSpans(c: Credit, closes: SliceClose[], now: number): Record<string, number> {
+export function liveSpans(credit: Credit, closes: SliceClose[], now: number): Record<string, number> {
   const spans: Record<string, number> = {}
   for (const close of closes) {
-    const slice = c.slices[close.loop]
+    const slice = credit.slices[close.loop]
     if (slice === undefined) continue
     const ms = sliceMs(slice, now)
     for (const key of close.keys) spans[key] = (spans[key] ?? 0) + ms / close.keys.length
@@ -145,7 +145,7 @@ export function closeTargetOf(loop: string, slice: Slice, lines: NamedStep | nul
   const none: SliceClose = { loop, keys: [], isShared: false }
   if (lines === undefined) return none
   if (lines !== null && lines.plan !== null && lines.task !== null) {
-    const named = files.find(w => w.name === lines.plan)
+    const named = files.find(file => file.name === lines.plan)
     if (named?.value != null && isPlanRunning(named, since) && named.value.steps.some(s => s.id === lines.task)) {
       return { loop, keys: [stepKey(named.name, lines.task, session)], isShared: false }
     }

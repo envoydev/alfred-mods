@@ -12,81 +12,81 @@ const FINDING_STATUSES: readonly string[] = ['open', 'fixed', 'improved', 'wontf
 const NOTE_MAX = 200
 
 type Obj = Record<string, unknown>
-const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)
-const str = (v: unknown): string | null => (typeof v === 'string' ? v : null)
-const time = (v: unknown): number | null => {
-  const t = typeof v === 'string' ? Date.parse(v) : NaN
+const isObj = (value: unknown): value is Obj => typeof value === 'object' && value !== null && !Array.isArray(value)
+const str = (value: unknown): string | null => (typeof value === 'string' ? value : null)
+const time = (value: unknown): number | null => {
+  const t = typeof value === 'string' ? Date.parse(value) : NaN
   return Number.isFinite(t) ? t : null
 }
-const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
+const num = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
 
 // JSON after a leading byte-order mark; CRLF is JSON whitespace
 function json(text: string): Obj | null {
   try {
-    const v: unknown = JSON.parse(text.replace(/^﻿/, ''))
-    return isObj(v) ? v : null
+    const value: unknown = JSON.parse(text.replace(/^﻿/, ''))
+    return isObj(value) ? value : null
   } catch {
     return null
   }
 }
 
-function stepOf(v: unknown): PlanStep | null {
-  if (!isObj(v)) return null
-  const id = str(v.id)
-  const title = str(v.title)
-  if (id === null || id === '' || title === null || typeof v.status !== 'string' || !STATUSES.includes(v.status)) return null
-  const estimate = num(v.estimateMin) && v.estimateMin >= 0 ? v.estimateMin : null
-  return { id, title, status: v.status as StepStatus, estimateMin: estimate, startedAt: time(v.startedAt), doneAt: time(v.doneAt) }
+function stepOf(value: unknown): PlanStep | null {
+  if (!isObj(value)) return null
+  const id = str(value.id)
+  const title = str(value.title)
+  if (id === null || id === '' || title === null || typeof value.status !== 'string' || !STATUSES.includes(value.status)) return null
+  const estimate = num(value.estimateMin) && value.estimateMin >= 0 ? value.estimateMin : null
+  return { id, title, status: value.status as StepStatus, estimateMin: estimate, startedAt: time(value.startedAt), doneAt: time(value.doneAt) }
 }
 
-function changeOf(v: unknown): PlanChange | null {
-  if (!isObj(v) || typeof v.kind !== 'string' || !KINDS.includes(v.kind) || typeof v.source !== 'string' || !SOURCES.includes(v.source)) return null
-  const note = str(v.note)
+function changeOf(value: unknown): PlanChange | null {
+  if (!isObj(value) || typeof value.kind !== 'string' || !KINDS.includes(value.kind) || typeof value.source !== 'string' || !SOURCES.includes(value.source)) return null
+  const note = str(value.note)
   return {
-    at: time(v.at), kind: v.kind as PlanChange['kind'], source: v.source as PlanChange['source'],
-    step: str(v.step), note: note === null ? null : note.slice(0, NOTE_MAX),
+    at: time(value.at), kind: value.kind as PlanChange['kind'], source: value.source as PlanChange['source'],
+    step: str(value.step), note: note === null ? null : note.slice(0, NOTE_MAX),
   }
 }
 
 // null: the file breaks the contract
 export function parsePlan(text: string): Plan | null {
-  const v = json(text)
-  if (v === null || v.version !== 1 || str(v.title) === null || !Array.isArray(v.steps) || v.steps.length === 0) return null
-  const steps = v.steps.map(stepOf)
+  const value = json(text)
+  if (value === null || value.version !== 1 || str(value.title) === null || !Array.isArray(value.steps) || value.steps.length === 0) return null
+  const steps = value.steps.map(stepOf)
   if (steps.some(s => s === null)) return null
-  const changes = Array.isArray(v.changes) ? v.changes.map(changeOf).filter((c): c is PlanChange => c !== null) : []
-  return { title: v.title as string, updatedAt: time(v.updatedAt), steps: steps as PlanStep[], changes }
+  const changes = Array.isArray(value.changes) ? value.changes.map(changeOf).filter((change): change is PlanChange => change !== null) : []
+  return { title: value.title as string, updatedAt: time(value.updatedAt), steps: steps as PlanStep[], changes }
 }
 
-function findingOf(v: unknown): Finding | null {
-  if (!isObj(v)) return null
-  const text = str(v.text)
+function findingOf(value: unknown): Finding | null {
+  if (!isObj(value)) return null
+  const text = str(value.text)
   if (text === null) return null
   return {
-    id: str(v.id), text,
-    severity: typeof v.severity === 'string' && SEVERITIES.includes(v.severity) ? (v.severity as Severity) : null,
-    status: typeof v.status === 'string' && FINDING_STATUSES.includes(v.status) ? (v.status as Finding['status']) : null,
-    by: str(v.by),
+    id: str(value.id), text,
+    severity: typeof value.severity === 'string' && SEVERITIES.includes(value.severity) ? (value.severity as Severity) : null,
+    status: typeof value.status === 'string' && FINDING_STATUSES.includes(value.status) ? (value.status as Finding['status']) : null,
+    by: str(value.by),
   }
 }
 
-function roundOf(v: unknown): ScoreRound | null {
-  if (!isObj(v) || !num(v.round) || !Number.isInteger(v.round) || !num(v.total)) return null
+function roundOf(value: unknown): ScoreRound | null {
+  if (!isObj(value) || !num(value.round) || !Number.isInteger(value.round) || !num(value.total)) return null
   const criteria: Record<string, number> = {}
-  if (isObj(v.criteria)) for (const [name, score] of Object.entries(v.criteria)) if (num(score)) criteria[name] = score
-  const findings = Array.isArray(v.findings) ? v.findings.map(findingOf).filter((f): f is Finding => f !== null) : []
-  return { round: v.round, at: time(v.at), total: v.total, criteria, findings }
+  if (isObj(value.criteria)) for (const [name, score] of Object.entries(value.criteria)) if (num(score)) criteria[name] = score
+  const findings = Array.isArray(value.findings) ? value.findings.map(findingOf).filter((f): f is Finding => f !== null) : []
+  return { round: value.round, at: time(value.at), total: value.total, criteria, findings }
 }
 
 export function parseScores(text: string): Scores | null {
-  const v = json(text)
-  if (v === null || v.version !== 1 || !isObj(v.subject) || !num(v.scale) || v.scale <= 0 || !Array.isArray(v.rounds)) return null
-  const { kind, ref } = v.subject
+  const value = json(text)
+  if (value === null || value.version !== 1 || !isObj(value.subject) || !num(value.scale) || value.scale <= 0 || !Array.isArray(value.rounds)) return null
+  const { kind, ref } = value.subject
   if (typeof kind !== 'string' || !SUBJECTS.includes(kind) || typeof ref !== 'string') return null
-  const rounds = v.rounds.map(roundOf)
+  const rounds = value.rounds.map(roundOf)
   if (rounds.some(r => r === null)) return null
   return {
-    subject: { kind: kind as Scores['subject']['kind'], ref }, updatedAt: time(v.updatedAt), scale: v.scale,
+    subject: { kind: kind as Scores['subject']['kind'], ref }, updatedAt: time(value.updatedAt), scale: value.scale,
     rounds: (rounds as ScoreRound[]).sort((a, b) => a.round - b.round),
   }
 }
@@ -101,24 +101,24 @@ export const isPlanDone = (plan: Plan): boolean => typeof plan.completedAt === '
 // A plan runs while it is begun and not done, and its file was written since this session began: a plan an earlier
 // session left with a step in progress neither takes the band's line 1 nor this session's time. Alfred Code's named
 // plan needs no fresh write: its status file naming it this session is the evidence.
-export function isPlanRunning(w: Watched<Plan>, since: number | null): boolean {
-  const plan = w.value
+export function isPlanRunning(file: Watched<Plan>, since: number | null): boolean {
+  const plan = file.value
   if (plan === null || !plan.steps.some(s => s.status !== 'pending') || isPlanDone(plan)) return false
-  return w.isNamed === true || (since !== null && w.mtimeMs >= since)
+  return file.isNamed === true || (since !== null && file.mtimeMs >= since)
 }
 
 // Which plan the Plan tab shows (Decision 5): the pinned one while it parses; else Alfred Code's named plan; else the
 // newest that runs; else the task list when it has items, so a plan an earlier session left never hides this session's; else the newest good plan
-export function shownPlan(p: Plans, pinned: string | null, hasTasks: boolean): Watched<Plan> | 'tasks' | null {
-  const good = p.plans.filter(w => w.value !== null)
+export function shownPlan(plans: Plans, pinned: string | null, hasTasks: boolean): Watched<Plan> | 'tasks' | null {
+  const good = plans.plans.filter(w => w.value !== null)
   const newest = (list: Watched<Plan>[]): Watched<Plan> | null =>
     list.reduce<Watched<Plan> | null>((a, w) => (a === null || w.mtimeMs > a.mtimeMs ? w : a), null)
   const pin = pinned === null ? undefined : good.find(w => w.name === pinned)
   if (pin !== undefined) return pin
   // The plan Alfred Code's status file names comes before the rest, begun or not
-  const named = p.alfred === null || p.alfred === undefined ? undefined : good.find(w => w.name === p.alfred?.name)
+  const named = plans.alfred === null || plans.alfred === undefined ? undefined : good.find(w => w.name === plans.alfred?.name)
   if (named !== undefined) return named
-  const running = newest(good.filter(w => isPlanRunning(w, p.since)))
+  const running = newest(good.filter(w => isPlanRunning(w, plans.since)))
   if (running !== null) return running
   if (hasTasks) return 'tasks'
   return newest(good)
@@ -126,9 +126,9 @@ export function shownPlan(p: Plans, pinned: string | null, hasTasks: boolean): W
 
 // Which plan this session's time goes to and the band draws: the pinned one only while it runs, so a plan pinned to
 // read it never moves the time, or the band, away from the plan that runs
-export function creditedPlan(p: Plans, pinned: string | null, hasTasks: boolean): Watched<Plan> | 'tasks' | null {
-  const pin = shownPlan(p, pinned, hasTasks)
-  return pinned === null || (pin !== null && pin !== 'tasks' && pin.name === pinned && isPlanRunning(pin, p.since)) ? pin : shownPlan(p, null, hasTasks)
+export function creditedPlan(plans: Plans, pinned: string | null, hasTasks: boolean): Watched<Plan> | 'tasks' | null {
+  const pin = shownPlan(plans, pinned, hasTasks)
+  return pinned === null || (pin !== null && pin !== 'tasks' && pin.name === pinned && isPlanRunning(pin, plans.since)) ? pin : shownPlan(plans, null, hasTasks)
 }
 
 // The brief's 'Time for the plan': finished steps' time, plus each other step's forecast (its estimate times this
@@ -136,7 +136,7 @@ export function creditedPlan(p: Plans, pinned: string | null, hasTasks: boolean)
 // main loop's overhead. A skipped step is finished, but says nothing of the estimates, so it never calibrates.
 export function planView(plan: Plan, times: Record<string, StepTime>, overheadMs: number, liveMs: Record<string, number>, now: number): PlanView {
   const notes = (step: string | null): string[] =>
-    plan.changes.filter(c => c.kind === 'integrated' && c.source === 'user' && c.note !== null && c.step === step).map(c => c.note as string)
+    plan.changes.filter(c => c.kind === 'integrated' && c.source === 'user' && c.note !== null && c.step === step).map(change => change.note as string)
   const actual = (s: PlanStep): number => (times[s.id]?.ms ?? 0) + (liveMs[s.id] ?? 0)
   const calibrating = plan.steps.filter(s => s.status === 'done' && s.estimateMin !== null && actual(s) > 0)
   const isCalibrated = calibrating.length >= 2
@@ -173,24 +173,24 @@ const SEVERITY_ORDER: readonly Severity[] = ['BLOCKER', 'MATERIAL', 'MINOR']
 
 // Scorer rule 4: each round's total, the change per criterion and the count per severity, a fixed finding not
 // counted; the fixed and improved lists only when the writer recognised findings across rounds and set a status.
-export function scoresView(s: Scores): ScoresView | null {
+export function scoresView(scores: Scores): ScoresView | null {
   // Alfred Code's released round, else the newest; the arrow against the round graded just before it
-  const at = typeof s.released === 'number' ? s.rounds.findIndex(r => r.round === s.released) : -1
-  const i = at >= 0 ? at : s.rounds.length - 1
-  const last = s.rounds[i]
+  const at = typeof scores.released === 'number' ? scores.rounds.findIndex(r => r.round === scores.released) : -1
+  const i = at >= 0 ? at : scores.rounds.length - 1
+  const last = scores.rounds[i]
   if (last === undefined) return null
-  const prev = s.rounds[i - 1] ?? null
+  const prev = scores.rounds[i - 1] ?? null
   const count = (r: ScoreRound | null, severity: Severity): number =>
     r === null ? 0 : r.counts !== undefined ? r.counts[severity] ?? 0 : r.findings.filter(f => f.severity === severity && f.status !== 'fixed').length
   const present = (r: ScoreRound | null, severity: Severity): boolean =>
     r !== null && (r.counts !== undefined ? r.counts[severity] !== undefined : r.findings.some(f => f.severity === severity))
   return {
-    scale: s.scale,
-    totals: s.rounds.slice(-4).map(r => ({ round: r.round, total: r.total })),
-    shown: { round: last.round, total: last.total }, isGrading: s.released === null,
+    scale: scores.scale,
+    totals: scores.rounds.slice(-4).map(r => ({ round: r.round, total: r.total })),
+    shown: { round: last.round, total: last.total }, isGrading: scores.released === null,
     delta: prev === null ? null : last.total - prev.total,
     criteria: Object.entries(last.criteria).map(([name, score]) => ({ name, prev: prev?.criteria[name] ?? null, last: score })),
-    severities: SEVERITY_ORDER.filter(v => present(prev, v) || present(last, v)).map(v => ({ severity: v, prev: count(prev, v), last: count(last, v) })),
+    severities: SEVERITY_ORDER.filter(v => present(prev, v) || present(last, v)).map(value => ({ severity: value, prev: count(prev, value), last: count(last, value) })),
     fixed: last.findings.filter(f => f.status === 'fixed'),
     improved: last.findings.filter(f => f.status === 'improved'),
     open: last.findings.filter(f => f.status === null || f.status === 'open'),
@@ -230,9 +230,9 @@ export function tasksAfter(items: TaskItem[], tool: string, input: Record<string
 // The task list as a plan titled 'Tasks', with no estimates: once 3 are completed, the time left is their mean time
 // times the items left (the brief's band row)
 export function taskView(items: TaskItem[], liveMs: Record<string, number>): PlanView {
-  const rows: StepRow[] = items.map(t => ({
-    step: { id: t.id, title: t.subject, status: t.status === 'completed' ? 'done' : t.status, estimateMin: null, startedAt: null, doneAt: null },
-    actualMs: t.ms + (liveMs[t.id] ?? 0), forecastMs: null, isShared: false, notes: [],
+  const rows: StepRow[] = items.map(task => ({
+    step: { id: task.id, title: task.subject, status: task.status === 'completed' ? 'done' : task.status, estimateMin: null, startedAt: null, doneAt: null },
+    actualMs: task.ms + (liveMs[task.id] ?? 0), forecastMs: null, isShared: false, notes: [],
   }))
   const done = rows.filter(r => r.step.status === 'done')
   const open = rows.filter(r => r.step.status !== 'done')
@@ -247,10 +247,10 @@ export function taskView(items: TaskItem[], liveMs: Record<string, number>): Pla
   }
 }
 
-export const taskStatusKey = (items: TaskItem[]): string => JSON.stringify(items.map(t => [t.id, t.status]))
+export const taskStatusKey = (items: TaskItem[]): string => JSON.stringify(items.map(task => [task.id, task.status]))
 
 export const stepStatusKey = (files: Watched<Plan>[]): string =>
-  JSON.stringify(files.map(w => [w.name, w.value?.steps.map(s => [s.id, s.status]) ?? null]))
+  JSON.stringify(files.map(file => [file.name, file.value?.steps.map(s => [s.id, s.status]) ?? null]))
 
 export const FINISH_SHOWN_MS = 10 * 60_000
 
@@ -260,9 +260,9 @@ export function newUserNotes(before: PlanChange[], after: PlanChange[]): PlanCha
   const isNote = (c: PlanChange): boolean => c.kind === 'integrated' && c.source === 'user' && c.note !== null
   const left = new Map<string, number>()
   for (const c of before.filter(isNote)) left.set(idOf(c), (left.get(idOf(c)) ?? 0) + 1)
-  return after.filter(isNote).filter(c => {
-    const n = left.get(idOf(c)) ?? 0
-    if (n > 0) left.set(idOf(c), n - 1)
+  return after.filter(isNote).filter(change => {
+    const n = left.get(idOf(change)) ?? 0
+    if (n > 0) left.set(idOf(change), n - 1)
     return n === 0
   })
 }
