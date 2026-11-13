@@ -12,12 +12,12 @@ import { localDate } from '../core/forecast'
 import { staleKeys } from '../plan/steptime'
 import { fingerprint, when } from '../core/format'
 import { dropPassed, nextWindows, storedWindows, rateWindowsOf } from './windows'
-import { syncStatus } from '../band/effects'
-import { agentStep, finishLoop, readAgents, readLoops, updateRow } from '../agents/effects'
-import { addMark, closeLoops, openSlice, scheduleReload } from '../plan/effects'
+import { syncStatusLine } from '../band/effects'
+import { trackAgentStep, finishLoop, readAgents, readLoops, updateAgentRow } from '../agents/effects'
+import { addStepMark, closeLoopSlices, openLoopSlice, schedulePlanReload } from '../plan/effects'
 import type { Pending, HookInput, HookNext } from '../core/types'
-import { addCacheRequest, armCacheClose, readCacheConfig } from '../cache/effects'
-import { markOf, statusAt } from '../agents/agents'
+import { addCacheRequest, armCacheToast, readCacheConfig } from '../cache/effects'
+import { stepMarkOf, statusAt } from '../agents/agents'
 import { stepHandoff } from '../handoff/effects'
 import { toast } from '../core/effects'
 import { takeRecNote } from '../rec/effects'
@@ -275,7 +275,7 @@ export async function refreshUsageMidTurn($: EngineInterface): Promise<void> {
   const isToday = mem !== null && mem.date === localDate(midTurnMemory.at)
   const today = isToday && reading.cost !== undefined ? mem.today + Math.max(0, reading.cost.usd - mem.cost) : undefined
   await writeUsageReading($, reading, today)
-  await syncStatus($)
+  await syncStatusLine($)
 }
 
 // A session first seen now takes its cost so far as the baseline: spend a /clear or a resume carries over
@@ -340,11 +340,11 @@ export async function endMainTurn($: EngineInterface, turnId: string, durationMs
 export async function trackTurnStart($: EngineInterface, e: HookInput<'turn.start'>, next: HookNext<'turn.start'>) {
   const now = await $.clock.now()
   // An agent's turn can start before its spawn resolves: its slice opens either way
-  await openSlice($, e.agentId ?? 'main', now)
+  await openLoopSlice($, e.agentId ?? 'main', now)
   if (e.agentId !== undefined) {
-    await updateRow($, e.agentId, r => ({ ...r, status: 'running', endedAt: null }))
+    await updateAgentRow($, e.agentId, r => ({ ...r, status: 'running', endedAt: null }))
     const row = (await readAgents($)).find(r => r.id === e.agentId)
-    if (row !== undefined) await addMark($, markOf(row))
+    if (row !== undefined) await addStepMark($, stepMarkOf(row))
   }
   if (e.agentId === undefined) {
     const startedAt = now
@@ -374,7 +374,7 @@ export async function* trackTurnStep($: EngineInterface, e: HookInput<'turn.step
   if (e.agentId !== undefined) {
     const step = yield* next(e)
     try {
-      await agentStep($, e, step)
+      await trackAgentStep($, e, step)
     } catch {
       // The row's figures are lost; the step itself stands
     }
@@ -398,7 +398,7 @@ export async function* trackTurnStep($: EngineInterface, e: HookInput<'turn.step
     const at = startedAt
     if (u !== null && at !== null && u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens > 0) {
       await addCacheRequest($, u, at)
-      await armCacheClose($, pending)
+      await armCacheToast($, pending)
     }
   } catch {
     // The step's figures are lost; the step itself stands
@@ -413,7 +413,7 @@ export async function* trackTurnStep($: EngineInterface, e: HookInput<'turn.step
 
 export async function trackTurnEnd($: EngineInterface, e: HookInput<'turn.complete'>, next: HookNext<'turn.complete'>, pending: Pending) {
   const done = await next(e)
-  await closeLoops($, pending, [e.agentId ?? 'main'], await $.clock.now(), false)
+  await closeLoopSlices($, pending, [e.agentId ?? 'main'], await $.clock.now(), false)
   if (e.agentId !== undefined && !(await readAgents($)).some(r => r.id === e.agentId)) {
     const id = e.agentId
     if ((await readLoops($)).some(l => l.id === id)) await finishLoop($, id)
@@ -423,7 +423,7 @@ export async function trackTurnEnd($: EngineInterface, e: HookInput<'turn.comple
     const now = await $.clock.now()
     const reason = e.reason
     const answer = e.answer
-    await updateRow($, e.agentId, r => ({
+    await updateAgentRow($, e.agentId, r => ({
       ...r, status: statusAt(reason, r.isTeammate), endedAt: now, report: answer === '' ? r.report : answer.slice(0, 4000),
     }))
   }
@@ -441,8 +441,8 @@ export async function trackTurnEnd($: EngineInterface, e: HookInput<'turn.comple
     const tokensIn = u === undefined ? 0 : u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens
     await endMainTurn($, e.turnId, e.durationMs, e.reason, { tokensIn, tokensOut: u?.output_tokens ?? 0 })
     await readCacheConfig($, pending)
-    await armCacheClose($, pending)
-    scheduleReload($, pending)
+    await armCacheToast($, pending)
+    schedulePlanReload($, pending)
   }
   return done
 }
@@ -461,7 +461,7 @@ export async function trackMeasure($: EngineInterface, e: HookInput<'session.mea
   await storeRateWindows($, fresh, at)
   for (const text of await trackPace($, e.rateLimits, at)) toast($, text)
   await stepHandoff($, e.context.tokens, e.context.window)
-  await syncStatus($)
+  await syncStatusLine($)
   return measured
 }
 

@@ -26,4 +26,4 @@ export type HandoffView = Pick<Handoff, 'mode' | 'threshold' | 'isAskUp' | 'poin
 }
 
 // Who asked for a save: auto mode, a press of h or 4 or `/auto-handoff now`, or c, which compacts after it
-export type SaveBy = 'auto' | 'press' | 'compact'
+export type SaveTrigger = 'auto' | 'press' | 'compact'

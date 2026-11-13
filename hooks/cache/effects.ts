@@ -51,7 +51,7 @@ export async function readCacheConfig($: EngineInterface, pending: Pending): Pro
 
 // Sets the toast's timer afresh: due 5 minutes before a 1h cache goes cold, or 3 where Claude Code should compact it
 // itself first
-export async function armCacheClose($: EngineInterface, pending: Pending): Promise<void> {
+export async function armCacheToast($: EngineInterface, pending: Pending): Promise<void> {
   pending.cacheToast?.cancel()
   pending.cacheToast = null
   const c = await readCache($)
@@ -60,13 +60,13 @@ export async function armCacheClose($: EngineInterface, pending: Pending): Promi
   if (at === null) return
   const now = await $.clock.now()
   pending.cacheToast = $.clock.after(Math.max(0, at - now), () => {
-    cacheClose($).catch(() => undefined)
+    toastCacheClosing($).catch(() => undefined)
   })
 }
 
 // The toast, once per warm stretch, while the main loop is idle and the cache is still 1h and warm by then; a
 // compaction of Claude Code's own has made it cold
-export async function cacheClose($: EngineInterface): Promise<void> {
+export async function toastCacheClosing($: EngineInterface): Promise<void> {
   const c = await readCache($)
   const u = await readUsage($)
   const v = cacheView(c, billingOf(u.windows), await $.clock.now(), u.tokens)
@@ -87,7 +87,7 @@ export async function countCompaction($: EngineInterface, pending: Pending): Pro
   const at = await $.clock.now()
   await noteCompaction($, at)
   await updateCache($, afterCompact)
-  await armCacheClose($, pending)
+  await armCacheToast($, pending)
 }
 
 // [Compact]: the call comes first, so the press counts as the person's. The compaction is counted once: by the mod's
@@ -128,7 +128,7 @@ export async function trackModelSwitch($: EngineInterface, e: HookInput<'classic
   const now = await $.clock.now()
   const s = { ttl: e.cache_ttl, contextTokens: e.context_tokens, usd: e.estimated_cache_write_usd, model: e.to_model, billing }
   await updateCache($, c => takeSwitch(c, s, now, true))
-  await armCacheClose($, pending)
+  await armCacheToast($, pending)
   return done
 }
 
@@ -139,7 +139,7 @@ export async function trackModelSwitchAsk($: EngineInterface, e: HookInput<'clas
   const now = await $.clock.now()
   const s = { ttl: e.cache_ttl, contextTokens: e.context_tokens, usd: e.estimated_cache_write_usd, model: e.to_model, billing }
   await updateCache($, c => takeSwitch(c, s, now, false))
-  await armCacheClose($, pending)
+  await armCacheToast($, pending)
   return done
 }
 

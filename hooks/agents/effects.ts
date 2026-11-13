@@ -4,10 +4,10 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, TurnStepInput, TurnStepResult } from 'claude-code'
 import type { AgentRow, Loop } from './types'
-import { addLoopStep, markOf, newRow, refreshAgents, upsertSpawn } from './agents'
+import { addLoopStep, stepMarkOf, newRow, refreshAgents, upsertSpawn } from './agents'
 import { countAgentType } from '../session/effects'
 import type { HookInput, HookNext } from '../core/types'
-import { addMark } from '../plan/effects'
+import { addStepMark } from '../plan/effects'
 
 const INITIAL_AGENTS: AgentRow[] = []
 const agentsAtom = atom({ plugin: 'alfred-mods', key: 'agents' } as const, INITIAL_AGENTS, { shape: 'agents-2' })
@@ -34,19 +34,19 @@ export function resetLoops($: EngineInterface) {
 }
 
 // Calls of the main loop, and of agents whose spawn was seen; anything else is not counted
-export async function isCounted($: EngineInterface, agentId: string | undefined): Promise<boolean> {
+export async function isTrackedLoop($: EngineInterface, agentId: string | undefined): Promise<boolean> {
   return agentId === undefined || (await readAgents($)).some(r => r.id === agentId)
 }
 
 // Changes the row of an agent whose spawn was seen; an unknown id writes nothing
-export async function updateRow($: EngineInterface, id: string, fn: (r: AgentRow) => AgentRow): Promise<void> {
+export async function updateAgentRow($: EngineInterface, id: string, fn: (r: AgentRow) => AgentRow): Promise<void> {
   if (!(await readAgents($)).some(r => r.id === id)) return
   await updateAgents($, rows => rows.map(r => (r.id === id ? fn(r) : r)))
 }
 
 // An agent's step: its model and effort, its context as the sum the engine's own `context_tokens` uses, and how it
 // stopped, so a report cut off at max_tokens is flagged (spec C4)
-export async function agentStep($: EngineInterface, e: TurnStepInput, step: TurnStepResult): Promise<void> {
+export async function trackAgentStep($: EngineInterface, e: TurnStepInput, step: TurnStepResult): Promise<void> {
   const u = step.usage
   const id = e.agentId ?? ''
   // A loop no spawn announced is counted apart (spec C3)
@@ -55,7 +55,7 @@ export async function agentStep($: EngineInterface, e: TurnStepInput, step: Turn
     await updateLoops($, list => addLoopStep(list, id, u?.output_tokens ?? 0, now))
     return
   }
-  await updateRow($, id, r => ({
+  await updateAgentRow($, id, r => ({
     ...r, model: e.model, effort: e.effort === undefined ? r.effort : String(e.effort),
     contextTokens: u === null ? r.contextTokens : u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens + u.output_tokens,
     lastStop: step.stopReason ?? null,
@@ -76,7 +76,7 @@ export async function trackSpawn($: EngineInterface, e: HookInput<'agent.spawn'>
     const isKnown = e.resume !== undefined && (await readAgents($)).some(r => r.id === id)
     if (!isKnown) await countAgentType($, row.type)
     await updateAgents($, rows => upsertSpawn(rows, row, e.resume !== undefined))
-    await addMark($, markOf(row))
+    await addStepMark($, stepMarkOf(row))
     // Its first step came before its spawn resolved: the loop is this agent's
     if ((await readLoops($)).some(l => l.id === id)) await updateLoops($, list => list.filter(l => l.id !== id))
   }

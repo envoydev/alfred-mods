@@ -13,9 +13,9 @@ export const BAND_HELP = '/inspect band off, calm or full sets "band" in ~/.clau
 export const COPY_WHY = { 'no-surface': 'no screen to copy on', 'no-clipboard': 'this terminal has no clipboard path', refused: 'the terminal refused it' } as const
 
 // '2' as 2; left out, 1; anything else, 0, which no item has
-export const ordinal = (word: string | undefined): number => (word === undefined ? 1 : /^\d+$/.test(word) ? Number(word) : 0)
+export const ordinalOf = (word: string | undefined): number => (word === undefined ? 1 : /^\d+$/.test(word) ? Number(word) : 0)
 
-export const outOf = (what: string, word: string | undefined, count: number, first: string): string =>
+export const outOfRange = (what: string, word: string | undefined, count: number, first: string): string =>
   `No ${what} ${oneLine(printable(word ?? ''), 20)}: there ${count === 1 ? 'is 1' : `are ${count}`}, 1 the ${first}.`
 
-export const TABS: Tab[] = ['now', 'usage', 'agents', 'tools', 'cache', 'timeline', 'plan']
+export const TAB_NAMES: Tab[] = ['now', 'usage', 'agents', 'tools', 'cache', 'timeline', 'plan']

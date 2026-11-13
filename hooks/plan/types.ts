@@ -39,7 +39,7 @@ export type CallWait = { tool: string; ms: number; isMain: boolean; isAsked: boo
 // What the band and the Plan tab draw of the plans (Decisions 5, 7, 18): the tab the shown plan or task list, the
 // band the one this session's time goes to, only while it runs or for 10 minutes after it finished this session;
 // their scores, else the newest; the rest
-export type PlanDraw = {
+export type PlanDrawing = {
   shown: PlanView | null; band: PlanView | null; invalid: boolean; scores: ScoresView | null; score: ScoresView | null
   isPlanScore: boolean; others: string[]; otherScores: string[]; updatedAt: number | null
 }

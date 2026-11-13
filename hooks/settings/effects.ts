@@ -1,45 +1,45 @@
 // The settings folder's effects: what it reads and writes through $
 import type { Field, From, Resolved, Source, Values } from './types'
-import { DEFAULTS, FIELDS, OLD_KEYS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast, writeField } from './settings'
+import { DEFAULTS, FIELDS, LEGACY_KEYS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast, writeField } from './settings'
 import type { Level } from '../rec/types'
 import { toast } from '../core/effects'
 import { applyQuiet } from '../tools/effects'
 import { recStatus } from '../rec/rec'
-import { loadRec, recWordCount } from '../rec/effects'
-import { loadBand } from '../band/effects'
+import { applyRec, recWordCount } from '../rec/effects'
+import { applyBandSetting } from '../band/effects'
 import type { EngineInterface } from 'claude-code'
-import { loadHandoff } from '../handoff/effects'
+import { applyHandoffSetting } from '../handoff/effects'
 import type { HookInput, HookNext } from '../core/types'
 
 // The mod's switches, from the "alfred-mods" key of each settings file and the old commands' store keys (spec
 // 2026-11-11 settings-values, S1-S4 and S7): read at the start, on the poll, after a /clear and after each change, one
 // run at a time as the status file's reads are. `rec`, the level in force and the source that set it; `skippedKey`,
 // the skipped values last told; `isHoldTold`, whether REC's hold was told. A new claude run starts them over.
-const settingsMem = {
+const settingsMemory = {
   resolved: null as Resolved | null, rec: null as { level: Level; from: From } | null, skippedKey: '', isHoldTold: false,
   reading: Promise.resolve() as Promise<void>,
 }
 
-export const settingsNow = (): Values => settingsMem.resolved?.values ?? DEFAULTS
+export const settingsInForce = (): Values => settingsMemory.resolved?.values ?? DEFAULTS
 
 // REC's level in force and the source that set it, or null before the settings are read
 export function recInForce(): { level: Level; from: From } | null {
-  return settingsMem.rec
+  return settingsMemory.rec
 }
 
 export function loadSettings($: EngineInterface, isStart = false): Promise<void> {
-  const next = settingsMem.reading.then(() => loadSettingsNow($, isStart))
-  settingsMem.reading = next.catch(() => undefined)
+  const next = settingsMemory.reading.then(() => readSettingsNow($, isStart))
+  settingsMemory.reading = next.catch(() => undefined)
   return next
 }
 
 // Each source read on its own, so a file that does not parse falls to the files below rather than taking the rest
 // with it (S1); a refused read, or a store key that throws, counts as absent
-export async function loadSettingsNow($: EngineInterface, isStart: boolean): Promise<void> {
+export async function readSettingsNow($: EngineInterface, isStart: boolean): Promise<void> {
   if (isStart) {
-    settingsMem.rec = null
-    settingsMem.skippedKey = ''
-    settingsMem.isHoldTold = false
+    settingsMemory.rec = null
+    settingsMemory.skippedKey = ''
+    settingsMemory.isHoldTold = false
   }
   const layers: Partial<Record<Source, unknown>> = {}
   for (const source of SOURCES) layers[source] = await $.settings.read({ key: 'alfred-mods', source }).catch(() => undefined)
@@ -53,39 +53,39 @@ export async function loadSettingsNow($: EngineInterface, isStart: boolean): Pro
     handoff: rawHandoff,
   })
   const r = resolve(layers, legacy)
-  settingsMem.resolved = r
-  await retireOld($, r, legacy, rawHandoff)
-  if (isStart) await tellMoved($, r)
-  const before = settingsMem.rec
+  settingsMemory.resolved = r
+  await retireLegacyKeys($, r, legacy, rawHandoff)
+  if (isStart) await toastMovedOnce($, r)
+  const before = settingsMemory.rec
   const pending = holdRec(before, { level: r.values.rec, from: r.from.rec })
   // A skipped value is told once (S3): each skip the last told set did not hold, when the set changes. While REC holds,
   // its skip is the hold's to tell: a skip toast would name a level REC is not at
   const skips = r.skipped.filter(k => !(pending.isHeld && k.field === 'rec'))
   const skippedKey = skips.map(k => `${k.field}@${k.source}`).sort().join(',')
-  if (skippedKey !== settingsMem.skippedKey) {
-    const told = new Set(settingsMem.skippedKey.split(','))
+  if (skippedKey !== settingsMemory.skippedKey) {
+    const told = new Set(settingsMemory.skippedKey.split(','))
     for (const skip of skips) if (!told.has(`${skip.field}@${skip.source}`)) toast($, skippedToast(skip, r))
-    settingsMem.skippedKey = skippedKey
+    settingsMemory.skippedKey = skippedKey
   }
   // REC's hold (S3), told once per hold; a level that changes after the session's first read is told as /rec told it
-  settingsMem.rec = { level: pending.level, from: pending.from }
-  if (!pending.isHeld) settingsMem.isHoldTold = false
-  else if (!settingsMem.isHoldTold) {
-    settingsMem.isHoldTold = true
+  settingsMemory.rec = { level: pending.level, from: pending.from }
+  if (!pending.isHeld) settingsMemory.isHoldTold = false
+  else if (!settingsMemory.isHoldTold) {
+    settingsMemory.isHoldTold = true
     toast($, holdToast(pending.level, pending.from))
   }
-  await loadRec($)
+  await applyRec($)
   if (before !== null && before.level !== pending.level) toast($, recStatus(pending.level, recWordCount()))
   await applyQuiet($)
-  await loadBand($)
-  await loadHandoff($)
+  await applyBandSetting($)
+  await applyHandoffSetting($)
 }
 
 // S7: a field the user's own file sets, machine-wide as the store is, drops its old value; a project or local value
 // overrides the old one without retiring it. A refused delete is tried at the next read.
-export async function retireOld($: EngineInterface, r: Resolved, legacy: Partial<Values>, rawHandoff: unknown): Promise<void> {
+export async function retireLegacyKeys($: EngineInterface, r: Resolved, legacy: Partial<Values>, rawHandoff: unknown): Promise<void> {
   for (const field of r.userFields) {
-    const key = OLD_KEYS[field]
+    const key = LEGACY_KEYS[field]
     if (key !== undefined && legacy[field] !== undefined) await $.store.delete(key).catch(() => undefined)
   }
   const isMode = r.userFields.includes('handoff') && legacy.handoff !== undefined
@@ -100,7 +100,7 @@ export async function retireOld($: EngineInterface, r: Resolved, legacy: Partial
 
 // S7's toast, at a run's first read, once per machine: the earlier commands' choices still in force. A refused read of
 // the mark counts as told, so a failing store never repeats it.
-export async function tellMoved($: EngineInterface, r: Resolved): Promise<void> {
+export async function toastMovedOnce($: EngineInterface, r: Resolved): Promise<void> {
   const kept: Partial<Record<Field, unknown>> = {}
   for (const field of FIELDS) if (r.from[field] === 'legacy' && r.values[field] !== DEFAULTS[field]) kept[field] = r.values[field]
   if (Object.keys(kept).length === 0 || (await $.store.get('settings:moved').catch(() => true)) === true) return
@@ -121,7 +121,7 @@ export async function userSettingsPath($: EngineInterface): Promise<string | nul
 // The one write of /rec on|strict|off and /auto-handoff ask|auto|off|at <percent> (the user's ruling, 2026-11-12): the
 // field into the user file, every other key kept. The files are read first, so the answer names a higher file that
 // still comes first; Claude Code's ConfigChange then brings the change in, as it does an edit by hand.
-export async function setField<F extends Field>($: EngineInterface, field: F, value: Values[F]): Promise<string> {
+export async function writeUserField<F extends Field>($: EngineInterface, field: F, value: Values[F]): Promise<string> {
   const user = nameOf('user')
   const shown = `"${field}": ${JSON.stringify(value)}`
   const byHand = (why: string): string => `Nothing was written: ${why}. Set ${shown} under "alfred-mods" in ${user} by hand.`
@@ -136,7 +136,7 @@ export async function setField<F extends Field>($: EngineInterface, field: F, va
   if ('why' in next) return byHand(next.why === 'parse' ? `${user} does not parse as JSON` : `"alfred-mods" in ${user} is not an object`)
   const isWritten = await $.fs.write(path, next.text).then(() => true, () => false)
   if (!isWritten) return byHand(`${user} refused the write`)
-  const r = settingsMem.resolved
+  const r = settingsMemory.resolved
   const from = r?.from[field]
   const isFirst = r !== null && r !== undefined && (from === 'policy' || from === 'flag' || from === 'local' || from === 'project')
   return `Set ${shown} in ${user}.${isFirst ? ` ${nameOf(from)} gives ${JSON.stringify(r.values[field])}, which comes first.` : ''}`
@@ -151,5 +151,5 @@ export function reloadSettingsSoon($: EngineInterface, e: HookInput<'classic.Con
 
 // The settings as last resolved, with each value's source; null before the first read
 export function resolvedSettings(): Resolved | null {
-  return settingsMem.resolved
+  return settingsMemory.resolved
 }

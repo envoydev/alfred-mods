@@ -247,15 +247,15 @@ export function taskView(items: TaskItem[], liveMs: Record<string, number>): Pla
   }
 }
 
-export const statusesOfTasks = (items: TaskItem[]): string => JSON.stringify(items.map(t => [t.id, t.status]))
+export const taskStatusKey = (items: TaskItem[]): string => JSON.stringify(items.map(t => [t.id, t.status]))
 
-export const statusesOf = (files: Watched<Plan>[]): string =>
+export const stepStatusKey = (files: Watched<Plan>[]): string =>
   JSON.stringify(files.map(w => [w.name, w.value?.steps.map(s => [s.id, s.status]) ?? null]))
 
 export const FINISH_SHOWN_MS = 10 * 60_000
 
 // The user's notes in `after` that `before` lacks, each counted by its time, step and text, so two alike are two
-export function newNotes(before: PlanChange[], after: PlanChange[]): PlanChange[] {
+export function newUserNotes(before: PlanChange[], after: PlanChange[]): PlanChange[] {
   const idOf = (c: PlanChange): string => JSON.stringify([c.at, c.step, c.note])
   const isNote = (c: PlanChange): boolean => c.kind === 'integrated' && c.source === 'user' && c.note !== null
   const left = new Map<string, number>()

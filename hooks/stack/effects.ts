@@ -26,32 +26,32 @@ export function resetStack($: EngineInterface) {
 // The stack's resume prompt, in module memory only (Phase 5 spec 'Where values live'); `last`, the `stack` value the
 // last read wrote, which a read inside `keepUntil` (10 s after a /clear, a resume or a fork) writes back when the new
 // id has no file yet; `reading`, the read running, so reads never interleave; `reread`, the handler's one reread
-const stackMem = {
+const stackMemory = {
   prompt: null as string | null, last: null as Stack | null, keepUntil: 0, reading: Promise.resolve(false) as Promise<boolean>,
   reread: null as Timer | null,
 }
 
 // Alfred Code's scoring level while its status file is in use and scoring is on, which colours the band's score
-export async function scoreLevel($: EngineInterface): Promise<number | null> {
+export async function readScoreLevel($: EngineInterface): Promise<number | null> {
   const s = await readStack($)
   return s.state === 'used' && s.scorer !== null && s.scorer.on ? s.scorer.level : null
 }
 
 // Reads run one at a time; each resolves to whether the session's status file exists
-export function readStatus($: EngineInterface, keep = false): Promise<boolean> {
-  const next = stackMem.reading.then(() => readStatusNow($, keep))
-  stackMem.reading = next.catch(() => false)
+export function readStatusFile($: EngineInterface, keep = false): Promise<boolean> {
+  const next = stackMemory.reading.then(() => readStatusFileNow($, keep))
+  stackMemory.reading = next.catch(() => false)
   return next
 }
 
 // The stack's status file for this session, one read for both atoms. F8's stand-down (Decision 13): a missing or
 // unreadable file is no file, unless `keep` or the window holds a stand-down across a /clear until a later read. The
 // `stack` atom (Phase 5): no file, unreadable, ignored with Phase 4's reason, or used field by field.
-export async function readStatusNow($: EngineInterface, keep: boolean): Promise<boolean> {
+export async function readStatusFileNow($: EngineInterface, keep: boolean): Promise<boolean> {
   const id = await $.session.id()
   const path = statusPath(id)
   const now = await $.clock.now()
-  const inWindow = keep || now < stackMem.keepUntil
+  const inWindow = keep || now < stackMemory.keepUntil
   let exists = false
   let text: string | null = null
   if (path !== null) {
@@ -71,7 +71,7 @@ export async function readStatusNow($: EngineInterface, keep: boolean): Promise<
 // every other read writes its own value, and `last` with it
 export async function writeStackFrom($: EngineInterface, r: { exists: boolean; text: string | null; id: string; now: number; inWindow: boolean }): Promise<void> {
   if (!r.exists && r.inWindow) {
-    const last = stackMem.last
+    const last = stackMemory.last
     if (last !== null) await updateStack($, s => (JSON.stringify(s) === JSON.stringify(last) ? s : last))
     return
   }
@@ -81,16 +81,16 @@ export async function writeStackFrom($: EngineInterface, r: { exists: boolean; t
     : parsed === null ? { ...base, state: 'ignored', reason: UNREADABLE }
     : parsed.state === 'ignored' ? { ...base, state: 'ignored', reason: parsed.reason }
     : { ...base, ...parsed.fields, state: 'used', hasPrompt: parsed.prompt !== null }
-  stackMem.prompt = parsed?.state === 'used' ? parsed.prompt : null
-  stackMem.last = next
+  stackMemory.prompt = parsed?.state === 'used' ? parsed.prompt : null
+  stackMemory.last = next
   await updateStack($, s => (JSON.stringify(s) === JSON.stringify(next) ? s : next))
 }
 
 // `f` in the ALFRED CODE section: the stack's resume prompt into an empty draft, never sent. A press from a frame drawn
 // before the prompt went away or the file stopped owning the full context fills nothing (Decision 7).
 // f, or '/inspect fill': what it did, which the press toasts and the command answers
-export async function fillStack($: EngineInterface): Promise<string> {
-  const text = stackMem.prompt
+export async function fillStackPrompt($: EngineInterface): Promise<string> {
+  const text = stackMemory.prompt
   if (!fillReady(await readStack($), text)) return STACK_TOASTS.gone
   if ((await $.prompt.read()).text.trim() !== '') return STACK_TOASTS.notEmpty
   return fillToast(await $.prompt.fill({ text }))
@@ -98,22 +98,22 @@ export async function fillStack($: EngineInterface): Promise<string> {
 
 // The resume prompt the status file last gave, for the Stack tab
 export function stackPrompt(): string | null {
-  return stackMem.prompt
+  return stackMemory.prompt
 }
 
 // Until `until`, a read that finds no file keeps the last values; a re-read still pending is cancelled
 export function openKeepWindow(until: number): void {
-  stackMem.keepUntil = until
-  stackMem.reread?.cancel()
-  stackMem.reread = null
+  stackMemory.keepUntil = until
+  stackMemory.reread?.cancel()
+  stackMemory.reread = null
 }
 
 // After a start-over: this read, finding no file, reads once more at 2 s
 export async function readStatusAfterStartOver($: EngineInterface): Promise<void> {
-  if (!(await readStatus($, true))) {
-    stackMem.reread = $.clock.after(2000, () => {
-      stackMem.reread = null
-      readStatus($).catch(() => undefined)
+  if (!(await readStatusFile($, true))) {
+    stackMemory.reread = $.clock.after(2000, () => {
+      stackMemory.reread = null
+      readStatusFile($).catch(() => undefined)
     })
   }
 }

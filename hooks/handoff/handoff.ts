@@ -220,17 +220,17 @@ export function handoffLines(h: HandoffView, _columns: number): Line[] {
   return out
 }
 
-export const RESUME_MS = 2 * 60 * 60_000
+export const RESUME_WINDOW_MS = 2 * 60 * 60_000
 
 // The Now tab's HANDOFF section reads the atom with F8's percent and the runway
-export function handoffView(h: Handoff, u: Usage, isWorking: boolean, runway: Runway | null): HandoffView {
+export function handoffViewOf(h: Handoff, u: Usage, isWorking: boolean, runway: Runway | null): HandoffView {
   const point = h.point ?? u.window
   return { ...h, percent: u.tokens === null || point === null ? null : percentOf(u.tokens, point), window: u.window, isWorking, runway }
 }
 
 // What the forecast counts to: the stack's resume trigger over the window while the runway applies and the window is
 // known, else F8's threshold over the window, to the compaction point's moment
-export function forecastOf(h: Handoff, u: Usage, runway: Runway | null): { at: number; label: string } {
+export function forecastTargetOf(h: Handoff, u: Usage, runway: Runway | null): { at: number; label: string } {
   if (runway !== null && runway.at !== null) return { at: runway.at, label: tokens(runway.resumeAt) }
   return { at: h.point !== null && u.window !== null ? windowThreshold(h.threshold, h.point, u.window) : h.threshold, label: `${h.threshold}%` }
 }

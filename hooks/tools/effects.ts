@@ -6,11 +6,11 @@ import type { EngineInterface } from 'claude-code'
 import type { ToolCall, CompactCall, Failure, Outcome, Quiet, ToolStat } from './types'
 import { addRunningCall, addLoadedSkill, countMainCall, readLive, settleRunningCall } from '../session/effects'
 import { classify, fold, tallyOutcome, targetOf, toolKey } from './outcome'
-import { isPaneShown, readView } from '../inspect/effects'
-import { isCounted, updateRow } from '../agents/effects'
+import { isInspectDrawn, readView } from '../inspect/effects'
+import { isTrackedLoop, updateAgentRow } from '../agents/effects'
 import { keepNewest } from '../core/collections'
-import { settingsNow } from '../settings/effects'
-import { syncStatus } from '../band/effects'
+import { settingsInForce } from '../settings/effects'
+import { syncStatusLine } from '../band/effects'
 import { actionOf } from '../agents/agents'
 import { isAllWait, waitOf } from '../plan/steptime'
 import { mask } from '../rec/mask'
@@ -21,7 +21,7 @@ import { DROPS_RESULT, callLine, groupLines } from './compact'
 import { maskDeep, maskResult, resultLines } from '../rec/sites'
 import { isNoColor } from '../core/effects'
 import { rememberCall } from './calls'
-import { addWait, closeCallWait, followTaskTools, openCallWait, scheduleReload } from '../plan/effects'
+import { addWaitTime, closeCallWait, followTaskTools, openCallWait, schedulePlanReload } from '../plan/effects'
 import { isRecOn } from '../rec/effects'
 
 const INITIAL_STATS: Record<string, ToolStat> = {}
@@ -90,7 +90,7 @@ const errorRowIds = new Set<string>()
 // A failure row for a call that was not ok; it is seen at once while the pane shows Now or Tools
 export async function addFailureRow($: EngineInterface, id: string, call: ToolCall, outcome: Exclude<Outcome, 'ok'>, reason: string, isNew: boolean, drop: string | null, by: string | null): Promise<void> {
   const { tab } = await readView($)
-  const isSeen = (tab === 'now' || tab === 'tools') && await isPaneShown($)
+  const isSeen = (tab === 'now' || tab === 'tools') && await isInspectDrawn($)
   const result = call.facts.result
   const row: Failure = {
     id, at: await $.clock.now(), tool: call.tool, target: call.target, outcome, reason,
@@ -142,7 +142,7 @@ export async function settleToolCall($: EngineInterface, id: string, call: ToolC
   const retally = (s: Record<string, ToolStat>): Record<string, ToolStat> =>
     ({ ...s, [call.key]: before === null ? tallyOutcome(s[call.key], outcome, 1) : tallyOutcome(tallyOutcome(s[call.key], before, -1), outcome, 1) })
   await updateStats($, retally)
-  if (call.agentId !== null) await updateRow($, call.agentId, r => ({ ...r, tools: retally(r.tools) }))
+  if (call.agentId !== null) await updateAgentRow($, call.agentId, r => ({ ...r, tools: retally(r.tools) }))
   if (outcome !== 'ok') await addFailureRow($, id, call, outcome, reason, isNew, before !== null && before !== 'ok' ? call.failureId : null, by)
   // A block counts for the script that made it; a later settle that names another blocker moves the count (spec C6)
   const counted = call.blockedBy
@@ -167,7 +167,7 @@ export async function settleToolCall($: EngineInterface, id: string, call: ToolC
   if (isMain && before === null && outcome === 'ok' && call.isFork !== true && call.key.startsWith('Skill: ')) {
     await addLoadedSkill($, call.key.slice('Skill: '.length))
   }
-  await syncStatus($)
+  await syncStatusLine($)
 }
 
 export function keepErrorText(id: string, text: string): void {
@@ -178,13 +178,13 @@ export function keepErrorText(id: string, text: string): void {
 
 // "quiet" into the quiet atom
 export async function applyQuiet($: EngineInterface): Promise<boolean> {
-  const isOn = settingsNow().quiet
+  const isOn = settingsInForce().quiet
   await updateQuiet($, q => (q.isOn === isOn ? q : { isOn }))
   return isOn
 }
 
 export async function trackToolCall($: EngineInterface, e: HookInput<'tool.call'>, next: HookNext<'tool.call'>, calls: Map<string, ToolCall>, pending: Pending) {
-  if (!(await isCounted($, e.agentId))) return next(e)
+  if (!(await isTrackedLoop($, e.agentId))) return next(e)
   const input = e as unknown as Record<string, unknown>
   const call = rememberCall(calls, e.tool_use_id, e.tool)
   call.key = toolKey(e.tool, input)
@@ -197,7 +197,7 @@ export async function trackToolCall($: EngineInterface, e: HookInput<'tool.call'
     await addRunningCall($, { id: e.tool_use_id, tool: e.tool, label: call.target, startedAt })
   } else {
     const action = actionOf(e.tool, call.target)
-    await updateRow($, call.agentId, r => ({ ...r, action }))
+    await updateAgentRow($, call.agentId, r => ({ ...r, action }))
   }
   const loop = call.agentId ?? 'main'
   const isWait = isAllWait(e.tool, call.agentId === null)
@@ -226,8 +226,8 @@ export async function trackToolCall($: EngineInterface, e: HookInput<'tool.call'
   let isClosed = false
   if (isWait) isClosed = await closeCallWait($, loop, e.tool_use_id, endedAt)
   if (wait === null) call.pendingMs = ms
-  else if (!isClosed) await addWait($, loop, wait, endedAt)
-  if (e.tool === 'Write' || e.tool === 'Edit' || e.tool === 'NotebookEdit') scheduleReload($, pending)
+  else if (!isClosed) await addWaitTime($, loop, wait, endedAt)
+  if (e.tool === 'Write' || e.tool === 'Edit' || e.tool === 'NotebookEdit') schedulePlanReload($, pending)
   if (call.agentId === null && call.outcome === 'ok') {
     const result = ran.result
     await followTaskTools($, pending, e.tool, input, result)
@@ -237,7 +237,7 @@ export async function trackToolCall($: EngineInterface, e: HookInput<'tool.call'
 
 export async function noteToolCheck($: EngineInterface, e: HookInput<'tool.check'>, next: HookNext<'tool.check'>, calls: Map<string, ToolCall>) {
   const verdict = await next(e)
-  if (e.tool_use_id !== undefined && (await isCounted($, e.agentId))) {
+  if (e.tool_use_id !== undefined && (await isTrackedLoop($, e.agentId))) {
     const call = rememberCall(calls, e.tool_use_id, e.tool)
     call.facts = { ...call.facts, checked: verdict.decision, checkReason: verdict.reason ?? null }
   }
@@ -263,7 +263,7 @@ export async function noteToolDuration($: EngineInterface, e: HookInput<'classic
     const ms = call.pendingMs
     if (ms !== null && call.durationMs !== null) {
       call.pendingMs = null
-      await addWait($, call.agentId ?? 'main', Math.max(0, ms - call.durationMs), await $.clock.now())
+      await addWaitTime($, call.agentId ?? 'main', Math.max(0, ms - call.durationMs), await $.clock.now())
     }
   }
   return next(e)

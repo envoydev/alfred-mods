@@ -146,9 +146,9 @@ export function writeField<F extends Field>(text: string | null, field: F, value
 }
 
 // The old commands' store keys, by the field each held (S7); `settings:handoff` holds two, retired field by field
-export const OLD_KEYS: Partial<Record<Field, string>> = {
+export const LEGACY_KEYS: Partial<Record<Field, string>> = {
   band: 'settings:band', bandPlace: 'settings:band-place', bandRows: 'settings:band-tools', quiet: 'settings:quiet', rec: 'settings:rec',
 }
 
 // A source's name in the commands' answers: an earlier command's choice is named for its command (S7)
-export const sourceName = (from: From, command: '/rec' | '/auto-handoff' | '/band'): string => (from === 'legacy' ? `an earlier ${command}` : nameOf(from))
+export const sourceLabel = (from: From, command: '/rec' | '/auto-handoff' | '/band'): string => (from === 'legacy' ? `an earlier ${command}` : nameOf(from))

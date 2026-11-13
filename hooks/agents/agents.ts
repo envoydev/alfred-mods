@@ -184,4 +184,4 @@ export function toolSummary(tools: Record<string, ToolStat>): { tools: string[];
   return out
 }
 
-export const markOf = (r: AgentRow): string | null => (r.plan !== null && r.task !== null ? `${r.plan}:${r.task}` : null)
+export const stepMarkOf = (r: AgentRow): string | null => (r.plan !== null && r.task !== null ? `${r.plan}:${r.task}` : null)
