@@ -13,7 +13,6 @@ import { baseCost, pruneCost, recordCost, todayUsd } from './session/cost'
 import { drawLines, drawNote, drawUnder, drawUnderNote, drawWithInput } from './core/draw'
 import { localDate } from './core/forecast'
 import { REC_HIDDEN, SPINNER_WORD, bandFailed, paneFailed } from './core/failsafe'
-import { linkedRules, partsOf, ruleName } from './context/parts'
 import { clock, fingerprint, oneLine, printable, tokens, usd, when } from './core/format'
 import { mask, maskForFile, maskSpans, recLevel, setRec } from './rec/mask'
 import { maskDeep, maskDialog, maskResult, neutralDialog, resultLines } from './rec/sites'
@@ -27,7 +26,6 @@ import { agentsLines, asCommands, cacheLines, nowLines, paneCommands, reportRows
 import { classify, fold, numberOf, targetOf, toolKey } from './tools/outcome'
 import { LEVELS, REC_HELP, addWord, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec/rec'
 import { BAND_MODES, DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast, writeField } from './settings/settings'
-import { baseName } from './place/place'
 import { dropPassed, nextWindows, storedWindows } from './session/windows'
 import { compactMem, errorMem, errorRows, modeMem, readBlockers, readFailures, readQuiet, readStats, resetBlockers, resetFailures, resetQuiet, resetStats, updateBlockers, updateFailures, updateQuiet, updateStats } from './tools/effects'
 import { FRESH_EVERY_MS, freshMem, readLive, readMeta, readPace, readTick, readTotals, readTurns, readUsage, resetLive, resetMeta, resetPace, resetTotals, resetTurns, resetUsage, spendMem, updateLive, updateMeta, updatePace, updateTick, updateTotals, updateTurns, updateUsage, windowsMem } from './session/effects'
@@ -38,7 +36,7 @@ import { INITIAL_STACK, readStack, resetStack, stackMem, updateStack } from './s
 import { handoffMem, readHandoff, resetHandoff, updateHandoff } from './handoff/effects'
 import { noteMem, readRec, recMem, resetRec, updateRec } from './rec/effects'
 import { bandMem, isPassingAbove, loadBand, readBandSetting, statusMem, syncStatus } from './band/effects'
-import { partsMem, readParts, resetParts, updateParts } from './context/effects'
+import { noteLoadedRule, partsMem, readBreakdown, readBreakdownSoon, readParts, resetParts } from './context/effects'
 import { readView, resetView, updateView } from './inspect/effects'
 import type { BandInput } from './band/types'
 import type { Cache, CacheConfig } from './cache/types'
@@ -842,31 +840,6 @@ async function writeStackFrom($: EngineInterface, r: { exists: boolean; text: st
   await updateStack($, s => (JSON.stringify(s) === JSON.stringify(next) ? s : next))
 }
 
-// One breakdown read serves the compaction point and the context's parts (spec C1): a read that gives one writes the
-// parts atom; a read that fails or gives none is null, and the parts stay as they were
-async function readBreakdown($: EngineInterface): Promise<SessionContextBreakdown | null> {
-  let b: SessionContextBreakdown | undefined
-  try {
-    b = (await $.session.usage({ breakdown: 'summary' })).context.breakdown
-  } catch {
-    return null
-  }
-  if (b === undefined) return null
-  const now = await $.clock.now()
-  const cwd = await $.session.cwd()
-  const next = partsOf(b, cwd, now, await linkedRules($, b, cwd))
-  partsMem.lastAt = now
-  await updateParts($, () => next)
-  return b
-}
-
-// A read off the hook path, after a compaction or as the Usage tab opens stale (spec C1)
-function readBreakdownSoon($: EngineInterface): void {
-  $.clock.after(0, () => {
-    readBreakdown($).catch(() => undefined)
-  })
-}
-
 // The tokens where Claude Code compacts by itself (Decision 12): the breakdown's `autoCompactThreshold`, else the
 // window; read at the first reading and again when the model or the window changes. A read with no breakdown, or one
 // that fails, gives the window for that reading alone and counts a miss; the third miss for one model and window
@@ -1338,12 +1311,7 @@ export const register: Register = (on, options) => {
     // A rule the main context loaded by path (spec 2026-11-11, D4): a match of its `paths:` globs, or a nested folder's
     // rules. A subagent's load is in its own context; a start-up or compaction load is the breakdown's to list. Only a
     // rule's frontmatter matches by path, so that file is a rule wherever a link under `.claude/rules/` lands it.
-    on('classic.InstructionsLoaded', async ($, e, next) => {
-      const byPath = e.load_reason === 'path_glob_match' ? baseName(e.file_path) : e.load_reason === 'nested_traversal' ? ruleName(e.file_path, e.memory_type) : null
-      const name = e.agent_id === undefined ? byPath : null
-      if (name !== null) await updateMeta($, m => (m.pathRules?.includes(name) === true ? m : { ...m, pathRules: [...(m.pathRules ?? []), name] }))
-      return next(e)
-    }).catch(($, e, next) => next(e))
+    on('classic.InstructionsLoaded', ($, e, next) => noteLoadedRule($, e, next)).catch(($, e, next) => next(e))
 
     // An edit to a settings file (spec settings-values S4): a read inside this hook still answers the old value (F4),
     // so the files are read again at the clock's next tick; left out, the 30 s poll reads them

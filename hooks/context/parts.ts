@@ -1,7 +1,7 @@
 // What fills the context (spec C1): the breakdown Claude Code gives, as categories, plugins and memory files, and the
 // Usage tab's three rows. No path is kept but one inside the project: a memory file elsewhere is named by its type and
 // base name, so no home folder or user name reaches the atom.
-import type { EngineInterface, SessionContextBreakdown } from 'claude-code'
+import type { SessionContextBreakdown } from 'claude-code'
 
 import { clock, tokens } from '../core/format'
 import { baseName } from '../place/place'
@@ -10,7 +10,7 @@ import type { Line } from '../core/types'
 
 export const NO_PARTS: Parts = { at: null, categories: [], plugins: [], memory: { files: 0, tokens: 0, top: [] } }
 
-const slashed = (p: string): string => p.replace(/\\/g, '/')
+export const slashed = (p: string): string => p.replace(/\\/g, '/')
 const isDrive = (p: string): boolean => /^[A-Za-z]:\//.test(p)
 
 // `.claude/CLAUDE.md` for a file under the project, else `User CLAUDE.md`; a Windows path compares without case. A
@@ -35,34 +35,6 @@ export function ruleName(path: string, type: string): string | null {
   const file = slashed(path)
   const isRule = /\/\.claude\/rules\//.test(file) || (type === 'User' && /\/rules\//.test(file))
   return isRule ? baseName(file) : null
-}
-
-// The memory files a link under the project's `.claude/rules/` reaches: the breakdown names such a rule by where the
-// link lands (live, 2026-11-11), so an import there looks the same until both sides are resolved. Asked only of a file
-// that is no CLAUDE.md, no rule by its folder and no auto memory, so a session with none lists no folder.
-export async function linkedRules($: EngineInterface, b: SessionContextBreakdown, cwd: string): Promise<Set<string>> {
-  const unplaced = (b.memoryFiles ?? []).filter(f => f.type !== 'AutoMem' && ruleName(f.path, f.type) === null && !/^CLAUDE(\.local)?\.md$/.test(baseName(f.path)))
-  if (unplaced.length === 0) return new Set()
-  const ends: string[] = []
-  const walk = async (dir: string, depth: number): Promise<void> => {
-    const entries = await $.fs.list(dir).catch(() => [])
-    for (const entry of entries) {
-      const path = `${dir}/${entry.name}`
-      if (entry.isLink) {
-        const real = (await $.fs.stat(path, { resolve: true }).catch(() => undefined))?.realPath
-        if (real !== undefined) ends.push(slashed(real).replace(/\/+$/, ''))
-      } else if (entry.kind === 'dir' && depth < 3) await walk(path, depth + 1)
-    }
-  }
-  await walk(`${slashed(cwd).replace(/\/+$/, '')}/.claude/rules`, 0)
-  const found = new Set<string>()
-  if (ends.length === 0) return found
-  for (const f of unplaced) {
-    const real = (await $.fs.stat(f.path, { resolve: true }).catch(() => undefined))?.realPath
-    const file = real === undefined ? null : slashed(real)
-    if (file !== null && ends.some(end => file === end || file.startsWith(`${end}/`))) found.add(f.path)
-  }
-  return found
 }
 
 // The breakdown as the atom keeps it: `used` categories in Claude Code's order; agents by the plugin before the `:` of

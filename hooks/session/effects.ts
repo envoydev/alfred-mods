@@ -132,3 +132,8 @@ export async function showPlaceCounts($: EngineInterface, changes: { added: numb
     }
   })
 }
+
+// A rule the main context loaded by path, listed once
+export async function addPathRule($: EngineInterface, name: string): Promise<void> {
+  await updateMeta($, m => (m.pathRules?.includes(name) === true ? m : { ...m, pathRules: [...(m.pathRules ?? []), name] }))
+}
