@@ -27,11 +27,11 @@ export const KEYS: Sample[] = [
   { text: 'postgres://admin:' + 'hunter2' + '@localhost', masked: 'postgres://admin:‹key›@localhost' },
 ]
 
-export const EMAILS: Sample[] = ['jane.doe@example.com', 'a+b@sub.example.co.uk', 'ops@example.io'].map(t => whole(t, '‹email›'))
+export const EMAILS: Sample[] = ['jane.doe@example.com', 'a+b@sub.example.co.uk', 'ops@example.io'].map(address => whole(address, '‹email›'))
 
 export const PHONES: Sample[] = [
   '+1 415 555 0132', '+44 20 7946 0958', '(415) 555-0132', '415-555-0132', '+380 44 123 4567', '+4915123456789',
-].map(t => whole(t, '‹phone›'))
+].map(number => whole(number, '‹phone›'))
 
 // Shown at every level; the last, an amount, only below strict
 export const LEFT_ALONE: string[] = [
@@ -49,7 +49,7 @@ export const AMOUNTS: Sample[] = [
 
 // Strict's home paths and account, from the home folder: the prefix with either separator, and the name alone
 export function strictSamples(home: string): Sample[] {
-  const name = home.split(/[\\/]/).filter(s => s !== '').pop() ?? ''
+  const name = home.split(/[\\/]/).filter(segment => segment !== '').pop() ?? ''
   return [
     { text: `${home.replace(/\\/g, '/')}/src`, masked: '~/src' },
     { text: `${home.replace(/\//g, '\\')}\\src`, masked: '~\\src' },

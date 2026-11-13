@@ -44,10 +44,10 @@ export function mask(text: string): string {
   if (size <= CACHE_CHARS) {
     cache.set(text, out)
     cached += size
-    for (const [k, v] of cache) {
+    for (const [cachedText, maskedText] of cache) {
       if (cache.size <= CACHE_ENTRIES && cached <= CACHE_CHARS) break
-      cache.delete(k)
-      cached -= k.length + v.length
+      cache.delete(cachedText)
+      cached -= cachedText.length + maskedText.length
     }
   }
   return out

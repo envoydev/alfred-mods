@@ -16,14 +16,14 @@ export const MODES: HandoffMode[] = ['ask', 'auto', 'off']
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 
 // A whole percent from 10 to 95, the only thresholds the command takes
-export function isThreshold(n: unknown): n is number {
-  return typeof n === 'number' && Number.isInteger(n) && n >= 10 && n <= 95
+export function isThreshold(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 10 && value <= 95
 }
 
 // The threshold, then every 5 points up to 95
 export function stepsOf(threshold: number): number[] {
   const steps: number[] = []
-  for (let s = threshold; s <= 95; s += 5) steps.push(s)
+  for (let step = threshold; step <= 95; step += 5) steps.push(step)
   return steps
 }
 
@@ -39,7 +39,7 @@ export function windowThreshold(threshold: number, point: number, window: number
 
 // The highest step the reading reached that is past the one handled, or null
 export function nextStep(handled: number | null, percent: number, steps: number[]): number | null {
-  const reached = steps.filter(s => s <= percent && (handled === null || s > handled))
+  const reached = steps.filter(step => step <= percent && (handled === null || step > handled))
   return reached.length === 0 ? null : Math.max(...reached)
 }
 
@@ -94,17 +94,17 @@ const INDENT = '    '
 
 // The Git part from the one `git status --porcelain=v1 --branch` call: its lines verbatim, indented so the `##` branch
 // line never reads as a heading, up to 50 paths then `+N more`; or why git was not available
-export function gitPart(r: ProcessRunResult | Error): string[] {
+export function gitPart(result: ProcessRunResult | Error): string[] {
   const unavailable = (reason: string): string[] => [`Git: not available (${reason})`]
-  if (r instanceof Error) {
-    if (/timed? ?out/i.test(r.message)) return unavailable('timed out')
-    if (/ENOENT|not found|cannot start|spawn/i.test(r.message)) return unavailable('git not found')
-    return unavailable(r.message.split('\n')[0] ?? 'failed')
+  if (result instanceof Error) {
+    if (/timed? ?out/i.test(result.message)) return unavailable('timed out')
+    if (/ENOENT|not found|cannot start|spawn/i.test(result.message)) return unavailable('git not found')
+    return unavailable(result.message.split('\n')[0] ?? 'failed')
   }
-  if (r.exitCode !== 0) return unavailable(/not a git repository/i.test(r.stderr) ? 'not a repository' : `exit ${r.exitCode}`)
-  const lines = r.stdout.split('\n').map(l => l.trimEnd()).filter(l => l !== '')
+  if (result.exitCode !== 0) return unavailable(/not a git repository/i.test(result.stderr) ? 'not a repository' : `exit ${result.exitCode}`)
+  const lines = result.stdout.split('\n').map(line => line.trimEnd()).filter(line => line !== '')
   const [branch, ...paths] = lines
-  const shown = paths.slice(0, MAX_PATHS).map(l => INDENT + l)
+  const shown = paths.slice(0, MAX_PATHS).map(path => INDENT + path)
   const more = paths.length > MAX_PATHS ? [`${INDENT}+${paths.length - MAX_PATHS} more`] : []
   return [...(branch === undefined ? [] : [INDENT + branch]), ...shown, ...more]
 }
@@ -116,62 +116,63 @@ function branchOf(git: string[]): string | null {
   return line.slice(3).replace(/^No commits yet on /, '').split('...')[0]?.split(' ')[0] || null
 }
 
-const pad = (n: number): string => String(n).padStart(2, '0')
-const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`
+const pad = (value: number): string => String(value).padStart(2, '0')
+const plural = (count: number, word: string): string => `${count} ${word}${count === 1 ? '' : 's'}`
 
 function nextLine(plan: SaveInput['plan']): string {
   if (plan === null) return 'No plan file this session; see Git below.'
   if (plan === 'tasks') return 'Task list in use; its items are not written to this file.'
-  const running = plan.steps.find(s => s.status === 'in_progress')
+  const running = plan.steps.find(step => step.status === 'in_progress')
   if (running !== undefined) {
     const of = running.forecastMs === null ? '' : ` of ≈${minutesText(running.forecastMs)}`
     return `${running.id} ${running.title} - in progress, ${minutesText(running.actualMs)}${of}.`
   }
-  const next = plan.steps.find(s => s.status === 'pending')
+  const next = plan.steps.find(step => step.status === 'pending')
   return next === undefined ? 'Plan finished.' : `${next.id} ${next.title} - next.`
 }
 
-function stepLine(s: PlanPart['steps'][number]): string {
-  const isDone = s.status === 'done' || s.status === 'skipped'
-  const state = s.status === 'done' ? `done in ${minutesText(s.actualMs)}` : s.status === 'in_progress' ? 'in progress' : s.status
-  const notes = s.notes > 0 ? ` - ✎ ${plural(s.notes, 'note')}` : ''
-  return `- [${isDone ? 'x' : ' '}] ${s.id} ${s.title} - ${state}${notes}`
+function stepLine(step: PlanPart['steps'][number]): string {
+  const isDone = step.status === 'done' || step.status === 'skipped'
+  const state = step.status === 'done' ? `done in ${minutesText(step.actualMs)}` : step.status === 'in_progress' ? 'in progress' : step.status
+  const notes = step.notes > 0 ? ` - ✎ ${plural(step.notes, 'note')}` : ''
+  return `- [${isDone ? 'x' : ' '}] ${step.id} ${step.title} - ${state}${notes}`
 }
 
 // HANDOFF.md, as the spec's example shows it; the caller masks keys, emails and phones in it before the write
-export function handoffText(s: SaveInput): string {
-  const d = new Date(s.at)
-  const branch = branchOf(s.git)
+export function handoffText(save: SaveInput): string {
+  const date = new Date(save.at)
+  const branch = branchOf(save.git)
   const about = [
-    s.percent === null ? `Saved before a context reading (asks at ${s.threshold}%) by alfred-mods` : `Saved at ${s.percent}% context (asks at ${s.threshold}%) by alfred-mods`,
-    `session ${s.session.slice(0, 8)}`,
-    ...(s.model === null ? [] : [modelText(s.model, true)]),
+    save.percent === null ? `Saved before a context reading (asks at ${save.threshold}%) by alfred-mods` : `Saved at ${save.percent}% context (asks at ${save.threshold}%) by alfred-mods`,
+    `session ${save.session.slice(0, 8)}`,
+    ...(save.model === null ? [] : [modelText(save.model, true)]),
     ...(branch === null ? [] : [`branch ${branch}`]),
   ]
   const out = [
     MARKER,
-    `# Handoff - ${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${clockText(s.at)}`,
+    `# Handoff - ${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${clockText(save.at)}`,
     '',
     `${about.join(' · ')}.`,
     `To continue in a new session, ask Claude to read ${HANDOFF_PATH} and resume from Next.`,
-    '', '## Next', '', nextLine(s.plan),
+    '', '## Next', '', nextLine(save.plan),
   ]
-  if (s.plan !== null && s.plan !== 'tasks') {
-    out.push('', `## Plan - ${s.plan.title}, ${s.plan.finished}/${s.plan.total}`, '', `From ${s.plan.file}.`, '', ...s.plan.steps.map(stepLine))
-    if (s.scores !== null) {
-      const totals = s.scores.totals.map(t => `R${t.round} ${t.total}`).join(' → ')
-      const open = s.scores.open.map(f => `${f.id === null ? '' : `${f.id} `}${f.text}${f.severity === null ? '' : ` (${f.severity})`}`)
-      out.push('', `Scores (${s.scores.name}): ${totals}${open.length > 0 ? ` · open: ${open.join('; ')}` : ''}`)
+  if (save.plan !== null && save.plan !== 'tasks') {
+    out.push('', `## Plan - ${save.plan.title}, ${save.plan.finished}/${save.plan.total}`, '', `From ${save.plan.file}.`, '', ...save.plan.steps.map(stepLine))
+    if (save.scores !== null) {
+      const totals = save.scores.totals.map(total => `R${total.round} ${total.total}`).join(' → ')
+      const open = save.scores.open.map(finding =>
+        `${finding.id === null ? '' : `${finding.id} `}${finding.text}${finding.severity === null ? '' : ` (${finding.severity})`}`)
+      out.push('', `Scores (${save.scores.name}): ${totals}${open.length > 0 ? ` · open: ${open.join('; ')}` : ''}`)
     }
   }
-  out.push('', '## Git', '', ...s.git)
-  const c = s.counts
+  out.push('', '## Git', '', ...save.git)
+  const counts = save.counts
   const session = [
-    `Turn ${c.turn}`,
-    ...(c.durationMs === null ? [] : [durationText(c.durationMs)]),
-    `${plural(c.calls, 'tool call')}${c.failed > 0 ? `, ${c.failed} failed` : ''}`,
-    ...(c.agents > 0 ? [plural(c.agents, 'agent')] : []),
-    ...(c.costUsd === null ? [] : [`${usdText(c.costUsd)}${c.isEstimate ? ' est.' : ''}`]),
+    `Turn ${counts.turn}`,
+    ...(counts.durationMs === null ? [] : [durationText(counts.durationMs)]),
+    `${plural(counts.calls, 'tool call')}${counts.failed > 0 ? `, ${counts.failed} failed` : ''}`,
+    ...(counts.agents > 0 ? [plural(counts.agents, 'agent')] : []),
+    ...(counts.costUsd === null ? [] : [`${usdText(counts.costUsd)}${counts.isEstimate ? ' est.' : ''}`]),
   ]
   out.push('', '## Session', '', session.join(' · '), '')
   return out.join('\n')
@@ -183,38 +184,40 @@ const SEP: Seg = { text: ' · ' }
 // The HANDOFF section (spec 'The HANDOFF row and the keys'): its violet heading and one row by state, then a failed
 // save's reason or the last save's path; nothing while F8 is off. Why a stack status file was not used is the ALFRED
 // CODE section's (Phase 5).
-export function handoffLines(h: HandoffView, _columns: number): Line[] {
-  if (h.mode === 'off') return []
-  const of = h.compactPoint !== null && h.window !== null && h.compactPoint !== h.window ? ` of ${tokensText(h.compactPoint)}` : ''
-  const plain = h.percent === null ? 'ctx –' : `ctx ${h.percent}%${of}`
-  const gauge = (p: number): Seg[] => [{ text: 'ctx ' }, ...barSegs(p), percentSeg(p), { text: of }]
-  const steps = stepsOf(h.threshold)
-  const after = (step: number | null): number | null => steps.find(s => step === null || s > step) ?? null
+export function handoffLines(view: HandoffView, _columns: number): Line[] {
+  if (view.mode === 'off') return []
+  const of = view.compactPoint !== null && view.window !== null && view.compactPoint !== view.window ? ` of ${tokensText(view.compactPoint)}` : ''
+  const plain = view.percent === null ? 'ctx –' : `ctx ${view.percent}%${of}`
+  const gauge = (percent: number): Seg[] => [{ text: 'ctx ' }, ...barSegs(percent), percentSeg(percent), { text: of }]
+  const steps = stepsOf(view.threshold)
+  const after = (step: number | null): number | null => steps.find(known => step === null || known > step) ?? null
   let row: Line
-  if (h.stackStatus.state === 'stood-down') {
-    const ctx = h.runway === null ? plain : `ctx ${h.runway.percent}% of ${tokensText(h.runway.resumeAt)}`
+  if (view.stackStatus.state === 'stood-down') {
+    const ctx = view.runway === null ? plain : `ctx ${view.runway.percent}% of ${tokensText(view.runway.resumeAt)}`
     row = [{ text: `${ctx} · handoff by Alfred Code` }]
   }
-  else if (h.mode === 'auto') {
-    const next = after(h.handledStep)
-    const saved = h.lastSave?.isOk === true
-      ? ` · saved${h.handledStep === null ? '' : ` at ${h.handledStep}%`} (${clockText(h.lastSave.at)})${next === null ? '' : ` · next save at ${next}%`}`
-      : ` · saves at ${h.threshold}%`
+  else if (view.mode === 'auto') {
+    const next = after(view.handledStep)
+    const saved = view.lastSave?.isOk === true
+      ? ` · saved${view.handledStep === null ? '' : ` at ${view.handledStep}%`} (${clockText(view.lastSave.at)})`
+        + `${next === null ? '' : ` · next save at ${next}%`}`
+      : ` · saves at ${view.threshold}%`
     row = [{ text: plain + saved }]
-  } else if (h.percent === null) row = [{ text: `ctx – · asks at ${h.threshold}%` }]
-  else if (!h.isAskUp) {
-    const next = after(h.handledStep)
-    row = [...gauge(h.percent), { text: next === null ? ' · ' : ` · asks at ${next}% · ` }, button('handoff-save', 'h', 'save now')]
+  } else if (view.percent === null) row = [{ text: `ctx – · asks at ${view.threshold}%` }]
+  else if (!view.isAskUp) {
+    const next = after(view.handledStep)
+    row = [...gauge(view.percent), { text: next === null ? ' · ' : ` · asks at ${next}% · ` }, button('handoff-save', 'h', 'save now')]
   } else {
-    const next = after(h.handledStep)
+    const next = after(view.handledStep)
     row = [
-      { text: '⚠ ', tone: 'warn' }, ...gauge(h.percent), { text: ` · past ${h.handledStep ?? h.threshold}% · ` }, button('handoff-save', 'h', 'save handoff'),
-      ...(h.isWorking ? [] : [SEP, button('handoff-compact', 'c', 'compact')]),
+      { text: '⚠ ', tone: 'warn' }, ...gauge(view.percent), { text: ` · past ${view.handledStep ?? view.threshold}% · ` },
+      button('handoff-save', 'h', 'save handoff'),
+      ...(view.isWorking ? [] : [SEP, button('handoff-compact', 'c', 'compact')]),
       SEP, button('handoff-dismiss', 'r', next === null ? 'dismiss' : `remind at ${next}%`),
     ]
   }
   const out: Line[] = [[{ text: 'HANDOFF', bold: true, tone: 'handoff' }], row]
-  const last: SaveResult | null = h.lastSave
+  const last: SaveResult | null = view.lastSave
   if (last !== null && !last.isOk) out.push([{ text: `✗ save failed ${clockText(last.at)}: ${last.reason ?? 'unknown'}`, tone: 'fail' }])
   else if (last !== null) out.push([{ text: `last save ${clockText(last.at)} · ${HANDOFF_PATH}`, tone: 'dim' }])
   return out
@@ -223,14 +226,14 @@ export function handoffLines(h: HandoffView, _columns: number): Line[] {
 export const RESUME_WINDOW_MS = 2 * 60 * 60_000
 
 // The Now tab's HANDOFF section reads the atom with F8's percent and the runway
-export function handoffViewOf(h: Handoff, usage: Usage, isWorking: boolean, runway: Runway | null): HandoffView {
-  const point = h.compactPoint ?? usage.contextWindow
-  return { ...h, percent: usage.contextTokens === null || point === null ? null : percentOf(usage.contextTokens, point), window: usage.contextWindow, isWorking, runway }
+export function handoffViewOf(handoff: Handoff, usage: Usage, isWorking: boolean, runway: Runway | null): HandoffView {
+  const point = handoff.compactPoint ?? usage.contextWindow
+  return { ...handoff, percent: usage.contextTokens === null || point === null ? null : percentOf(usage.contextTokens, point), window: usage.contextWindow, isWorking, runway }
 }
 
 // What the forecast counts to: the stack's resume trigger over the window while the runway applies and the window is
 // known, else F8's threshold over the window, to the compaction point's moment
-export function forecastTargetOf(h: Handoff, usage: Usage, runway: Runway | null): { at: number; label: string } {
+export function forecastTargetOf(handoff: Handoff, usage: Usage, runway: Runway | null): { at: number; label: string } {
   if (runway !== null && runway.at !== null) return { at: runway.at, label: tokensText(runway.resumeAt) }
-  return { at: h.compactPoint !== null && usage.contextWindow !== null ? windowThreshold(h.threshold, h.compactPoint, usage.contextWindow) : h.threshold, label: `${h.threshold}%` }
+  return { at: handoff.compactPoint !== null && usage.contextWindow !== null ? windowThreshold(handoff.threshold, handoff.compactPoint, usage.contextWindow) : handoff.threshold, label: `${handoff.threshold}%` }
 }

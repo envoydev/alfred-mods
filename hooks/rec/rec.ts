@@ -10,7 +10,7 @@ const whole = (token: string) => (match: RegExpExecArray): Hit => ({ start: matc
 const TOKENS: Klass = { re: /‹(?:key|email|phone|private|user)(?: \d+)?›/g, hit: match => whole(match[0])(match) }
 
 // Each letter of a word either case, as one class of the key regex is case-sensitive and another is not
-const either = (word: string): string => [...word].map(c => `[${c.toUpperCase()}${c.toLowerCase()}]`).join('')
+const either = (word: string): string => [...word].map(char => `[${char.toUpperCase()}${char.toLowerCase()}]`).join('')
 const NAMES = ['key', 'token', 'secret', 'passwd', 'password', 'pwd'].map(either).join('|')
 const VALUE = String.raw`[^\s"'` + '`' + ']{8,}'
 // The names whose value hides from 4 characters, and the whole values that are no secret
@@ -42,10 +42,10 @@ const KEY = new RegExp([
 ].join('|'), 'g')
 
 const keyHit = (match: RegExpExecArray): Hit => {
-  const g = match.groups ?? {}
+  const groups = match.groups ?? {}
   const end = match.index + match[0].length
-  if (g['url'] !== undefined) return { start: match.index, end, text: ':‹key›' }
-  const value = g['bearer'] ?? g['named'] ?? g['short'] ?? g['flag'] ?? g['auth'] ?? g['authBare']
+  if (groups['url'] !== undefined) return { start: match.index, end, text: ':‹key›' }
+  const value = groups['bearer'] ?? groups['named'] ?? groups['short'] ?? groups['flag'] ?? groups['auth'] ?? groups['authBare']
   return { start: value === undefined ? match.index : end - value.length, end, text: '‹key›' }
 }
 
@@ -88,7 +88,7 @@ function homeClasses(home: string): Klass[] {
   for (const form of forms) {
     const parts = form.split(/[\\/]+/)
     while (parts.length > 0 && parts[parts.length - 1] === '') parts.pop()
-    if (parts.filter(p => p !== '').length === 0) continue
+    if (parts.filter(part => part !== '').length === 0) continue
     out.push({ re: new RegExp(`${parts.map(escape).join('[\\\\/]')}(?![\\p{L}\\p{N}_.-])`, isWindows ? 'giu' : 'gu'), hit: whole('~') })
     name = parts[parts.length - 1]!
   }
@@ -100,7 +100,7 @@ export function compile(level: RecLevel, words: string[], home: string | null): 
   if (level === 'off') return { level, classes: [] }
   const classes: Klass[] = [TOKENS, { re: KEY, hit: keyHit }, { re: EMAIL, hit: whole('‹email›') }, { re: PHONE, hit: phoneHit }]
   // The longest word first, so the longest at a start wins
-  const sorted = [...words].sort((a, b) => b.length - a.length).map(escape)
+  const sorted = [...words].sort((left, right) => right.length - left.length).map(escape)
   if (sorted.length > 0) classes.push({ re: new RegExp(sorted.join('|'), 'giu'), hit: whole('‹private›') })
   if (level === 'strict') {
     if (home !== null) classes.push(...homeClasses(home))
@@ -111,38 +111,38 @@ export function compile(level: RecLevel, words: string[], home: string | null): 
 
 // One pass: every class finds its matches in the original text, the overlaps go to the earliest start and then the
 // longest, and no match is scanned again.
-export function maskText(c: Compiled, text: string): string {
-  const hits = maskHits(c, text)
+export function maskText(compiled: Compiled, text: string): string {
+  const hits = maskHits(compiled, text)
   if (hits.length === 0) return text
   let out = ''
   let at = 0
-  for (const h of hits) {
-    out += text.slice(at, h.start) + h.text
-    at = h.end
+  for (const hit of hits) {
+    out += text.slice(at, hit.start) + hit.text
+    at = hit.end
   }
   return out + text.slice(at)
 }
 
 // The matches the one pass keeps, in order and apart: by start, the longest first where two start together
-export function maskHits(c: Compiled, text: string): Hit[] {
-  if (c.classes.length === 0 || text === '') return []
+export function maskHits(compiled: Compiled, text: string): Hit[] {
+  if (compiled.classes.length === 0 || text === '') return []
   const hits: Hit[] = []
-  for (const k of c.classes) {
-    k.re.lastIndex = 0
-    for (let m = k.re.exec(text); m !== null; m = k.re.exec(text)) {
-      const h = k.hit(m)
-      if (h !== null) hits.push(h)
+  for (const matcher of compiled.classes) {
+    matcher.re.lastIndex = 0
+    for (let found = matcher.re.exec(text); found !== null; found = matcher.re.exec(text)) {
+      const hit = matcher.hit(found)
+      if (hit !== null) hits.push(hit)
       // A refused match, or an empty one, lets the next start one character on
-      if (h === null || m[0] === '') k.re.lastIndex = m.index + 1
+      if (hit === null || found[0] === '') matcher.re.lastIndex = found.index + 1
     }
   }
-  hits.sort((a, b) => a.start - b.start || (b.end - b.start) - (a.end - a.start))
+  hits.sort((left, right) => left.start - right.start || (right.end - right.start) - (left.end - left.start))
   const kept: Hit[] = []
   let at = 0
-  for (const h of hits) {
-    if (h.start < at) continue
-    kept.push(h)
-    at = h.end
+  for (const hit of hits) {
+    if (hit.start < at) continue
+    kept.push(hit)
+    at = hit.end
   }
   return kept
 }
@@ -151,10 +151,10 @@ export const LEVELS: RecLevel[] = ['off', 'on', 'strict']
 
 // The stored words, anything else read as none
 export function parseWords(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((w): w is string => typeof w === 'string') : []
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
 }
 
-const countText = (n: number): string => `${n} private ${n === 1 ? 'word' : 'words'}`
+const countText = (wordCount: number): string => `${wordCount} private ${wordCount === 1 ? 'word' : 'words'}`
 
 // '● REC on · hiding keys · emails · phones · 3 private words', strict adding what it hides; off is 'REC off'
 export function recStatus(level: RecLevel, count: number): string {
@@ -196,7 +196,7 @@ export const REC_HELP = [
 export function addWord(words: string[], raw: string): { words: string[] } | { reason: string } {
   const word = raw.trim()
   if (word.length < 3 || word.length > 64) return { reason: 'A word needs 3 to 64 characters.' }
-  if (words.some(w => w.toLowerCase() === word.toLowerCase())) return { reason: 'That word is already in the list.' }
+  if (words.some(listed => listed.toLowerCase() === word.toLowerCase())) return { reason: 'That word is already in the list.' }
   if (words.length >= 100) return { reason: 'The list holds 100 words at most.' }
   return { words: [...words, word] }
 }
@@ -206,7 +206,7 @@ export function recPaneLines(level: RecLevel, words: string[]): Line[] {
   if (level !== 'off') return [[{ text: 'Private words', bold: true }], [{ text: `${countText(words.length)} · turn REC off to see or remove them` }]]
   const out: Line[] = [[{ text: 'Private words', bold: true }, { text: `  ${words.length} of 100`, tone: 'dim' }]]
   if (words.length === 0) out.push([{ text: 'No private words yet.', tone: 'dim' }])
-  words.forEach((w, i) => out.push([{ text: `${w}  ` }, { button: { key: `remove-${i}`, label: 'remove' } }]))
+  words.forEach((listed, i) => out.push([{ text: `${listed}  ` }, { button: { key: `remove-${i}`, label: 'remove' } }]))
   out.push([{ text: 'The field shows what you type: add words before recording starts.', tone: 'dim' }])
   return out
 }
@@ -217,34 +217,34 @@ const row = (ok: boolean, label: string, hidden: number, total: number, tail: st
 // /rec test: the masker over the fake samples, one set per class, and the person's words, at the level that applies.
 // A failed sample prints its class and the fake sample; a failed private word, its position only.
 export function recTest(level: RecLevel, words: string[], home: string | null): string {
-  const c = compile(level, words, home)
+  const compiled = compile(level, words, home)
   const out = [`/rec test · level ${level}`]
   const failed: string[] = []
   const check = (label: string, samples: { text: string; masked: string }[]): void => {
-    const bad = samples.filter(s => maskText(c, s.text) !== s.masked)
+    const bad = samples.filter(sample => maskText(compiled, sample.text) !== sample.masked)
     out.push(row(bad.length === 0, label, samples.length - bad.length, samples.length, 'hidden'))
-    for (const s of bad) failed.push(`  ✗ ${label}: ${s.text}`)
+    for (const sample of bad) failed.push(`  ✗ ${label}: ${sample.text}`)
   }
   check('keys', KEYS)
   check('emails', EMAILS)
   check('phones', PHONES)
   if (words.length > 0) {
-    const bad = words.flatMap((w, i) => (maskText(c, w) === w ? [i + 1] : []))
+    const bad = words.flatMap((listed, i) => (maskText(compiled, listed) === listed ? [i + 1] : []))
     out.push(row(bad.length === 0, 'private words', words.length - bad.length, words.length, 'hidden (not shown)'))
     for (const i of bad) failed.push(`  ✗ private word ${i} shown`)
   }
-  const alone = LEFT_ALONE.filter(t => level !== 'strict' || !t.startsWith('$'))
-  const moved = alone.filter(t => maskText(c, t) !== t)
+  const alone = LEFT_ALONE.filter(sample => level !== 'strict' || !sample.startsWith('$'))
+  const moved = alone.filter(sample => maskText(compiled, sample) !== sample)
   out.push(row(moved.length === 0, 'left alone', alone.length - moved.length, alone.length, 'shown (SHA, time, date, version, token count, port, path, URL, UUID, digits, IP, key near misses, $ off strict)'))
-  for (const t of moved) failed.push(`  ✗ left alone: ${t}`)
+  for (const sample of moved) failed.push(`  ✗ left alone: ${sample}`)
   const strict = compile('strict', words, home)
   const part = (label: string, samples: { text: string; masked: string }[]): string => {
-    const ok = samples.filter(s => maskText(strict, s.text) === s.masked).length
+    const ok = samples.filter(sample => maskText(strict, sample.text) === sample.masked).length
     return `${ok === samples.length ? '✓' : '✗'} ${label} ${ok}/${samples.length}`
   }
   const home2 = home === null ? [] : strictSamples(home)
-  const homes = home2.filter(s => s.masked !== 'by ‹user› today')
-  const account = home2.filter(s => s.masked === 'by ‹user› today')
+  const homes = home2.filter(sample => sample.masked !== 'by ‹user› today')
+  const account = home2.filter(sample => sample.masked === 'by ‹user› today')
   out.push(`strict: ${[
     home === null ? 'home path skipped (no home folder)' : part('home path', homes),
     home === null ? 'account skipped' : account.length === 0 ? 'account skipped (name under 3 characters)' : part('account', account),

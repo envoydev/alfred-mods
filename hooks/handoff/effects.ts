@@ -52,13 +52,15 @@ const handoffMemory = {
 export async function rearmAfterCompaction($: EngineInterface): Promise<void> {
   // F8's next reading sets the handled step to the highest at or under it, so a compaction under the threshold re-arms
   handoffMemory.rearm = true
-  await updateHandoff($, h => (h.isAskUp ? { ...h, isAskUp: false } : h))
+  await updateHandoff($, current => (current.isAskUp ? { ...current, isAskUp: false } : current))
 }
 
 // Only ask mode keeps an ask up: a change to auto or off, here or polled from another session, takes it down
 export async function applyHandoffSetting($: EngineInterface): Promise<void> {
-  const s = { mode: settingsInForce().handoff, threshold: settingsInForce().handoffAt }
-  await updateHandoff($, h => (h.mode === s.mode && h.threshold === s.threshold ? h : { ...h, ...s, isAskUp: s.mode === 'ask' && h.isAskUp }))
+  const setting = { mode: settingsInForce().handoff, threshold: settingsInForce().handoffAt }
+  await updateHandoff($, current => (current.mode === setting.mode && current.threshold === setting.threshold
+    ? current
+    : { ...current, ...setting, isAskUp: setting.mode === 'ask' && current.isAskUp }))
 }
 
 // The tokens where Claude Code compacts by itself (Decision 12): the breakdown's `autoCompactThreshold`, else the
@@ -70,17 +72,17 @@ export async function compactPointOf($: EngineInterface, window: number): Promis
   const known = (await readHandoff($)).compactPoint
   if (handoffMemory.pointKey === key && known !== null) return known
   if (handoffMemory.pointMiss.key !== key) handoffMemory.pointMiss = { key, count: 0 }
-  const b = await readBreakdown($)
-  if (b === null) {
+  const breakdown = await readBreakdown($)
+  if (breakdown === null) {
     const count = ++handoffMemory.pointMiss.count
     const point = count >= 3 ? window : null
     if (point !== null) handoffMemory.pointKey = key
-    await updateHandoff($, h => (h.compactPoint === point ? h : { ...h, compactPoint: point }))
+    await updateHandoff($, current => (current.compactPoint === point ? current : { ...current, compactPoint: point }))
     return window
   }
-  const point = b.isAutoCompactEnabled && b.autoCompactThreshold !== undefined ? b.autoCompactThreshold : window
+  const point = breakdown.isAutoCompactEnabled && breakdown.autoCompactThreshold !== undefined ? breakdown.autoCompactThreshold : window
   handoffMemory.pointKey = key
-  await updateHandoff($, h => (h.compactPoint === point ? h : { ...h, compactPoint: point }))
+  await updateHandoff($, current => (current.compactPoint === point ? current : { ...current, compactPoint: point }))
   return point
 }
 
@@ -118,7 +120,7 @@ export async function writeHandoffFile($: EngineInterface, by: SaveTrigger): Pro
   } catch (err) {
     result = { at, isOk: false, reason: (err instanceof Error ? err.message : String(err)).split('\n')[0] || 'unknown' }
   }
-  await updateHandoff($, h => ({ ...h, lastSave: result }))
+  await updateHandoff($, current => ({ ...current, lastSave: result }))
   if (!result.isOk) {
     toast($, TOASTS.failed(result.reason ?? 'unknown'))
     return result
@@ -147,37 +149,38 @@ export async function isForeignFile($: EngineInterface): Promise<boolean> {
 // What a save copies: the plan this session works on, its scores, git and the mod's counts. A plan file written
 // before this session began is none of this session's.
 export async function readSaveInput($: EngineInterface, at: number, git: string[]): Promise<SaveInput> {
-  const h = await readHandoff($)
+  const stored = await readHandoff($)
   const usage = await readUsage($)
-  const m = await readSession($)
+  const session = await readSession($)
   const plans = await readPlans($)
   const items = await readTasks($)
-  const w = creditedPlan(plans, (await readView($)).pinnedPlan, items.length > 0)
-  let plan: SaveInput['plan'] = w === 'tasks' ? 'tasks' : null
+  const credited = creditedPlan(plans, (await readView($)).pinnedPlan, items.length > 0)
+  let plan: SaveInput['plan'] = credited === 'tasks' ? 'tasks' : null
   let scores: ScoresPart | null = null
-  if (w !== null && w !== 'tasks' && w.value !== null && plans.watchedSince !== null && w.mtimeMs >= plans.watchedSince) {
-    const view = (await planViewOf($, plans, items, w, at)).v
+  if (credited !== null && credited !== 'tasks' && credited.value !== null && plans.watchedSince !== null && credited.mtimeMs >= plans.watchedSince) {
+    const view = (await planViewOf($, plans, items, credited, at)).v
     if (view !== null) {
-      const steps: PlanPart['steps'] = view.rows.map(r => ({
-        id: r.step.id, title: r.step.title, status: r.step.status, actualMs: r.actualMs, forecastMs: r.forecastMs, notes: r.notes.length,
+      const steps: PlanPart['steps'] = view.rows.map(row => ({
+        id: row.step.id, title: row.step.title, status: row.step.status, actualMs: row.actualMs, forecastMs: row.forecastMs, notes: row.notes.length,
       }))
-      plan = { file: `${PLANS_DIR}/${w.name}.json`, title: view.title, finished: view.finished, total: view.total, steps }
-      const own = plans.scoreFiles.find(s => s.value !== null && s.value.subject.kind === 'plan' && s.value.subject.ref === w.name)
+      plan = { file: `${PLANS_DIR}/${credited.name}.json`, title: view.title, finished: view.finished, total: view.total, steps }
+      const own = plans.scoreFiles.find(scoreFile =>
+        scoreFile.value !== null && scoreFile.value.subject.kind === 'plan' && scoreFile.value.subject.ref === credited.name)
       const sv = own === undefined || own.value === null ? null : scoresView(own.value)
       if (own !== undefined && sv !== null) {
-        scores = { name: own.name, totals: sv.totals, open: sv.open.map(f => ({ id: f.id, text: f.text, severity: f.severity })) }
+        scores = { name: own.name, totals: sv.totals, open: sv.open.map(finding => ({ id: finding.id, text: finding.text, severity: finding.severity })) }
       }
     }
   }
   const counted = Object.values(await readStats($))
   const isWorking = (await readLive($)).turnId !== null
-  const point = h.compactPoint ?? usage.contextWindow
+  const point = stored.compactPoint ?? usage.contextWindow
   return {
-    at, percent: usage.contextTokens === null || point === null ? null : percentOf(usage.contextTokens, point), threshold: h.threshold,
-    session: await $.session.id(), model: m.model, git, plan, scores,
+    at, percent: usage.contextTokens === null || point === null ? null : percentOf(usage.contextTokens, point), threshold: stored.threshold,
+    session: await $.session.id(), model: session.model, git, plan, scores,
     counts: {
-      turn: m.turnCount + (isWorking ? 1 : 0), durationMs: usage.startedAt === null ? null : at - usage.startedAt,
-      calls: counted.reduce((n, t) => n + t.calls, 0), failed: counted.reduce((n, stat) => n + stat.failed, 0),
+      turn: session.turnCount + (isWorking ? 1 : 0), durationMs: usage.startedAt === null ? null : at - usage.startedAt,
+      calls: counted.reduce((sum, stat) => sum + stat.calls, 0), failed: counted.reduce((sum, stat) => sum + stat.failed, 0),
       agents: (await readAgents($)).length, costUsd: usage.costUsd, isEstimate: usage.rateWindows.length > 0,
     },
   }
@@ -185,21 +188,21 @@ export async function readSaveInput($: EngineInterface, at: number, git: string[
 
 // h, 4 and `/auto-handoff now`: the ask comes down and a save starts
 export async function saveNow($: EngineInterface): Promise<void> {
-  await updateHandoff($, h => (h.isAskUp ? { ...h, isAskUp: false } : h))
+  await updateHandoff($, current => (current.isAskUp ? { ...current, isAskUp: false } : current))
   void startSave($, 'press')
 }
 
 // r: the ask comes down until the next step
 export async function dismissAsk($: EngineInterface): Promise<void> {
-  await updateHandoff($, h => (h.isAskUp ? { ...h, isAskUp: false } : h))
+  await updateHandoff($, current => (current.isAskUp ? { ...current, isAskUp: false } : current))
 }
 
 // c: a save first, unless one was made at this step, then Phase 2's compaction; a failed save compacts nothing, so
 // the context is never lost without its handoff
 export async function saveThenCompact($: EngineInterface, pending: Pending): Promise<void> {
-  const h = await readHandoff($)
+  const stored = await readHandoff($)
   await dismissAsk($)
-  if (!(h.lastSave?.isOk === true && handoffMemory.savedStep === h.handledStep)) {
+  if (!(stored.lastSave?.isOk === true && handoffMemory.savedStep === stored.handledStep)) {
     if (!(await startSave($, 'compact')).isOk) return
   }
   await compactNow($, pending)
@@ -220,35 +223,35 @@ export async function fillResumePrompt($: EngineInterface): Promise<void> {
 export async function stepHandoff($: EngineInterface, tokens: number | undefined, window: number): Promise<void> {
   if (tokens === undefined) return
   const percent = percentOf(tokens, await compactPointOf($, window))
-  const h = await readHandoff($)
-  const steps = stepsOf(h.threshold)
+  const stored = await readHandoff($)
+  const steps = stepsOf(stored.threshold)
   if (handoffMemory.rearm) {
     handoffMemory.rearm = false
-    await updateHandoff($, x => ({ ...x, handledStep: stepUnder(percent, steps) }))
+    await updateHandoff($, current => ({ ...current, handledStep: stepUnder(percent, steps) }))
     return
   }
-  if (h.mode === 'off' || h.stackStatus.state === 'stood-down') return
-  const step = nextStep(h.handledStep, percent, steps)
+  if (stored.mode === 'off' || stored.stackStatus.state === 'stood-down') return
+  const step = nextStep(stored.handledStep, percent, steps)
   if (step === null) return
   await updateHandoff($, handoff => ({ ...handoff, handledStep: step, isAskUp: handoff.mode === 'ask' }))
-  if (h.mode === 'ask') toast($, TOASTS.ask(step))
+  if (stored.mode === 'ask') toast($, TOASTS.ask(step))
   else void startSave($, 'auto')
 }
 
 // The state line a bare /auto-handoff prints: the mode, the threshold, F8's context percent and the last save; stood
 // down, the runway while it applies, as the HANDOFF row
 export async function handoffStateLine($: EngineInterface): Promise<string> {
-  const h = await readHandoff($)
+  const stored = await readHandoff($)
   const usage = await readUsage($)
-  const point = h.compactPoint ?? usage.contextWindow
+  const point = stored.compactPoint ?? usage.contextWindow
   const ctx = usage.contextTokens === null || point === null ? 'ctx –' : `ctx ${percentOf(usage.contextTokens, point)}%`
-  if (h.stackStatus.state === 'stood-down') {
+  if (stored.stackStatus.state === 'stood-down') {
     const runway = runwayOf(await readStack($), usage, (await readSession($)).model)
     return `${runway === null ? ctx : `ctx ${runway.percent}% of ${tokensText(runway.resumeAt)}`} · handoff by Alfred Code`
   }
-  if (h.mode === 'off') return `Handoff: off · ${ctx}`
-  const saved = h.lastSave?.isOk === true ? ` · last save ${clockText(h.lastSave.at)} (${HANDOFF_PATH})` : ''
-  return `Handoff: ${h.mode} at ${h.threshold}% · ${ctx}${saved}`
+  if (stored.mode === 'off') return `Handoff: off · ${ctx}`
+  const saved = stored.lastSave?.isOk === true ? ` · last save ${clockText(stored.lastSave.at)} (${HANDOFF_PATH})` : ''
+  return `Handoff: ${stored.mode} at ${stored.threshold}% · ${ctx}${saved}`
 }
 
 // The handoff's side of a status file read (F8's stand-down, Decision 13): Alfred Code's state, and a stand-down lifted
@@ -259,9 +262,9 @@ export async function followStatusFile($: EngineInterface, text: string | null, 
   const wasStoodDown = handoffMemory.stoodDown
   handoffMemory.stoodDown = found?.state === 'stood-down'
   const alfred: Handoff['stackStatus'] = found === null || found.state === 'runs' ? { state: 'none', reason: null } : { state: found.state, reason: found.reason }
-  await updateHandoff($, h => {
-    if (h.stackStatus.state === alfred.state && h.stackStatus.reason === alfred.reason) return h
-    return { ...h, stackStatus: alfred, isAskUp: alfred.state === 'stood-down' ? false : h.isAskUp }
+  await updateHandoff($, current => {
+    if (current.stackStatus.state === alfred.state && current.stackStatus.reason === alfred.reason) return current
+    return { ...current, stackStatus: alfred, isAskUp: alfred.state === 'stood-down' ? false : current.isAskUp }
   })
   // A stand-down lifted by this read steps at the last reading, so the ask returns without waiting for a turn; a
   // compaction's re-arm waits for a fresh reading instead
@@ -286,7 +289,7 @@ export async function runHandoffCommand($: EngineInterface, e: MatchedInput<'com
     await dismissAsk($)
     return { text: 'The handoff ask is down until the next step.' }
   }
-  const mode = MODES.find(m => m === args)
+  const mode = MODES.find(mode => mode === args)
   if (mode !== undefined) return { text: mask(await writeUserField($, 'handoff', mode)) }
   // 'at 70', as 0.7 took it, or a bare '70'
   const at = /^(?:at(?:\s+(.*))?|(\d.*))$/.exec(args)

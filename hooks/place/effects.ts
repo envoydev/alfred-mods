@@ -117,7 +117,7 @@ export async function readUncommittedLines($: EngineInterface): Promise<{ added:
     if (lines !== null) seen.set(path, { size: stat.size, mtimeMs: stat.mtimeMs, lines })
   }
   changesMemory.lines = seen
-  return { added: totals.added + [...seen.values()].reduce((sum, f) => sum + f.lines, 0), removed: totals.removed }
+  return { added: totals.added + [...seen.values()].reduce((sum, file) => sum + file.lines, 0), removed: totals.removed }
 }
 
 // Commits ahead of and behind the branch's upstream (the user, 2026-11-12: 'git:(band-order) arrow-up-symbol 1
@@ -126,8 +126,8 @@ export async function readUncommittedLines($: EngineInterface): Promise<{ added:
 export async function readUpstreamSync($: EngineInterface): Promise<{ ahead: number; behind: number } | null> {
   const dir = placeMemory.repo
   if (dir === null) return null
-  const r = await $.process.run(['git', '--no-optional-locks', 'rev-list', '--left-right', '--count', '@{upstream}...HEAD'], { cwd: dir, timeoutMs: 2000 })
-  return r.exitCode === 0 ? aheadBehind(r.stdout) : null
+  const result = await $.process.run(['git', '--no-optional-locks', 'rev-list', '--left-right', '--count', '@{upstream}...HEAD'], { cwd: dir, timeoutMs: 2000 })
+  return result.exitCode === 0 ? aheadBehind(result.stdout) : null
 }
 
 // A checkout since: the poll reads the HEAD file the place came from, and counts the changes again

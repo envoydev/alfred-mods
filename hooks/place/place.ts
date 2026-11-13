@@ -4,10 +4,10 @@ import type { Session } from '../session/types'
 
 // The branch a HEAD file names, or a detached commit's first 7 characters; null for anything else
 export function headBranch(text: string): string | null {
-  const t = text.trim()
-  const ref = /^ref: refs\/heads\/(.+)$/.exec(t)
+  const trimmed = text.trim()
+  const ref = /^ref: refs\/heads\/(.+)$/.exec(trimmed)
   if (ref !== null) return ref[1] ?? null
-  return /^[0-9a-f]{40}([0-9a-f]{24})?$/.test(t) ? t.slice(0, 7) : null
+  return /^[0-9a-f]{40}([0-9a-f]{24})?$/.test(trimmed) ? trimmed.slice(0, 7) : null
 }
 
 // A worktree's `.git` file names its git folder, absolute or relative to the folder the file sits in
@@ -24,12 +24,12 @@ export const baseName = (path: string): string => path.replace(/[\\/]+$/, '').sp
 // root, the root itself none, elsewhere '…/<its name>', so no path above the project (a home folder, a user name) is
 // kept. A Windows path compares without case.
 export function folderOf(cwd: string, root: string): string | null {
-  const trim = (p: string): string => p.replace(/\\/g, '/').replace(/\/+$/, '')
-  const c = trim(cwd)
-  const r = trim(root)
-  const fold = (p: string): string => (/^[A-Za-z]:/.test(c) ? p.toLowerCase() : p)
-  if (fold(c) === fold(r)) return null
-  if (fold(c).startsWith(`${fold(r)}/`)) return c.slice(r.length + 1)
+  const trim = (path: string): string => path.replace(/\\/g, '/').replace(/\/+$/, '')
+  const cwdPath = trim(cwd)
+  const rootPath = trim(root)
+  const fold = (path: string): string => (/^[A-Za-z]:/.test(cwdPath) ? path.toLowerCase() : path)
+  if (fold(cwdPath) === fold(rootPath)) return null
+  if (fold(cwdPath).startsWith(`${fold(rootPath)}/`)) return cwdPath.slice(rootPath.length + 1)
   return `…/${baseName(cwd)}`
 }
 

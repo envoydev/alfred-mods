@@ -16,7 +16,7 @@ export function numstatTotals(stdout: string): { added: number; removed: number 
 
 // `git ls-files --others --exclude-standard -z`'s names, split on NUL
 export function untrackedNames(stdout: string): string[] {
-  return stdout.split('\0').filter(n => n !== '')
+  return stdout.split('\0').filter(name => name !== '')
 }
 
 // A text file's lines, a last line with no newline counted; null for one that holds a NUL, as git counts no lines in it

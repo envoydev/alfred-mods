@@ -55,7 +55,9 @@ export async function applyRec($: EngineInterface, note: string | null = null): 
     setRec(level, words, wordsMemory.home)
     $.ui.invalidate('ui.render')
   }
-  await updateRec($, r => (r.level === level && r.wordCount === words.length && r.note === note ? r : { level, wordCount: words.length, note }))
+  await updateRec($, current => (current.level === level && current.wordCount === words.length && current.note === note
+    ? current
+    : { level, wordCount: words.length, note }))
   await syncStatusLine($)
 }
 
@@ -76,7 +78,7 @@ export async function addRecWord($: EngineInterface, raw: string): Promise<void>
 
 export async function removeRecWord($: EngineInterface, word: string): Promise<void> {
   const words = parseWords(await $.store.get('rec:words'))
-  await $.store.set('rec:words', words.filter(w => w.toLowerCase() !== word.toLowerCase()))
+  await $.store.set('rec:words', words.filter(listed => listed.toLowerCase() !== word.toLowerCase()))
   await applyRec($)
 }
 
@@ -105,18 +107,18 @@ export async function maskQuestions($: EngineInterface, e: MatchedInput<'ui.rend
 }
 
 export async function drawRecPane($: EngineInterface, e: MatchedInput<'ui.render', { component: 'Pane', requestId: 'rec' }>) {
-  const r = await readRec($)
+  const rec = await readRec($)
   const words = wordsMemory.words
   const press: Record<string, () => unknown> = {}
-  if (r.level === 'off') words.forEach((w, i) => { press[`remove-${i}`] = () => removeRecWord($, w) })
-  const note = r.note === null ? [] : [[{ text: r.note, tone: 'warn' as const }]]
+  if (rec.level === 'off') words.forEach((listed, i) => { press[`remove-${i}`] = () => removeRecWord($, listed) })
+  const note = rec.note === null ? [] : [[{ text: rec.note, tone: 'warn' as const }]]
   const input = { key: 'word', label: 'Add a word', submitLabel: 'Add', onSubmit: (value: string) => { void addRecWord($, value) } }
-  return drawWithInput($.ui.resolve(e), e, recPaneLines(r.level, words), input, note, { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
+  return drawWithInput($.ui.resolve(e), e, recPaneLines(rec.level, words), input, note, { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
 }
 
 export async function runRecCommand($: EngineInterface, e: MatchedInput<'command.run', { command: 'rec' }>) {
   const word = e.args.trim().toLowerCase()
-  const target = LEVELS.find(l => l === word)
+  const target = LEVELS.find(level => level === word)
   if (target !== undefined) return { text: mask(await writeUserField($, 'rec', target)) }
   if (/^words\s+close$/.test(word)) return { text: await closePane($, 'rec', 'REC words pane') }
   if (word === 'words') {
