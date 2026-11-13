@@ -46,23 +46,23 @@ function spans(lanes: Lane[], now: number, width: number): Span[] {
   const start = Math.min(...lanes.map(l => l.startAt))
   const end = lanes.some(l => l.endAt === null) ? now : Math.max(...lanes.map(l => l.endAt ?? now))
   const span = Math.max(1, end - start)
-  return lanes.map(l => {
-    const from = Math.min(width - 1, Math.max(0, Math.floor(((l.startAt - start) / span) * width)))
-    const to = Math.min(width, Math.max(from + 1, Math.ceil((((l.endAt ?? end) - start) / span) * width)))
+  return lanes.map(lane => {
+    const from = Math.min(width - 1, Math.max(0, Math.floor(((lane.startAt - start) / span) * width)))
+    const to = Math.min(width, Math.max(from + 1, Math.ceil((((lane.endAt ?? end) - start) / span) * width)))
     return { before: from, bar: to - from, after: width - to }
   })
 }
 
 // A lane's text line: its glyph, the label, the bar, and its time, in laneFit's widths; the time cell is as wide as the
 // longest lane's, so 'stopped after 12m 30s' is never cut (the release 3 review) (spec C2)
-function laneLine(l: Lane, s: Span, w: LaneFit): Line {
-  const glyph = statusGlyph(l.status)
+function laneLine(lane: Lane, s: Span, w: LaneFit): Line {
+  const glyph = statusGlyph(lane.status)
   return [
-    { ...glyph, text: `${glyph.text} ` }, { text: l.label, width: w.label }, { text: ' ' },
+    { ...glyph, text: `${glyph.text} ` }, { text: lane.label, width: w.label }, { text: ' ' },
     ...(s.before > 0 ? [{ text: '·'.repeat(s.before), tone: 'dim' as const }] : []),
     { text: '━'.repeat(s.bar), ...(glyph.tone === undefined ? { bold: true } : { tone: glyph.tone }) },
     ...(s.after > 0 ? [{ text: '·'.repeat(s.after), tone: 'dim' as const }] : []),
-    { text: ' ' }, { text: l.time, tone: 'dim', width: w.time },
+    { text: ' ' }, { text: lane.time, tone: 'dim', width: w.time },
   ]
 }
 
@@ -70,7 +70,7 @@ function laneLine(l: Lane, s: Span, w: LaneFit): Line {
 const LANE_HEX = { running: '#3b82f6', done: '#16a34a', failed: '#dc2626', other: '#8b5cf6', label: '#6b7280' }
 const laneHex = (s: AgentStatus): string =>
   s === 'running' ? LANE_HEX.running : s === 'completed' ? LANE_HEX.done : s === 'failed' || s === 'killed' ? LANE_HEX.failed : LANE_HEX.other
-const xml = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+const xml = (text: string): string => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
 // The lanes as one SVG, 520 by 18 a lane, a label then a rect each; no size on the element, so it takes the markup's
 // width up to its slot and scales down in a narrow one
@@ -78,14 +78,14 @@ function lanesSvg(lanes: Lane[], now: number, noColor: boolean): string {
   const ROW = 18
   const W = 520
   const at = spans(lanes, now, 100)
-  const body = lanes.map((l, i) => {
+  const body = lanes.map((lane, i) => {
     const s = at[i] ?? { before: 0, bar: 1, after: 99 }
-    const x = 150 + (s.before / 100) * (W - 160)
+    const left = 150 + (s.before / 100) * (W - 160)
     const w = Math.max(3, (s.bar / 100) * (W - 160))
-    const chars = [...show(l.label)]
+    const chars = [...show(lane.label)]
     const label = xml(chars.length > 22 ? `${chars.slice(0, 21).join('')}…` : chars.join(''))
-    const fill = noColor ? 'currentColor' : laneHex(l.status)
-    return `<text x="4" y="${i * ROW + 13}" font-size="11" fill="${noColor ? 'currentColor' : LANE_HEX.label}">${label}</text><rect x="${x.toFixed(1)}" y="${i * ROW + 4}" width="${w.toFixed(1)}" height="10" rx="3" fill="${fill}"/>`
+    const fill = noColor ? 'currentColor' : laneHex(lane.status)
+    return `<text x="4" y="${i * ROW + 13}" font-size="11" fill="${noColor ? 'currentColor' : LANE_HEX.label}">${label}</text><rect x="${left.toFixed(1)}" y="${i * ROW + 4}" width="${w.toFixed(1)}" height="10" rx="3" fill="${fill}"/>`
   }).join('')
   const h = lanes.length * ROW + 4
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${h}" viewBox="0 0 ${W} ${h}">${body}</svg>`
@@ -281,10 +281,10 @@ export function drawLines(
     const face = e.surface === 'mobile' ? draw({ mono: true }) : plain
     return seg.lanes.map((l, k) => row(laneLine(l, at[k] ?? { before: 0, bar: w.bar, after: 0 }, w), `line-${n}-${k}`, face))
   }
-  const rows = (line: Line, n: number): RenderElement[] => {
+  const rows = (line: Line, index: number): RenderElement[] => {
     const only = line.length === 1 ? line[0] : undefined
-    if (only !== undefined && 'lanes' in only) return laneRows(only, n)
-    return [row(line, `line-${n}`)]
+    if (only !== undefined && 'lanes' in only) return laneRows(only, index)
+    return [row(line, `line-${index}`)]
   }
   return <Box flexDirection="column">{lines.flatMap(rows)}</Box>
 }

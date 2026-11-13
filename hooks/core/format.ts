@@ -13,11 +13,11 @@ export function toneOf(percent: number): 'ok' | 'warn' | 'fail' {
   return percent < 60 ? 'ok' : percent <= 85 ? 'warn' : 'fail'
 }
 
-export function tokensText(n: number): string {
-  if (n < 100) return String(n)
-  if (n < 10_000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`
-  if (n < 999_500) return `${Math.round(n / 1000)}k`
-  return `${(n / 1_000_000).toFixed(1)}M`
+export function tokensText(tokens: number): string {
+  if (tokens < 100) return String(tokens)
+  if (tokens < 10_000) return `${(tokens / 1000).toFixed(1).replace(/\.0$/, '')}k`
+  if (tokens < 999_500) return `${Math.round(tokens / 1000)}k`
+  return `${(tokens / 1_000_000).toFixed(1)}M`
 }
 
 export function durationText(ms: number): string {
@@ -52,8 +52,8 @@ export function whenText(resetsAt: number): string {
   return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')} ${clockText(resetsAt)}`
 }
 
-export function usdText(n: number): string {
-  return `$${n.toFixed(2)}`
+export function usdText(amount: number): string {
+  return `$${amount.toFixed(2)}`
 }
 
 // Text a surface will draw: colour and cursor codes dropped, a CRLF or a lone CR as a newline, and no control
@@ -102,25 +102,25 @@ export function fitLine(text: string, max: number): string {
 export function cutMasked(line: string, max: number): string {
   if (line.length <= max) return line
   let at = max - 1
-  for (const m of line.matchAll(/‹[^›\n]*›/g)) {
-    if (m.index >= at) break
-    if (m.index + m[0].length > at) at = m.index
+  for (const match of line.matchAll(/‹[^›\n]*›/g)) {
+    if (match.index >= at) break
+    if (match.index + match[0].length > at) at = match.index
   }
   return `${line.slice(0, at).trimEnd()}…`
 }
 
 // A line's width in columns: its texts' lengths as drawn, masked, as buttons, code and charts stand beside it
 export function widthOf(line: readonly object[]): number {
-  return line.reduce<number>((n, s) => n + ('text' in s && typeof s.text === 'string' ? masker(s.text).length : 0), 0)
+  return line.reduce<number>((width, s) => width + ('text' in s && typeof s.text === 'string' ? masker(s.text).length : 0), 0)
 }
 
 
 // A model id's family and version: 'claude-opus-5-5' is opus 5.5; an id with no known family has none
 export function modelParts(model: string): { family: Family; version: string | null } | null {
-  const m = /(opus|sonnet|haiku|fable)(?:-(\d+)(?:-(\d+))?)?/.exec(model)
-  if (m === null) return null
-  const version = m[2] === undefined ? null : m[3] === undefined ? m[2] : `${m[2]}.${m[3]}`
-  return { family: m[1] as Family, version }
+  const match = /(opus|sonnet|haiku|fable)(?:-(\d+)(?:-(\d+))?)?/.exec(model)
+  if (match === null) return null
+  const version = match[2] === undefined ? null : match[3] === undefined ? match[2] : `${match[2]}.${match[3]}`
+  return { family: match[1] as Family, version }
 }
 
 // 'opus 5.5', or 'Opus 5.5' as a title; the id as given when no family matches
