@@ -246,3 +246,27 @@ export function taskView(items: TaskItem[], liveMs: Record<string, number>): Pla
     isFinished: rows.length > 0 && open.length === 0, staleMs: null, planNotes: [], isAwaiting: false,
   }
 }
+
+export const statusesOfTasks = (items: TaskItem[]): string => JSON.stringify(items.map(t => [t.id, t.status]))
+
+export const statusesOf = (files: Watched<Plan>[]): string =>
+  JSON.stringify(files.map(w => [w.name, w.value?.steps.map(s => [s.id, s.status]) ?? null]))
+
+export const FINISH_SHOWN_MS = 10 * 60_000
+
+// The user's notes in `after` that `before` lacks, each counted by its time, step and text, so two alike are two
+export function newNotes(before: PlanChange[], after: PlanChange[]): PlanChange[] {
+  const idOf = (c: PlanChange): string => JSON.stringify([c.at, c.step, c.note])
+  const isNote = (c: PlanChange): boolean => c.kind === 'integrated' && c.source === 'user' && c.note !== null
+  const left = new Map<string, number>()
+  for (const c of before.filter(isNote)) left.set(idOf(c), (left.get(idOf(c)) ?? 0) + 1)
+  return after.filter(isNote).filter(c => {
+    const n = left.get(idOf(c)) ?? 0
+    if (n > 0) left.set(idOf(c), n - 1)
+    return n === 0
+  })
+}
+
+// The folders the stack writes plans and scores to
+export const PLANS_DIR = '.claude/session-inspector/plans'
+export const SCORES_DIR = '.claude/session-inspector/scores'

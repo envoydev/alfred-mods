@@ -5,7 +5,7 @@ import type {
   EngineInterface, Register, SessionContextBreakdown, SessionRateLimit, SessionUsage, Timer, TurnStepInput, TurnStepResult, UiOpenResult,
 } from 'claude-code'
 
-import { actionOf, addLoopStep, isLive, newRow, refreshAgents, statusAt, upsertSpawn } from './agents/agents'
+import { actionOf, addLoopStep, isLive, markOf, newRow, refreshAgents, statusAt, upsertSpawn } from './agents/agents'
 import { spinnerSuffix } from './band/working'
 import { bandLines, underRows } from './band/band'
 import { addRequest, afterCompact, billingOf, cacheView, idleOf, minutes, needsTick, pinOf, takeRate, takeSwitch, toastAt } from './cache/cache'
@@ -14,18 +14,16 @@ import { drawLines, drawNote, drawUnder, drawUnderNote, drawWithInput } from './
 import { localDate } from './core/forecast'
 import { REC_HIDDEN, SPINNER_WORD, bandFailed, paneFailed } from './core/failsafe'
 import { linkedRules, partsOf, ruleName } from './context/parts'
-import { clock, fingerprint, mins, oneLine, printable, tokens, usd, when } from './core/format'
+import { clock, fingerprint, oneLine, printable, tokens, usd, when } from './core/format'
 import { mask, maskForFile, maskSpans, recLevel, setRec } from './rec/mask'
 import { maskDeep, maskDialog, maskResult, neutralDialog, resultLines } from './rec/sites'
 import { DROPS_RESULT, callLine, groupLines } from './tools/compact'
 import { aheadBehind, numstatTotals, textLines, untrackedNames } from './place/changes'
 import { FOREIGN, HANDOFF_PATH, HANDOFF_USAGE, MARKER, MODES, RESUME_PROMPT, TOASTS, gitPart, handoffText, nextStep, parseStatus, percentOf, statusPath, stepUnder, stepsOf, windowThreshold } from './handoff/handoff'
 import { NO_FILE, STACK_TOASTS, UNREADABLE, bannerSegs, fillReady, fillToast, parseStack, runwayOf } from './stack/stack'
-import { creditedPlan, isPlanDone, parsePlan, parseScores, planView, runs, scoresView, shownPlan, taskView, tasksAfter } from './plan/plan'
-import { PLANS_DIR, SCORES_DIR, readFolder, readPlanFolder } from './plan/planfiles'
-import { parseAlfredScoring, parseAlfredStatus } from './plan/alfredplan'
-import { planLines, scoresLabel } from './plan/planlines'
-import { closeOf, closeSlices, closeWait, isAllWait, liveSpans, mineOf, openWait, overheadKey, sliceMs, staleKeys, stepKey, sumTimes, waitOf } from './plan/steptime'
+import { PLANS_DIR, creditedPlan, runs, scoresView, statusesOfTasks, tasksAfter } from './plan/plan'
+import { planLines } from './plan/planlines'
+import { closeWait, isAllWait, openWait, staleKeys, waitOf } from './plan/steptime'
 import { agentsLines, asCommands, cacheLines, nowLines, paneCommands, reportRows, tabBar, timelineLines, toolsLines, usageLines } from './inspect/tabs'
 import { classify, fold, numberOf, targetOf, toolKey } from './tools/outcome'
 import { LEVELS, REC_HELP, addWord, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec/rec'
@@ -36,7 +34,7 @@ import { compactMem, errorMem, errorRows, modeMem, readBlockers, readFailures, r
 import { FRESH_EVERY_MS, freshMem, readLive, readMeta, readPace, readTick, readTotals, readTurns, readUsage, resetLive, resetMeta, resetPace, resetTotals, resetTurns, resetUsage, spendMem, updateLive, updateMeta, updatePace, updateTick, updateTotals, updateTurns, updateUsage, windowsMem } from './session/effects'
 import { readAgents, readLoops, resetAgents, resetLoops, updateAgents, updateLoops } from './agents/effects'
 import { readCache, resetCache, updateCache } from './cache/effects'
-import { readCredit, readPlans, readTasks, resetCredit, resetPlans, resetTasks, updateCredit, updatePlans, updateTasks } from './plan/effects'
+import { addMark, addWait, closeLoops, drawnPlan, openSlice, planDraw, queueReload, readPlans, readTasks, resetCredit, resetPlans, resetTasks, scheduleReload, seedMine, storedTimes, updateCredit, updatePlans, updateTasks } from './plan/effects'
 import { INITIAL_STACK, readStack, resetStack, stackMem, updateStack } from './stack/effects'
 import { handoffMem, readHandoff, resetHandoff, updateHandoff } from './handoff/effects'
 import { noteMem, readRec, recMem, resetRec, updateRec } from './rec/effects'
@@ -48,7 +46,7 @@ import type { BandInput } from './band/types'
 import type { Cache, CacheConfig } from './cache/types'
 import type { Handoff, HandoffView, PlanPart, SaveBy, SaveInput, SaveResult, ScoresPart } from './handoff/types'
 import type { Tab } from './inspect/types'
-import type { Close, Credit, Plan, PlanChange, PlanDraw, PlanView, Plans, Scores, TaskItem, Watched } from './plan/types'
+import type { Plans } from './plan/types'
 import type { RecState } from './rec/types'
 import type { Meta, Turn, Usage, Window } from './session/types'
 import type { Field, From, Resolved, Source, Values } from './settings/types'
@@ -542,279 +540,12 @@ async function resetAll($: EngineInterface): Promise<void> {
   partsMem.lastAt = null
 }
 
-// Every session's step and overhead time in the store; this session's own totals are the credit atom's
-async function storedTimes($: EngineInterface): Promise<Record<string, unknown>> {
-  const entries: Record<string, unknown> = {}
-  for (const key of await $.store.keys()) {
-    if (key.startsWith('step:') || key.startsWith('overhead:')) entries[key] = await $.store.get(key)
-  }
-  return entries
-}
-
-// Each plan's time: every other session's from the store, this session's from its own totals
-async function timesOf($: EngineInterface, files: Watched<Plan>[]): Promise<Pick<Plans, 'times' | 'overhead'>> {
-  const entries = { ...(await storedTimes($)), ...(await readCredit($)).mine }
-  const times: Plans['times'] = {}
-  const overhead: Plans['overhead'] = {}
-  for (const w of files) {
-    const sum = sumTimes(entries, w.name)
-    times[w.name] = sum.times
-    overhead[w.name] = sum.overhead
-  }
-  return { times, overhead }
-}
-
-const statusesOfTasks = (items: TaskItem[]): string => JSON.stringify(items.map(t => [t.id, t.status]))
-
-const statusesOf = (files: Watched<Plan>[]): string =>
-  JSON.stringify(files.map(w => [w.name, w.value?.steps.map(s => [s.id, s.status]) ?? null]))
-
-// The loops named (every open one when null) close at `now`: each span goes to its keys (Decision 9) in one update,
-// so a span two closers race for counts once. This session's totals are then stored whole, in order.
-async function closeLoops($: EngineInterface, held: Held, loops: string[] | null, now: number, reopen: boolean, given?: Plans): Promise<void> {
-  const c = await readCredit($)
-  const open = Object.keys(c.slices).filter(loop => loops === null || loops.includes(loop))
-  if (open.length === 0) return
-  const p = given ?? await readPlans($)
-  const rows = await readAgents($)
-  const shown = creditedPlan(p, (await readView($)).planSlug, (await readTasks($)).length > 0)
-  const closes = await closesOf($, c, open, p, shown)
-  let spans: Record<string, number> = {}
-  const after = await updateCredit($, cur => {
-    const closed = closeSlices(cur, closes, now, reopen)
-    spans = closed.spans
-    return closed.credit
-  })
-  // With the task list shown, the main loop's span and those of agents whose spawn was seen go to its running items
-  if (shown === 'tasks') {
-    const ms = Object.entries(spans).filter(([loop]) => loop === 'main' || rows.some(r => r.id === loop)).reduce((n, [, x]) => n + x, 0)
-    const running = (await readTasks($)).filter(t => t.status === 'in_progress').length
-    if (ms > 0 && running > 0) {
-      await updateTasks($, list => {
-        const n = list.filter(t => t.status === 'in_progress').length
-        return n === 0 ? list : list.map(t => (t.status === 'in_progress' ? { ...t, ms: t.ms + ms / n } : t))
-      })
-    }
-  }
-  const keys = [...new Set(closes.flatMap(x => x.keys))]
-  for (const key of keys) {
-    const t = after.mine[key]
-    if (t === undefined) continue
-    const value = key.startsWith('overhead:') ? { ms: t.ms, at: now } : { ms: t.ms, isShared: t.isShared, at: now }
-    held.writes = held.writes.then(() => $.store.set(key, value)).catch(() => undefined)
-  }
-  await held.writes
-  if (keys.length === 0) return
-  const files = (await readPlans($)).plans
-  const sums = await timesOf($, files)
-  await updatePlans($, x => ({ ...x, ...sums }))
-}
-
-// Where each named open loop's span goes (Decision 9)
-async function closesOf($: EngineInterface, c: Credit, loops: string[], p: Plans, shown: Watched<Plan> | 'tasks' | null): Promise<Close[]> {
-  const rows = await readAgents($)
-  const session = await $.session.id()
-  return loops.map(loop => {
-    const row = rows.find(r => r.id === loop)
-    const lines = loop === 'main' ? null : row === undefined ? undefined : { plan: row.plan, task: row.task }
-    const slice = c.slices[loop] ?? { at: 0, waitMs: 0, named: [] }
-    return closeOf(loop, slice, lines, p.plans, p.since, shown === 'tasks' ? null : shown, session)
-  })
-}
-
-// The open slices' time so far, by step id (or task id) and as overhead, for the shown plan or task list to draw
-async function liveOf($: EngineInterface, p: Plans, shown: Watched<Plan> | 'tasks' | null, now: number): Promise<{ steps: Record<string, number>; overhead: number }> {
-  const c = await readCredit($)
-  const loops = Object.keys(c.slices)
-  if (loops.length === 0 || shown === null) return { steps: {}, overhead: 0 }
-  if (shown === 'tasks') {
-    const rows = await readAgents($)
-    const ms = loops.filter(loop => loop === 'main' || rows.some(r => r.id === loop))
-      .reduce((n, loop) => n + sliceMs(c.slices[loop] ?? { at: now, waitMs: 0, named: [] }, now), 0)
-    const running = (await readTasks($)).filter(t => t.status === 'in_progress')
-    return { steps: Object.fromEntries(running.map(t => [t.id, ms / running.length])), overhead: 0 }
-  }
-  const spans = liveSpans(c, await closesOf($, c, loops, p, shown), now)
-  const session = await $.session.id()
-  const steps: Record<string, number> = {}
-  for (const s of shown.value?.steps ?? []) {
-    const ms = spans[stepKey(shown.name, s.id, session)]
-    if (ms !== undefined) steps[s.id] = ms
-  }
-  return { steps, overhead: spans[overheadKey(shown.name, session)] ?? 0 }
-}
-
-const FINISH_SHOWN_MS = 10 * 60_000
-
 // Alfred Code's scoring level while its status file is in use and scoring is on, which colours the band's score
 async function scoreLevel($: EngineInterface): Promise<number | null> {
   const s = await readStack($)
   return s.state === 'used' && s.scorer !== null && s.scorer.on ? s.scorer.level : null
 }
 
-
-async function planDraw($: EngineInterface, now: number): Promise<PlanDraw> {
-  const p = await readPlans($)
-  const items = await readTasks($)
-  const pinned = (await readView($)).planSlug
-  const shown = shownPlan(p, pinned, items.length > 0)
-  const credited = creditedPlan(p, pinned, items.length > 0)
-  const tab = await drawnPlan($, p, items, shown, now)
-  const band = credited === shown ? tab : await drawnPlan($, p, items, credited, now)
-  const nameOf = (w: Watched<Plan> | 'tasks' | null): string | null => (w === null || w === 'tasks' ? null : w.name)
-  const name = nameOf(shown)
-  const scored = p.scores.filter((w): w is Watched<Scores> & { value: Scores } => w.value !== null).sort((a, b) => b.mtimeMs - a.mtimeMs)
-  const ownOf = (n: string | null) => (n === null ? undefined : scored.find(w => w.value.subject.kind === 'plan' && w.value.subject.ref === n))
-  const full = name === null ? scored[0] : ownOf(name)
-  const own = ownOf(nameOf(credited))
-  const newest = own ?? scored[0]
-  return {
-    shown: tab.v, band: band.isRunning ? band.v : null, invalid: shown !== null && shown !== 'tasks' && shown.isInvalid,
-    scores: full === undefined ? null : scoresView(full.value), score: newest === undefined ? null : scoresView(newest.value),
-    isPlanScore: own !== undefined,
-    others: p.plans.filter(w => w.name !== name).map(w => (w.value === null ? `${w.name} (invalid)` : w.name)).sort(),
-    otherScores: scored.filter(w => w !== full).slice(0, 3).map(w => scoresLabel(w.name, w.value)),
-    updatedAt: shown === null || shown === 'tasks' ? null : shown.value?.updatedAt ?? null,
-  }
-}
-
-// One plan's view with its live time, and whether the band draws it
-async function drawnPlan($: EngineInterface, p: Plans, items: TaskItem[], w: Watched<Plan> | 'tasks' | null, now: number): Promise<{ v: PlanView | null; isRunning: boolean }> {
-  const live = await liveOf($, p, w, now)
-  if (w === 'tasks') {
-    return { v: taskView(items, live.steps), isRunning: items.some(t => t.status !== 'completed') && items.some(t => t.status !== 'pending') }
-  }
-  if (w === null || w.value === null) return { v: null, isRunning: false }
-  const doneAt = p.finished[w.name]
-  const v = planView(w.value, p.times[w.name] ?? {}, (p.overhead[w.name] ?? 0) + live.overhead, live.steps, now)
-  // Alfred Code's named plan draws while open, begun or awaiting approval
-  const isNamed = p.alfred !== null && p.alfred !== undefined && p.alfred.name === w.name && !v.isFinished
-  return { v, isRunning: isNamed || runs(w, p.since) || (doneAt !== undefined && now - doneAt < FINISH_SHOWN_MS) }
-}
-
-// A loop's slice opens at its turn's start; the main slice marks each live agent that names a step
-async function openSlice($: EngineInterface, loop: string, now: number): Promise<void> {
-  const named = loop === 'main' ? (await readAgents($)).filter(r => isLive(r.status)).map(markOf).filter((m): m is string => m !== null) : []
-  await updateCredit($, c => ({ ...c, slices: { ...c.slices, [loop]: { at: now, waitMs: 0, named } } }))
-}
-
-const markOf = (r: AgentRow): string | null => (r.plan !== null && r.task !== null ? `${r.plan}:${r.task}` : null)
-
-// An agent naming a step, spawned or starting a turn while the main loop's turn runs, makes that turn overhead
-async function addMark($: EngineInterface, mark: string | null): Promise<void> {
-  if (mark === null) return
-  const main = (await readCredit($)).slices.main
-  if (main === undefined || main.named.includes(mark)) return
-  await updateCredit($, c => {
-    const m = c.slices.main
-    return m === undefined || m.named.includes(mark) ? c : { ...c, slices: { ...c.slices, main: { ...m, named: [...m.named, mark] } } }
-  })
-}
-
-// A wait known only once its call settles goes to the slice open now, at most that slice's age, so a slice reopened
-// during the call never loses the work after the reopen
-async function addWait($: EngineInterface, loop: string, ms: number, now: number): Promise<void> {
-  if (ms <= 0 || (await readCredit($)).slices[loop] === undefined) return
-  await updateCredit($, c => {
-    const s = c.slices[loop]
-    return s === undefined ? c : { ...c, slices: { ...c.slices, [loop]: { ...s, waitMs: s.waitMs + Math.min(ms, Math.max(0, now - s.at)) } } }
-  })
-}
-
-// A session resumed under its own id starts from its stored totals, so its first close adds to them
-async function seedMine($: EngineInterface): Promise<void> {
-  if (Object.keys((await readCredit($)).mine).length > 0) return
-  const mine = mineOf(await storedTimes($), await $.session.id())
-  if (Object.keys(mine).length > 0) await updateCredit($, c => ({ ...c, mine: { ...mine, ...c.mine } }))
-}
-
-// The plan and scores folders read again. A step whose status changed closes and reopens the open slices first, so
-// the time before the change goes to the steps that were running then. A note the file's previous good parse this
-// session lacks, and a plan that finishes this session (its previous good parse unfinished), raise their toasts once.
-async function reloadPlans($: EngineInterface, held: Held): Promise<void> {
-  const before = await readPlans($)
-  const now = await $.clock.now()
-  const ownPlans = await readFolder($, PLANS_DIR, before.plans, parsePlan)
-  const ownScores = await readFolder($, SCORES_DIR, before.scores, parseScores)
-  // Alfred Code's plan folder: the one its status file names, else the one it let go, read once more to see it
-  // finished, then kept 10 minutes after it finished
-  // A status file that will not read, or whose `plan` will not, says nothing: the plan it named stays named
-  const s = await readStack($)
-  const isSaid = s.state === 'used' && !s.ignored.includes('plan')
-  const named = isSaid ? s.plan : before.alfred?.folder ?? null
-  const lingering = named === null ? before.alfred : null
-  const folder = named ?? lingering?.folder ?? null
-  // The last read is this folder's only when the folder is the same, so a new folder never shows the old plan
-  const isSame = before.alfred !== null && before.alfred !== undefined && before.alfred.folder === folder
-  const alfredRead = folder === null ? null : await readPlanFolder($, folder, {
-    plan: isSame ? before.plans.find(w => w.name === before.alfred?.name) : undefined,
-    scores: isSame ? before.scores.find(w => w.name === before.alfred?.name) : undefined,
-  }, parseAlfredStatus, parseAlfredScoring)
-  // The folder's files stand in for a same-named plan or scores file of the project's own folder while they exist
-  const alfredPlan = alfredRead?.plan ? { ...alfredRead.plan, isNamed: named !== null } : null
-  const alfredScores = alfredRead?.scores ?? null
-  const without = <T>(list: Watched<T>[], over: Watched<unknown> | null): Watched<T>[] => (over === null ? list : list.filter(w => w.name !== over.name))
-  const planFiles = [...without(ownPlans, alfredPlan), ...(alfredPlan === null ? [] : [alfredPlan])]
-  const scoreFiles = [...without(ownScores, alfredScores), ...(alfredScores === null ? [] : [alfredScores])]
-  if (statusesOf(before.plans) !== statusesOf(planFiles)) await closeLoops($, held, null, now, true, before)
-  const { times, overhead } = await timesOf($, planFiles)
-  const seen = new Set(before.toasted)
-  const finished: Record<string, number> = {}
-  const due: string[] = []
-  for (const w of planFiles) {
-    const plan = w.value
-    if (plan === null || w.isInvalid) continue
-    // A folder read for the first time has no last state, whatever plan shared its name before
-    const had = w === alfredPlan && !isSame ? null : before.plans.find(b => b.name === w.name)?.value ?? null
-    if (had !== null) {
-      for (const c of newNotes(had.changes, plan.changes)) due.push(`✎ Note folded into ${c.step ?? 'the plan'}: '${oneLine(c.note ?? '', 60)}'`)
-    }
-    const key = `done:${w.name}`
-    if (!isPlanDone(plan) || seen.has(key)) continue
-    seen.add(key)
-    if (had !== null && !isPlanDone(had)) {
-      finished[w.name] = now
-      due.push(`Plan done: ${plan.title} in ${mins(planView(plan, times[w.name] ?? {}, overhead[w.name] ?? 0, {}, now).workedMs)}`)
-    }
-  }
-  const toasted = [...seen].slice(-100)
-  const doneAt = alfredRead === null ? undefined : finished[alfredRead.name] ?? before.finished[alfredRead.name]
-  const keep = alfredRead !== null && alfredPlan !== null && (named !== null || (doneAt !== undefined && now - doneAt < FINISH_SHOWN_MS))
-  const alfred = keep && folder !== null ? { name: alfredRead.name, folder } : null
-  // A folder let go leaves the project's own files as they were read
-  await updatePlans($, p => ({
-    ...p, plans: keep ? planFiles : ownPlans, scores: keep ? scoreFiles : ownScores, times, overhead,
-    finished: { ...p.finished, ...finished }, toasted, alfred,
-  }))
-  for (const text of due) toast($, text)
-}
-
-// The user's notes in `after` that `before` lacks, each counted by its time, step and text, so two alike are two
-function newNotes(before: PlanChange[], after: PlanChange[]): PlanChange[] {
-  const idOf = (c: PlanChange): string => JSON.stringify([c.at, c.step, c.note])
-  const isNote = (c: PlanChange): boolean => c.kind === 'integrated' && c.source === 'user' && c.note !== null
-  const left = new Map<string, number>()
-  for (const c of before.filter(isNote)) left.set(idOf(c), (left.get(idOf(c)) ?? 0) + 1)
-  return after.filter(isNote).filter(c => {
-    const n = left.get(idOf(c)) ?? 0
-    if (n > 0) left.set(idOf(c), n - 1)
-    return n === 0
-  })
-}
-
-// Reads run one at a time, so two never raise the same toast
-function queueReload($: EngineInterface, held: Held): void {
-  held.reading = held.reading.then(() => reloadPlans($, held)).catch(() => undefined)
-}
-
-// The folders are read 300 ms after a file edit settles and after each main turn, never inside the hook
-function scheduleReload($: EngineInterface, held: Held): void {
-  held.reload?.cancel()
-  held.reload = $.clock.after(300, () => {
-    held.reload = null
-    queueReload($, held)
-  })
-}
 
 const LABEL: Record<string, string> = { five_hour: '5h', seven_day: '7d' }
 
