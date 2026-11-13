@@ -3,7 +3,7 @@
 // stored, which outlives a reload.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
-import type { Live, Meta, Pace, Totals, Turn, Usage } from './types'
+import type { Live, Meta, Pace, Running, Totals, Turn, Usage } from './types'
 import type { Place } from '../place/types'
 import { setPlace } from '../place/place'
 
@@ -146,4 +146,29 @@ export async function noteCompaction($: EngineInterface, at: number): Promise<vo
 // The model a switch moved to, before its first step names it
 export async function setModel($: EngineInterface, model: string): Promise<void> {
   await updateMeta($, m => ({ ...m, model }))
+}
+
+// A skill the main loop loaded: in its context from then on, until the conversation starts over
+export async function addSkill($: EngineInterface, name: string): Promise<void> {
+  await updateMeta($, m => ({ ...m, skills: { ...m.skills, [name]: (m.skills?.[name] ?? 0) + 1 } }))
+}
+
+// A settled call off the running list, and the turn's tool and failure counts moved by it
+export async function settleRunningCall($: EngineInterface, callId: string, counts: { isMain: boolean; isFirstSettle: boolean; failuresDelta: number }): Promise<void> {
+  await updateLive($, l => ({
+    ...l,
+    tools: counts.isMain && l.turnId !== null && counts.isFirstSettle ? l.tools + 1 : l.tools,
+    failures: counts.isMain && l.turnId !== null ? l.failures + counts.failuresDelta : l.failures,
+    running: l.running.filter(r => r.id !== callId),
+  }))
+}
+
+// One more call of the main loop
+export async function countMainCall($: EngineInterface): Promise<void> {
+  await updateMeta($, m => ({ ...m, mainCalls: m.mainCalls + 1 }))
+}
+
+// A main-loop call on the running list until it settles
+export async function addRunningCall($: EngineInterface, call: Running): Promise<void> {
+  await updateLive($, l => ({ ...l, running: [...l.running, call] }))
 }

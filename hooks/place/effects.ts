@@ -140,3 +140,8 @@ export async function pollPlace($: EngineInterface): Promise<void> {
   const place = (await readMeta($)).place
   if (text !== null && place !== undefined) await showPlace($, { ...place, branch: headBranch(text) })
 }
+
+// The working folder the quiet rows read paths from
+export function workingFolder(): string | null {
+  return rowsMem.cwd
+}

@@ -5,7 +5,7 @@ import type {
   EngineInterface, Register, SessionContextBreakdown, SessionRateLimit, SessionUsage, Timer, TurnStepInput, TurnStepResult, UiOpenResult,
 } from 'claude-code'
 
-import { actionOf, isLive, markOf, refreshAgents, statusAt } from './agents/agents'
+import { isLive, markOf, refreshAgents, statusAt } from './agents/agents'
 import { spinnerSuffix } from './band/working'
 import { bandLines, underRows } from './band/band'
 import { addRequest, billingOf, needsTick, takeRate } from './cache/cache'
@@ -15,26 +15,26 @@ import { localDate } from './core/forecast'
 import { REC_HIDDEN, SPINNER_WORD, bandFailed, paneFailed } from './core/failsafe'
 import { clock, fingerprint, oneLine, printable, tokens, usd, when } from './core/format'
 import { mask, recLevel } from './rec/mask'
-import { maskDeep, maskResult, neutralDialog, resultLines } from './rec/sites'
-import { DROPS_RESULT, callLine, groupLines } from './tools/compact'
+import { neutralDialog } from './rec/sites'
+import { DROPS_RESULT } from './tools/compact'
 import { HANDOFF_PATH, HANDOFF_USAGE, MODES, forecastOf, handoffView } from './handoff/handoff'
 import { bannerSegs, runwayOf } from './stack/stack'
-import { PLANS_DIR, runs, statusesOfTasks, tasksAfter } from './plan/plan'
+import { PLANS_DIR, runs } from './plan/plan'
 import { planLines } from './plan/planlines'
-import { closeWait, isAllWait, openWait, staleKeys, waitOf } from './plan/steptime'
+import { staleKeys } from './plan/steptime'
 import { agentsLines, asCommands, cacheLines, nowLines, paneCommands, reportRows, tabBar, timelineLines, toolsLines, usageLines } from './inspect/tabs'
-import { classify, fold, numberOf, targetOf, toolKey } from './tools/outcome'
+import { numberOf } from './tools/outcome'
 import { LEVELS, REC_HELP, recNote, recOf, recStatus, recTest } from './rec/rec'
 import { BAND_MODES, DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast, writeField } from './settings/settings'
 import { dropPassed, nextWindows, storedWindows } from './session/windows'
-import { compactMem, errorMem, errorRows, modeMem, readBlockers, readFailures, readQuiet, readStats, resetBlockers, resetFailures, resetQuiet, resetStats, updateBlockers, updateFailures, updateQuiet, updateStats } from './tools/effects'
+import { countSkillPrompt, drawToolGroup, drawToolResult, drawToolUse, loadQuiet, mark, modeMem, notePermissionAsk, notePermissionDenied, notePromptMode, noteToolCheck, noteToolFailure, noteToolTime, readBlockers, readFailures, readStats, resetBlockers, resetFailures, resetQuiet, resetStats, trackToolCall, updateFailures } from './tools/effects'
 import { FRESH_EVERY_MS, freshMem, readLive, readMeta, readPace, readTick, readTotals, readTurns, readUsage, resetLive, resetMeta, resetPace, resetTotals, resetTurns, resetUsage, spendMem, updateLive, updateMeta, updatePace, updateTick, updateTotals, updateTurns, updateUsage, windowsMem } from './session/effects'
-import { agentStep, isCounted, readAgents, readLoops, resetAgents, resetLoops, trackSpawn, updateAgents, updateLoops, updateRow } from './agents/effects'
+import { agentStep, readAgents, readLoops, resetAgents, resetLoops, trackSpawn, updateAgents, updateLoops, updateRow } from './agents/effects'
 import { afterModelSwitch, armCacheClose, beforeModelSwitch, compactNow, followCompaction, readCache, readCacheConfig, resetCache, updateCache } from './cache/effects'
-import { addMark, addWait, closeLoops, openSlice, planDraw, queueReload, readPlans, readTasks, resetCredit, resetPlans, resetTasks, scheduleReload, seedMine, storedTimes, updateCredit, updatePlans, updateTasks } from './plan/effects'
+import { addMark, closeLoops, openSlice, planDraw, queueReload, readPlans, resetCredit, resetPlans, resetTasks, scheduleReload, seedMine, storedTimes, updatePlans } from './plan/effects'
 import { fillStack, readStack, readStatus, resetStack, scoreLevel, stackMem } from './stack/effects'
 import { dismissAsk, fillResume, handoffMem, handoffState, loadHandoff, readHandoff, resetHandoff, saveNow, saveThenCompact, stepHandoff } from './handoff/effects'
-import { drawRecPane, isRecOn, loadRec, maskAssistantMessage, maskCommandOutput, maskQuestionDialog, maskUserMessage, noteMem, readRec, recMem, resetRec } from './rec/effects'
+import { drawRecPane, loadRec, maskAssistantMessage, maskCommandOutput, maskQuestionDialog, maskUserMessage, noteMem, readRec, recMem, resetRec } from './rec/effects'
 import { bandMem, isPassingAbove, loadBand, readBandSetting, statusMem, syncStatus } from './band/effects'
 import { noteLoadedRule, partsMem, readBreakdownSoon, readParts, resetParts } from './context/effects'
 import { readView, resetView, updateView } from './inspect/effects'
@@ -43,122 +43,12 @@ import type { Tab } from './inspect/types'
 import type { Plans } from './plan/types'
 import type { Turn, Usage, Window } from './session/types'
 import type { Field, From, Resolved, Source, Values } from './settings/types'
-import type { Call, CallFacts, CompactCall, Failure, Outcome, ToolStat } from './tools/types'
+import type { Call } from './tools/types'
 import type { Held } from './core/types'
-import { editPlace, pollPlace, readPlace, rowsMem } from './place/effects'
-import { settingsMem, settingsNow } from './settings/effects'
+import { pollPlace, readPlace } from './place/effects'
+import { settingsMem } from './settings/effects'
 import { conversationMem, tickMem } from './lifecycle/effects'
-import { keepLast } from './core/collections'
 import { closePane, isNoColor, toast } from './core/effects'
-
-const NO_FACTS: Omit<CallFacts, 'tool'> = {
-  checked: null, checkReason: null, asked: false, failedInTool: false, interrupted: false, classifierReason: null, hookDeny: null, result: null,
-  aborted: false, autoMode: false,
-}
-
-function tally(stat: ToolStat | undefined, outcome: Outcome, by: 1 | -1): ToolStat {
-  const t = stat ?? { calls: 0, ok: 0, failed: 0, stopped: 0 }
-  return {
-    calls: t.calls + by,
-    ok: t.ok + (outcome === 'ok' ? by : 0),
-    failed: t.failed + (outcome === 'error' ? by : 0),
-    stopped: t.stopped + (outcome === 'ok' || outcome === 'error' ? 0 : by),
-  }
-}
-
-// Whether the person sees the pane now, from the engine's record: it outlives a /clear and a reload, and knows a
-// pane placed after it waited undrawn
-async function isPaneShown($: EngineInterface): Promise<boolean> {
-  return (await $.ui.panes()).some(p => p.id === 'inspect' && p.isShown && p.isPlaced)
-}
-
-// A failure row for a call that was not ok; it is seen at once while the pane shows Now or Tools
-async function addRow($: EngineInterface, id: string, call: Call, outcome: Exclude<Outcome, 'ok'>, reason: string, isNew: boolean, drop: string | null, by: string | null): Promise<void> {
-  const { tab } = await readView($)
-  const isSeen = (tab === 'now' || tab === 'tools') && await isPaneShown($)
-  const result = call.facts.result
-  const row: Failure = {
-    id, at: await $.clock.now(), tool: call.tool, target: call.target, outcome, reason,
-    detail: (result?.deny ?? result?.text ?? '').slice(0, 4000), count: 1, isNew: isNew && !isSeen, by,
-  }
-  await updateFailures($, list => {
-    const i = drop === null ? -1 : list.findIndex(f => f.id === drop)
-    const old = list[i]
-    const rest = old === undefined ? list
-      : old.count > 1 ? list.map(f => (f === old ? { ...f, count: f.count - 1 } : f))
-      : list.filter(f => f !== old)
-    // A call settled again keeps its row's number
-    const out = fold(rest, old !== undefined && old.count === 1 && old.n !== undefined ? { ...row, n: old.n } : row)
-    call.rowId = out[out.length - 1]?.id ?? null
-    return out
-  })
-}
-
-function mark(ids: string[]): void {
-  for (const id of ids) {
-    compactMem.marks.delete(id)
-    compactMem.marks.add(id)
-  }
-  keepLast(compactMem.marks)
-}
-
-// A row's or a group call's facts as a compact row reads them; a refusal draws as a block
-function compactOf(id: string | undefined, c: { tool: string; input: unknown; output?: unknown; isErrored: boolean; isInterrupted: boolean }): CompactCall {
-  const o = id === undefined ? undefined : compactMem.outcomes.get(id)
-  const outcome = o?.outcome === 'denied' ? 'denied' : o?.outcome === 'blocked' || o?.outcome === 'refused' ? 'blocked' : null
-  return {
-    tool: c.tool, input: c.input, output: c.output, isErrored: c.isErrored, isInterrupted: c.isInterrupted, outcome,
-    reason: outcome === null ? null : o?.reason ?? null, isAutoAllowed: o?.isAutoAllowed === true,
-  }
-}
-
-// Counts a settled call, or counts it again when a later event changed its outcome
-async function settle($: EngineInterface, id: string, call: Call): Promise<void> {
-  const { outcome, reason, isNew, by } = classify(call.facts)
-  compactMem.outcomes.delete(id)
-  // In auto mode a check's ask that no one saw and no hook refused was the classifier's allow (outcome.ts)
-  const f = call.facts
-  const isAutoAllowed = outcome === 'ok' && f.autoMode && f.checked === 'ask' && !f.asked && f.hookDeny === null
-  compactMem.outcomes.set(id, { outcome, reason, isAutoAllowed })
-  keepLast(compactMem.outcomes)
-  const before = call.outcome
-  call.settled = true
-  call.outcome = outcome
-  const retally = (s: Record<string, ToolStat>): Record<string, ToolStat> =>
-    ({ ...s, [call.key]: before === null ? tally(s[call.key], outcome, 1) : tally(tally(s[call.key], before, -1), outcome, 1) })
-  await updateStats($, retally)
-  if (call.agentId !== null) await updateRow($, call.agentId, r => ({ ...r, tools: retally(r.tools) }))
-  if (outcome !== 'ok') await addRow($, id, call, outcome, reason, isNew, before !== null && before !== 'ok' ? call.rowId : null, by)
-  // A block counts for the script that made it; a later settle that names another blocker moves the count (spec C6)
-  const counted = call.by
-  call.by = by
-  if (counted !== by) {
-    await updateBlockers($, b => {
-      const out = { ...b }
-      if (counted !== null) {
-        const n = (out[counted] ?? 0) - 1
-        if (n > 0) out[counted] = n
-        else delete out[counted]
-      }
-      if (by !== null) out[by] = (out[by] ?? 0) + 1
-      return out
-    })
-  }
-  const isMain = call.agentId === null
-  const failed = (o: Outcome | null): number => (o !== null && o !== 'ok' ? 1 : 0)
-  await updateLive($, l => ({
-    ...l,
-    tools: isMain && l.turnId !== null && before === null ? l.tools + 1 : l.tools,
-    failures: isMain && l.turnId !== null ? l.failures + failed(outcome) - failed(before) : l.failures,
-    running: l.running.filter(r => r.id !== id),
-  }))
-  if (isMain && before === null) await updateMeta($, m => ({ ...m, mainCalls: m.mainCalls + 1 }))
-  // A Skill call that failed loaded nothing, and one whose skill ran forked loaded it into a subagent
-  if (isMain && before === null && outcome === 'ok' && call.isFork !== true && call.key.startsWith('Skill: ')) {
-    await addSkill($, call.key.slice('Skill: '.length))
-  }
-  await syncStatus($)
-}
 
 const windowsOf = (limits: readonly SessionRateLimit[]): Window[] =>
   limits.map(w => ({ kind: w.kind, percentUsed: w.percentUsed, resetsAt: w.resetsAt ?? null }))
@@ -461,12 +351,6 @@ async function toggleShown($: EngineInterface, id: string): Promise<void> {
 
 const TABS: Tab[] = ['now', 'usage', 'agents', 'tools', 'cache', 'timeline', 'plan']
 
-function keepError(id: string, text: string): void {
-  errorMem.delete(id)
-  errorMem.set(id, text)
-  keepLast(errorMem)
-}
-
 function loadSettings($: EngineInterface, isStart = false): Promise<void> {
   const next = settingsMem.reading.then(() => loadSettingsNow($, isStart))
   settingsMem.reading = next.catch(() => undefined)
@@ -590,13 +474,6 @@ async function setField<F extends Field>($: EngineInterface, field: F, value: Va
   return `Set ${shown} in ${user}.${isFirst ? ` ${nameOf(from)} gives ${JSON.stringify(r.values[field])}, which comes first.` : ''}`
 }
 
-// "quiet" into the quiet atom
-async function loadQuiet($: EngineInterface): Promise<boolean> {
-  const isOn = settingsNow().quiet
-  await updateQuiet($, q => (q.isOn === isOn ? q : { isOn }))
-  return isOn
-}
-
 // The band's lines from the session's state, for the site above or the footer (spec band-under U2): the same reads, the
 // place's own width, rows and turn
 async function bandInputOf(
@@ -629,11 +506,6 @@ async function bandInputOf(
 // What the band's buttons do, above or under
 function bandPress($: EngineInterface, held: Held): Record<string, () => unknown> {
   return { inspect: () => inspectFromBand($), compact: () => compactNow($, held), handoff: () => saveNow($) }
-}
-
-// A skill the main loop loaded: in its context from then on, until the conversation starts over
-async function addSkill($: EngineInterface, name: string): Promise<void> {
-  await updateMeta($, m => ({ ...m, skills: { ...m.skills, [name]: (m.skills?.[name] ?? 0) + 1 } }))
 }
 
 // A /clear, a resume or a branch starts the session over under a new id: Claude Code resets $.state itself, and the
@@ -709,163 +581,35 @@ export const register: Register = (on, options) => {
     close: null, compacting: false, counted: 0, isTerminal: false, reload: null, reading: Promise.resolve(), writes: Promise.resolve(),
   }
 
-  const remember = (id: string, tool: string): Call => {
-    let call = calls.get(id)
-    if (call === undefined) {
-      call = {
-        facts: { tool, ...NO_FACTS }, key: tool, tool, target: '', agentId: null, settled: false, outcome: null, rowId: null, by: null,
-        startedAt: null, durationMs: null, pendingMs: null,
-      }
-      calls.set(id, call)
-      if (calls.size > 100) calls.delete(calls.keys().next().value as string)
-    }
-    return call
-  }
-
   on('agent.spawn', ($, e, next) => trackSpawn($, e, next)).catch(($, e, next) => next(e))
 
-  on('tool.call', async ($, e, next) => {
-    if (!(await isCounted($, e.agentId))) return next(e)
-    const input = e as unknown as Record<string, unknown>
-    const call = remember(e.tool_use_id, e.tool)
-    call.key = toolKey(e.tool, input)
-    call.target = targetOf(e.tool, input, await $.session.cwd())
-    call.agentId = e.agentId ?? null
-    call.facts = { ...call.facts, autoMode: modeMem.mode === 'auto' }
-    const startedAt = await $.clock.now()
-    call.startedAt = startedAt
-    if (call.agentId === null) {
-      await updateLive($, l => ({ ...l, running: [...l.running, { id: e.tool_use_id, tool: e.tool, label: call.target, startedAt }] }))
-    } else {
-      const action = actionOf(e.tool, call.target)
-      await updateRow($, call.agentId, r => ({ ...r, action }))
-    }
-    const loop = call.agentId ?? 'main'
-    const isWait = isAllWait(e.tool, call.agentId === null)
-    if (isWait) await updateCredit($, c => openWait(c, loop, e.tool_use_id, startedAt))
-    const ran = await next(e)
-    // A `cd` in the main loop's Bash, or a file it edited or wrote, moves the folder Claude works in: the place is read
-    // again off the hook
-    const isEdit = ['Edit', 'Write', 'NotebookEdit'].includes(e.tool) && ran.isError !== true && ran.deny === undefined
-    const edited = isEdit ? String(input.file_path ?? input.notebook_path ?? '') : ''
-    if (call.agentId === null && (e.tool === 'Bash' || edited !== '')) {
-      $.clock.after(0, () => {
-        (edited === '' ? pollPlace($) : editPlace($, edited)).catch(() => undefined)
-      })
-    }
-    const text = ran.text ?? (typeof ran.result === 'string' ? ran.result : '')
-    if (ran.isError === true && text !== '') keepError(e.tool_use_id, text)
-    call.facts = {
-      ...call.facts,
-      result: { isError: ran.isError === true || ran.deny !== undefined, deny: ran.deny ?? null, text },
-      aborted: ran.isError === true && next.signal.aborted,
-    }
-    await settle($, e.tool_use_id, call)
-    const endedAt = await $.clock.now()
-    const ms = endedAt - startedAt
-    const wait = waitOf({ tool: e.tool, ms, isMain: call.agentId === null, isAsked: call.facts.asked, outcome: call.outcome, durationMs: call.durationMs })
-    let isClosed = false
-    if (isWait) {
-      await updateCredit($, c => {
-        const closed = closeWait(c, loop, e.tool_use_id, endedAt)
-        isClosed = closed !== null
-        return closed ?? c
-      })
-    }
-    if (wait === null) call.pendingMs = ms
-    else if (!isClosed) await addWait($, loop, wait, endedAt)
-    if (e.tool === 'Write' || e.tool === 'Edit' || e.tool === 'NotebookEdit') scheduleReload($, held)
-    if (call.agentId === null && call.outcome === 'ok') {
-      const result = ran.result
-      const list = await readTasks($)
-      const after = tasksAfter(list, e.tool, input, result)
-      if (after !== null) {
-        // As with a plan's steps, a status change closes and reopens the open slices first, so the time before it goes
-        // to the items in progress then
-        if (statusesOfTasks(after) !== statusesOfTasks(list)) await closeLoops($, held, null, await $.clock.now(), true)
-        await updateTasks($, items => tasksAfter(items, e.tool, input, result) ?? items)
-      }
-    }
-    return ran
-  }).catch(($, e, next) => next(e))
+  on('tool.call', ($, e, next) => trackToolCall($, e, next, calls, held)).catch(($, e, next) => next(e))
 
-  on('tool.check', async ($, e, next) => {
-    const verdict = await next(e)
-    if (e.tool_use_id !== undefined && (await isCounted($, e.agentId))) {
-      const call = remember(e.tool_use_id, e.tool)
-      call.facts = { ...call.facts, checked: verdict.decision, checkReason: verdict.reason ?? null }
-    }
-    return verdict
-  }).catch(($, e, next) => next(e))
+  on('tool.check', ($, e, next) => noteToolCheck($, e, next, calls)).catch(($, e, next) => next(e))
 
   // The permission mode only: the prompt itself is never read or kept
-  on('classic.UserPromptSubmit', ($, e, next) => {
-    if (typeof e.permission_mode === 'string') modeMem.mode = e.permission_mode
-    return next(e)
-  }).catch(($, e, next) => next(e))
+  on('classic.UserPromptSubmit', ($, e, next) => notePromptMode($, e, next)).catch(($, e, next) => next(e))
 
   // The six hooks a managed plugin's notices named (2026-11-10), each of which it can send on past the mod. Left out
   // with `leave_out_skipped_hooks`, as they never run there: Claude Code then has no skipped hook to tell the model of.
   if (!isLeftOut) {
-    on('classic.PostToolUseFailure', ($, e, next) => {
-      const call = calls.get(e.tool_use_id)
-      if (call !== undefined) call.facts = { ...call.facts, failedInTool: true, interrupted: e.is_interrupt === true }
-      return next(e)
-    }).catch(($, e, next) => next(e))
+    on('classic.PostToolUseFailure', ($, e, next) => noteToolFailure($, e, next, calls)).catch(($, e, next) => next(e))
 
     // The tool's own time, without the permission prompt or hooks: a call the person was asked about waited the rest
-    on('classic.PostToolUse', async ($, e, next) => {
-      if (e.agent_id === undefined && typeof e.permission_mode === 'string') modeMem.mode = e.permission_mode
-      const call = calls.get(e.tool_use_id)
-      if (call !== undefined) {
-        call.durationMs = e.duration_ms ?? null
-        const ms = call.pendingMs
-        if (ms !== null && call.durationMs !== null) {
-          call.pendingMs = null
-          await addWait($, call.agentId ?? 'main', Math.max(0, ms - call.durationMs), await $.clock.now())
-        }
-      }
-      return next(e)
-    }).catch(($, e, next) => next(e))
+    on('classic.PostToolUse', ($, e, next) => noteToolTime($, e, next, calls)).catch(($, e, next) => next(e))
 
     // The person is asked only when no hook answered the request. It names no call id: it marks the newest unsettled
     // call of the tool whose check said ask.
-    on('classic.PermissionRequest', async ($, e, next) => {
-      const answered = await next(e)
-      const call = [...calls.values()].reverse().find(c => !c.settled && c.facts.tool === e.tool_name && c.facts.checked === 'ask')
-      const decision = answered.decision
-      if (call !== undefined && decision === undefined) call.facts = { ...call.facts, asked: true }
-      if (call !== undefined && decision?.behavior === 'deny') call.facts = { ...call.facts, hookDeny: decision.message ?? '' }
-      return answered
-    }).catch(($, e, next) => next(e))
+    on('classic.PermissionRequest', ($, e, next) => notePermissionAsk($, e, next, calls)).catch(($, e, next) => next(e))
 
     // It can arrive after the call settled: the call is classified again, its row and counts replaced
-    on('classic.PermissionDenied', async ($, e, next) => {
-      const call = calls.get(e.tool_use_id)
-      if (call !== undefined) {
-        call.facts = { ...call.facts, classifierReason: e.reason }
-        if (call.settled) await settle($, e.tool_use_id, call)
-      }
-      return next(e)
-    }).catch(($, e, next) => next(e))
+    on('classic.PermissionDenied', ($, e, next) => notePermissionDenied($, e, next, calls)).catch(($, e, next) => next(e))
 
     // A skill the person runs as /name raises no Skill call; one the model runs raises both, and counts once. One with
     // no Skill call behind it while no main turn runs is the person's /name, in the main context; mid-turn, it is a
     // subagent's preload.
     // A `context: fork` skill runs in a subagent of its own (code.claude.com/docs/en/skills, read 2026-11-11).
-    on('skill.prompt', async ($, e, next) => {
-      const prompted = await next(e)
-      const key = `Skill: ${e.skill}`
-      const isFork = e.frontmatter.context === 'fork'
-      const pending = [...calls.values()].find(c => !c.settled && c.key === key)
-      if (pending !== undefined) {
-        if (isFork) pending.isFork = true
-      } else {
-        await updateStats($, s => ({ ...s, [key]: tally(s[key], 'ok', 1) }))
-        if (!isFork && (await readLive($)).turnId === null) await addSkill($, e.skill)
-      }
-      return prompted
-    }).catch(($, e, next) => next(e))
+    on('skill.prompt', ($, e, next) => countSkillPrompt($, e, next, calls)).catch(($, e, next) => next(e))
 
     // A /clear, a resume or a branch starts over at once; a resumed one also takes the cache rate its event carries
     on('classic.SessionStart', async ($, e, next) => {
@@ -1263,75 +1007,20 @@ export const register: Register = (on, options) => {
   // The tool sites in two steps (Decision 14): "quiet"'s compact row or emptied result first, then REC over whatever
   // the first hands on. A settled row that is not expanded, or that a group unfolded, draws its compact line.
   // An unfolded group's rows draw `output` inline, so a row's input and output are both masked
-  on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
-    if (e.props.isErrored && typeof e.props.output === 'string' && !errorMem.has(e.props.tool_use_id)) keepError(e.props.tool_use_id, e.props.output)
-    if ((await readQuiet($)).isOn && !e.props.isRunning && (e.props.isExpanded !== true || compactMem.marks.has(e.props.tool_use_id))) {
-      const columns = e.viewport?.columns ?? 120
-      const lines = callLine(compactOf(e.props.tool_use_id, e.props), columns, { cwd: rowsMem.cwd })
-      return drawLines($, e, lines, { noColor: await isNoColor($), press: {}, columns , fill: true })
-    }
-    if (!(await isRecOn($))) return next(e)
-    // An unfolded group's errored row draws its error text inline, and Claude Code draws that text, not `output` (live,
-    // fullscreen, 2026-10-28): with a sample in it, the row draws its compact head and the masked text itself, once
-    if (e.props.isErrored && !e.props.isRunning) {
-      const failed = maskResult({ tool: e.props.tool, output: e.props.output, isErrored: true, error: errorMem.get(e.props.tool_use_id) ?? null }, mask)
-      if (failed.kind === 'tree') {
-        errorRows.delete(e.props.tool_use_id)
-        errorRows.add(e.props.tool_use_id)
-        keepLast(errorRows)
-        const columns = e.viewport?.columns ?? 120
-        const head = callLine(compactOf(e.props.tool_use_id, e.props), columns, { cwd: rowsMem.cwd }).slice(0, 1)
-        const isExpanded = e.props.isExpanded === true
-        return drawLines($, e, [...head, ...resultLines(failed.text, { isExpanded, isErrored: true, gutter: e.surface === 'terminal' })], { noColor: await isNoColor($), press: {}, columns , fill: true })
-      }
-    }
-    const input = maskDeep(e.props.input, mask)
-    const output = maskDeep(e.props.output, mask)
-    if (input === e.props.input && output === e.props.output) return next(e)
-    return next({ ...e, props: { ...e.props, input, ...(output === e.props.output ? {} : { output }) } })
-  }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
+  on('ui.render', { component: 'ToolUse' }, ($, e, next) => drawToolUse($, e, next)).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
 
   // With "quiet" on an errored result draws an empty Box, as Claude Code would draw its whole error text and the compact
   // row above carries ✗ and its error lines, and so does a result whose row carries what it said (DROPS_RESULT: Bash,
   // Edit, Write and more); any other keeps next(e)'s tree, the classifier line in it. Under REC, so does an errored
   // result whose row drew its masked error text
-  on('ui.render', { component: 'ToolResult' }, async ($, e, next) => {
-    // Fullscreen's ctrl+o draws no group, so nothing there unmarks the rows a group unfolded; an expanded result draws
-    // only in that view (an unfolded group draws its rows' output inline), so it unmarks its row and redraws it in full
-    if (e.props.isExpanded === true && compactMem.marks.delete(e.props.tool_use_id)) $.ui.invalidate('ui.render')
-    const isDropped = e.props.isErrored || DROPS_RESULT.includes(e.props.tool)
-    if (isDropped && e.props.isExpanded !== true && (await readQuiet($)).isOn) return drawLines($, e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
-    if (!(await isRecOn($))) return next(e)
-    if (e.props.isErrored && errorRows.has(e.props.tool_use_id)) return drawLines($, e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
-    const masked = maskResult({ ...e.props, error: errorMem.get(e.props.tool_use_id) ?? null }, mask)
-    if (masked.kind === 'same') return next(e)
-    if (masked.kind === 'output') return next({ ...e, props: { ...e.props, output: masked.output } })
-    const lines = resultLines(masked.text, { isExpanded: e.props.isExpanded === true, isErrored: e.props.isErrored, gutter: e.surface === 'terminal' })
-    return drawLines($, e, lines, { noColor: await isNoColor($), press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
-  }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
+  on('ui.render', { component: 'ToolResult' }, ($, e, next) => drawToolResult($, e, next)).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
 
   // With "quiet" on a settled group of calls alone draws its compact lines. One holding another row, or an errored or
   // interrupted call, is unfolded and its calls marked, so each draws its own compact line; a group drawn expanded (the
   // main screen's ctrl+o) unmarks them, so ctrl+o shows all. A group's folded line shows its calls' paths, patterns and
   // git results, and `isExpanded` is the one prop a rewrite changes, so REC unfolds it into ToolUse rows, which the
   // hook above masks, live or settled.
-  on('ui.render', { component: 'ToolGroup' }, async ($, e, next) => {
-    const isQuiet = (await readQuiet($)).isOn
-    const isRec = await isRecOn($)
-    const ids = e.props.calls.flatMap(c => (c.tool_use_id === undefined ? [] : [c.tool_use_id]))
-    if (e.props.isExpanded) {
-      if (isQuiet) for (const id of ids) compactMem.marks.delete(id)
-      return next(e)
-    }
-    if (isQuiet && !e.props.isActive && e.props.isCallsOnly === true) {
-      const columns = e.viewport?.columns ?? 120
-      const lines = groupLines(e.props.calls.map(c => compactOf(c.tool_use_id, c)), columns, { cwd: rowsMem.cwd })
-      return drawLines($, e, lines, { noColor: await isNoColor($), press: {}, columns , fill: true })
-    }
-    if (isQuiet && (isRec || !e.props.isActive)) mark(ids)
-    else if (!isRec) return next(e)
-    return next({ ...e, props: { ...e.props, isExpanded: true } })
-  }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
+  on('ui.render', { component: 'ToolGroup' }, ($, e, next) => drawToolGroup($, e, next)).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
 
   on('ui.render', { component: 'AskUserQuestion' }, ($, e, next) => maskQuestionDialog($, e, next)).catch(($, e, next) => (recLevel() === 'off' ? next(e) : next({ ...e, props: { ...e.props, questions: neutralDialog(e.props.questions) } })))
 

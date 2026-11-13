@@ -1,8 +1,6 @@
 // A tool call's facts, as its events reported them, to the outcome the band and the pane show.
 import { oneLine } from '../core/format'
-import type { CallFacts, Failure, Outcome } from './types'
-
-
+import type { CallFacts, Failure, Outcome, ToolStat } from './types'
 
 // The first rule that holds wins. Blocked, refused and interrupted calls never count as new: Claude recovers from
 // a block by itself, and an interrupt is the person's own act. `by` names the hook script that blocked the call, when
@@ -97,4 +95,14 @@ export function fold(list: Failure[], next: Failure, limit = 10): Failure[] {
 // 'right now I need to count and order')
 export function numberOf(f: Failure, i: number): number {
   return f.n ?? i + 1
+}
+
+export function tally(stat: ToolStat | undefined, outcome: Outcome, by: 1 | -1): ToolStat {
+  const t = stat ?? { calls: 0, ok: 0, failed: 0, stopped: 0 }
+  return {
+    calls: t.calls + by,
+    ok: t.ok + (outcome === 'ok' ? by : 0),
+    failed: t.failed + (outcome === 'error' ? by : 0),
+    stopped: t.stopped + (outcome === 'ok' || outcome === 'error' ? 0 : by),
+  }
 }

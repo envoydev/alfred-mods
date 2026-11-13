@@ -16,3 +16,9 @@ export function updateView($: EngineInterface, change: (value: View) => View) {
 export function resetView($: EngineInterface) {
   return update($, viewAtom, () => INITIAL_VIEW)
 }
+
+// Whether the person sees the pane now, from the engine's record: it outlives a /clear and a reload, and knows a
+// pane placed after it waited undrawn
+export async function isPaneShown($: EngineInterface): Promise<boolean> {
+  return (await $.ui.panes()).some(p => p.id === 'inspect' && p.isShown && p.isPlaced)
+}

@@ -5,8 +5,8 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 import type { Close, Credit, Plan, PlanDraw, PlanView, Plans, Scores, TaskItem, Watched } from './types'
 import type { Held } from '../core/types'
-import { FINISH_SHOWN_MS, PLANS_DIR, SCORES_DIR, creditedPlan, isPlanDone, newNotes, parsePlan, parseScores, planView, runs, scoresView, shownPlan, statusesOf, taskView } from './plan'
-import { closeOf, closeSlices, liveSpans, mineOf, overheadKey, sliceMs, stepKey, sumTimes } from './steptime'
+import { FINISH_SHOWN_MS, PLANS_DIR, SCORES_DIR, creditedPlan, isPlanDone, newNotes, parsePlan, parseScores, planView, runs, scoresView, shownPlan, statusesOf, statusesOfTasks, taskView, tasksAfter } from './plan'
+import { closeOf, closeSlices, closeWait, liveSpans, mineOf, openWait, overheadKey, sliceMs, stepKey, sumTimes } from './steptime'
 import { parseAlfredScoring, parseAlfredStatus } from './alfredplan'
 import { mins, oneLine } from '../core/format'
 import { scoresLabel } from './planlines'
@@ -368,4 +368,30 @@ export async function readPlanFolder<P, S>(
   }
 }
 
+// A waiting call's time opened on its loop
+export async function openCallWait($: EngineInterface, loop: string, callId: string, at: number): Promise<void> {
+  await updateCredit($, c => openWait(c, loop, callId, at))
+}
 
+// The same call's wait closed; whether one was open
+export async function closeCallWait($: EngineInterface, loop: string, callId: string, at: number): Promise<boolean> {
+  let isClosed = false
+  await updateCredit($, c => {
+    const closed = closeWait(c, loop, callId, at)
+    isClosed = closed !== null
+    return closed ?? c
+  })
+  return isClosed
+}
+
+// The task list a main-loop call changed, its open slices closed and reopened first
+export async function followTaskTools($: EngineInterface, held: Held, tool: string, input: Record<string, unknown>, result: unknown): Promise<void> {
+  const list = await readTasks($)
+  const after = tasksAfter(list, tool, input, result)
+  if (after !== null) {
+    // As with a plan's steps, a status change closes and reopens the open slices first, so the time before it goes
+    // to the items in progress then
+    if (statusesOfTasks(after) !== statusesOfTasks(list)) await closeLoops($, held, null, await $.clock.now(), true)
+    await updateTasks($, items => tasksAfter(items, tool, input, result) ?? items)
+  }
+}
