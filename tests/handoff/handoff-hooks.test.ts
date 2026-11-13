@@ -9,7 +9,7 @@ import { NO_READING, PRESENTATION, SPAWN, START, engine, gitResult, rows, setUse
 import type { FileStub } from '../kit'
 import { PLAN_JSON, SCORES_JSON } from '../plans'
 import type { Handoff } from '../../hooks/handoff/types'
-import type { Meta } from '../../hooks/session/types'
+import type { Session } from '../../hooks/session/types'
 
 const STATUS = '.claude/session-inspector/status/s1.json'
 const ASK = (step: number) => `Context past ${step}%: press 4 or run /auto-handoff now to save a handoff`
@@ -541,8 +541,8 @@ test('h saves and takes the ask down, r takes it down until the next step, c sav
   await at($, 91)
   await ui.press({ key: 'handoff-compact' })
   await saved(clock, h, before)
-  await until(clock, () => (state.get('meta') as Meta).compactions > 0)
-  expect((state.get('meta') as Meta).compactions).toBe(1)
+  await until(clock, () => (state.get('session') as Session).compactions > 0)
+  expect((state.get('session') as Session).compactions).toBe(1)
   expect(toasts).toContain(`Handoff saved to ${PATH} - compacting`)
 
   // The compaction re-arms: the reading after it sets the handled step, and 82 asks at 80 again

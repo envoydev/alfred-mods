@@ -6,7 +6,7 @@ import type { Engine, Plugin } from 'claude-code/testing'
 import type { On, SessionUsage } from 'claude-code'
 
 import { PRESENTATION, START, engine, rows, stubAll, watchState } from '../kit'
-import type { Meta, Turn } from '../../hooks/session/types'
+import type { Session, Turn } from '../../hooks/session/types'
 
 const ON = 'Screen recording is on (alfred-mods REC). Until told it is off, do not write secret values, API keys, tokens, passwords, email addresses or phone numbers in replies; refer to them by name, such as "the token in .env". Work on the task as usual.'
 
@@ -211,7 +211,7 @@ test('with leave_out_skipped_hooks on, a by-path load reaches no hook of the mod
   await $.session.start(START)
   await clock.advance(1)
   await $.classic.InstructionsLoaded(load('/w/.claude/rules/web.md', 'path_glob_match'))
-  expect((state.get('meta') as Meta | undefined)?.pathRules).toBeUndefined()
+  expect((state.get('session') as Session | undefined)?.pathRules).toBeUndefined()
   const ui = await $.ui.mount({ plugin: 'alfred-mods', surface: 'terminal', component: 'AbovePrompt', props: BAND })
   expect(await rows(ui)).toContain('rules:   always.md │ 1 always-on · by path not tracked')
   await ui.unmount()

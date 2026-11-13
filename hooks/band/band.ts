@@ -83,8 +83,8 @@ function bandRows(input: BandInput, k: Keep): Line[] {
 function bandBody(b: BandInput, isNarrow: boolean, k: Keep): Line[] {
   const u = b.usage
   // Before the first reading the calm band waits; the full band draws once the model or a stored window is known
-  const isFullKnown = b.mode === 'full' && (b.session.model !== null || u.windows.length > 0)
-  if (b.turns.length === 0 && u.percent === null && !isFullKnown) return []
+  const isFullKnown = b.mode === 'full' && (b.session.model !== null || u.rateWindows.length > 0)
+  if (b.turns.length === 0 && u.contextPercent === null && !isFullKnown) return []
   const invalid: Line = b.isPlanInvalid ? [{ text: ' │ ', tone: 'dim' }, { text: 'plan file invalid', tone: 'warn' }] : []
   const gaugeLine = isNarrow ? narrowGauges(u, b.runway) : withToday(b, gauges(b), invalid)
   const line2 = [...gaugeLine, ...invalid]
@@ -97,7 +97,7 @@ function bandBody(b: BandInput, isNarrow: boolean, k: Keep): Line[] {
     ...head, ...place, ...(k.isPlanKept ? planRow(b) : []), ...counts, ...(b.isToolsOpen === true ? toolRows(b).slice(0, k.toolRowsKept) : []),
   ]
   const p = fiveHourPace(b)
-  const isHot = (b.runway?.percent ?? u.percent ?? 0) >= 60 || u.windows.some(rateWindow => rateWindow.percentUsed >= 60) || (p !== null && p !== 'on-pace')
+  const isHot = (b.runway?.percent ?? u.contextPercent ?? 0) >= 60 || u.rateWindows.some(rateWindow => rateWindow.percentUsed >= 60) || (p !== null && p !== 'on-pace')
   const agentsRun = b.agents.some(r => isLive(r.status))
   const warning = cacheWarning(b, true)
   const ask = handoffAsk(b)

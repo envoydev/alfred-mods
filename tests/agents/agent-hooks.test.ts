@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { SPAWN, START, engine, spawns, step, stepEngine, stubAll, watchState } from '../kit'
 import type { AgentRow } from '../../hooks/agents/types'
-import type { Live, Meta } from '../../hooks/session/types'
+import type { Live, Session } from '../../hooks/session/types'
 import type { ToolStat } from '../../hooks/tools/types'
 
 const complete = (turnId: string, more: object = {}) =>
@@ -69,7 +69,7 @@ test("an agent's step gives its model, effort and context tokens", async ($, on)
 
   expect(rowOf(state.get, 'a1')).toMatchObject({ model: 'claude-haiku-5-5', effort: 'medium', contextTokens: 31_200 })
   // The main loop's model and effort stay unset; the spawn only counts its dispatch
-  expect(state.get('meta')).toMatchObject({ model: null, effort: null, agentTypes: { 'general-purpose': 1 } })
+  expect(state.get('session')).toMatchObject({ model: null, effort: null, agentTypes: { 'general-purpose': 1 } })
 })
 
 test("an agent's end keeps its report and status", async ($, on) => {
@@ -165,16 +165,16 @@ test("the main loop's calls in flight are its current action", async ($, on) => 
 
   const main = $.tool.call(grep())
   await clock.settle()
-  expect((state.get('live') as Live).running).toMatchObject([{ tool: 'Grep', label: 'AuthService' }])
+  expect((state.get('live') as Live).runningCalls).toMatchObject([{ tool: 'Grep', label: 'AuthService' }])
 
   await clock.advance(10)
   await main
-  expect((state.get('live') as Live).running).toEqual([])
-  expect((state.get('meta') as Meta).mainCalls).toBe(1)
+  expect((state.get('live') as Live).runningCalls).toEqual([])
+  expect((state.get('session') as Session).mainToolCalls).toBe(1)
 
   await $.agent.spawn(SPAWN)
   const agentCall = $.tool.call({ tool: 'Read', file_path: '/w/a.ts', agentId: 'a1' })
   await clock.advance(10)
   await agentCall
-  expect((state.get('meta') as Meta).mainCalls).toBe(1)
+  expect((state.get('session') as Session).mainToolCalls).toBe(1)
 })

@@ -1,6 +1,6 @@
 // The project and branch read from git's own files, with no git process, and the folder Claude works in (the user,
 // 2026-11-11)
-import type { Meta } from '../session/types'
+import type { Session } from '../session/types'
 
 // The branch a HEAD file names, or a detached commit's first 7 characters; null for anything else
 export function headBranch(text: string): string | null {
@@ -44,6 +44,6 @@ export function parentOf(path: string): string | null {
 export const joinPath = (dir: string, name: string): string => (/[\\/]$/.test(dir) ? `${dir}${name}` : `${dir}/${name}`)
 
 // The counts stay until the next count replaces them
-export const withPlace = (place: NonNullable<Meta['place']>) => (session: Meta): Meta =>
+export const withPlace = (place: NonNullable<Session['place']>) => (session: Session): Session =>
   session.place?.project === place.project && session.place.folder === place.folder && session.place.branch === place.branch ? session
     : { ...session, place: { ...place, ...(session.place?.changes === undefined ? {} : { changes: session.place.changes }), ...(session.place?.sync === undefined ? {} : { sync: session.place.sync }) } }

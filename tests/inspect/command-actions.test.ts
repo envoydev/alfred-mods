@@ -11,7 +11,7 @@ import { PRESENTATION, SPAWN, START, engine, engineSites, rows, setUser, stubAll
 import type { FileStub } from '../kit'
 import type { Handoff } from '../../hooks/handoff/types'
 import type { View } from '../../hooks/inspect/types'
-import type { Meta } from '../../hooks/session/types'
+import type { Session } from '../../hooks/session/types'
 
 const run = async ($: Engine, command: string, args: string): Promise<string> =>
   (await $.command.run({ command, args, origin: { kind: 'composer' }, presentation: PRESENTATION })).text ?? ''
@@ -250,9 +250,9 @@ test('/auto-handoff compact saves a handoff, then compacts', async ($, on) => {
   const { clock, state, handoff } = await start($, on)
   await at($, 82)
   expect(await run($, 'auto-handoff', 'compact')).toBe('Saving a handoff to .claude/session-inspector/HANDOFF.md, then compacting.')
-  await until(clock, () => ((state.get('meta') as Meta | undefined)?.compactions ?? 0) > 0)
+  await until(clock, () => ((state.get('session') as Session | undefined)?.compactions ?? 0) > 0)
   expect(handoff()).toMatchObject({ isAskUp: false, lastSave: { isOk: true } })
-  expect((state.get('meta') as Meta | undefined)?.compactions).toBe(1)
+  expect((state.get('session') as Session | undefined)?.compactions).toBe(1)
 })
 
 // Each failure and report carries the n its command takes, and on the terminal's main screen, where nothing takes a

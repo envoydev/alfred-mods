@@ -1,7 +1,7 @@
 // The band's input and setting
 import type { AgentRow } from '../agents/types'
 import type { PlanView, ScoresView } from '../plan/types'
-import type { Live, Meta, Pace, Totals, Turn, Usage } from '../session/types'
+import type { Live, Session, Pace, Totals, Turn, Usage } from '../session/types'
 import type { Cache } from '../cache/types'
 import type { SkillListing } from '../context/types'
 import type { Runway } from '../stack/types'
@@ -15,7 +15,7 @@ export type { BandMode, BandSetting }
 // plan's file failed its last read; `score`: the shown plan's scores, else the newest scores file's; `rec`: REC's level
 // and how many private words it hides
 export type BandInput = {
-  now: number; columns: number; isWorking: boolean; live: Live; usage: Usage; session: Meta; turns: Turn[]
+  now: number; columns: number; isWorking: boolean; live: Live; usage: Usage; session: Session; turns: Turn[]
   newFailures: number; pace: Pace; agents: AgentRow[]; cache: Cache
   plan: PlanView | null; isPlanInvalid: boolean; score: ScoresView | null; rec?: { level: RecLevel; words: number }
   // Alfred Code's scoring level while scoring is on, which colours the score; null or absent, no colour

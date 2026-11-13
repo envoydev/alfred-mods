@@ -1,7 +1,7 @@
 // The lifecycle folder's effects: what it reads and writes through $
 import { readBandSetting, resetBandFooter, syncStatusLine } from '../band/effects'
 import { armCacheToast, readCache, readCacheConfig, resetCache, takeResumeRate } from '../cache/effects'
-import { setCostBaseline, bumpTick, dropPassedWindows, forgetMidTurnRead, forgetStoredWindows, forgetTurnSpend, refreshUsageMidTurn, isMidTurnReadDue, isTodayStale, markResumed, pruneCost, readLive, readModelAndVersion, readUsage, resetLive, resetMeta, resetPace, resetTick, resetTotals, resetTurns, resetUsage, seedRateWindows, refreshUsage, readTodayUsd } from '../session/effects'
+import { setCostBaseline, bumpTick, dropPassedWindows, forgetMidTurnRead, forgetStoredWindows, forgetTurnSpend, refreshUsageMidTurn, isMidTurnReadDue, isTodayStale, markResumed, pruneCost, readLive, readModelAndVersion, readUsage, resetLive, resetSession, resetPace, resetTick, resetTotals, resetTurns, resetUsage, seedRateWindows, refreshUsage, readTodayUsd } from '../session/effects'
 import { readAgents, refreshLiveAgents, resetAgents, resetLoops } from '../agents/effects'
 import { notePermissionMode, resetBlockers, resetFailures, resetQuiet, resetStats } from '../tools/effects'
 import { openKeepWindow, readStatusFile, readStatusAfterStartOver, resetStack } from '../stack/effects'
@@ -46,7 +46,7 @@ export async function runTick($: EngineInterface): Promise<void> {
   const now = await $.clock.now()
   if (anyLive) await refreshLiveAgents($, rows, now)
   await dropPassedWindows($, now)
-  const isWarm = needsTick(await readCache($), billingOf((await readUsage($)).windows), now)
+  const isWarm = needsTick(await readCache($), billingOf((await readUsage($)).rateWindows), now)
   const minute = Math.floor(now / 60_000)
   const isNewMinute = minute !== tickMemory.minute && (await readBandSetting($)).mode === 'full'
   tickMemory.minute = minute
@@ -79,7 +79,7 @@ export async function resetState($: EngineInterface): Promise<void> {
   await resetLive($)
   await resetUsage($)
   await resetTotals($)
-  await resetMeta($)
+  await resetSession($)
   await resetView($)
   await resetPace($)
   await resetAgents($)
@@ -193,7 +193,7 @@ export async function startSession($: EngineInterface, e: HookInput<'session.sta
   await seedSessionTimes($)
   forgetStoredWindows()
   // A process that starts on a conversation with prompts in it resumed one; a reload keeps $.state and its last reading
-  const isFresh = (await readUsage($)).at === 0
+  const isFresh = (await readUsage($)).readingAt === 0
   const reading = await refreshUsage($, await readTodayUsd($, now))
   await setCostBaseline($, reading)
   await readStartFacts($)

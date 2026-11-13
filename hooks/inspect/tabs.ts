@@ -96,7 +96,7 @@ export function agentsLines(b: TabInput): Line[] {
     const parts = modelParts(b.session.model)
     root.push({ text: ' · ' }, parts === null ? { text: b.session.model } : { text: modelText(b.session.model), tone: parts.family })
   }
-  root.push({ text: ` · ${b.session.mainCalls} ${b.session.mainCalls === 1 ? 'tool' : 'tools'}` })
+  root.push({ text: ` · ${b.session.mainToolCalls} ${b.session.mainToolCalls === 1 ? 'tool' : 'tools'}` })
   const out: Line[] = [head]
   // Two or more agents on one time axis, where the pane has room for a 10-cell bar (spec C2)
   const lanes = lanesOf(b.agents, b.now)
@@ -147,7 +147,7 @@ const BILLED: Record<string, string> = { plan: 'within plan usage', credits: 'on
 // when Claude Code compacts the idle conversation itself
 export function cacheLines(b: TabInput): Line[] {
   const c = b.cache
-  const billing = billingOf(b.usage.windows)
+  const billing = billingOf(b.usage.rateWindows)
   const cacheState = cacheView(c, billing, b.now)
   const s = c.session
   const head: Line = s.read + s.write + s.input === 0
@@ -166,8 +166,8 @@ export function cacheLines(b: TabInput): Line[] {
     : `≈${t.tier}, Claude Code's default ${BILLED[billing] ?? ''}`
   const priced = c.ratePerToken !== null && c.rateModel !== null ? ` · rewrite priced on ${modelText(c.rateModel, true)}` : ''
   out.push([{ text: 'Tier', width: LABEL }, { text: `${source}${priced}` }])
-  const warnAt = toastAt(c, billing, b.usage.tokens)
-  if (c.lastAt !== null && selfCompacts(c, billing, b.usage.tokens)) {
+  const warnAt = toastAt(c, billing, b.usage.contextTokens)
+  if (c.lastAt !== null && selfCompacts(c, billing, b.usage.contextTokens)) {
     const warn = warnAt === null ? '' : `, else a warning at ≈${clockText(warnAt)}`
     out.push([{ text: 'Idle', width: LABEL }, { text: `Claude Code should compact it itself at ≈${clockText(c.lastAt + IDLE_COMPACT_MS)}${warn}` }])
   }
@@ -303,10 +303,10 @@ export function usageLines(b: TabInput): Line[] {
   const out: Line[] = [head]
 
   const ctx: Line = [{ text: 'Context', width: LABEL }]
-  if (usage.percent === null) ctx.push({ text: '—', tone: 'dim' })
+  if (usage.contextPercent === null) ctx.push({ text: '—', tone: 'dim' })
   else {
-    ctx.push(...barSegs(usage.percent), percentSeg(usage.percent))
-    if (usage.tokens !== null && usage.window !== null) ctx.push({ text: `   ${tokensText(usage.tokens)} / ${tokensText(usage.window)}`, tone: 'dim' })
+    ctx.push(...barSegs(usage.contextPercent), percentSeg(usage.contextPercent))
+    if (usage.contextTokens !== null && usage.contextWindow !== null) ctx.push({ text: `   ${tokensText(usage.contextTokens)} / ${tokensText(usage.contextWindow)}`, tone: 'dim' })
     const series = b.turns.flatMap(t => (t.contextPercent === null ? [] : [t.contextPercent]))
     const left = turnsLeft(series, b.forecast?.at)
     if (left !== null) ctx.push({ text: `   ≈${left} turns to ${b.forecast?.label ?? '80%'}`, tone: 'dim' })
@@ -315,9 +315,9 @@ export function usageLines(b: TabInput): Line[] {
   const series = b.turns.flatMap(t => (t.contextPercent === null ? [] : [t.contextPercent]))
   if (series.length > 0) out.push([{ text: 'per turn', tone: 'dim', width: LABEL }, { chart: series.slice(-20) }])
 
-  for (const rateWindow of windowsInOrder(usage.windows)) {
+  for (const rateWindow of windowsInOrder(usage.rateWindows)) {
     const name = rateWindow.kind === 'five_hour' ? '5h' : rateWindow.kind === 'seven_day' ? '7d' : rateWindow.kind
-    const line: Line = [{ text: name, width: LABEL }, ...barSegs(rateWindow.percentUsed), percentSeg(rateWindow.percentUsed, storedMark(usage.windowsAt))]
+    const line: Line = [{ text: name, width: LABEL }, ...barSegs(rateWindow.percentUsed), percentSeg(rateWindow.percentUsed, storedMark(usage.rateWindowsAt))]
     const reset = parse(rateWindow.resetsAt)
     if (reset !== null) line.push({ text: `   resets ${whenText(reset)}`, tone: 'dim' })
     const p = paceForecast(rateWindow.kind, b.pace[rateWindow.kind]?.points ?? [], reset, b.now)
@@ -328,13 +328,13 @@ export function usageLines(b: TabInput): Line[] {
 
   const cost = [usage.costUsd === null ? null : `${usdText(usage.costUsd)} session`, usage.todayUsd === null ? null : `${usdText(usage.todayUsd)} today`]
     .filter((part): part is string => part !== null)
-  if (cost.length > 0) out.push([{ text: 'Cost', width: LABEL }, { text: `${cost.join(' · ')}${usage.windows.length > 0 ? ', est.' : ''}` }])
+  if (cost.length > 0) out.push([{ text: 'Cost', width: LABEL }, { text: `${cost.join(' · ')}${usage.rateWindows.length > 0 ? ', est.' : ''}` }])
 
   const totals = b.totals
   // Output over the main loop's request time, first token and the hooks beneath included: a throughput, not a decode speed
   const rate = totals.stepMs > 0 ? ` · ≈${Math.round(totals.stepOutput / (totals.stepMs / 1000))} tok/s avg` : ''
   out.push([{ text: 'Tokens', width: LABEL }, { text: `in ${tokensText(totals.input)} · out ${tokensText(totals.output)} · cache read ${tokensText(totals.cacheRead)} · cache write ${tokensText(totals.cacheWrite)}${rate}` }])
-  if (b.parts !== undefined) out.push(...partsLines(b.parts), ...skillsRow(b.session.skills, b.session.isResumed === true, b.parts, b.columns))
+  if (b.parts !== undefined) out.push(...partsLines(b.parts), ...skillsRow(b.session.loadedSkills, b.session.isResumed === true, b.parts, b.columns))
   out.push([{ text: `Compactions ${b.session.compactions}${b.session.lastCompactAt === null ? '' : `, at ${clockText(b.session.lastCompactAt)}`}` }])
   return out
 }
@@ -385,10 +385,10 @@ export function timelineLines(turns: Turn[], rows: number, isEstimate: boolean, 
   if (turns.length === 0) out.push([{ text: 'No turns yet.', tone: 'dim' }])
   for (const turn of [...turns].reverse().slice(0, rows)) {
     const cells = pick([
-      String(turn.n), turn.promptAt === null ? '—' : clockText(turn.promptAt), clockText(turn.replyAt), durationText(turn.durationMs), `${tokensText(turn.tokensIn)} / ${tokensText(turn.tokensOut)}`,
-      String(turn.tools), turn.spendUsd === undefined || turn.spendUsd === null ? '-' : usdText(turn.spendUsd),
+      String(turn.turnNumber), turn.promptAt === null ? '—' : clockText(turn.promptAt), clockText(turn.replyAt), durationText(turn.durationMs), `${tokensText(turn.tokensIn)} / ${tokensText(turn.tokensOut)}`,
+      String(turn.toolCalls), turn.spendUsd === undefined || turn.spendUsd === null ? '-' : usdText(turn.spendUsd),
     ])
-    out.push([...timelineRow(cells, widths, {}, spend), turn.failures > 0 ? { text: String(turn.failures), tone: 'fail' } : { text: '0', tone: 'dim' }])
+    out.push([...timelineRow(cells, widths, {}, spend), turn.toolFailures > 0 ? { text: String(turn.toolFailures), tone: 'fail' } : { text: '0', tone: 'dim' }])
   }
   return out
 }

@@ -29,7 +29,7 @@ export function windowsInOrder(windows: RateWindow[]): RateWindow[] {
 
 // The 5h window's pace: null until there are 3 readings
 export function fiveHourPace(b: Pick<BandInput, 'usage' | 'pace' | 'now'>): ReturnType<typeof paceForecast> {
-  const w = b.usage.windows.find(rateWindow => rateWindow.kind === 'five_hour')
+  const w = b.usage.rateWindows.find(rateWindow => rateWindow.kind === 'five_hour')
   if (w === undefined) return null
   const reset = w.resetsAt === null ? NaN : Date.parse(w.resetsAt)
   return paceForecast('five_hour', b.pace.five_hour?.points ?? [], Number.isNaN(reset) ? null : reset, b.now)
@@ -48,12 +48,12 @@ export function gauges(input: BandInput): Line {
     if (out.length > 0) out.push({ text: ' │ ', tone: 'dim' })
   }
   out.push(...contextSegs(u, input.runway))
-  if (u.percent !== null || (input.runway ?? null) !== null) {
+  if (u.contextPercent !== null || (input.runway ?? null) !== null) {
     const left = turnsLeft(input.turns.flatMap(turn => (turn.contextPercent === null ? [] : [turn.contextPercent])), input.forecast?.at)
     if (left !== null) out.push({ text: ` ≈${left} turns`, tone: 'dim' })
   }
-  const mark = storedMark(u.windowsAt)
-  for (const rateWindow of windowsInOrder(u.windows)) {
+  const mark = storedMark(u.rateWindowsAt)
+  for (const rateWindow of windowsInOrder(u.rateWindows)) {
     sep()
     const label = LABEL[rateWindow.kind] ?? rateWindow.kind
     if (rateWindow.kind === 'five_hour') {
@@ -75,7 +75,7 @@ function contextSegs(u: Usage, runway: Runway | null | undefined): Line {
   if (runway !== undefined && runway !== null) {
     return [{ text: 'ctx ', tone: 'usage' }, ...barSegs(runway.percent), percentSeg(runway.percent), { text: ` of ${tokensText(runway.resumeAt)}`, tone: 'usage' }]
   }
-  return u.percent === null ? [{ text: 'ctx —', tone: 'usage' }] : [{ text: 'ctx ', tone: 'usage' }, ...barSegs(u.percent), percentSeg(u.percent)]
+  return u.contextPercent === null ? [{ text: 'ctx —', tone: 'usage' }] : [{ text: 'ctx ', tone: 'usage' }, ...barSegs(u.contextPercent), percentSeg(u.contextPercent)]
 }
 
 export function narrowGauges(u: Usage, runway: Runway | null | undefined): Line {
@@ -84,9 +84,9 @@ export function narrowGauges(u: Usage, runway: Runway | null | undefined): Line 
     if (out.length > 0) out.push({ text: ' · ', tone: 'dim' })
   }
   out.push(...contextSegs(u, runway))
-  for (const rateWindow of windowsInOrder(u.windows)) {
+  for (const rateWindow of windowsInOrder(u.rateWindows)) {
     sep()
-    out.push({ text: `${LABEL[rateWindow.kind] ?? rateWindow.kind} `, tone: 'usage' }, ...barSegs(rateWindow.percentUsed), percentSeg(rateWindow.percentUsed, storedMark(u.windowsAt)), ...resetSegs(rateWindow))
+    out.push({ text: `${LABEL[rateWindow.kind] ?? rateWindow.kind} `, tone: 'usage' }, ...barSegs(rateWindow.percentUsed), percentSeg(rateWindow.percentUsed, storedMark(u.rateWindowsAt)), ...resetSegs(rateWindow))
   }
   return out
 }

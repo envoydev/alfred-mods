@@ -131,12 +131,12 @@ const STACK: Stack = {
   state: 'used', reason: null, fullContext: 'fresh-session', model: 'claude-opus-5-5', window: 1000000, resumeAt: 150000, noOffer: false,
   autoRun: true, scorer: { on: true, level: 80, rounds: 3 }, autoCompact: null, plan: null, hasPrompt: true, updatedAt: null, readAt: 0, ignored: [],
 }
-const USAGE: Usage = { tokens: 93_000, window: 1_000_000, percent: 9, startedAt: 0, windows: [], costUsd: null, todayUsd: null, at: 0 }
+const USAGE: Usage = { contextTokens: 93_000, contextWindow: 1_000_000, contextPercent: 9, startedAt: 0, rateWindows: [], costUsd: null, todayUsd: null, readingAt: 0 }
 const BASE: BandInput = {
   now: 0, columns: 120, isWorking: false,
-  live: { turnId: null, startedAt: null, tools: 0, failures: 0, running: [], promptAt: null },
+  live: { turnId: null, startedAt: null, toolCalls: 0, toolFailures: 0, runningCalls: [], promptAt: null },
   usage: USAGE,
-  session: { model: null, effort: null, compactions: 0, lastCompactAt: null, lastPromptAt: null, lastReplyAt: null, turnCount: 0, waiting: [], mainCalls: 0 },
+  session: { model: null, effort: null, compactions: 0, lastCompactAt: null, lastPromptAt: null, lastReplyAt: null, turnCount: 0, waitingPrompts: [], mainToolCalls: 0 },
   turns: [], newFailures: 0, pace: {}, agents: [],
   cache: {
     tier: null, tierAt: null, tierBilling: null, config: { pin: null, idleOff: false, idleMinTokens: 200_000, isTerminal: false },
@@ -145,7 +145,7 @@ const BASE: BandInput = {
   plan: null, isPlanInvalid: false, score: null,
 }
 const turn = (n: number, contextPercent: number): Turn => ({
-  n, turnId: `t${n}`, promptAt: null, replyAt: 0, durationMs: 1000, tokensIn: 0, tokensOut: 0, tools: 0, failures: 0, contextPercent, end: 'answer',
+  turnNumber: n, turnId: `t${n}`, promptAt: null, replyAt: 0, durationMs: 1000, tokensIn: 0, tokensOut: 0, toolCalls: 0, toolFailures: 0, contextPercent, endReason: 'answer',
 })
 const text = (l: Line): string => l.map(s => ('text' in s ? s.text : '')).join('')
 const RUNWAY = { percent: 62, resumeAt: 150000, at: 15 }
@@ -165,14 +165,14 @@ test('modelsAgree', () => {
 
 test('runwayOf', () => {
   expect(runwayOf(STACK, USAGE, 'claude-opus-5-5')).toEqual({ percent: 62, resumeAt: 150000, at: 15 })
-  expect(runwayOf(STACK, { ...USAGE, tokens: 157_500 }, null)?.percent).toBe(105)
-  expect(runwayOf(STACK, { ...USAGE, window: null }, null)).toEqual({ percent: 62, resumeAt: 150000, at: null })
+  expect(runwayOf(STACK, { ...USAGE, contextTokens: 157_500 }, null)?.percent).toBe(105)
+  expect(runwayOf(STACK, { ...USAGE, contextWindow: null }, null)).toEqual({ percent: 62, resumeAt: 150000, at: null })
   expect(runwayOf({ ...STACK, fullContext: 'compact' }, USAGE, null)).toBe(null)
   expect(runwayOf({ ...STACK, fullContext: 'off' }, USAGE, null)).toBe(null)
   expect(runwayOf({ ...STACK, resumeAt: null, noOffer: true }, USAGE, null)).toBe(null)
   expect(runwayOf({ ...STACK, state: 'ignored', reason: 'schema 2' }, USAGE, null)).toBe(null)
   expect(runwayOf(STACK, USAGE, 'claude-sonnet-5-5')).toBe(null)
-  expect(runwayOf(STACK, { ...USAGE, tokens: null }, null)).toBe(null)
+  expect(runwayOf(STACK, { ...USAGE, contextTokens: null }, null)).toBe(null)
 })
 
 test('the band measures ctx against the runway at 120 and 90 columns', () => {
@@ -251,7 +251,7 @@ test('the banner leads line 1, after REC when it is on, calm and working, at 90 
 })
 
 test('with no reading yet, the banner alone', () => {
-  const none = { ...BASE, usage: { ...USAGE, tokens: null, percent: null }, banner: bannerSegs(STACK) }
+  const none = { ...BASE, usage: { ...USAGE, contextTokens: null, contextPercent: null }, banner: bannerSegs(STACK) }
   expect(bandLines(none).map(text)).toEqual(['auto-run · scoring 80'])
   expect(bandLines({ ...none, rec: { level: 'on', words: 0 } }).map(text)).toEqual(['● REC │ auto-run · scoring 80'])
   expect(bandLines({ ...none, banner: [] })).toEqual([])
@@ -264,7 +264,7 @@ test('REC and the banner at 60 columns keep both marks', () => {
 
 test('the marks take line 1 alone when the calm line does not fit beside them, and every gauge, reset and the cost stay', () => {
   const windows = [{ kind: 'five_hour', percentUsed: 45, resetsAt: '2026-10-28T17:00:00Z' }, { kind: 'seven_day', percentUsed: 20, resetsAt: '2026-10-31T09:00:00Z' }]
-  const usage = { ...USAGE, windows, costUsd: 1.23 }
+  const usage = { ...USAGE, rateWindows: windows, costUsd: 1.23 }
   for (const columns of [90, 100]) {
     const lines = bandLines({ ...BASE, columns, usage, banner: bannerSegs(STACK), rec: { level: 'on', words: 0 }, runway: RUNWAY })
     expect(text(lines[0]!)).toBe('● REC │ auto-run · scoring 80')

@@ -4,7 +4,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Caught, EngineInterface } from 'claude-code'
 import type { BandInput, BandMode, BandSetting } from './types'
-import { readLive, readMeta, readPace, readTick, readTotals, readTurns, readUsage } from '../session/effects'
+import { readLive, readSession, readPace, readTick, readTotals, readTurns, readUsage } from '../session/effects'
 import { readStack, readScoreLevel } from '../stack/effects'
 import { bandLines, statusText, underRows } from './band'
 import { mask } from '../rec/mask'
@@ -55,9 +55,9 @@ const bandMemory = { isShown: false, isUnder: false, columns: null as number | n
 
 export async function syncStatusLine($: EngineInterface): Promise<void> {
   const usage = await readUsage($)
-  const runway = runwayOf(await readStack($), usage, (await readMeta($)).model)
+  const runway = runwayOf(await readStack($), usage, (await readSession($)).model)
   const raw = statusText({
-    percent: runway?.percent ?? usage.percent, newFailures: (await readFailures($)).filter(failure => failure.isNew).length,
+    percent: runway?.percent ?? usage.contextPercent, newFailures: (await readFailures($)).filter(failure => failure.isNew).length,
     recLevel: (await readRec($)).level, isBandShown: bandMemory.isShown,
   })
   const text = raw === null ? undefined : mask(raw)
@@ -94,7 +94,7 @@ export async function readBandInput(
   const u = await readUsage($)
   const h = await readHandoff($)
   const st = await readStack($)
-  const m = await readMeta($)
+  const m = await readSession($)
   const runway = runwayOf(st, u, m.model)
   const setting = await readBandSetting($)
   const parts = await readParts($)
@@ -158,7 +158,7 @@ export async function drawBandUnder($: EngineInterface, e: MatchedInput<'ui.rend
 
 export async function drawSpinner($: EngineInterface, e: MatchedInput<'ui.render', { component: 'Spinner' }>, next: MatchedNext<'ui.render', { component: 'Spinner' }>) {
   const text = spinnerSuffix({
-    requestId: e.requestId ?? '', live: await readLive($), percent: (await readUsage($)).percent, agents: await readAgents($),
+    requestId: e.requestId ?? '', live: await readLive($), percent: (await readUsage($)).contextPercent, agents: await readAgents($),
   })
   // REC masks the engine's word and message as well as the mod's own suffix
   const word = mask(e.props.word)

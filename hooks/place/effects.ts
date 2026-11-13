@@ -2,7 +2,7 @@
 import { readTextFile } from '../core/effects'
 import { baseName, folderOf, gitDirOf, headBranch, joinPath, parentOf } from './place'
 import { aheadBehind, numstatTotals, textLines, untrackedNames } from './changes'
-import { readMeta, showPlace, showPlaceCounts } from '../session/effects'
+import { readSession, showPlace, showPlaceCounts } from '../session/effects'
 import type { EngineInterface } from 'claude-code'
 
 // The HEAD file the place was read from, so the 30-second poll reads that one file for a checkout; the working folder
@@ -137,7 +137,7 @@ export async function pollPlace($: EngineInterface): Promise<void> {
   const head = placeMemory.head
   if (head === null) return
   const text = await readTextFile($, head)
-  const place = (await readMeta($)).place
+  const place = (await readSession($)).place
   if (text !== null && place !== undefined) await showPlace($, { ...place, branch: headBranch(text) })
 }
 

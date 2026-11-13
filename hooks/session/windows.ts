@@ -25,19 +25,19 @@ export function storedWindows(value: unknown, now: number): { at: number; window
 // The 5h and 7d windows a reading leaves: its own when it has some or a request has been made (`isRead`: off a
 // subscription a reading never has any), else the ones an earlier session stored (the user, 2026-11-11: the band from
 // the first second), else none
-export function nextWindows(usage: Usage, fresh: RateWindow[], isRead: boolean): Pick<Usage, 'windows' | 'windowsAt'> {
-  if (fresh.length > 0 || isRead || usage.windowsAt === undefined) return { windows: fresh }
-  return { windows: usage.windows, windowsAt: usage.windowsAt }
+export function nextWindows(usage: Usage, fresh: RateWindow[], isRead: boolean): Pick<Usage, 'rateWindows' | 'rateWindowsAt'> {
+  if (fresh.length > 0 || isRead || usage.rateWindowsAt === undefined) return { rateWindows: fresh }
+  return { rateWindows: usage.rateWindows, rateWindowsAt: usage.rateWindowsAt }
 }
 
 // The figures with each stored window whose reset has passed taken out, and the mark with the last of them; null when
 // none has passed. No reading runs while idle, so the tick asks this.
 export function dropPassed(usage: Usage, now: number): Usage | null {
-  if (usage.windowsAt === undefined) return null
-  const left = usage.windows.filter(rateWindow => rateWindow.resetsAt === null || !(Date.parse(rateWindow.resetsAt) <= now))
-  if (left.length === usage.windows.length) return null
-  const { windowsAt, ...rest } = usage
-  return left.length === 0 ? { ...rest, windows: [] } : { ...rest, windows: left, windowsAt }
+  if (usage.rateWindowsAt === undefined) return null
+  const left = usage.rateWindows.filter(rateWindow => rateWindow.resetsAt === null || !(Date.parse(rateWindow.resetsAt) <= now))
+  if (left.length === usage.rateWindows.length) return null
+  const { rateWindowsAt, ...rest } = usage
+  return left.length === 0 ? { ...rest, rateWindows: [] } : { ...rest, rateWindows: left, rateWindowsAt }
 }
 
 // '≈' before a window's percent while it is a stored one

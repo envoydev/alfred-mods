@@ -24,7 +24,7 @@ const FULL = `${HEAD} │ you ${clockText(P)} · Claude ${clockText(R)}`
 
 const stat = (calls: number): ToolStat => ({ calls, ok: calls, failed: 0, stopped: 0 })
 const turn = (n: number, contextPercent: number | null = null): Turn => ({
-  n, turnId: `t${n}`, promptAt: P, replyAt: R, durationMs: 3000, tokensIn: 0, tokensOut: 0, tools: 19, failures: 0, contextPercent, end: 'answer',
+  turnNumber: n, turnId: `t${n}`, promptAt: P, replyAt: R, durationMs: 3000, tokensIn: 0, tokensOut: 0, toolCalls: 19, toolFailures: 0, contextPercent, endReason: 'answer',
 })
 const CACHE: Cache = {
   tier: '1h', tierAt: null, tierBilling: 'plan', config: { pin: null, idleOff: false, idleMinTokens: 200_000, isTerminal: false },
@@ -41,11 +41,11 @@ const WINDOWS = [
 function input(o: Partial<BandInput> = {}): BandInput {
   return {
     now: NOW, columns: 200, isWorking: false, mode: 'full',
-    live: { turnId: null, startedAt: null, tools: 0, failures: 0, running: [], promptAt: null },
-    usage: { tokens: 60_000, window: 200_000, percent: 30, startedAt: NOW - 59 * 60_000, windows: WINDOWS, costUsd: 1.29, todayUsd: 10.46, at: NOW },
+    live: { turnId: null, startedAt: null, toolCalls: 0, toolFailures: 0, runningCalls: [], promptAt: null },
+    usage: { contextTokens: 60_000, contextWindow: 200_000, contextPercent: 30, startedAt: NOW - 59 * 60_000, rateWindows: WINDOWS, costUsd: 1.29, todayUsd: 10.46, readingAt: NOW },
     session: {
       model: 'claude-sonnet-5-5', effort: 'medium', compactions: 0, lastCompactAt: null, lastPromptAt: P, lastReplyAt: R, turnCount: 1,
-      waiting: [], mainCalls: 19,
+      waitingPrompts: [], mainToolCalls: 19,
     },
     turns: [turn(1)], newFailures: 0, pace: {}, agents: [], cache: CACHE, plan: null, isPlanInvalid: false, score: null,
     totals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, stepOutput: 13_300, stepMs: 100_000 },
@@ -77,7 +77,7 @@ test('the info line drops items by keep order, whole', () => {
 
 test("while a turn runs, the info line's 'you' is that turn's prompt", () => {
   const at = NOW - 14_000
-  const running = input({ isWorking: true, live: { turnId: 't2', startedAt: at, tools: 0, failures: 0, running: [], promptAt: at } })
+  const running = input({ isWorking: true, live: { turnId: 't2', startedAt: at, toolCalls: 0, toolFailures: 0, runningCalls: [], promptAt: at } })
   expect(text(infoLine(running)).endsWith(`│ you ${clockText(at)} · Claude ${clockText(R)}`)).toBe(true)
 })
 
@@ -98,7 +98,7 @@ test("a fresh session's info line holds the model and the time alone", () => {
 
 test("full mode: line 1 counts the turn's tools, line 2 adds today while it fits", () => {
   const working = (tools: number) => texts(bandLines(input({
-    isWorking: true, live: { turnId: 't2', startedAt: NOW - 14_000, tools, failures: 0, running: [], promptAt: NOW - 14_000 },
+    isWorking: true, live: { turnId: 't2', startedAt: NOW - 14_000, toolCalls: tools, toolFailures: 0, runningCalls: [], promptAt: NOW - 14_000 },
   })))[0] ?? ''
   expect(working(18).startsWith('⟳ Turn 2 · 0:14')).toBe(true)
   expect(working(18).includes(' · 18 tools')).toBe(true)
@@ -109,7 +109,7 @@ test("full mode: line 1 counts the turn's tools, line 2 adds today while it fits
   const points = [{ at: NOW - 60 * 60_000, percent: 15 }, { at: NOW - 30 * 60_000, percent: 15 }, { at: NOW - 60_000, percent: 15 }]
   const needs = (columns: number) => bandLines(input({
     columns, newFailures: 1, turns: [turn(1, 20), turn(2, 25), turn(3, 30)],
-    pace: { five_hour: { resetsAt: '2026-10-28T17:00:00Z', points, toasted: [] } },
+    pace: { five_hour: { resetsAt: '2026-10-28T17:00:00Z', points, toastedMarks: [] } },
   }))
   const wide = needs(200)
   expect(text(wide[1] ?? []).endsWith('$1.29 · today $10.46')).toBe(true)
@@ -131,7 +131,7 @@ test('full mode, idle and healthy: two lines in their colours and usage:, no tim
 
 test('calm mode draws what no mode draws', () => {
   const idle = input()
-  const working = input({ isWorking: true, live: { turnId: 't2', startedAt: NOW - 14_000, tools: 18, failures: 0, running: [], promptAt: null } })
+  const working = input({ isWorking: true, live: { turnId: 't2', startedAt: NOW - 14_000, toolCalls: 18, toolFailures: 0, runningCalls: [], promptAt: null } })
   const needs = input({ newFailures: 2 })
   for (const x of [idle, working, needs]) {
     const calm = bandLines({ ...x, mode: 'calm' })
@@ -178,14 +178,14 @@ test("usage: counts the session's tool calls and the main chat's skills, never a
   const skills = { 'superpowers:brainstorming': 1, 'solve-task': 2 }
   const at = (o: Partial<BandInput>) => texts(bandLines(input({ columns: 200, ...o }))).find(l => l.startsWith('usage:'))
   const meta = input().session
-  expect(at({ session: { ...meta, skills: { 'solve-task': 2 } } })).toBe('usage:   [ 19 tools · 1 skill ]')
-  expect(at({ session: { ...meta, skills }, stats: { ...input().stats, 'Skill: solve-task': stat(2) } })).toBe('usage:   [ 19 tools · 2 skills ]')
-  expect(at({ session: { ...meta, skills }, stats: {} })).toBe('usage:   [ 2 skills ]')
+  expect(at({ session: { ...meta, loadedSkills: { 'solve-task': 2 } } })).toBe('usage:   [ 19 tools · 1 skill ]')
+  expect(at({ session: { ...meta, loadedSkills: skills }, stats: { ...input().stats, 'Skill: solve-task': stat(2) } })).toBe('usage:   [ 19 tools · 2 skills ]')
+  expect(at({ session: { ...meta, loadedSkills: skills }, stats: {} })).toBe('usage:   [ 2 skills ]')
   expect(at({ stats: { Bash: stat(1) } })).toBe('usage:   [ 1 tool ]')
   expect(at({ isToolsOpen: true })).toBe('usage:   [ 19 tools ]')
   // Its width runs out: the skills' count goes first
-  expect(at({ columns: 32, session: { ...meta, skills } })).toBe('usage:   [ 19 tools · 2 skills ]')
-  expect(at({ columns: 31, session: { ...meta, skills } })).toBe('usage:   [ 19 tools ]')
+  expect(at({ columns: 32, session: { ...meta, loadedSkills: skills } })).toBe('usage:   [ 19 tools · 2 skills ]')
+  expect(at({ columns: 31, session: { ...meta, loadedSkills: skills } })).toBe('usage:   [ 19 tools ]')
   // No button: `bandRows` opens and closes the rows
   expect(tools(bandLines(input()))).toBeUndefined()
   expect(text(infoLine(input()))).not.toContain('tools')
@@ -204,7 +204,7 @@ test('closed, the band draws no rows of tools; open, every tool and the skills u
 })
 
 test('the skills row names each skill loaded in the main chat and how many the listing carries', () => {
-  const meta = { ...input().session, skills: { 'superpowers:brainstorming': 1, 'solve-task': 2 } }
+  const meta = { ...input().session, loadedSkills: { 'superpowers:brainstorming': 1, 'solve-task': 2 } }
   const row = (o: Partial<BandInput>) => texts(bandLines(input({ isToolsOpen: true, ...o }))).find(l => l.startsWith('skills:'))
   expect(row({ session: meta })).toBe('skills:  superpowers:brainstorming ×1 │ solve-task ×2')
   expect(row({ session: meta, skillListing: { listed: 57, total: 60, tokens: 3200 } })).toBe('skills:  superpowers:brainstorming ×1 │ solve-task ×2 │ 57 of 60 listed')
@@ -221,7 +221,7 @@ test('after a resume the skills row counts from it', () => {
   const resumed = { ...input().session, isResumed: true }
   const row = (o: Partial<BandInput>) => texts(bandLines(input({ isToolsOpen: true, ...o }))).find(l => l.startsWith('skills:'))
   expect(row({ session: resumed, skillListing: { listed: 60, total: 60, tokens: 3200 } })).toBeUndefined()
-  expect(row({ session: { ...resumed, skills: { 'solve-task': 1 } } })).toBe('skills:  solve-task ×1 │ since resume')
+  expect(row({ session: { ...resumed, loadedSkills: { 'solve-task': 1 } } })).toBe('skills:  solve-task ×1 │ since resume')
 })
 
 test('the rows wrap whole names under their label, each row in the width', () => {
@@ -233,7 +233,7 @@ test('the rows wrap whole names under their label, each row in the width', () =>
 })
 
 const FOUR: Partial<BandInput> = {
-  rules: { always: ['a.md'], byPath: [], isTracked: true }, session: { ...input().session, skills: { 'solve-task': 1 }, agentTypes: { Explore: 1 } },
+  rules: { always: ['a.md'], byPath: [], isTracked: true }, session: { ...input().session, loadedSkills: { 'solve-task': 1 }, agentTypes: { Explore: 1 } },
 }
 
 test('short of rows, the open rows give way first, then usage:, then the info line, and the buttons stay in view', () => {
@@ -272,10 +272,10 @@ test('calm mode has no toggle and no rows, open or not', () => {
 // session stored marked ≈, the cost and the place; calm draws nothing yet, as it always has
 const AT_START: Partial<BandInput> = {
   turns: [], stats: {}, cache: COLD, totals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, stepOutput: 0, stepMs: 0 },
-  usage: { tokens: null, window: null, percent: null, startedAt: NOW - 30_000, windows: WINDOWS, windowsAt: NOW - 600_000, costUsd: 0, todayUsd: 10.46, at: NOW },
+  usage: { contextTokens: null, contextWindow: null, contextPercent: null, startedAt: NOW - 30_000, rateWindows: WINDOWS, rateWindowsAt: NOW - 600_000, costUsd: 0, todayUsd: 10.46, readingAt: NOW },
   session: {
     model: 'claude-sonnet-5-5', effort: null, compactions: 0, lastCompactAt: null, lastPromptAt: null, lastReplyAt: null, turnCount: 0,
-    waiting: [], mainCalls: 0, place: { project: 'alfred-mods', branch: 'develop' }, version: '2.1.322',
+    waitingPrompts: [], mainToolCalls: 0, place: { project: 'alfred-mods', branch: 'develop' }, version: '2.1.322',
   },
 }
 
@@ -291,7 +291,7 @@ test('from the first second the full band draws the model, the stored windows ma
   // Narrow, the same marks
   expect(texts(bandLines(input({ ...AT_START, columns: 80 })))[0]?.includes('5h ▱▱▱▱▱ ≈15%')).toBe(true)
   // A live reading's windows carry no mark
-  const live = texts(bandLines(input({ ...AT_START, usage: { ...input(AT_START).usage, windowsAt: undefined } })))
+  const live = texts(bandLines(input({ ...AT_START, usage: { ...input(AT_START).usage, rateWindowsAt: undefined } })))
   expect(live[0]?.includes('≈')).toBe(false)
   // The info line is dim but for the model in every state (the review of 2026-11-11); the project is the text's own
   // colour (settings-values S6)
@@ -303,7 +303,7 @@ test('from the first second the full band draws the model, the stored windows ma
 test('calm draws nothing before the first reading, as it always has; full with nothing known draws nothing', () => {
   expect(bandLines(input({ ...AT_START, mode: 'calm' }))).toEqual([])
   const none = input(AT_START)
-  expect(bandLines({ ...none, usage: { ...none.usage, windows: [] }, session: { ...none.session, model: null } })).toEqual([])
+  expect(bandLines({ ...none, usage: { ...none.usage, rateWindows: [] }, session: { ...none.session, model: null } })).toEqual([])
 })
 
 test('the version goes first when the width runs out; a branchless project row is its name alone', () => {

@@ -7,7 +7,7 @@ import type { Handoff, PlanPart, SaveTrigger, SaveInput, SaveResult, ScoresPart 
 import { PLANS_DIR, creditedPlan, scoresView } from '../plan/plan'
 import { FOREIGN, HANDOFF_PATH, HANDOFF_USAGE, MARKER, MODES, RESUME_WINDOW_MS, RESUME_PROMPT, TOASTS, gitPart, handoffText, nextStep, parseStatus, percentOf, stepUnder, stepsOf } from './handoff'
 import { readBreakdown } from '../context/effects'
-import { readLive, readMeta, readUsage } from '../session/effects'
+import { readLive, readSession, readUsage } from '../session/effects'
 import { readStack } from '../stack/effects'
 import { readStats } from '../tools/effects'
 import { readAgents } from '../agents/effects'
@@ -66,7 +66,7 @@ export async function applyHandoffSetting($: EngineInterface): Promise<void> {
 // that fails, gives the window for that reading alone and counts a miss; the third miss for one model and window
 // keeps the window as the point and asks no more.
 export async function compactPointOf($: EngineInterface, window: number): Promise<number> {
-  const key = `${(await readMeta($)).model ?? ''}:${window}`
+  const key = `${(await readSession($)).model ?? ''}:${window}`
   const known = (await readHandoff($)).point
   if (handoffMemory.pointKey === key && known !== null) return known
   if (handoffMemory.pointMiss.key !== key) handoffMemory.pointMiss = { key, count: 0 }
@@ -149,7 +149,7 @@ export async function isForeignFile($: EngineInterface): Promise<boolean> {
 export async function readSaveInput($: EngineInterface, at: number, git: string[]): Promise<SaveInput> {
   const h = await readHandoff($)
   const usage = await readUsage($)
-  const m = await readMeta($)
+  const m = await readSession($)
   const plans = await readPlans($)
   const items = await readTasks($)
   const w = creditedPlan(plans, (await readView($)).planSlug, items.length > 0)
@@ -171,14 +171,14 @@ export async function readSaveInput($: EngineInterface, at: number, git: string[
   }
   const counted = Object.values(await readStats($))
   const isWorking = (await readLive($)).turnId !== null
-  const point = h.point ?? usage.window
+  const point = h.point ?? usage.contextWindow
   return {
-    at, percent: usage.tokens === null || point === null ? null : percentOf(usage.tokens, point), threshold: h.threshold,
+    at, percent: usage.contextTokens === null || point === null ? null : percentOf(usage.contextTokens, point), threshold: h.threshold,
     session: await $.session.id(), model: m.model, git, plan, scores,
     counts: {
       turn: m.turnCount + (isWorking ? 1 : 0), durationMs: usage.startedAt === null ? null : at - usage.startedAt,
       calls: counted.reduce((n, t) => n + t.calls, 0), failed: counted.reduce((n, stat) => n + stat.failed, 0),
-      agents: (await readAgents($)).length, costUsd: usage.costUsd, isEstimate: usage.windows.length > 0,
+      agents: (await readAgents($)).length, costUsd: usage.costUsd, isEstimate: usage.rateWindows.length > 0,
     },
   }
 }
@@ -240,10 +240,10 @@ export async function stepHandoff($: EngineInterface, tokens: number | undefined
 export async function handoffStateLine($: EngineInterface): Promise<string> {
   const h = await readHandoff($)
   const usage = await readUsage($)
-  const point = h.point ?? usage.window
-  const ctx = usage.tokens === null || point === null ? 'ctx –' : `ctx ${percentOf(usage.tokens, point)}%`
+  const point = h.point ?? usage.contextWindow
+  const ctx = usage.contextTokens === null || point === null ? 'ctx –' : `ctx ${percentOf(usage.contextTokens, point)}%`
   if (h.alfred.state === 'stood-down') {
-    const runway = runwayOf(await readStack($), usage, (await readMeta($)).model)
+    const runway = runwayOf(await readStack($), usage, (await readSession($)).model)
     return `${runway === null ? ctx : `ctx ${runway.percent}% of ${tokensText(runway.resumeAt)}`} · handoff by Alfred Code`
   }
   if (h.mode === 'off') return `Handoff: off · ${ctx}`
@@ -267,7 +267,7 @@ export async function followStatusFile($: EngineInterface, text: string | null, 
   // compaction's re-arm waits for a fresh reading instead
   if (!wasStoodDown || handoffMemory.stoodDown || handoffMemory.rearm) return
   const usage = await readUsage($)
-  if (usage.tokens !== null && usage.window !== null) await stepHandoff($, usage.tokens, usage.window)
+  if (usage.contextTokens !== null && usage.contextWindow !== null) await stepHandoff($, usage.contextTokens, usage.contextWindow)
 }
 
 export async function runHandoffCommand($: EngineInterface, e: MatchedInput<'command.run', { command: 'auto-handoff' }>, pending: Pending) {

@@ -153,12 +153,12 @@ for (const surface of SURFACES) {
 
 // Spec 'Backward compatibility': a turn and an agent row kept by an earlier version have neither field
 test('an old atom without the fields reads as null', { timeoutMs: 15_000 }, async ($, on) => {
-  const oldTurn = { n: 1, turnId: 't0', promptAt: null, replyAt: 0, durationMs: 3000, tokensIn: 10, tokensOut: 2, tools: 0, failures: 0, contextPercent: null, end: 'answer' }
+  const oldTurn = { turnNumber: 1, turnId: 't0', promptAt: null, replyAt: 0, durationMs: 3000, tokensIn: 10, tokensOut: 2, toolCalls: 0, toolFailures: 0, contextPercent: null, endReason: 'answer' }
   const oldRow = {
     id: 'a0', parentId: null, type: 'Explore', description: 'old', plan: null, task: null, isTeammate: false, model: 'claude-haiku-5-5',
     effort: null, status: 'completed', isListed: false, startedAt: 0, endedAt: 1000, action: null, report: 'found it', contextTokens: null, tools: {},
   }
-  const seeded: Record<string, unknown> = { turns: { shape: 'turns-1', value: [oldTurn] }, agents: { shape: 'agents-2', value: [oldRow] } }
+  const seeded: Record<string, unknown> = { turns: { shape: 'turns-2', value: [oldTurn] }, agents: { shape: 'agents-2', value: [oldRow] } }
   const written = new Set<string>()
   on('state.set', async ($$, e, next) => {
     written.add(e.key)

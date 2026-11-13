@@ -56,7 +56,7 @@ export async function armCacheToast($: EngineInterface, pending: Pending): Promi
   pending.cacheToast = null
   const cache = await readCache($)
   const usage = await readUsage($)
-  const at = toastAt(cache, billingOf(usage.windows), usage.tokens)
+  const at = toastAt(cache, billingOf(usage.rateWindows), usage.contextTokens)
   if (at === null) return
   const now = await $.clock.now()
   pending.cacheToast = $.clock.after(Math.max(0, at - now), () => {
@@ -69,7 +69,7 @@ export async function armCacheToast($: EngineInterface, pending: Pending): Promi
 export async function toastCacheClosing($: EngineInterface): Promise<void> {
   const c = await readCache($)
   const usage = await readUsage($)
-  const cacheState = cacheView(c, billingOf(usage.windows), await $.clock.now(), usage.tokens)
+  const cacheState = cacheView(c, billingOf(usage.rateWindows), await $.clock.now(), usage.contextTokens)
   if (cacheState.tier.tier !== '1h' || !cacheState.isClosing || c.toastedFor === c.lastAt) return
   if ((await readLive($)).turnId !== null) return
   const rewrite = cacheState.rewriteUsd === null ? '' : ` (rewrite ≈ ${usdText(cacheState.rewriteUsd)})`
@@ -124,7 +124,7 @@ export async function trackModelSwitch($: EngineInterface, e: HookInput<'classic
   const done = await next(e)
   // The band names the model before the first step does (the review, 2026-11-11)
   await setModel($, e.to_model)
-  const billing = billingOf((await readUsage($)).windows)
+  const billing = billingOf((await readUsage($)).rateWindows)
   const now = await $.clock.now()
   const s = { ttl: e.cache_ttl, contextTokens: e.context_tokens, usd: e.estimated_cache_write_usd, model: e.to_model, billing }
   await updateCache($, cache => takeSwitch(cache, s, now, true))
@@ -135,7 +135,7 @@ export async function trackModelSwitch($: EngineInterface, e: HookInput<'classic
 export async function trackModelSwitchAsk($: EngineInterface, e: HookInput<'classic.PreModelSwitch'>, next: HookNext<'classic.PreModelSwitch'>, pending: Pending) {
   const done = await next(e)
   if (done.block !== undefined || done.permissionDecision === 'deny' || done.permissionDecision === 'ask') return done
-  const billing = billingOf((await readUsage($)).windows)
+  const billing = billingOf((await readUsage($)).rateWindows)
   const now = await $.clock.now()
   const s = { ttl: e.cache_ttl, contextTokens: e.context_tokens, usd: e.estimated_cache_write_usd, model: e.to_model, billing }
   await updateCache($, cache => takeSwitch(cache, s, now, false))

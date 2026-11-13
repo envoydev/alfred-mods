@@ -4,7 +4,7 @@ import type { SessionUsage } from 'claude-code'
 import { localDate } from '../../hooks/core/forecast'
 import { whenText } from '../../hooks/core/format'
 import { PRESENTATION, SPAWN, START, engine, stubAll, watchState } from '../kit'
-import type { Meta, Totals, Turn, Usage } from '../../hooks/session/types'
+import type { Session, Totals, Turn, Usage } from '../../hooks/session/types'
 
 const USAGE = {
   input_tokens: 2, output_tokens: 254, cache_read_input_tokens: 33603, cache_creation_input_tokens: 34287, model: 'claude-sonnet-5-5',
@@ -25,7 +25,7 @@ test('a turn records prompt and reply times, tokens and its tool calls', async (
   await clock.set(4000)
   await $.turn.complete({ ...complete('t1'), usage: USAGE })
 
-  expect((state.get('turns') as Turn[])[0]).toMatchObject({ n: 1, promptAt: 0, replyAt: 4000, tokensIn: 67892, tokensOut: 254, tools: 1, failures: 0, contextPercent: 45, end: 'answer' })
+  expect((state.get('turns') as Turn[])[0]).toMatchObject({ turnNumber: 1, promptAt: 0, replyAt: 4000, tokensIn: 67892, tokensOut: 254, toolCalls: 1, toolFailures: 0, contextPercent: 45, endReason: 'answer' })
 })
 
 test('a task notification is not your prompt', async ($, on) => {
@@ -92,10 +92,10 @@ test('a precompute or skipped compaction is not counted', async ($, on) => {
 
   await $.session.compact({ trigger: 'precompute', messages })
   await $.session.compact({ trigger: 'auto', messages })
-  expect(state.get('meta')).toBeUndefined()
+  expect(state.get('session')).toBeUndefined()
 
   await $.session.compact({ trigger: 'manual', messages })
-  expect((state.get('meta') as Meta).compactions).toBe(1)
+  expect((state.get('session') as Session).compactions).toBe(1)
 })
 
 test('after /clear the timeline and tools start over and the command still answers', async ($, on) => {
@@ -113,7 +113,7 @@ test('after /clear the timeline and tools start over and the command still answe
 
   expect(state.get('turns')).toEqual([])
   expect(state.get('stats')).toEqual({})
-  expect((state.get('meta') as Meta).turnCount).toBe(0)
+  expect((state.get('session') as Session).turnCount).toBe(0)
   const ran = await $.command.run({ command: 'inspect', args: '', origin: { kind: 'composer' }, presentation: PRESENTATION })
   expect(ran.text).toBeDefined()
 })
@@ -211,7 +211,7 @@ test('an interrupted turn with no usage still records the turn', async ($, on) =
   await $.turn.start({ text: 'q', turnId: 't1' })
   await $.turn.complete({ ...complete('t1'), reason: 'aborted', isAborted: true })
 
-  expect((state.get('turns') as Turn[])[0]).toMatchObject({ tokensIn: 0, end: 'aborted' })
+  expect((state.get('turns') as Turn[])[0]).toMatchObject({ tokensIn: 0, endReason: 'aborted' })
   expect(state.get('totals')).toBeUndefined()
 })
 
@@ -231,7 +231,7 @@ test("the step's model and effort are the main loop's", { timeoutMs: 15_000 }, a
   await clock.advance(2000)
   await drained
 
-  expect(state.get('meta')).toMatchObject({ model: 'claude-haiku-5-5', effort: 'medium' })
+  expect(state.get('session')).toMatchObject({ model: 'claude-haiku-5-5', effort: 'medium' })
   expect(state.get('totals')).toMatchObject({ stepOutput: 100, stepMs: 2000 })
 })
 
@@ -256,6 +256,6 @@ test('a window with no reading leaves the usage figures null', async ($, on) => 
 
   await $.session.start(START)
 
-  expect(state.get('usage')).toMatchObject({ tokens: null, percent: null, window: 200_000, windows: [], costUsd: null })
+  expect(state.get('usage')).toMatchObject({ contextTokens: null, contextPercent: null, contextWindow: 200_000, rateWindows: [], costUsd: null })
   expect(state.get('totals') as Totals | undefined).toBeUndefined()
 })

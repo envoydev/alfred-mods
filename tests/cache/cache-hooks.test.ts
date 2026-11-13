@@ -4,7 +4,7 @@ import type { SessionUsage } from 'claude-code'
 
 import { SPAWN, START, SWITCH, engine, step, stepEngine, stubAll, watchState } from '../kit'
 import type { Cache } from '../../hooks/cache/types'
-import type { Meta } from '../../hooks/session/types'
+import type { Session } from '../../hooks/session/types'
 
 const MAIN = { input_tokens: 0, output_tokens: 500, cache_read_input_tokens: 169_200, cache_creation_input_tokens: 10_800, model: 'claude-opus-5-5' }
 // A subscription within its plan's usage, the 5h window at `fiveHour`, with `tokens` of context
@@ -308,7 +308,7 @@ test("every counted compaction makes the cache cold, Claude Code's own included"
   await mainStep($)
   await $.session.compact({ trigger: 'auto', messages })
   expect(state.get('cache')).toMatchObject({ lastAt: null, last: null })
-  expect((state.get('meta') as Meta).compactions).toBe(1)
+  expect((state.get('session') as Session).compactions).toBe(1)
 
   await mainStep($)
   await $.session.compact({ trigger: 'precompute', messages })

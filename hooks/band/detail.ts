@@ -26,7 +26,7 @@ export function toggleForms(input: BandInput): Line[] {
   const running = input.agents.filter(row => isLive(row.status)).length
   const drawn = rulesDrawn(input.rules ?? NO_RULES)
   const tools = count(calls, 'tool')
-  const skills = count(Object.keys(input.session.skills ?? {}).length, 'skill')
+  const skills = count(Object.keys(input.session.loadedSkills ?? {}).length, 'skill')
   const agents = count(dispatched, 'agent')
   const rules = count(drawn.always.length + drawn.byPath.length, 'rule')
   if (tools === null && skills === null && agents === null && rules === null) return []
@@ -44,11 +44,11 @@ export function toggleForms(input: BandInput): Line[] {
 export function toolRows(input: BandInput): Line[] {
   const used = toolsByCalls(input.stats)
   const isResumed = input.session.isResumed === true
-  const hasSkills = Object.keys(input.session.skills ?? {}).length > 0
+  const hasSkills = Object.keys(input.session.loadedSkills ?? {}).length > 0
   const hasAgents = Object.keys(input.session.agentTypes ?? {}).length > 0
   const drawn = rulesDrawn(input.rules ?? NO_RULES)
   const hasRules = drawn.always.length + drawn.byPath.length > 0
-  const skills = skillSegs(input.session.skills, isResumed)
+  const skills = skillSegs(input.session.loadedSkills, isResumed)
   if (input.skillListing !== undefined && input.skillListing !== null) skills.push({ text: listedText(input.skillListing), tone: 'dim' })
   const label = (text: string): Seg => ({ text: text.padEnd(ROW_LABEL), tone: 'dim' })
   const under: Seg = { text: ' '.repeat(ROW_LABEL) }

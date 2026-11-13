@@ -5,9 +5,9 @@ import { expect, test } from 'claude-code/testing'
 
 import { aheadBehind, numstatTotals, untrackedNames } from '../../hooks/place/changes'
 import { START, engine, stubAll, watchState } from '../kit'
-import type { Meta } from '../../hooks/session/types'
+import type { Session } from '../../hooks/session/types'
 
-const metaOf = (state: { get(key: string): unknown }): Meta => state.get('meta') as Meta
+const metaOf = (state: { get(key: string): unknown }): Session => state.get('session') as Session
 
 test('numstat totals sum added and removed lines, a binary file counting none', () => {
   expect(numstatTotals('3\t1\ta.ts\n-\t-\tlogo.png\n10\t0\tdocs/b.md\n')).toEqual({ added: 13, removed: 1 })

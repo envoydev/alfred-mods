@@ -18,7 +18,7 @@ import type { AgentRow, AgentStatus } from '../../hooks/agents/types'
 import type { BandInput } from '../../hooks/band/types'
 import type { Cache } from '../../hooks/cache/types'
 import type { Line } from '../../hooks/core/types'
-import type { Meta, Turn } from '../../hooks/session/types'
+import type { Session, Turn } from '../../hooks/session/types'
 import type { ToolStat } from '../../hooks/tools/types'
 
 
@@ -28,7 +28,7 @@ const R = NOW - 2 * 60_000
 
 const stat = (calls: number): ToolStat => ({ calls, ok: calls, failed: 0, stopped: 0 })
 const turn = (n: number, contextPercent: number | null = null): Turn => ({
-  n, turnId: `t${n}`, promptAt: P, replyAt: R, durationMs: 3000, tokensIn: 0, tokensOut: 0, tools: 19, failures: 0, contextPercent, end: 'answer',
+  turnNumber: n, turnId: `t${n}`, promptAt: P, replyAt: R, durationMs: 3000, tokensIn: 0, tokensOut: 0, toolCalls: 19, toolFailures: 0, contextPercent, endReason: 'answer',
 })
 const CACHE: Cache = {
   tier: '1h', tierAt: null, tierBilling: 'plan', config: { pin: null, idleOff: false, idleMinTokens: 200_000, isTerminal: false },
@@ -44,11 +44,11 @@ const WINDOWS = [
 function input(o: Partial<BandInput> = {}): BandInput {
   return {
     now: NOW, columns: 200, isWorking: false, mode: 'full',
-    live: { turnId: null, startedAt: null, tools: 0, failures: 0, running: [], promptAt: null },
-    usage: { tokens: 60_000, window: 200_000, percent: 30, startedAt: NOW - 59 * 60_000, windows: WINDOWS, costUsd: 1.29, todayUsd: 10.46, at: NOW },
+    live: { turnId: null, startedAt: null, toolCalls: 0, toolFailures: 0, runningCalls: [], promptAt: null },
+    usage: { contextTokens: 60_000, contextWindow: 200_000, contextPercent: 30, startedAt: NOW - 59 * 60_000, rateWindows: WINDOWS, costUsd: 1.29, todayUsd: 10.46, readingAt: NOW },
     session: {
       model: 'claude-sonnet-5-5', effort: 'medium', compactions: 0, lastCompactAt: null, lastPromptAt: P, lastReplyAt: R, turnCount: 1,
-      waiting: [], mainCalls: 19,
+      waitingPrompts: [], mainToolCalls: 19,
     },
     turns: [turn(1)], newFailures: 0, pace: {}, agents: [], cache: CACHE, plan: null, isPlanInvalid: false, score: null,
     totals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, stepOutput: 13_300, stepMs: 100_000 },
@@ -66,7 +66,7 @@ const TARGET_STATS = { Bash: stat(32), AskUserQuestion: stat(4), Read: stat(4), 
 test('the open rows read tools: and skills: with │ between items', () => {
   const b = input({
     isToolsOpen: true, stats: TARGET_STATS, skillListing: { listed: 57, total: 60, tokens: 3200 },
-    session: { ...input().session, skills: { 'superpowers:brainstorming': 1, 'solve-task': 2 } },
+    session: { ...input().session, loadedSkills: { 'superpowers:brainstorming': 1, 'solve-task': 2 } },
   })
   expect(texts(toolRows(b)).slice(0, 2)).toEqual([
     'tools:   Bash ×32 │ AskUserQuestion ×4 │ Read ×4 │ Write ×4 │ Grep ×1',
@@ -115,7 +115,7 @@ test('a type whose rows were all dropped reads ✓', () => {
 test('an empty session draws no detail row; each row comes with its first item', () => {
   const rowsOf = (o: Partial<BandInput>) => texts(bandLines(input({ isToolsOpen: true, ...o }))).filter(l => /^(tools|skills|agents|rules):/.test(l))
   expect(rowsOf({ stats: {}, skillListing: { listed: 60, total: 60, tokens: 3200 }, session: { ...input().session, isResumed: true } })).toEqual([])
-  expect(rowsOf({ stats: {}, session: { ...input().session, skills: { 'solve-task': 1 } } })).toEqual(['skills:  solve-task ×1'])
+  expect(rowsOf({ stats: {}, session: { ...input().session, loadedSkills: { 'solve-task': 1 } } })).toEqual(['skills:  solve-task ×1'])
   expect(rowsOf({ stats: {}, rules: { always: ['a.md'], byPath: [], isTracked: true } })).toEqual(['rules:   a.md │ 1 always-on · 0 by path'])
   expect(rowsOf({ stats: {}, session: { ...input().session, agentTypes: { Explore: 1 } } })).toEqual(['agents:  ✓ Explore ×1 │ 0 running'])
   expect(rowsOf({ stats: { Bash: { calls: 2, failures: 0 } as never } })).toEqual(['tools:   Bash ×2'])
@@ -135,7 +135,7 @@ function spawns(on: On): void {
   let n = 0
   on('agent.spawn', (_, e) => ({ model: 'claude-haiku-5-5', agentId: e.resume?.agentId ?? `a${++n}` }))
 }
-const metaOf = (state: { get(key: string): unknown }): Meta => state.get('meta') as Meta
+const metaOf = (state: { get(key: string): unknown }): Session => state.get('session') as Session
 const spawn = ($: Engine, subagentType: string) => $.agent.spawn({ ...SPAWN, subagentType })
 
 test('each new agent adds one dispatch of its type; a resume of a known agent adds none', async ($, on) => {
@@ -235,7 +235,7 @@ test("a subagent's load, a start-up or compaction reload, an include and a non-r
   await $.classic.InstructionsLoaded(load('/w/.claude/rules/c.md', 'compact'))
   await $.classic.InstructionsLoaded(load('/w/.claude/rules/d.md', 'include'))
   await $.classic.InstructionsLoaded(load('/w/src/CLAUDE.md', 'nested_traversal'))
-  expect((state.get('meta') as Meta | undefined)?.pathRules).toBeUndefined()
+  expect((state.get('session') as Session | undefined)?.pathRules).toBeUndefined()
 })
 
 test('a compaction keeps the by-path rules; a /clear empties them; a resume starts them over', async ($, on) => {
@@ -281,7 +281,7 @@ test('the band draws the rules row from the parts and the loads', async ($, on) 
 const labels = (b: BandInput): string[] => toggleForms(b).map(text)
 const TARGET = input({
   isToolsOpen: true, stats: TARGET_STATS, agents: TARGET_AGENTS, rules: TARGET_RULES,
-  session: { ...input().session, skills: { 'superpowers:brainstorming': 1, 'solve-task': 2 }, agentTypes: TARGET_TYPES },
+  session: { ...input().session, loadedSkills: { 'superpowers:brainstorming': 1, 'solve-task': 2 }, agentTypes: TARGET_TYPES },
 })
 
 test('the counts take all four, and their forms drop rules, then agents, then skills', () => {
@@ -292,7 +292,7 @@ test('the counts take all four, and their forms drop rules, then agents, then sk
 test('(k ◐) only while agents run; singular forms', () => {
   const one = input({
     isToolsOpen: true, stats: { Bash: stat(1) }, agents: [agent('a1', 'Explore', 'completed')],
-    rules: { always: ['a.md'], byPath: [], isTracked: true }, session: { ...input().session, skills: { x: 1 }, agentTypes: { Explore: 1 } },
+    rules: { always: ['a.md'], byPath: [], isTracked: true }, session: { ...input().session, loadedSkills: { x: 1 }, agentTypes: { Explore: 1 } },
   })
   expect(labels(one)[0]).toBe('1 tool · 1 skill · 1 agent · 1 rule')
 })
@@ -308,7 +308,7 @@ test('a part at 0 is left out; with none, no counts, open or closed', () => {
 // the last; the four rows draw at 24, 48 and 100 columns under usage:
 const open = (o: Partial<BandInput> = {}) => input({
   isToolsOpen: true, agents: TARGET_AGENTS, rules: { always: ['a.md', 'b.md', 'c.md'], byPath: ['d.md', 'e.md'], isTracked: true },
-  session: { ...input().session, agentTypes: TARGET_TYPES, skills: { 'superpowers:brainstorming': 1, 'solve-task': 2 } }, ...o,
+  session: { ...input().session, agentTypes: TARGET_TYPES, loadedSkills: { 'superpowers:brainstorming': 1, 'solve-task': 2 } }, ...o,
 })
 const ROW = /^(tools|skills|agents|rules):/
 const labelsOf = (lines: Line[]): string[] => texts(lines).filter(l => ROW.test(l)).map(l => l.slice(0, l.indexOf(':')))
@@ -358,7 +358,7 @@ test('a name wider than the band at 24 columns is cut by the draw; no drawn row 
 // 'plan:' and the rows' label width, its title, bar and count, then the first running step; line 1 no longer carries it
 const planNamed = (changes: Parameters<typeof planOf>[0] = {}) => planView(planOf(changes), FIVE_TIMES, FIVE_OVERHEAD, {}, PLAN_NOW)
 const planRowOf = (lines: Line[]): string | undefined => texts(lines).find(l => l.startsWith('plan:'))
-const WORKING = { isWorking: true, live: { turnId: 't2', startedAt: NOW - 30_000, tools: 3, failures: 0, running: [], promptAt: NOW - 30_000 } }
+const WORKING = { isWorking: true, live: { turnId: 't2', startedAt: NOW - 30_000, toolCalls: 3, toolFailures: 0, runningCalls: [], promptAt: NOW - 30_000 } }
 
 test('the plan row is the target shape, under the info line, and line 1 keeps the turn', () => {
   const lines = texts(bandLines(input({ plan: planNamed(), isToolsOpen: true, ...WORKING })))
@@ -608,7 +608,7 @@ const USER_ORDER = input({
   skillListing: { listed: 57, total: 60, tokens: 3200 },
   session: {
     ...input().session, place: { project: 'my-app', folder: '.claude', branch: 'develop' }, version: '2.1.322',
-    skills: { 'superpowers:brainstorming': 1, 'solve-task': 2 }, agentTypes: TARGET_TYPES,
+    loadedSkills: { 'superpowers:brainstorming': 1, 'solve-task': 2 }, agentTypes: TARGET_TYPES,
   },
 })
 const usageOf = (lines: Line[]): Line | undefined => lines.find(l => text(l).startsWith('usage:'))

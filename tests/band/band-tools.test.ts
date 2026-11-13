@@ -7,7 +7,7 @@ import type { On, RenderSurface, SessionContextBreakdown, SessionUsage } from 'c
 import { PRESENTATION, START, engine, rows, setUser, step, stepEngine, stubAll, watchState } from '../kit'
 import { tokensText } from '../../hooks/core/format'
 import type { Parts } from '../../hooks/context/types'
-import type { Meta } from '../../hooks/session/types'
+import type { Session } from '../../hooks/session/types'
 
 
 const SURFACES = ['terminal', 'desktop'] as const
@@ -113,7 +113,7 @@ test('another session closing the rows is picked up on the poll', async ($, on) 
   expect(state.get('band')).toEqual({ mode: 'full' })
 })
 
-const skillsOf = (state: { get(key: string): unknown }): Record<string, number> | undefined => (state.get('meta') as Meta | undefined)?.skills
+const skillsOf = (state: { get(key: string): unknown }): Record<string, number> | undefined => (state.get('session') as Session | undefined)?.loadedSkills
 
 // The engine beneath, as it runs a Skill call: the skill's prompt expands inside the call, raised on the test's `$`
 function skillCalls(on: On, $: Engine, isError = false): void {
@@ -200,7 +200,7 @@ test('a /clear empties the skills in context', async ($, on) => {
 })
 
 // A resumed or branched conversation holds skills loaded before the mod watched it (a side agent's note, 2026-11-11)
-const metaOf = (state: { get(key: string): unknown }): Meta | undefined => state.get('meta') as Meta | undefined
+const metaOf = (state: { get(key: string): unknown }): Session | undefined => state.get('session') as Session | undefined
 
 test('a resume or a branch marks the skills as counted from it; a /clear does not', async ($, on) => {
   stubAll(on, { now: NOW })

@@ -42,7 +42,7 @@ test("a main step brings the band's ctx and cost up to date before the turn ends
   usage.current = reading(15, 1.29)
   await step($, MAIN_STEP)
 
-  expect(state.get('usage')).toMatchObject({ percent: 15, costUsd: 1.29 })
+  expect(state.get('usage')).toMatchObject({ contextPercent: 15, costUsd: 1.29 })
   const lines = await rows(await $.ui.mount({ plugin: 'alfred-mods', surface: 'terminal', component: 'AbovePrompt', props: band(true) }))
   expect(lines.some(l => l.includes('15%') && l.includes('$1.29'))).toBe(true)
 })
@@ -65,7 +65,7 @@ test("an agent's step reads no usage: its figures wait for the tick", async ($, 
   usage.current = reading(15, 1.29)
   await step($, { ...MAIN_STEP, turnId: 'x', model: 'claude-haiku-5-5', agentId: 'a1' })
 
-  expect(state.get('usage')).toMatchObject({ percent: 10, costUsd: 0.5 })
+  expect(state.get('usage')).toMatchObject({ contextPercent: 10, costUsd: 0.5 })
 })
 
 // A foreground agent holds the main loop, so no main step fires until it ends: the once-a-second tick reads the usage
@@ -75,13 +75,13 @@ test("while an agent works, the tick brings ctx, cost and today up to date every
   await $.agent.spawn(SPAWN)
   usage.current = reading(15, 1.29)
   await clock.advance(1000)
-  expect(state.get('usage')).toMatchObject({ percent: 15, costUsd: 1.29, todayUsd: 0.79 })
+  expect(state.get('usage')).toMatchObject({ contextPercent: 15, costUsd: 1.29, todayUsd: 0.79 })
 
   usage.current = reading(18, 1.5)
   await clock.advance(1000)
-  expect(state.get('usage')).toMatchObject({ percent: 15, costUsd: 1.29 })
+  expect(state.get('usage')).toMatchObject({ contextPercent: 15, costUsd: 1.29 })
   await clock.advance(4000)
-  expect(state.get('usage')).toMatchObject({ percent: 18, costUsd: 1.5, todayUsd: 1 })
+  expect(state.get('usage')).toMatchObject({ contextPercent: 18, costUsd: 1.5, todayUsd: 1 })
 })
 
 test("a background agent's spend reaches the band while the main loop is idle", async ($, on) => {
@@ -90,7 +90,7 @@ test("a background agent's spend reaches the band while the main loop is idle", 
   await $.agent.spawn({ ...SPAWN, background: true })
   usage.current = reading(15, 1.29)
   await clock.advance(5000)
-  expect(state.get('usage')).toMatchObject({ percent: 15, costUsd: 1.29 })
+  expect(state.get('usage')).toMatchObject({ contextPercent: 15, costUsd: 1.29 })
 })
 
 test('idle with no agent, the tick reads no usage', async ($, on) => {
@@ -98,7 +98,7 @@ test('idle with no agent, the tick reads no usage', async ($, on) => {
   await $.turn.complete({ answer: '', durationMs: 3000, isAborted: false, turnId: 't1', reason: 'answer' })
   usage.current = reading(15, 1.29)
   await clock.advance(10_000)
-  expect(state.get('usage')).toMatchObject({ percent: 10, costUsd: 0.5 })
+  expect(state.get('usage')).toMatchObject({ contextPercent: 10, costUsd: 0.5 })
 })
 
 // The step's own result, as the generator returns it: the kit's stream carries no `result`
@@ -115,7 +115,7 @@ test('a usage read that fails leaves the step and the figures as they were', asy
   const result = await stepResult($, MAIN_STEP)
 
   expect(result.turnId).toBe('t1')
-  expect(state.get('usage')).toMatchObject({ percent: 10, costUsd: 0.5 })
+  expect(state.get('usage')).toMatchObject({ contextPercent: 10, costUsd: 0.5 })
 })
 
 // Ten seconds before local midnight: another session spent $10 today and $0.25 already past midnight

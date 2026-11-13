@@ -41,11 +41,11 @@ export function withTimes(input: BandInput, line: Line): Line {
 export function lastTurn(input: BandInput, isNarrow: boolean): Line {
   const turn = input.turns[input.turns.length - 1]
   if (turn === undefined) return []
-  const ok = turn.end === 'answer'
-  const line: Line = [{ text: ok ? '✓' : '✗', tone: ok ? 'ok' : 'fail' }, { text: ` Turn ${turn.n} · ${durationText(turn.durationMs)}` }]
+  const ok = turn.endReason === 'answer'
+  const line: Line = [{ text: ok ? '✓' : '✗', tone: ok ? 'ok' : 'fail' }, { text: ` Turn ${turn.turnNumber} · ${durationText(turn.durationMs)}` }]
   if (isNarrow) return line
-  line.push({ text: ` · ${turn.tools} ${turn.tools === 1 ? 'tool' : 'tools'}` })
-  if (turn.failures > 0) line.push({ text: ` · ${turn.failures} ✗`, tone: 'fail' })
+  line.push({ text: ` · ${turn.toolCalls} ${turn.toolCalls === 1 ? 'tool' : 'tools'}` })
+  if (turn.toolFailures > 0) line.push({ text: ` · ${turn.toolFailures} ✗`, tone: 'fail' })
   // In full mode the times are the info line's
   return input.mode === 'full' ? line : [...line, ...times(input)]
 }
@@ -73,13 +73,13 @@ export function workingLine(input: BandInput, isNarrow: boolean): Line {
   if (plan !== null && isNarrow) return narrowPlan(plan, running.length)
   const n = input.session.turnCount + 1
   const took = elapsedText(input.now - (input.live.startedAt ?? input.now))
-  const count = input.mode === 'full' ? ` · ${input.live.tools} ${input.live.tools === 1 ? 'tool' : 'tools'}` : ''
+  const count = input.mode === 'full' ? ` · ${input.live.toolCalls} ${input.live.toolCalls === 1 ? 'tool' : 'tools'}` : ''
   const head: Seg = input.isWorking
     ? { text: isNarrow ? `⟳ Turn ${n} ${took}` : `⟳ Turn ${n} · ${took}${count}`, bold: true }
     : { text: `⟳ ${agentCount(running.length)}`, bold: true }
   if (isNarrow) return input.isWorking && running.length > 0 ? [head, { text: ` · ${agentCount(running.length)}` }] : [head]
   const bash: Line = []
-  const calls = input.live.running.filter(r => r.tool === 'Bash')
+  const calls = input.live.runningCalls.filter(r => r.tool === 'Bash')
   const newest = calls[calls.length - 1]
   if (newest !== undefined) {
     bash.push({ text: ` │ Bash ▸ ${newest.label} ${elapsedText(input.now - newest.startedAt)}` })
@@ -108,7 +108,7 @@ export function spinnerSuffix(s: { requestId: string; live: Live; percent: numbe
     if (row.action !== null) parts.push(fitLine(row.action, 40))
     if (row.contextTokens !== null) parts.push(`ctx ${tokensText(row.contextTokens)}`)
   } else {
-    const newest = s.live.running[s.live.running.length - 1]
+    const newest = s.live.runningCalls[s.live.runningCalls.length - 1]
     if (newest !== undefined) parts.push(fitLine(actionOf(newest.tool, newest.label), 40))
     if (s.percent !== null) parts.push(percentText(s.percent))
     const k = s.agents.filter(r => isLive(r.status)).length
@@ -121,7 +121,7 @@ export function spinnerSuffix(s: { requestId: string; live: Live; percent: numbe
 // compact the conversation first, and a 5m cache's last minute. The band's button takes hotkey 3.
 export function cacheWarning(input: BandInput, hasHotkey: boolean): Line | null {
   if (input.isWorking) return null
-  const cacheState = cacheView(input.cache, billingOf(input.usage.windows), input.now, input.usage.tokens)
+  const cacheState = cacheView(input.cache, billingOf(input.usage.rateWindows), input.now, input.usage.contextTokens)
   if (!cacheState.isClosing) return null
   const button = hasHotkey
     ? { key: 'compact', label: 'Compact', hotkey: '3', tone: 'cache' as const }

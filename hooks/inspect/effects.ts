@@ -15,7 +15,7 @@ import { markFailuresSeen, readBlockers, readFailures, readStats } from '../tool
 import { BAND_MODES, DEFAULTS, sourceLabel } from '../settings/settings'
 import { agentsLines, asCommands, cacheLines, nowLines, paneCommands, reportRows, tabBar, timelineLines, toolsLines, usageLines } from './tabs'
 import type { Pending, MatchedInput } from '../core/types'
-import { readLive, readMeta, readPace, readTick, readTotals, readTurns, readUsage } from '../session/effects'
+import { readLive, readSession, readPace, readTick, readTotals, readTurns, readUsage } from '../session/effects'
 import { recSummary } from '../rec/rec'
 import { readRec } from '../rec/effects'
 import { dismissAsk, readHandoff, saveNow, saveThenCompact } from '../handoff/effects'
@@ -162,7 +162,7 @@ export async function drawInspectPane($: EngineInterface, e: MatchedInput<'ui.re
   const drawing = await readPlanDrawing($, now)
   const u = await readUsage($)
   const h = await readHandoff($)
-  const m = await readMeta($)
+  const m = await readSession($)
   const st = await readStack($)
   const runway = runwayOf(st, u, m.model)
   const input = {
@@ -179,7 +179,7 @@ export async function drawInspectPane($: EngineInterface, e: MatchedInput<'ui.re
     : shown.tab === 'agents' ? agentsLines(input)
     : shown.tab === 'cache' ? cacheLines(input)
     : shown.tab === 'tools' ? toolsLines(input)
-    : shown.tab === 'timeline' ? timelineLines(input.turns, Math.max(3, e.props.scroll.bodyRows - 1 - bar.length), u.windows.length > 0, e.props.bodyColumns)
+    : shown.tab === 'timeline' ? timelineLines(input.turns, Math.max(3, e.props.scroll.bodyRows - 1 - bar.length), u.rateWindows.length > 0, e.props.bodyColumns)
     : shown.tab === 'plan' ? planLines(drawing.shown, drawing.scores, { invalid: drawing.invalid, others: drawing.others, otherScores: drawing.otherScores, updatedAt: drawing.updatedAt, now, columns: e.props.bodyColumns })
     : nowLines(input)
   const press: Record<string, () => unknown> = {

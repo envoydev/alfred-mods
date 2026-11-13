@@ -184,10 +184,10 @@ test('parallel calls both count', async ($, on) => {
 
   const runs = Promise.all([$.tool.call({ tool: 'Bash', command: 'sleep 1' }), $.tool.call({ tool: 'Bash', command: 'sleep 2' })])
   await clock.settle()
-  expect((state.get('live') as Live).running).toHaveLength(2)
+  expect((state.get('live') as Live).runningCalls).toHaveLength(2)
   await clock.advance(10)
   await runs
-  expect((state.get('live') as Live).running).toEqual([])
+  expect((state.get('live') as Live).runningCalls).toEqual([])
 })
 
 test('a skill the person runs counts once', async ($, on) => {

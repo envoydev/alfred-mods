@@ -25,7 +25,7 @@ function infoItems(input: BandInput): Item[] {
   const totals = input.totals
   if (totals !== undefined && totals.stepMs > 0) items.push({ keep: 3, forms: [dimText(`≈${Math.round(totals.stepOutput / (totals.stepMs / 1000))} tok/s avg`)] })
   if (input.cache.session.read + input.cache.session.write > 0) {
-    const cacheState = cacheView(input.cache, billingOf(input.usage.windows), input.now, input.usage.tokens)
+    const cacheState = cacheView(input.cache, billingOf(input.usage.rateWindows), input.now, input.usage.contextTokens)
     items.push({ keep: 4, forms: [dimText(cacheState.leftMs === null ? 'cache cold' : `cache warm ${cacheState.tier.isEstimate ? '≈' : ''}${minutesLeftText(cacheState.leftMs)}`)] })
   }
   // The running turn's prompt while one runs; the last turn's, as line 1 of the calm band shows it, otherwise

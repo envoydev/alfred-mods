@@ -13,36 +13,36 @@ export type Failure = {
 }
 export type TurnEnd = 'answer' | 'aborted' | 'refusal' | 'error'
 export type Turn = {
-  n: number; turnId: string; promptAt: number | null; replyAt: number; durationMs: number
-  tokensIn: number; tokensOut: number; tools: number; failures: number
-  contextPercent: number | null; end: TurnEnd
+  turnNumber: number; turnId: string; promptAt: number | null; replyAt: number; durationMs: number
+  tokensIn: number; tokensOut: number; toolCalls: number; toolFailures: number
+  contextPercent: number | null; endReason: TurnEnd
   // The session's spend while the turn ran, agents included (spec C4); absent in a turn an earlier version kept
   spendUsd?: number | null
 }
 // Every main-loop call in flight, oldest first
 export type RunningCall = { id: string; tool: string; label: string; startedAt: number }
 export type Live = {
-  turnId: string | null; startedAt: number | null; tools: number; failures: number; running: RunningCall[]; promptAt: number | null
+  turnId: string | null; startedAt: number | null; toolCalls: number; toolFailures: number; runningCalls: RunningCall[]; promptAt: number | null
 }
 export type RateWindow = { kind: string; percentUsed: number; resetsAt: string | null }
 export type Usage = {
-  tokens: number | null; window: number | null; percent: number | null; startedAt: number | null
-  windows: RateWindow[]; costUsd: number | null; todayUsd: number | null; at: number
+  contextTokens: number | null; contextWindow: number | null; contextPercent: number | null; startedAt: number | null
+  rateWindows: RateWindow[]; costUsd: number | null; todayUsd: number | null; readingAt: number
   // When the windows shown were read by an earlier session, until this one's first reading with windows; absent after
-  windowsAt?: number
+  rateWindowsAt?: number
 }
 export type Totals = { input: number; output: number; cacheRead: number; cacheWrite: number; stepOutput: number; stepMs: number }
 // A prompt the person entered that no turn has answered yet, by a fingerprint of its text, never the text
-export type WaitingPrompt = { at: number; key: string }
+export type WaitingPrompt = { at: number; fingerprint: string }
 // Where the session works (the user, 2026-11-11)
 export type Place = { project: string; folder?: string; branch: string | null; changes?: { added: number; removed: number }; sync?: { ahead: number; behind: number } }
-export type Meta = {
+export type Session = {
   model: string | null; effort: string | null; compactions: number; lastCompactAt: number | null
-  lastPromptAt: number | null; lastReplyAt: number | null; turnCount: number; waiting: WaitingPrompt[]
+  lastPromptAt: number | null; lastReplyAt: number | null; turnCount: number; waitingPrompts: WaitingPrompt[]
   // The main loop's settled tool calls this session
-  mainCalls: number
+  mainToolCalls: number
   // The skills the main loop loaded into its context this conversation, by name, with how many times; absent before one
-  skills?: Record<string, number>
+  loadedSkills?: Record<string, number>
   // The folder holding the repository (or the working folder outside one) and its branch, read at start and every 30 s
   // `project`: the session's project root's name; `folder`: where Claude works when not that root, from it, or
   // '…/<name>' outside it; `branch`: the branch of the repository holding that folder
@@ -65,7 +65,7 @@ export type Tab = 'now' | 'usage' | 'agents' | 'tools' | 'cache' | 'timeline' | 
 // `planSlug`: the plan `/inspect plan <name>` pinned, shown while its file parses
 export type View = { tab: Tab; shown: string[]; planSlug: string | null }
 export type PacePoint = { at: number; percent: number }
-export type Pace = Record<string, { resetsAt: string | null; points: PacePoint[]; toasted: number[] }>
+export type Pace = Record<string, { resetsAt: string | null; points: PacePoint[]; toastedMarks: number[] }>
 // The engine's AgentStatus, copied: a contract imports nothing
 export type AgentStatus = 'pending' | 'running' | 'waiting' | 'idle' | 'completed' | 'failed' | 'killed'
 // An agent seen at its spawn. Its prompt is never kept: only the values of its `plan:` and `task:` lines.
@@ -202,7 +202,7 @@ declare module 'claude-code' {
   interface PluginState {
     'alfred-mods': {
       stats: Shaped<Record<string, ToolStat>>; failures: Shaped<Failure[]>; turns: Shaped<Turn[]>
-      live: Shaped<Live>; usage: Shaped<Usage>; totals: Shaped<Totals>; meta: Shaped<Meta>
+      live: Shaped<Live>; usage: Shaped<Usage>; totals: Shaped<Totals>; session: Shaped<Session>
       view: Shaped<View>; pace: Shaped<Pace>; agents: Shaped<AgentRow[]>; cache: Shaped<Cache>; tick: number
       plans: Shaped<Plans>; credit: Shaped<Credit>; tasks: Shaped<TaskItem[]>; rec: Shaped<RecState>; quiet: Shaped<Quiet>; handoff: Shaped<Handoff>
       band: Shaped<BandSetting>

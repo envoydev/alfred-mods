@@ -5,7 +5,7 @@ import type { RenderSurface, SessionUsage } from 'claude-code'
 import { clockText } from '../../hooks/core/format'
 import { PRESENTATION, START, SWITCH, engine, rows, step, stepEngine, stubAll, watchState } from '../kit'
 import type { Cache } from '../../hooks/cache/types'
-import type { Meta } from '../../hooks/session/types'
+import type { Session } from '../../hooks/session/types'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const PANE = { title: 'Inspect', isFocused: false, bodyColumns: 100, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 30 }, view: {} }
@@ -213,7 +213,7 @@ for (const surface of SURFACES) {
 
     // The engine stamps a plugin's compaction 'plugin'; the kit leaves the trigger unset
     expect(triggers).toHaveLength(1)
-    expect((state.get('meta') as Meta).compactions).toBe(1)
+    expect((state.get('session') as Session).compactions).toBe(1)
     expect((state.get('cache') as Cache).lastAt).toBe(null)
   })
 
@@ -230,7 +230,7 @@ for (const surface of SURFACES) {
     await (await pane($, surface)).press({ key: 'compact' })
 
     expect(toasts).toEqual(['Compact skipped: nothing to compact'])
-    expect((state.get('meta') as Meta | undefined)?.compactions).not.toBe(1)
+    expect((state.get('session') as Session | undefined)?.compactions).not.toBe(1)
   })
 
   test(`a second Compact press while one runs starts none (${surface})`, async ($, on) => {

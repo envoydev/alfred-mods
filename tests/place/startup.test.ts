@@ -8,7 +8,7 @@ import { PRESENTATION, START, SWITCH, engine, rows, stubAll, watchState } from '
 
 import { folderOf } from '../../hooks/place/place'
 import { nextWindows } from '../../hooks/session/windows'
-import type { Meta, Usage } from '../../hooks/session/types'
+import type { Session, Usage } from '../../hooks/session/types'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const NOW = Date.parse('2026-10-28T14:00:00Z')
@@ -27,7 +27,7 @@ const measure = ($: Engine, rateLimits: SessionUsage['rateLimits']) =>
   $.session.measure({ context: { tokens: 20_000, window: 200_000, percent: 10 }, rateLimits, changed: ['context'] })
 
 const usageOf = (state: { get(key: string): unknown }): Usage => state.get('usage') as Usage
-const metaOf = (state: { get(key: string): unknown }): Meta => state.get('meta') as Meta
+const metaOf = (state: { get(key: string): unknown }): Session => state.get('session') as Session
 
 test('session start reads the model, the version, and the project and branch from .git/HEAD', async ($, on) => {
   stubAll(on, {
@@ -217,11 +217,11 @@ test('the windows another session stored stand, marked, until the first reading 
   const state = watchState(on)
   engine(on)
   await $.session.start(START)
-  expect(usageOf(state)).toMatchObject({ windows: [later], windowsAt: STORED.at })
+  expect(usageOf(state)).toMatchObject({ rateWindows: [later], rateWindowsAt: STORED.at })
   // A reading with windows replaces them, unmarked
   await measure($, LIMITS)
-  expect(usageOf(state).windows.map(w => w.percentUsed)).toEqual([18, 41])
-  expect(usageOf(state).windowsAt ?? null).toBe(null)
+  expect(usageOf(state).rateWindows.map(w => w.percentUsed)).toEqual([18, 41])
+  expect(usageOf(state).rateWindowsAt ?? null).toBe(null)
 })
 
 // The review of 2026-11-11: a step's reading runs every 5 s while busy, and each store write rewrites the file every
@@ -245,18 +245,18 @@ test('a session off a subscription drops the stored windows at its first reading
   const state = watchState(on)
   engine(on)
   await $.session.start(START)
-  expect(usageOf(state).windows).toHaveLength(2)
+  expect(usageOf(state).rateWindows).toHaveLength(2)
   await measure($, [])
-  expect(usageOf(state).windows).toEqual([])
-  expect(usageOf(state).windowsAt ?? null).toBe(null)
+  expect(usageOf(state).rateWindows).toEqual([])
+  expect(usageOf(state).rateWindowsAt ?? null).toBe(null)
 })
 
 test('a reading before the first request keeps the stored windows; one after it decides', () => {
-  const u: Usage = { tokens: null, window: null, percent: null, startedAt: null, windows: WINDOWS, windowsAt: 1, costUsd: null, todayUsd: null, at: 0 }
-  expect(nextWindows(u, [], false)).toEqual({ windows: WINDOWS, windowsAt: 1 })
-  expect(nextWindows(u, [], true)).toEqual({ windows: [] })
-  expect(nextWindows(u, LIMITS, false)).toEqual({ windows: LIMITS })
-  expect(nextWindows({ ...u, windowsAt: undefined }, [], false)).toEqual({ windows: [] })
+  const u: Usage = { contextTokens: null, contextWindow: null, contextPercent: null, startedAt: null, rateWindows: WINDOWS, rateWindowsAt: 1, costUsd: null, todayUsd: null, readingAt: 0 }
+  expect(nextWindows(u, [], false)).toEqual({ rateWindows: WINDOWS, rateWindowsAt: 1 })
+  expect(nextWindows(u, [], true)).toEqual({ rateWindows: [] })
+  expect(nextWindows(u, LIMITS, false)).toEqual({ rateWindows: LIMITS })
+  expect(nextWindows({ ...u, rateWindowsAt: undefined }, [], false)).toEqual({ rateWindows: [] })
 })
 
 // The review of 2026-11-11: no reading runs while idle, so the tick drops a stored window whose reset has passed
@@ -267,9 +267,9 @@ test('a stored window goes once its reset passes, before any reading', async ($,
   const state = watchState(on)
   engine(on)
   await $.session.start(START)
-  expect(usageOf(state).windows).toHaveLength(2)
+  expect(usageOf(state).rateWindows).toHaveLength(2)
   await kit.clock.advance(3000)
-  expect(usageOf(state)).toMatchObject({ windows: [later], windowsAt: STORED.at })
+  expect(usageOf(state)).toMatchObject({ rateWindows: [later], rateWindowsAt: STORED.at })
 })
 
 // The review of 2026-11-11: the band names the model before the first prompt, so a /model then shows at once
@@ -289,7 +289,7 @@ for (const value of ['x', { at: 'soon', windows: [] }, { at: 1, windows: [{ kind
     const state = watchState(on)
     engine(on)
     await $.session.start(START)
-    expect(usageOf(state).windows).toEqual([])
+    expect(usageOf(state).rateWindows).toEqual([])
   })
 }
 

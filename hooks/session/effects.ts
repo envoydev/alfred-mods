@@ -3,7 +3,7 @@
 // stored, which outlives a reload.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, SessionRateLimit, SessionUsage } from 'claude-code'
-import type { Live, Meta, Pace, RunningCall, Totals, Turn, Usage, RateWindow } from './types'
+import type { Live, Session, Pace, RunningCall, Totals, Turn, Usage, RateWindow } from './types'
 import type { Place } from '../place/types'
 import { withPlace } from '../place/place'
 import { baseWrites, dayUsd, recordWrites } from './cost'
@@ -25,7 +25,7 @@ import { followConversation } from '../lifecycle/effects'
 import type { ToolCall } from '../tools/types'
 
 const INITIAL_TURNS: Turn[] = []
-const turnsAtom = atom({ plugin: 'alfred-mods', key: 'turns' } as const, INITIAL_TURNS, { shape: 'turns-1' })
+const turnsAtom = atom({ plugin: 'alfred-mods', key: 'turns' } as const, INITIAL_TURNS, { shape: 'turns-2' })
 export function readTurns($: EngineInterface) {
   return read($, turnsAtom)
 }
@@ -36,8 +36,8 @@ export function resetTurns($: EngineInterface) {
   return update($, turnsAtom, () => INITIAL_TURNS)
 }
 
-const INITIAL_LIVE: Live = { turnId: null, startedAt: null, tools: 0, failures: 0, running: [], promptAt: null }
-const liveAtom = atom({ plugin: 'alfred-mods', key: 'live' } as const, INITIAL_LIVE, { shape: 'live-3' })
+const INITIAL_LIVE: Live = { turnId: null, startedAt: null, toolCalls: 0, toolFailures: 0, runningCalls: [], promptAt: null }
+const liveAtom = atom({ plugin: 'alfred-mods', key: 'live' } as const, INITIAL_LIVE, { shape: 'live-4' })
 export function readLive($: EngineInterface) {
   return read($, liveAtom)
 }
@@ -49,9 +49,9 @@ export function resetLive($: EngineInterface) {
 }
 
 const INITIAL_USAGE: Usage = {
-  tokens: null, window: null, percent: null, startedAt: null, windows: [], costUsd: null, todayUsd: null, at: 0,
+  contextTokens: null, contextWindow: null, contextPercent: null, startedAt: null, rateWindows: [], costUsd: null, todayUsd: null, readingAt: 0,
 }
-const usageAtom = atom({ plugin: 'alfred-mods', key: 'usage' } as const, INITIAL_USAGE, { shape: 'usage-1' })
+const usageAtom = atom({ plugin: 'alfred-mods', key: 'usage' } as const, INITIAL_USAGE, { shape: 'usage-2' })
 export function readUsage($: EngineInterface) {
   return read($, usageAtom)
 }
@@ -74,23 +74,23 @@ export function resetTotals($: EngineInterface) {
   return update($, totalsAtom, () => INITIAL_TOTALS)
 }
 
-const INITIAL_META: Meta = {
+const INITIAL_SESSION: Session = {
   model: null, effort: null, compactions: 0, lastCompactAt: null, lastPromptAt: null, lastReplyAt: null, turnCount: 0,
-  waiting: [], mainCalls: 0,
+  waitingPrompts: [], mainToolCalls: 0,
 }
-const metaAtom = atom({ plugin: 'alfred-mods', key: 'meta' } as const, INITIAL_META, { shape: 'meta-3' })
-export function readMeta($: EngineInterface) {
-  return read($, metaAtom)
+const sessionAtom = atom({ plugin: 'alfred-mods', key: 'session' } as const, INITIAL_SESSION, { shape: 'session-1' })
+export function readSession($: EngineInterface) {
+  return read($, sessionAtom)
 }
-function updateMeta($: EngineInterface, change: (value: Meta) => Meta) {
-  return update($, metaAtom, change)
+function updateSession($: EngineInterface, change: (value: Session) => Session) {
+  return update($, sessionAtom, change)
 }
-export function resetMeta($: EngineInterface) {
-  return update($, metaAtom, () => INITIAL_META)
+export function resetSession($: EngineInterface) {
+  return update($, sessionAtom, () => INITIAL_SESSION)
 }
 
 const INITIAL_PACE: Pace = {}
-const paceAtom = atom({ plugin: 'alfred-mods', key: 'pace' } as const, INITIAL_PACE, { shape: 'pace-1' })
+const paceAtom = atom({ plugin: 'alfred-mods', key: 'pace' } as const, INITIAL_PACE, { shape: 'pace-2' })
 export function readPace($: EngineInterface) {
   return read($, paceAtom)
 }
@@ -125,17 +125,17 @@ const turnSpendMemory = new Map<string, number>()
 
 // One more agent of this type spawned this session
 export async function countAgentType($: EngineInterface, type: string): Promise<void> {
-  await updateMeta($, session => ({ ...session, agentTypes: { ...session.agentTypes, [type]: (session.agentTypes?.[type] ?? 0) + 1 } }))
+  await updateSession($, session => ({ ...session, agentTypes: { ...session.agentTypes, [type]: (session.agentTypes?.[type] ?? 0) + 1 } }))
 }
 
 // The project row's place, its counts kept until the next count replaces them
 export async function showPlace($: EngineInterface, place: Place): Promise<void> {
-  await updateMeta($, withPlace(place))
+  await updateSession($, withPlace(place))
 }
 
 // The place's uncommitted lines and its distance from upstream, written only when they moved
 export async function showPlaceCounts($: EngineInterface, changes: { added: number; removed: number } | null, sync: { ahead: number; behind: number } | null): Promise<void> {
-  await updateMeta($, session => {
+  await updateSession($, session => {
     if (session.place === undefined) return session
     const p = session.place
     const isSame = JSON.stringify(p.changes ?? null) === JSON.stringify(changes) && JSON.stringify(p.sync ?? null) === JSON.stringify(sync)
@@ -152,42 +152,42 @@ export async function showPlaceCounts($: EngineInterface, changes: { added: numb
 
 // A rule the main context loaded by path, listed once
 export async function addPathRule($: EngineInterface, name: string): Promise<void> {
-  await updateMeta($, session => (session.pathRules?.includes(name) === true ? session : { ...session, pathRules: [...(session.pathRules ?? []), name] }))
+  await updateSession($, session => (session.pathRules?.includes(name) === true ? session : { ...session, pathRules: [...(session.pathRules ?? []), name] }))
 }
 
 // A main-loop compaction that stands, counted
 export async function noteCompaction($: EngineInterface, at: number): Promise<void> {
-  await updateMeta($, session => ({ ...session, compactions: session.compactions + 1, lastCompactAt: at }))
+  await updateSession($, session => ({ ...session, compactions: session.compactions + 1, lastCompactAt: at }))
 }
 
 // The model a switch moved to, before its first step names it
 export async function setModel($: EngineInterface, model: string): Promise<void> {
-  await updateMeta($, session => ({ ...session, model }))
+  await updateSession($, session => ({ ...session, model }))
 }
 
 // A skill the main loop loaded: in its context from then on, until the conversation starts over
 export async function addLoadedSkill($: EngineInterface, name: string): Promise<void> {
-  await updateMeta($, session => ({ ...session, skills: { ...session.skills, [name]: (session.skills?.[name] ?? 0) + 1 } }))
+  await updateSession($, session => ({ ...session, loadedSkills: { ...session.loadedSkills, [name]: (session.loadedSkills?.[name] ?? 0) + 1 } }))
 }
 
 // A settled call off the running list, and the turn's tool and failure counts moved by it
 export async function settleRunningCall($: EngineInterface, callId: string, counts: { isMain: boolean; isFirstSettle: boolean; failuresDelta: number }): Promise<void> {
   await updateLive($, live => ({
     ...live,
-    tools: counts.isMain && live.turnId !== null && counts.isFirstSettle ? live.tools + 1 : live.tools,
-    failures: counts.isMain && live.turnId !== null ? live.failures + counts.failuresDelta : live.failures,
-    running: live.running.filter(r => r.id !== callId),
+    toolCalls: counts.isMain && live.turnId !== null && counts.isFirstSettle ? live.toolCalls + 1 : live.toolCalls,
+    toolFailures: counts.isMain && live.turnId !== null ? live.toolFailures + counts.failuresDelta : live.toolFailures,
+    runningCalls: live.runningCalls.filter(r => r.id !== callId),
   }))
 }
 
 // One more call of the main loop
 export async function countMainCall($: EngineInterface): Promise<void> {
-  await updateMeta($, session => ({ ...session, mainCalls: session.mainCalls + 1 }))
+  await updateSession($, session => ({ ...session, mainToolCalls: session.mainToolCalls + 1 }))
 }
 
 // A main-loop call on the running list until it settles
 export async function addRunningCall($: EngineInterface, call: RunningCall): Promise<void> {
-  await updateLive($, live => ({ ...live, running: [...live.running, call] }))
+  await updateLive($, live => ({ ...live, runningCalls: [...live.runningCalls, call] }))
 }
 
 // The cost keys `keep` names, with their values; no other value is read, as the store holds 7 days of sessions
@@ -246,9 +246,9 @@ export async function writeUsageReading($: EngineInterface, reading: SessionUsag
   if (typeof today === 'number') todayCostMemory = reading.cost === undefined ? null : { cost: reading.cost.usd, today, date: localDate(at) }
   const fresh = rateWindowsOf(reading.rateLimits)
   await updateUsage($, usage => ({
-    tokens: reading.context.tokens ?? null, window: reading.context.window, percent: reading.context.percent ?? null,
+    contextTokens: reading.context.tokens ?? null, contextWindow: reading.context.window, contextPercent: reading.context.percent ?? null,
     startedAt: reading.startedAt, ...nextWindows(usage, fresh, reading.context.tokens !== undefined), costUsd: reading.cost?.usd ?? null,
-    todayUsd: today === undefined ? usage.todayUsd : today, at,
+    todayUsd: today === undefined ? usage.todayUsd : today, readingAt: at,
   }))
 }
 
@@ -262,9 +262,9 @@ export async function storeRateWindows($: EngineInterface, windows: RateWindow[]
 // A session with no windows of its own yet shows the ones the last reading on this machine stored, while their reset is
 // ahead, marked as read before
 export async function seedRateWindows($: EngineInterface): Promise<void> {
-  if ((await readUsage($)).windows.length > 0) return
+  if ((await readUsage($)).rateWindows.length > 0) return
   const stored = storedWindows(await $.store.get('usage:windows'), await $.clock.now())
-  if (stored !== null) await updateUsage($, u => ({ ...u, windows: stored.windows, windowsAt: stored.at }))
+  if (stored !== null) await updateUsage($, u => ({ ...u, rateWindows: stored.windows, rateWindowsAt: stored.at }))
 }
 
 // A main-loop step's reading: the band's ctx and cost before the turn ends (session.measure fires after it)
@@ -297,7 +297,7 @@ export async function trackPace($: EngineInterface, limits: readonly SessionRate
       const prev = pace[w.kind]
       const same = prev !== undefined && prev.resetsAt === resetsAt
       const points = same ? prev.points : []
-      const toasted = same ? prev.toasted : []
+      const toasted = same ? prev.toastedMarks : []
       const last = points[points.length - 1]
       const marks = PACE_LABEL[w.kind] !== undefined && last !== undefined
         ? [75, 90].filter(m => last.percent < m && w.percentUsed >= m && !toasted.includes(m))
@@ -306,7 +306,7 @@ export async function trackPace($: EngineInterface, limits: readonly SessionRate
         const reset = resetsAt === null ? NaN : Date.parse(resetsAt)
         due.push(`${PACE_LABEL[w.kind]} limit at ${Math.max(...marks)}%, resets ${Number.isNaN(reset) ? 'later' : whenText(reset)}`)
       }
-      out[w.kind] = { resetsAt, points: [...points, { at: now, percent: w.percentUsed }].slice(-20), toasted: [...toasted, ...marks] }
+      out[w.kind] = { resetsAt, points: [...points, { at: now, percent: w.percentUsed }].slice(-20), toastedMarks: [...toasted, ...marks] }
     }
     return out
   })
@@ -314,10 +314,10 @@ export async function trackPace($: EngineInterface, limits: readonly SessionRate
 }
 
 // The main loop's turn ends: it joins the timeline, the live counts start over, and today's cost is brought up
-export async function endMainTurn($: EngineInterface, turnId: string, durationMs: number, end: Turn['end'], used: { tokensIn: number; tokensOut: number }): Promise<void> {
+export async function endMainTurn($: EngineInterface, turnId: string, durationMs: number, endReason: Turn['endReason'], used: { tokensIn: number; tokensOut: number }): Promise<void> {
   const reading = await $.session.usage()
   const now = await $.clock.now()
-  const before = await readMeta($)
+  const before = await readSession($)
   const counts = await readLive($)
   // The cost between the turn's start and end; none when either read failed, or under half a cent or negative
   const start = turnSpendMemory.get(turnId)
@@ -325,13 +325,13 @@ export async function endMainTurn($: EngineInterface, turnId: string, durationMs
   const spend = start === undefined || reading.cost === undefined ? null : reading.cost.usd - start
   await updateTurns($, list => {
     const turn: Turn = {
-      n: before.turnCount + 1, turnId, promptAt: counts.promptAt,
-      replyAt: now, durationMs, ...used, tools: counts.tools, failures: counts.failures,
-      contextPercent: reading.context.percent ?? null, end, spendUsd: spend !== null && spend >= 0.005 ? spend : null,
+      turnNumber: before.turnCount + 1, turnId, promptAt: counts.promptAt,
+      replyAt: now, durationMs, ...used, toolCalls: counts.toolCalls, toolFailures: counts.toolFailures,
+      contextPercent: reading.context.percent ?? null, endReason, spendUsd: spend !== null && spend >= 0.005 ? spend : null,
     }
     return [...list, turn].slice(-50)
   })
-  await updateMeta($, session => ({ ...session, lastReplyAt: now, turnCount: session.turnCount + 1 }))
+  await updateSession($, session => ({ ...session, lastReplyAt: now, turnCount: session.turnCount + 1 }))
   await resetLive($)
   if (reading.cost !== undefined) await recordCost($, await $.session.id(), reading.cost.usd, now)
   await refreshUsage($, reading.cost !== undefined ? await readTodayUsd($, now) : undefined)
@@ -350,15 +350,15 @@ export async function trackTurnStart($: EngineInterface, e: HookInput<'turn.star
     const startedAt = now
     // The turn answers the waiting prompt with its text; the prompts waiting before it never started a turn
     const key = fingerprint(e.text)
-    const waiting = (await readMeta($)).waiting
-    const promptAt = waiting.find(w => w.key === key)?.at ?? null
+    const waiting = (await readSession($)).waitingPrompts
+    const promptAt = waiting.find(w => w.fingerprint === key)?.at ?? null
     if (promptAt !== null) {
-      await updateMeta($, session => {
-        const i = session.waiting.findIndex(w => w.key === key)
-        return { ...session, lastPromptAt: promptAt, waiting: i < 0 ? session.waiting : session.waiting.slice(i + 1) }
+      await updateSession($, session => {
+        const i = session.waitingPrompts.findIndex(w => w.fingerprint === key)
+        return { ...session, lastPromptAt: promptAt, waitingPrompts: i < 0 ? session.waitingPrompts : session.waitingPrompts.slice(i + 1) }
       })
     }
-    await updateLive($, () => ({ turnId: e.turnId, startedAt, tools: 0, failures: 0, running: [], promptAt }))
+    await updateLive($, () => ({ turnId: e.turnId, startedAt, toolCalls: 0, toolFailures: 0, runningCalls: [], promptAt }))
     turnSpendMemory.clear()
     try {
       const cost = (await $.session.usage()).cost
@@ -388,7 +388,7 @@ export async function* trackTurnStep($: EngineInterface, e: HookInput<'turn.step
   }
   const step = yield* next(e)
   try {
-    await updateMeta($, session => ({ ...session, model: e.model, effort: e.effort === undefined ? session.effort : String(e.effort) }))
+    await updateSession($, session => ({ ...session, model: e.model, effort: e.effort === undefined ? session.effort : String(e.effort) }))
     const output = step.usage?.output_tokens
     if (output !== undefined && startedAt !== null) {
       const ms = (await $.clock.now()) - startedAt
@@ -452,10 +452,10 @@ export async function trackMeasure($: EngineInterface, e: HookInput<'session.mea
   const at = await $.clock.now()
   const fresh = rateWindowsOf(e.rateLimits)
   await updateUsage($, usage => {
-    const { windowsAt: _stored, ...rest } = usage
+    const { rateWindowsAt: _stored, ...rest } = usage
     return {
-      ...rest, tokens: e.context.tokens ?? null, window: e.context.window, percent: e.context.percent ?? null,
-      ...nextWindows(usage, fresh, e.context.tokens !== undefined), costUsd: e.cost?.usd ?? usage.costUsd, at,
+      ...rest, contextTokens: e.context.tokens ?? null, contextWindow: e.context.window, contextPercent: e.context.percent ?? null,
+      ...nextWindows(usage, fresh, e.context.tokens !== undefined), costUsd: e.cost?.usd ?? usage.costUsd, readingAt: at,
     }
   })
   await storeRateWindows($, fresh, at)
@@ -472,15 +472,15 @@ export async function trackPrompt($: EngineInterface, e: HookInput<'prompt.submi
   if (e.origin.kind !== 'composer' && e.origin.kind !== 'bridge') return next(e)
   const at = await $.clock.now()
   const key = fingerprint(e.text)
-  await updateMeta($, m => ({ ...m, waiting: [...m.waiting, { at, key }].slice(-5) }))
+  await updateSession($, m => ({ ...m, waitingPrompts: [...m.waitingPrompts, { at, fingerprint: key }].slice(-5) }))
   const note = takeRecNote()
   const entered = await next(note === null ? e : { ...e, context: [...(e.context ?? []), note] })
   const settled = entered.drop === undefined ? fingerprint(entered.text) : null
   if (settled !== key) {
-    await updateMeta($, session => ({
+    await updateSession($, session => ({
       ...session,
-      waiting: settled === null ? session.waiting.filter(w => w.at !== at || w.key !== key)
-        : session.waiting.map(w => (w.at === at && w.key === key ? { at, key: settled } : w)),
+      waitingPrompts: settled === null ? session.waitingPrompts.filter(w => w.at !== at || w.fingerprint !== key)
+        : session.waitingPrompts.map(w => (w.at === at && w.fingerprint === key ? { at, fingerprint: settled } : w)),
     }))
   }
   return entered
@@ -490,13 +490,13 @@ export async function trackPrompt($: EngineInterface, e: HookInput<'prompt.submi
 export async function readModelAndVersion($: EngineInterface): Promise<void> {
   try {
     const model = await $.session.model()
-    await updateMeta($, m => (m.model === null ? { ...m, model } : m))
+    await updateSession($, m => (m.model === null ? { ...m, model } : m))
   } catch {
     // The first step names the model
   }
   try {
     const engine = await $.session.version()
-    await updateMeta($, session => ({ ...session, version: engine.version }))
+    await updateSession($, session => ({ ...session, version: engine.version }))
   } catch {
     // No version item
   }
@@ -544,5 +544,5 @@ export function forgetTurnSpend(): void {
 
 // The conversation was resumed, not started
 export async function markResumed($: EngineInterface): Promise<void> {
-  await updateMeta($, session => ({ ...session, isResumed: true }))
+  await updateSession($, session => ({ ...session, isResumed: true }))
 }

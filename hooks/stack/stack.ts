@@ -88,9 +88,9 @@ export function modelsAgree(a: string | null, b: string | null): boolean {
 
 
 export function runwayOf(stack: Stack, usage: Usage, sessionModel: string | null): Runway | null {
-  if (stack.state !== 'used' || stack.fullContext !== 'fresh-session' || stack.resumeAt === null || usage.tokens === null) return null
+  if (stack.state !== 'used' || stack.fullContext !== 'fresh-session' || stack.resumeAt === null || usage.contextTokens === null) return null
   if (!modelsAgree(stack.model, sessionModel)) return null
-  return { percent: Math.floor((usage.tokens * 100) / stack.resumeAt), resumeAt: stack.resumeAt, at: usage.window === null ? null : Math.round((stack.resumeAt * 100) / usage.window) }
+  return { percent: Math.floor((usage.contextTokens * 100) / stack.resumeAt), resumeAt: stack.resumeAt, at: usage.contextWindow === null ? null : Math.round((stack.resumeAt * 100) / usage.contextWindow) }
 }
 
 // A compaction point in whole thousands, `490k`
