@@ -12,17 +12,17 @@ const isSkill = (key: string): boolean => key.startsWith('Skill: ')
 // The session's tools by calls, most first (ties by name), Skill calls apart
 function toolsByCalls(stats: Record<string, ToolStat> | undefined): [string, ToolStat][] {
   return Object.entries(stats ?? {})
-    .filter(([key, s]) => s.calls > 0 && !isSkill(key))
-    .sort(([ka, a], [kb, stat]) => stat.calls - a.calls || (ka < kb ? -1 : ka > kb ? 1 : 0))
+    .filter(([key, stat]) => stat.calls > 0 && !isSkill(key))
+    .sort(([ka, leftStat], [kb, stat]) => stat.calls - leftStat.calls || (ka < kb ? -1 : ka > kb ? 1 : 0))
 }
 
 // The counts of what the detail rows list (spec 2026-11-11, D5; settings-values S6, once a toggle): the tool calls, the
 // main chat's skills, the agents dispatched (and how many run) and the rules, each only above 0; its forms drop the
 // rules, then the agents, then the skills. None with nothing counted.
 export function toggleForms(input: BandInput): Line[] {
-  const count = (n: number, one: string): string | null => (n === 0 ? null : `${n} ${one}${n === 1 ? '' : 's'}`)
-  const calls = toolsByCalls(input.stats).reduce((n, [, stat]) => n + stat.calls, 0)
-  const dispatched = Object.values(input.session.agentTypes ?? {}).reduce((n, k) => n + k, 0)
+  const count = (amount: number, one: string): string | null => (amount === 0 ? null : `${amount} ${one}${amount === 1 ? '' : 's'}`)
+  const calls = toolsByCalls(input.stats).reduce((total, [, stat]) => total + stat.calls, 0)
+  const dispatched = Object.values(input.session.agentTypes ?? {}).reduce((total, typeCount) => total + typeCount, 0)
   const running = input.agents.filter(row => isLive(row.status)).length
   const drawn = rulesDrawn(input.rules ?? NO_RULES)
   const tools = count(calls, 'tool')
@@ -30,11 +30,11 @@ export function toggleForms(input: BandInput): Line[] {
   const agents = count(dispatched, 'agent')
   const rules = count(drawn.always.length + drawn.byPath.length, 'rule')
   if (tools === null && skills === null && agents === null && rules === null) return []
-  const parts = (...of: (string | null)[]): string[] => of.filter((p): p is string => p !== null)
+  const parts = (...of: (string | null)[]): string[] => of.filter((part): part is string => part !== null)
   const agentsPart = agents === null ? null : running > 0 ? `${agents} (${running} ◐)` : agents
   const all = parts(tools, skills, agentsPart, rules)
-  const forms = [all, parts(tools, skills, agentsPart), parts(tools, skills), parts(tools)].filter(f => f.length > 0)
-  return [...new Set(forms.map(f => f.join(' · ')))].map(text => [{ text, tone: 'dim' as const }])
+  const forms = [all, parts(tools, skills, agentsPart), parts(tools, skills), parts(tools)].filter(form => form.length > 0)
+  return [...new Set(forms.map(form => form.join(' · ')))].map(text => [{ text, tone: 'dim' as const }])
 }
 
 // The open rows (spec 2026-11-11, D2): every tool by name with its calls, then the skills the main chat loaded and how
@@ -65,17 +65,17 @@ export function toolRows(input: BandInput): Line[] {
 const NO_RULES: RulesInput = { always: [], byPath: [], isTracked: true }
 
 // The rules drawn, each name once, an always-on name winning: the always-on ones, then the by-path ones not among them
-export function rulesDrawn(r: RulesInput): { always: string[]; byPath: string[] } {
-  const always = [...new Set(r.always)]
-  return { always, byPath: [...new Set(r.byPath)].filter(n => !always.includes(n)) }
+export function rulesDrawn(rules: RulesInput): { always: string[]; byPath: string[] } {
+  const always = [...new Set(rules.always)]
+  return { always, byPath: [...new Set(rules.byPath)].filter(name => !always.includes(name)) }
 }
 
 // The rules row's items (spec 2026-11-11, D4): the always-on rules plain, the by-path ones violet, then how many of
 // each; untracked (the option on), by path is not known; after a resume, the by-path ones loaded before are unseen
-export function ruleSegs(r: RulesInput, isResumed: boolean): Line[] {
-  const { always, byPath } = rulesDrawn(r)
-  if (r.isTracked && always.length + byPath.length === 0) return [[{ text: 'none loaded', tone: 'dim' }]]
-  const summary = r.isTracked
+export function ruleSegs(rules: RulesInput, isResumed: boolean): Line[] {
+  const { always, byPath } = rulesDrawn(rules)
+  if (rules.isTracked && always.length + byPath.length === 0) return [[{ text: 'none loaded', tone: 'dim' }]]
+  const summary = rules.isTracked
     ? `${always.length} always-on · ${byPath.length} by path${isResumed ? ' since resume' : ''}`
     : `${always.length} always-on · by path not tracked`
   return [
@@ -91,10 +91,10 @@ export function agentSegs(rows: AgentRow[], types: Record<string, number> | unde
   const names = Object.keys(types ?? {})
   if (names.length === 0) return [[{ text: isResumed ? 'none seen since resume' : 'none', tone: 'dim' }]]
   const items = names.map((type): Line => {
-    const of = rows.filter(r => r.type === type)
-    const glyph: Seg = of.some(r => isLive(r.status))
+    const of = rows.filter(row => row.type === type)
+    const glyph: Seg = of.some(row => isLive(row.status))
       ? { text: '◐ ', tone: 'warn' }
-      : of.some(r => r.status === 'failed' || r.status === 'killed') ? { text: '✗ ', tone: 'fail' } : { text: '✓ ', tone: 'ok' }
+      : of.some(row => row.status === 'failed' || row.status === 'killed') ? { text: '✗ ', tone: 'fail' } : { text: '✓ ', tone: 'ok' }
     return [glyph, { text: `${type} ×${types?.[type] ?? 0}` }]
   })
   const running = rows.filter(row => isLive(row.status)).length

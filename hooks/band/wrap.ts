@@ -4,12 +4,13 @@ import type { Line, Seg } from '../core/types'
 
 // A line's cells as the terminal draws it: its text, and each button `[ label ]`, or `1: label` when plain
 export function cellsOf(line: Line): number {
-  return line.reduce((n, seg) => {
-    if ('text' in seg && seg.width !== undefined) return n + seg.width
-    if (!('button' in seg)) return n + widthOf([seg])
-    const b = seg.button
-    const label = widthOf([{ text: b.label }])
-    return n + (b.plain === true || /^\d$/.test(b.hotkey ?? '') ? (b.hotkey === undefined ? 0 : b.hotkey.length + 2) + label : label + 4)
+  return line.reduce((cells, seg) => {
+    if ('text' in seg && seg.width !== undefined) return cells + seg.width
+    if (!('button' in seg)) return cells + widthOf([seg])
+    const button = seg.button
+    const label = widthOf([{ text: button.label }])
+    return cells + (button.plain === true || /^\d$/.test(button.hotkey ?? '')
+      ? (button.hotkey === undefined ? 0 : button.hotkey.length + 2) + label : label + 4)
   }, 0)
 }
 
@@ -24,8 +25,8 @@ export function wrapRows(label: Seg, under: Seg, items: Line[], columns: number,
   let used = lead
   let count = 0
   for (const item of items) {
-    const w = widthOf(item)
-    if (count > 0 && used + gap + w > columns) {
+    const itemWidth = widthOf(item)
+    if (count > 0 && used + gap + itemWidth > columns) {
       rows.push(row)
       row = [under]
       used = lead
@@ -36,7 +37,7 @@ export function wrapRows(label: Seg, under: Seg, items: Line[], columns: number,
       used += gap
     }
     row.push(...item)
-    used += w
+    used += itemWidth
     count++
   }
   rows.push(row)

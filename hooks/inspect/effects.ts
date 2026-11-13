@@ -44,7 +44,7 @@ export function resetView($: EngineInterface) {
 // Whether the person sees the pane now, from the engine's record: it outlives a /clear and a reload, and knows a
 // pane placed after it waited undrawn
 export async function isInspectDrawn($: EngineInterface): Promise<boolean> {
-  return (await $.ui.panes()).some(p => p.id === 'inspect' && p.isShown && p.isPlaced)
+  return (await $.ui.panes()).some(pane => pane.id === 'inspect' && pane.isShown && pane.isPlaced)
 }
 
 // Opens the pane on a tab. The failures it shows are seen once a surface draws it, never while it waits undrawn.
@@ -65,7 +65,7 @@ export async function openInspect($: EngineInterface, tab: Tab): Promise<UiOpenR
 
 // The pane on `tab`, unless it is open on one of `tabs` already: '' when drawn, else why not
 export async function showPaneOn($: EngineInterface, tab: Tab, tabs: Tab[]): Promise<string> {
-  const isOpen = (await $.ui.panes().catch(() => [])).some(p => p.id === 'inspect')
+  const isOpen = (await $.ui.panes().catch(() => [])).some(pane => pane.id === 'inspect')
   if (isOpen && tabs.includes((await readView($)).tab)) return ''
   const opened = await openInspect($, tab)
   return opened.isPlaced ? '' : ` The pane is open but not drawn: ${opened.reason}.`
@@ -73,7 +73,7 @@ export async function showPaneOn($: EngineInterface, tab: Tab, tabs: Tab[]): Pro
 
 // '/inspect band [off|calm|full]': writes "band" into the user file, or names the mode in force and its source
 export async function runBandCommand($: EngineInterface, word: string): Promise<string> {
-  const mode = BAND_MODES.find(m => m === word)
+  const mode = BAND_MODES.find(bandMode => bandMode === word)
   if (mode !== undefined) return writeUserField($, 'band', mode)
   await loadSettings($)
   const resolved = resolvedSettings()
@@ -82,34 +82,34 @@ export async function runBandCommand($: EngineInterface, word: string): Promise<
 
 // '/inspect show [n]' and '/inspect copy [n]': the failure whose row starts with n, the newest when n is left out
 export async function runFailureCommand($: EngineInterface, action: 'show' | 'copy', word: string | undefined): Promise<string> {
-  const list = (await readFailures($)).map((f, i) => ({ f, n: failureNumberOf(f, i) }))
+  const list = (await readFailures($)).map((failure, i) => ({ f: failure, n: failureNumberOf(failure, i) }))
   const newest = list[list.length - 1]
   if (newest === undefined) return `No tool failure to ${action}.`
-  const n = word === undefined ? newest.n : ordinalOf(word)
-  const f = list.find(x => x.n === n)?.f
+  const wanted = word === undefined ? newest.n : ordinalOf(word)
+  const failure = list.find(entry => entry.n === wanted)?.f
   const oldest = list[0]?.n ?? newest.n
-  if (f === undefined) {
+  if (failure === undefined) {
     const range = oldest === newest.n ? `the pane lists failure ${oldest}` : `the pane lists failures ${oldest} to ${newest.n}`
     return `No failure ${oneLine(printable(word ?? ''), 20)}: ${range}.`
   }
-  const name = `failure ${n} (${f.tool}${f.target === '' ? '' : `  ${oneLine(printable(f.target), 40)}`})`
+  const name = `failure ${wanted} (${failure.tool}${failure.target === '' ? '' : `  ${oneLine(printable(failure.target), 40)}`})`
   if (action === 'copy') {
-    if (f.outcome !== 'error') return `Nothing to copy: ${name} was ${f.outcome}, not an error.`
-    const done = await $.ui.copy({ text: f.detail })
+    if (failure.outcome !== 'error') return `Nothing to copy: ${name} was ${failure.outcome}, not an error.`
+    const done = await $.ui.copy({ text: failure.detail })
     return done.isCopied ? `Copied the error of ${name}.` : `Not copied: ${COPY_WHY[done.reason]}.`
   }
-  if (f.outcome !== 'error' && f.outcome !== 'blocked') return `Nothing to show: ${name} was ${f.outcome}.`
-  return runToggleCommand($, f.id, name, 'now', ['now', 'tools'])
+  if (failure.outcome !== 'error' && failure.outcome !== 'blocked') return `Nothing to show: ${name} was ${failure.outcome}.`
+  return runToggleCommand($, failure.id, name, 'now', ['now', 'tools'])
 }
 
 // '/inspect report [n]': report n of the agents that finished with one, in the Agents tab's order, the top first
 export async function runReportCommand($: EngineInterface, word: string | undefined): Promise<string> {
   const list = reportRows(await readAgents($))
   if (list.length === 0) return 'No agent report to show.'
-  const n = ordinalOf(word)
-  const row = list[n - 1]
+  const ordinal = ordinalOf(word)
+  const row = list[ordinal - 1]
   if (row === undefined) return outOfRange('report', word, list.length, 'top')
-  return runToggleCommand($, `report:${row.id}`, `report ${n} (${row.type} · ${oneLine(printable(row.description), 40)})`, 'agents', ['agents'])
+  return runToggleCommand($, `report:${row.id}`, `report ${ordinal} (${row.type} · ${oneLine(printable(row.description), 40)})`, 'agents', ['agents'])
 }
 
 // Show and Hide as one toggle, as the button: shown, the pane comes up on a tab that lists it
@@ -127,7 +127,8 @@ export async function openInspectFromBand($: EngineInterface): Promise<void> {
 }
 
 export async function toggleExpanded($: EngineInterface, id: string): Promise<void> {
-  await updateView($, view => ({ ...view, expandedIds: view.expandedIds.includes(id) ? view.expandedIds.filter(x => x !== id) : [...view.expandedIds, id] }))
+  await updateView($, view => ({ ...view, expandedIds: view.expandedIds.includes(id)
+    ? view.expandedIds.filter(expandedId => expandedId !== id) : [...view.expandedIds, id] }))
 }
 
 export async function runInspectCommand($: EngineInterface, e: MatchedInput<'command.run', { command: 'inspect' }>) {
@@ -138,11 +139,11 @@ export async function runInspectCommand($: EngineInterface, e: MatchedInput<'com
   if (word === 'show' || word === 'copy') return { text: mask(await runFailureCommand($, word, words[1])) }
   if (word === 'report') return { text: mask(await runReportCommand($, words[1])) }
   if (word === 'fill') return { text: await fillStackPrompt($) }
-  const tab = TAB_NAMES.find(t => t === (word === '' ? 'now' : word))
+  const tab = TAB_NAMES.find(name => name === (word === '' ? 'now' : word))
   if (tab === undefined) return { text: INSPECT_HELP }
   if (tab === 'plan') {
     const name = words[1] ?? null
-    const good = (await readPlans($)).planFiles.filter(w => w.value !== null).map(w => w.name).sort()
+    const good = (await readPlans($)).planFiles.filter(planFile => planFile.value !== null).map(planFile => planFile.name).sort()
     if (name !== null && !good.includes(name)) {
       const asked = oneLine(printable(name), 40)
       return { text: good.length === 0 ? `No plan named ${asked}. No plan file in ${PLANS_DIR}/.` : `No plan named ${asked}. Plans: ${good.join(', ')}.` }
@@ -160,26 +161,27 @@ export async function drawInspectPane($: EngineInterface, e: MatchedInput<'ui.re
   const shown = await readView($)
   const rows = await readFailures($)
   const drawing = await readPlanDrawing($, now)
-  const u = await readUsage($)
-  const h = await readHandoff($)
-  const m = await readSession($)
+  const usage = await readUsage($)
+  const handoff = await readHandoff($)
+  const session = await readSession($)
   const st = await readStack($)
-  const runway = runwayOf(st, u, m.model)
+  const runway = runwayOf(st, usage, session.model)
   const input = {
-    now, columns: e.props.bodyColumns, isWorking: counts.turnId !== null, live: counts, usage: u,
-    session: m, turns: await readTurns($), newFailures: rows.filter(failure => failure.isNew).length,
+    now, columns: e.props.bodyColumns, isWorking: counts.turnId !== null, live: counts, usage,
+    session, turns: await readTurns($), newFailures: rows.filter(failure => failure.isNew).length,
     pace: await readPace($), failures: rows, stats: await readStats($), totals: await readTotals($), view: shown,
     agents: await readAgents($), cache: await readCache($), plan: drawing.band, isPlanInvalid: drawing.invalid, score: drawing.score, isPlanScore: drawing.isPlanScore, scoreLevel: await readScoreLevel($), blockers: await readBlockers($), parts: await readParts($),
     loops: await readLoops($),
-    rec: recSummary(await readRec($)), forecast: forecastTargetOf(h, u, runway), handoff: handoffViewOf(h, u, counts.turnId !== null, runway),
-    stack: { view: st, prompt: stackPrompt(), runway, sessionModel: m.model },
+    rec: recSummary(await readRec($)), forecast: forecastTargetOf(handoff, usage, runway),
+    handoff: handoffViewOf(handoff, usage, counts.turnId !== null, runway),
+    stack: { view: st, prompt: stackPrompt(), runway, sessionModel: session.model },
   }
   const bar = tabBar(shown.tab, counts.turnId !== null, e.props.bodyColumns)
   const body = shown.tab === 'usage' ? usageLines(input)
     : shown.tab === 'agents' ? agentsLines(input)
     : shown.tab === 'cache' ? cacheLines(input)
     : shown.tab === 'tools' ? toolsLines(input)
-    : shown.tab === 'timeline' ? timelineLines(input.turns, Math.max(3, e.props.scroll.bodyRows - 1 - bar.length), u.rateWindows.length > 0, e.props.bodyColumns)
+    : shown.tab === 'timeline' ? timelineLines(input.turns, Math.max(3, e.props.scroll.bodyRows - 1 - bar.length), usage.rateWindows.length > 0, e.props.bodyColumns)
     : shown.tab === 'plan' ? planLines(drawing.shown, drawing.scores, { invalid: drawing.invalid, others: drawing.others, otherScores: drawing.otherScores, updatedAt: drawing.updatedAt, now, columns: e.props.bodyColumns })
     : nowLines(input)
   const press: Record<string, () => unknown> = {

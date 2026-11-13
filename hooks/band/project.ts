@@ -60,7 +60,7 @@ export function placeRow(input: BandInput): Line[] {
   const folder = place.folder
   // Short of width the folder goes first, then the changes, then the commits ahead and behind
   const forms = [...(folder === undefined ? [] : [line(fitFolder(folder, 40)), line(lastPart(folder))]), line(null), line(null, false), line(null, false, false)]
-  const form = forms.find(f => widthOf(f) <= input.columns - ROW_LABEL) ?? forms[forms.length - 1] ?? []
+  const form = forms.find(candidate => widthOf(candidate) <= input.columns - ROW_LABEL) ?? forms[forms.length - 1] ?? []
   return [[rowLabel('project:'), ...form]]
 }
 
@@ -69,7 +69,7 @@ export function placeRow(input: BandInput): Line[] {
 // settings-values, S6); short of width its forms drop the rules, then the agents, then the skills
 export function usageRow(input: BandInput): Line[] {
   const texts = toggleForms(input).flatMap(line => line.flatMap(seg => ('text' in seg ? [`[ ${seg.text} ]`] : [])))
-  const text = texts.find(t => widthOf([{ text: t }]) <= input.columns - ROW_LABEL) ?? texts[texts.length - 1]
+  const text = texts.find(candidate => widthOf([{ text: candidate }]) <= input.columns - ROW_LABEL) ?? texts[texts.length - 1]
   // Aqua, as the toggle's button was drawn (the user, 2026-11-11)
   return text === undefined ? [] : [[rowLabel('usage:'), { text, tone: 'counts' }]]
 }

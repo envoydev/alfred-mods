@@ -91,22 +91,22 @@ export async function readBandInput(
   await readTick($)
   const now = await $.clock.now()
   const drawing = await readPlanDrawing($, now)
-  const u = await readUsage($)
-  const h = await readHandoff($)
+  const usage = await readUsage($)
+  const handoff = await readHandoff($)
   const st = await readStack($)
-  const m = await readSession($)
-  const runway = runwayOf(st, u, m.model)
+  const session = await readSession($)
+  const runway = runwayOf(st, usage, session.model)
   const setting = await readBandSetting($)
   const parts = await readParts($)
   return {
     now, columns: at.columns, ...(at.maxRows === undefined ? {} : { maxRows: at.maxRows }), isWorking: at.isWorking,
-    live: await readLive($), usage: u, session: m, turns: await readTurns($),
+    live: await readLive($), usage, session, turns: await readTurns($),
     newFailures: (await readFailures($)).filter(failure => failure.isNew).length, pace: await readPace($), agents: await readAgents($),
     cache: await readCache($), plan: drawing.band, isPlanInvalid: drawing.invalid, score: drawing.score, isPlanScore: drawing.isPlanScore, scoreLevel: await readScoreLevel($), rec: recSummary(await readRec($)),
-    forecast: forecastTargetOf(h, u, runway), handoffAskStep: h.isAskUp ? h.handledStep : null, runway, banner: bannerSegs(st),
+    forecast: forecastTargetOf(handoff, usage, runway), handoffAskStep: handoff.isAskUp ? handoff.handledStep : null, runway, banner: bannerSegs(st),
     mode: setting.mode, totals: await readTotals($), stats: await readStats($),
     isToolsOpen: setting.isToolsOpen === true, skillListing: parts.skills ?? null,
-    rules: { always: parts.rules ?? [], byPath: m.pathRules ?? [], isTracked: !at.isLeftOut },
+    rules: { always: parts.rules ?? [], byPath: session.pathRules ?? [], isTracked: !at.isLeftOut },
     ...(at.under === undefined ? {} : { under: at.under }),
   }
 }

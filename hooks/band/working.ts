@@ -50,7 +50,7 @@ export function lastTurn(input: BandInput, isNarrow: boolean): Line {
   return input.mode === 'full' ? line : [...line, ...times(input)]
 }
 
-const agentCount = (k: number): string => `${k} ${k === 1 ? 'agent' : 'agents'}`
+const agentCount = (count: number): string => `${count} ${count === 1 ? 'agent' : 'agents'}`
 
 // ' │ PLAN 3/5 · score 81 ▲13', each part only when known, for an idle line 1 that needs you; while the full band
 // draws the plan row, the row has the count and the plan's own score, so line 1 keeps only a score of another output
@@ -67,25 +67,25 @@ function planTail(input: BandInput, isRowDrawn: boolean): Line {
 // the running Bash. Past the width the agent parts fold into ' +N agents', then the Bash part goes, then the plan's
 // step, then its title is cut.
 export function workingLine(input: BandInput, isNarrow: boolean): Line {
-  const running = input.agents.filter(r => isLive(r.status))
+  const running = input.agents.filter(agent => isLive(agent.status))
   // The full band's plan has its own row, so line 1 keeps the turn there
   const plan = input.mode === 'full' ? null : input.plan
   if (plan !== null && isNarrow) return narrowPlan(plan, running.length)
-  const n = input.session.turnCount + 1
+  const turnNumber = input.session.turnCount + 1
   const took = elapsedText(input.now - (input.live.startedAt ?? input.now))
   const count = input.mode === 'full' ? ` · ${input.live.toolCalls} ${input.live.toolCalls === 1 ? 'tool' : 'tools'}` : ''
   const head: Seg = input.isWorking
-    ? { text: isNarrow ? `⟳ Turn ${n} ${took}` : `⟳ Turn ${n} · ${took}${count}`, bold: true }
+    ? { text: isNarrow ? `⟳ Turn ${turnNumber} ${took}` : `⟳ Turn ${turnNumber} · ${took}${count}`, bold: true }
     : { text: `⟳ ${agentCount(running.length)}`, bold: true }
   if (isNarrow) return input.isWorking && running.length > 0 ? [head, { text: ` · ${agentCount(running.length)}` }] : [head]
   const bash: Line = []
-  const calls = input.live.runningCalls.filter(r => r.tool === 'Bash')
+  const calls = input.live.runningCalls.filter(call => call.tool === 'Bash')
   const newest = calls[calls.length - 1]
   if (newest !== undefined) {
     bash.push({ text: ` │ Bash ▸ ${newest.label} ${elapsedText(input.now - newest.startedAt)}` })
     if (calls.length > 1) bash.push({ text: ` +${calls.length - 1}`, tone: 'dim' })
   }
-  const parts: Line = running.map(r => ({ text: r.action === null ? ` │ ${r.type}` : ` │ ${r.type} ▸ ${r.action}` }))
+  const parts: Line = running.map(agent => ({ text: agent.action === null ? ` │ ${agent.type}` : ` │ ${agent.type} ▸ ${agent.action}` }))
   const folded = (kept: number): Line => {
     const rest = parts.length - kept
     return [...parts.slice(0, kept), ...(rest > 0 ? [{ text: ` +${agentCount(rest)}`, tone: 'dim' as const }] : [])]
@@ -101,18 +101,18 @@ export function workingLine(input: BandInput, isNarrow: boolean): Line {
 
 // What the spinner adds after the engine's suffix: an agent's action and context on that agent's spinner; on the main
 // loop's, its newest call in flight, its context percent and the agents running. Null with nothing to add.
-export function spinnerSuffix(s: { requestId: string; live: Live; percent: number | null; agents: AgentRow[] }): string | null {
+export function spinnerSuffix(spinner: { requestId: string; live: Live; percent: number | null; agents: AgentRow[] }): string | null {
   const parts: string[] = []
-  const row = s.agents.find(r => r.id === s.requestId)
+  const row = spinner.agents.find(agent => agent.id === spinner.requestId)
   if (row !== undefined) {
     if (row.action !== null) parts.push(fitLine(row.action, 40))
     if (row.contextTokens !== null) parts.push(`ctx ${tokensText(row.contextTokens)}`)
   } else {
-    const newest = s.live.runningCalls[s.live.runningCalls.length - 1]
+    const newest = spinner.live.runningCalls[spinner.live.runningCalls.length - 1]
     if (newest !== undefined) parts.push(fitLine(actionOf(newest.tool, newest.label), 40))
-    if (s.percent !== null) parts.push(percentText(s.percent))
-    const k = s.agents.filter(r => isLive(r.status)).length
-    if (k > 0) parts.push(agentCount(k))
+    if (spinner.percent !== null) parts.push(percentText(spinner.percent))
+    const liveCount = spinner.agents.filter(agent => isLive(agent.status)).length
+    if (liveCount > 0) parts.push(agentCount(liveCount))
   }
   return parts.length === 0 ? null : parts.join(' · ')
 }
