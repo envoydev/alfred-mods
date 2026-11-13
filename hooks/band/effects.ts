@@ -15,3 +15,18 @@ export function readBandSetting($: EngineInterface) {
 export function updateBandSetting($: EngineInterface, change: (value: BandSetting) => BandSetting) {
   return update($, bandSettingAtom, change)
 }
+
+// The status line under the prompt, which Claude Code draws while the band is collapsed (spec D2): set only when its
+// text changes, cleared once nothing needs the person. The context's percent is the band's, against the runway while
+// it applies. `last` is null until the module's first call, which is always sent: a line an earlier copy of the mod
+// pinned before a reload is cleared or replaced at once.
+export const statusMem = { last: null as string | undefined | null }
+
+// Whether the band is in view, as its last render found it (spec 2026-11-11, D6): it drew lines, `isCollapsed` is
+// exactly false (a build before 2.1.321 hands none) and no survey covers it. One flag for the session, the last render
+// deciding; the one-second tick carries a change to the pinned line.
+// `isUnder` mirrors the setting for the hooks' `.catch`, which cannot read state (spec 2026-11-11 band-under U1).
+// Under (U2): `columns`, the terminal site above's last `bodyColumns`; `hasFooter`, the terminal's footer hook has run
+// this session, so the site above may pass; `hasStatusLine`, a `statusLine` is set, which the fullscreen budget leaves
+// room for.
+export const bandMem = { isShown: false, isUnder: false, columns: null as number | null, hasFooter: false, hasStatusLine: false }

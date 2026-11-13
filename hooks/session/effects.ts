@@ -89,3 +89,17 @@ export function readTick($: EngineInterface) {
 export function updateTick($: EngineInterface, change: (value: number) => number) {
   return update($, tickAtom, change)
 }
+
+// The windows this session last stored for the next one, as the band shows them: a turn's measure stores them only when
+// that changed, since each store write rewrites the file every session on the machine shares (the review, 2026-11-11)
+export const windowsMem = { stored: null as string | null }
+
+// When the band's figures were last read mid-turn: the tick reads them at most this often while a turn runs or an
+// agent is live, since a foreground agent holds the main loop and no main step fires until it ends
+export const freshMem = { at: -Infinity }
+
+export const FRESH_EVERY_MS = 5000
+
+// The session's cost at the main loop's turn.start, by turn id (spec C4); the main loop runs one turn at a time, so it
+// holds one. A /clear empties it: a turn across it has no start read in the new session.
+export const spendMem = new Map<string, number>()

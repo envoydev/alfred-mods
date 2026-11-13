@@ -17,3 +17,6 @@ export function updateParts($: EngineInterface, change: (value: Parts) => Parts)
 export function resetParts($: EngineInterface) {
   return update($, partsAtom, () => INITIAL_PARTS)
 }
+
+// The time of the last breakdown read that gave one, for the Usage tab's 60-second rule (spec C1)
+export const partsMem = { lastAt: null as number | null }

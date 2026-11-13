@@ -32,16 +32,16 @@ import { LEVELS, REC_HELP, addWord, parseWords, recNote, recPaneLines, recStatus
 import { BAND_MODES, DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast, writeField } from './settings/settings'
 import { baseName, folderOf, gitDirOf, headBranch, parentOf } from './place/place'
 import { dropPassed, nextWindows, storedWindows } from './session/windows'
-import { readBlockers, readFailures, readQuiet, readStats, resetBlockers, resetFailures, resetQuiet, resetStats, updateBlockers, updateFailures, updateQuiet, updateStats } from './tools/effects'
-import { readLive, readMeta, readPace, readTick, readTotals, readTurns, readUsage, resetLive, resetMeta, resetPace, resetTotals, resetTurns, resetUsage, updateLive, updateMeta, updatePace, updateTick, updateTotals, updateTurns, updateUsage } from './session/effects'
+import { compactMem, errorMem, errorRows, modeMem, readBlockers, readFailures, readQuiet, readStats, resetBlockers, resetFailures, resetQuiet, resetStats, updateBlockers, updateFailures, updateQuiet, updateStats } from './tools/effects'
+import { FRESH_EVERY_MS, freshMem, readLive, readMeta, readPace, readTick, readTotals, readTurns, readUsage, resetLive, resetMeta, resetPace, resetTotals, resetTurns, resetUsage, spendMem, updateLive, updateMeta, updatePace, updateTick, updateTotals, updateTurns, updateUsage, windowsMem } from './session/effects'
 import { readAgents, readLoops, resetAgents, resetLoops, updateAgents, updateLoops } from './agents/effects'
 import { readCache, resetCache, updateCache } from './cache/effects'
 import { readCredit, readPlans, readTasks, resetCredit, resetPlans, resetTasks, updateCredit, updatePlans, updateTasks } from './plan/effects'
-import { INITIAL_STACK, readStack, resetStack, updateStack } from './stack/effects'
-import { readHandoff, resetHandoff, updateHandoff } from './handoff/effects'
-import { readRec, resetRec, updateRec } from './rec/effects'
-import { readBandSetting, updateBandSetting } from './band/effects'
-import { readParts, resetParts, updateParts } from './context/effects'
+import { INITIAL_STACK, readStack, resetStack, stackMem, updateStack } from './stack/effects'
+import { handoffMem, readHandoff, resetHandoff, updateHandoff } from './handoff/effects'
+import { noteMem, readRec, recMem, resetRec, updateRec } from './rec/effects'
+import { bandMem, readBandSetting, statusMem, updateBandSetting } from './band/effects'
+import { partsMem, readParts, resetParts, updateParts } from './context/effects'
 import { readView, resetView, updateView } from './inspect/effects'
 import type { AgentRow, Loop } from './agents/types'
 import type { BandInput, BandMode, BandSetting } from './band/types'
@@ -55,6 +55,9 @@ import type { Field, From, Resolved, Source, Values } from './settings/types'
 import type { Runway, Stack } from './stack/types'
 import type { Call, CallFacts, CompactCall, Failure, Outcome, Quiet, ToolStat } from './tools/types'
 import type { Held } from './core/types'
+import { changesMem, placeMem, rowsMem } from './place/effects'
+import { settingsMem, settingsNow } from './settings/effects'
+import { conversationMem, tickMem } from './lifecycle/effects'
 
 
 
@@ -64,15 +67,6 @@ const NO_FACTS: Omit<CallFacts, 'tool'> = {
   checked: null, checkReason: null, asked: false, failedInTool: false, interrupted: false, classifierReason: null, hookDeny: null, result: null,
   aborted: false, autoMode: false,
 }
-
-// The session's permission mode as the classic events last reported it (`permission_mode`), for the failure rule in
-// auto mode; null until one arrives
-const modeMem = { mode: null as string | null }
-
-// The conversation the mod last started, by session id, and the start-over running. A /clear, a resume or a branch goes
-// on under a new id: classic.SessionStart starts it over, and where a managed plugin keeps that hook from the mod, the
-// tick or the next prompt does once it reads the new id. The id is null until session.start.
-const conversationMem = { id: null as string | null, starting: null as Promise<void> | null }
 
 function tally(stat: ToolStat | undefined, outcome: Outcome, by: 1 | -1): ToolStat {
   const t = stat ?? { calls: 0, ok: 0, failed: 0, stopped: 0 }
@@ -122,10 +116,6 @@ async function addRow($: EngineInterface, id: string, call: Call, outcome: Exclu
     return out
   })
 }
-
-// Compact rows' memory (Decisions 4 and 7): each settled call's outcome and reason, and the calls of a group the mod
-// unfolded, by call id, each the last 500. A reload empties both: a blocked call then draws ✗.
-const compactMem = { outcomes: new Map<string, { outcome: Outcome; reason: string; isAutoAllowed: boolean }>(), marks: new Set<string>() }
 
 function keepLast<K>(items: Map<K, unknown> | Set<K>, limit = 500): void {
   for (const k of items.keys()) {
@@ -226,10 +216,6 @@ async function writeUsage($: EngineInterface, reading: SessionUsage, today?: num
   }))
 }
 
-// The windows this session last stored for the next one, as the band shows them: a turn's measure stores them only when
-// that changed, since each store write rewrites the file every session on the machine shares (the review, 2026-11-11)
-const windowsMem = { stored: null as string | null }
-
 async function storeWindows($: EngineInterface, windows: Window[], at: number): Promise<void> {
   const json = JSON.stringify(windows.map(w => [w.kind, Math.round(w.percentUsed), w.resetsAt]))
   if (windows.length === 0 || json === windowsMem.stored) return
@@ -244,14 +230,6 @@ async function seedWindows($: EngineInterface): Promise<void> {
   const stored = storedWindows(await $.store.get('usage:windows'), await $.clock.now())
   if (stored !== null) await updateUsage($, u => ({ ...u, windows: stored.windows, windowsAt: stored.at }))
 }
-
-// The HEAD file the place was read from, so the 30-second poll reads that one file for a checkout; the working folder
-// it was read with, as a move to another (a `cd`, a worktree, /cd) reads the place again; and the folder it shows, the
-// working folder or the folder of the file the main thread last edited or wrote
-const placeMem = { head: null as string | null, cwd: null as string | null, at: null as string | null, repo: null as string | null }
-
-// The working folder the quiet rows read paths from, kept even when the place read is refused past it
-const rowsMem = { cwd: null as string | null }
 
 async function readText($: EngineInterface, path: string): Promise<string | null> {
   try {
@@ -318,12 +296,6 @@ async function editPlace($: EngineInterface, file: string): Promise<void> {
   if (dir !== null && dir !== placeMem.at) await readPlace($, dir)
   else countSoon($)
 }
-
-// The repository's uncommitted changes for the project row (the user, 2026-11-12): `git diff --numstat HEAD` from the
-// repository's folder, and each new untracked file's lines as added, the newest 200 files of 1 MiB or less, a file read
-// again only when its size or time moved. Off the hooks, one count at a time; one asked for while another runs follows
-// it. A refusal, a repository with no commit or a timeout leaves no counts. Nothing of a file is kept but its count.
-const changesMem = { isRunning: false, again: false, lines: new Map<string, { size: number; mtimeMs: number; lines: number }>() }
 
 function countSoon($: EngineInterface): void {
   $.clock.after(0, () => {
@@ -434,11 +406,6 @@ async function readStart($: EngineInterface): Promise<void> {
   readBreakdownSoon($)
 }
 
-// When the band's figures were last read mid-turn: the tick reads them at most this often while a turn runs or an
-// agent is live, since a foreground agent holds the main loop and no main step fires until it ends
-const freshMem = { at: -Infinity }
-const FRESH_EVERY_MS = 5000
-
 // A main-loop step's reading: the band's ctx and cost before the turn ends (session.measure fires after it)
 async function freshUsage($: EngineInterface): Promise<void> {
   freshMem.at = await $.clock.now()
@@ -454,9 +421,6 @@ async function freshUsage($: EngineInterface): Promise<void> {
 async function baseline($: EngineInterface, reading: SessionUsage): Promise<void> {
   if (reading.cost !== undefined) await baseCost($, await $.session.id(), reading.cost.usd, await $.clock.now())
 }
-
-// The clock's minute the last tick saw: the full band's info line shows the session's time, which moves while idle
-const tickMem = { minute: -1 }
 
 // Once a second: the engine's list moves the live agent rows, the band's figures are read every 5 seconds and the
 // clocks on screen redraw while anything runs, and the clocks redraw once a minute while the band is full
@@ -497,19 +461,6 @@ async function tickOnce($: EngineInterface): Promise<void> {
   await syncStatus($)
 }
 
-// The status line under the prompt, which Claude Code draws while the band is collapsed (spec D2): set only when its
-// text changes, cleared once nothing needs the person. The context's percent is the band's, against the runway while
-// it applies. `last` is null until the module's first call, which is always sent: a line an earlier copy of the mod
-// pinned before a reload is cleared or replaced at once.
-const statusMem = { last: null as string | undefined | null }
-// Whether the band is in view, as its last render found it (spec 2026-11-11, D6): it drew lines, `isCollapsed` is
-// exactly false (a build before 2.1.321 hands none) and no survey covers it. One flag for the session, the last render
-// deciding; the one-second tick carries a change to the pinned line.
-// `isUnder` mirrors the setting for the hooks' `.catch`, which cannot read state (spec 2026-11-11 band-under U1).
-// Under (U2): `columns`, the terminal site above's last `bodyColumns`; `hasFooter`, the terminal's footer hook has run
-// this session, so the site above may pass; `hasStatusLine`, a `statusLine` is set, which the fullscreen budget leaves
-// room for.
-const bandMem = { isShown: false, isUnder: false, columns: null as number | null, hasFooter: false, hasStatusLine: false }
 async function syncStatus($: EngineInterface): Promise<void> {
   const u = await readUsage($)
   const runway = runwayOf(await readStack($), u, (await readMeta($)).model)
@@ -589,10 +540,6 @@ async function agentStep($: EngineInterface, e: TurnStepInput, step: TurnStepRes
     lastStop: step.stopReason ?? null,
   }))
 }
-
-// The session's cost at the main loop's turn.start, by turn id (spec C4); the main loop runs one turn at a time, so it
-// holds one. A /clear empties it: a turn across it has no start read in the new session.
-const spendMem = new Map<string, number>()
 
 async function resetAll($: EngineInterface): Promise<void> {
   spendMem.clear()
@@ -1055,10 +1002,6 @@ async function toggleShown($: EngineInterface, id: string): Promise<void> {
 
 const TABS: Tab[] = ['now', 'usage', 'agents', 'tools', 'cache', 'timeline', 'plan']
 
-// The REC level the model was last told of, in module memory: the person's next prompt carries the note while the
-// level differs (Decision 11)
-const noteMem = { told: 'off' as Level }
-
 // A main-loop compaction that stands: counted, and the cache cold, as its cached prefix is gone; a compaction can drop
 // REC's note from the history, so the next prompt carries it again
 async function countCompaction($: EngineInterface, held: Held): Promise<void> {
@@ -1094,32 +1037,11 @@ async function compactNow($: EngineInterface, held: Held): Promise<void> {
   }
 }
 
-// REC's private words and the home folder, in module memory only: never in $.state, a log or a file
-// `compiled` names the level, words and home mask.ts holds, which a reload starts over at off
-const recMem = { words: [] as string[], home: null as string | null, compiled: JSON.stringify(['off', [], null]) }
-
-// Each errored call's error text, the one Claude Code draws under it, by call id, the last 500: from the call's result,
-// or from its row for a call the mod did not see run (a resumed transcript). Kept in memory only, for REC to mask.
-const errorMem = new Map<string, string>()
-// The errored calls whose row drew the masked error text itself, so their result block draws nothing, the last 500
-const errorRows = new Set<string>()
-
 function keepError(id: string, text: string): void {
   errorMem.delete(id)
   errorMem.set(id, text)
   keepLast(errorMem)
 }
-
-// The mod's switches, from the "alfred-mods" key of each settings file and the old commands' store keys (spec
-// 2026-11-11 settings-values, S1-S4 and S7): read at the start, on the poll, after a /clear and after each change, one
-// run at a time as the status file's reads are. `rec`, the level in force and the source that set it; `skippedKey`,
-// the skipped values last told; `isHoldTold`, whether REC's hold was told. A new claude run starts them over.
-const settingsMem = {
-  resolved: null as Resolved | null, rec: null as { level: Level; from: From } | null, skippedKey: '', isHoldTold: false,
-  reading: Promise.resolve() as Promise<void>,
-}
-
-const settingsNow = (): Values => settingsMem.resolved?.values ?? DEFAULTS
 
 function loadSettings($: EngineInterface, isStart = false): Promise<void> {
   const next = settingsMem.reading.then(() => loadSettingsNow($, isStart))
@@ -1349,30 +1271,10 @@ async function addSkill($: EngineInterface, name: string): Promise<void> {
   await updateMeta($, m => ({ ...m, skills: { ...m.skills, [name]: (m.skills?.[name] ?? 0) + 1 } }))
 }
 
-// F8's memory outside $.state: whether the stack stood F8 down, which outlives a /clear until a read of the new id's
-// file says otherwise (the stack writes it in its own SessionStart hook, which may run after the mod's); whether a
-// compaction re-arms the steps; the model and window the compaction point was read for; the save running, which a
-// second request joins; the step the last save was made at, which c does not save again; and the last save's time,
-// which arms the resume prompt and which a /clear does not reset
-const handoffMem = {
-  stoodDown: false, rearm: false, pointKey: null as string | null, saving: null as Promise<SaveResult> | null,
-  savedStep: null as number | null, armedAt: null as number | null,
-  // The reads of the compaction point that gave no breakdown, for one model and window
-  pointMiss: { key: null as string | null, count: 0 },
-}
-
 // Only ask mode keeps an ask up: a change to auto or off, here or polled from another session, takes it down
 async function loadHandoff($: EngineInterface): Promise<void> {
   const s = { mode: settingsNow().handoff, threshold: settingsNow().handoffAt }
   await updateHandoff($, h => (h.mode === s.mode && h.threshold === s.threshold ? h : { ...h, ...s, isAskUp: s.mode === 'ask' && h.isAskUp }))
-}
-
-// The stack's resume prompt, in module memory only (Phase 5 spec 'Where values live'); `last`, the `stack` value the
-// last read wrote, which a read inside `keepUntil` (10 s after a /clear, a resume or a fork) writes back when the new
-// id has no file yet; `reading`, the read running, so reads never interleave; `reread`, the handler's one reread
-const stackMem = {
-  prompt: null as string | null, last: null as Stack | null, keepUntil: 0, reading: Promise.resolve(false) as Promise<boolean>,
-  reread: null as Timer | null,
 }
 
 // Reads run one at a time; each resolves to whether the session's status file exists
@@ -1436,9 +1338,6 @@ async function writeStackFrom($: EngineInterface, r: { exists: boolean; text: st
   stackMem.last = next
   await updateStack($, s => (JSON.stringify(s) === JSON.stringify(next) ? s : next))
 }
-
-// The time of the last breakdown read that gave one, for the Usage tab's 60-second rule (spec C1)
-const partsMem = { lastAt: null as number | null }
 
 // One breakdown read serves the compaction point and the context's parts (spec C1): a read that gives one writes the
 // parts atom; a read that fails or gives none is null, and the parts stay as they were
