@@ -1,7 +1,6 @@
 // The alfred-mods hooks module. Every hook observes and draws; none approves, denies or rewrites a tool call.
-// Every $.state atom is made, read and updated here alone: `claude plugin validate` refuses an atom or a ref
-// imported from another module.
-import { atom, read, update } from 'claude-code'
+// Each $.state atom is made, read and updated in its owner folder's effects.ts: `claude plugin validate` refuses an atom
+// or a ref handed to another module.
 import type {
   EngineInterface, Register, SessionContextBreakdown, SessionRateLimit, SessionUsage, Timer, TurnStepInput, TurnStepResult, UiOpenResult,
 } from 'claude-code'
@@ -33,6 +32,17 @@ import { LEVELS, REC_HELP, addWord, parseWords, recNote, recPaneLines, recStatus
 import { BAND_MODES, DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast, writeField } from './settings/settings'
 import { baseName, folderOf, gitDirOf, headBranch, parentOf } from './place/place'
 import { dropPassed, nextWindows, storedWindows } from './session/windows'
+import { readBlockers, readFailures, readQuiet, readStats, resetBlockers, resetFailures, resetQuiet, resetStats, updateBlockers, updateFailures, updateQuiet, updateStats } from './tools/effects'
+import { readLive, readMeta, readPace, readTick, readTotals, readTurns, readUsage, resetLive, resetMeta, resetPace, resetTotals, resetTurns, resetUsage, updateLive, updateMeta, updatePace, updateTick, updateTotals, updateTurns, updateUsage } from './session/effects'
+import { readAgents, readLoops, resetAgents, resetLoops, updateAgents, updateLoops } from './agents/effects'
+import { readCache, resetCache, updateCache } from './cache/effects'
+import { readCredit, readPlans, readTasks, resetCredit, resetPlans, resetTasks, updateCredit, updatePlans, updateTasks } from './plan/effects'
+import { INITIAL_STACK, readStack, resetStack, updateStack } from './stack/effects'
+import { readHandoff, resetHandoff, updateHandoff } from './handoff/effects'
+import { readRec, resetRec, updateRec } from './rec/effects'
+import { readBandSetting, updateBandSetting } from './band/effects'
+import { readParts, resetParts, updateParts } from './context/effects'
+import { readView, resetView, updateView } from './inspect/effects'
 import type { AgentRow, Loop } from './agents/types'
 import type { BandInput, BandMode, BandSetting } from './band/types'
 import type { Cache, CacheConfig } from './cache/types'
@@ -48,71 +58,7 @@ import type { Held } from './core/types'
 
 
 
-const INITIAL = {
-  stats: {} as Record<string, ToolStat>,
-  failures: [] as Failure[],
-  turns: [] as Turn[],
-  live: { turnId: null, startedAt: null, tools: 0, failures: 0, running: [], promptAt: null } as Live,
-  usage: {
-    tokens: null, window: null, percent: null, startedAt: null, windows: [], costUsd: null, todayUsd: null, at: 0,
-  } as Usage,
-  totals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, stepOutput: 0, stepMs: 0 } as Totals,
-  meta: {
-    model: null, effort: null, compactions: 0, lastCompactAt: null, lastPromptAt: null, lastReplyAt: null, turnCount: 0,
-    waiting: [], mainCalls: 0,
-  } as Meta,
-  view: { tab: 'now', shown: [], planSlug: null } as View,
-  pace: {} as Pace,
-  agents: [] as AgentRow[],
-  cache: {
-    tier: null, tierAt: null, tierBilling: null,
-    config: { pin: null, idleOff: false, idleMinTokens: 200_000, isTerminal: false },
-    ratePerToken: null, rateModel: null, lastAt: null, last: null, session: { read: 0, write: 0, input: 0 }, toastedFor: null,
-  } as Cache,
-  plans: { plans: [], scores: [], times: {}, overhead: {}, finished: {}, toasted: [], since: null, alfred: null } as Plans,
-  credit: { slices: {}, mine: {} } as Credit,
-  tasks: [] as TaskItem[],
-  rec: { level: 'off', count: 0, note: null } as RecState,
-  quiet: { isOn: false } as Quiet,
-  // Calm until session start reads the setting, which turns it full when nothing is stored: a test that never starts
-  // a session draws the band it was written for
-  band: { mode: 'calm' } as BandSetting,
-  handoff: {
-    mode: 'ask', threshold: 80, point: null, handled: null, isAskUp: false, lastSave: null, alfred: { state: 'none', reason: null },
-  } as Handoff,
-  stack: {
-    state: 'none', reason: null, fullContext: null, model: null, window: null, resumeAt: null, noOffer: false, autoRun: null, scorer: null, autoCompact: null, plan: null,
-    hasPrompt: false, updatedAt: null, readAt: null, ignored: [],
-  } as Stack,
-  blockers: {} as Record<string, number>,
-  parts: NO_PARTS,
-  loops: [] as Loop[],
-}
 
-// Change a tag when that value's fields change: it declines what an earlier version stored, which outlives a reload.
-const stats = atom({ plugin: 'alfred-mods', key: 'stats' } as const, INITIAL.stats, { shape: 'stats-1' })
-const failures = atom({ plugin: 'alfred-mods', key: 'failures' } as const, INITIAL.failures, { shape: 'failures-1' })
-const turns = atom({ plugin: 'alfred-mods', key: 'turns' } as const, INITIAL.turns, { shape: 'turns-1' })
-const live = atom({ plugin: 'alfred-mods', key: 'live' } as const, INITIAL.live, { shape: 'live-3' })
-const usage = atom({ plugin: 'alfred-mods', key: 'usage' } as const, INITIAL.usage, { shape: 'usage-1' })
-const totals = atom({ plugin: 'alfred-mods', key: 'totals' } as const, INITIAL.totals, { shape: 'totals-1' })
-const meta = atom({ plugin: 'alfred-mods', key: 'meta' } as const, INITIAL.meta, { shape: 'meta-3' })
-const view = atom({ plugin: 'alfred-mods', key: 'view' } as const, INITIAL.view, { shape: 'view-3' })
-const pace = atom({ plugin: 'alfred-mods', key: 'pace' } as const, INITIAL.pace, { shape: 'pace-1' })
-const agents = atom({ plugin: 'alfred-mods', key: 'agents' } as const, INITIAL.agents, { shape: 'agents-2' })
-const cache = atom({ plugin: 'alfred-mods', key: 'cache' } as const, INITIAL.cache, { shape: 'cache-1' })
-const tick = atom({ plugin: 'alfred-mods', key: 'tick' } as const, 0)
-const plans = atom({ plugin: 'alfred-mods', key: 'plans' } as const, INITIAL.plans, { shape: 'plans-2' })
-const credit = atom({ plugin: 'alfred-mods', key: 'credit' } as const, INITIAL.credit, { shape: 'credit-1' })
-const tasks = atom({ plugin: 'alfred-mods', key: 'tasks' } as const, INITIAL.tasks, { shape: 'tasks-1' })
-const rec = atom({ plugin: 'alfred-mods', key: 'rec' } as const, INITIAL.rec, { shape: 'rec-1' })
-const quiet = atom({ plugin: 'alfred-mods', key: 'quiet' } as const, INITIAL.quiet, { shape: 'quiet-1' })
-const bandSetting = atom({ plugin: 'alfred-mods', key: 'band' } as const, INITIAL.band, { shape: 'band-1' })
-const handoff = atom({ plugin: 'alfred-mods', key: 'handoff' } as const, INITIAL.handoff, { shape: 'handoff-1' })
-const stack = atom({ plugin: 'alfred-mods', key: 'stack' } as const, INITIAL.stack, { shape: 'stack-2' })
-const blockers = atom({ plugin: 'alfred-mods', key: 'blockers' } as const, INITIAL.blockers, { shape: 'blockers-1' })
-const parts = atom({ plugin: 'alfred-mods', key: 'parts' } as const, INITIAL.parts, { shape: 'parts-1' })
-const loops = atom({ plugin: 'alfred-mods', key: 'loops' } as const, INITIAL.loops, { shape: 'loops-1' })
 
 const NO_FACTS: Omit<CallFacts, 'tool'> = {
   checked: null, checkReason: null, asked: false, failedInTool: false, interrupted: false, classifierReason: null, hookDeny: null, result: null,
@@ -140,13 +86,13 @@ function tally(stat: ToolStat | undefined, outcome: Outcome, by: 1 | -1): ToolSt
 
 // Calls of the main loop, and of agents whose spawn was seen; anything else is not counted
 async function isCounted($: EngineInterface, agentId: string | undefined): Promise<boolean> {
-  return agentId === undefined || (await read($, agents)).some(r => r.id === agentId)
+  return agentId === undefined || (await readAgents($)).some(r => r.id === agentId)
 }
 
 // Changes the row of an agent whose spawn was seen; an unknown id writes nothing
 async function updateRow($: EngineInterface, id: string, fn: (r: AgentRow) => AgentRow): Promise<void> {
-  if (!(await read($, agents)).some(r => r.id === id)) return
-  await update($, agents, rows => rows.map(r => (r.id === id ? fn(r) : r)))
+  if (!(await readAgents($)).some(r => r.id === id)) return
+  await updateAgents($, rows => rows.map(r => (r.id === id ? fn(r) : r)))
 }
 
 // Whether the person sees the pane now, from the engine's record: it outlives a /clear and a reload, and knows a
@@ -157,14 +103,14 @@ async function isPaneShown($: EngineInterface): Promise<boolean> {
 
 // A failure row for a call that was not ok; it is seen at once while the pane shows Now or Tools
 async function addRow($: EngineInterface, id: string, call: Call, outcome: Exclude<Outcome, 'ok'>, reason: string, isNew: boolean, drop: string | null, by: string | null): Promise<void> {
-  const { tab } = await read($, view)
+  const { tab } = await readView($)
   const isSeen = (tab === 'now' || tab === 'tools') && await isPaneShown($)
   const result = call.facts.result
   const row: Failure = {
     id, at: await $.clock.now(), tool: call.tool, target: call.target, outcome, reason,
     detail: (result?.deny ?? result?.text ?? '').slice(0, 4000), count: 1, isNew: isNew && !isSeen, by,
   }
-  await update($, failures, list => {
+  await updateFailures($, list => {
     const i = drop === null ? -1 : list.findIndex(f => f.id === drop)
     const old = list[i]
     const rest = old === undefined ? list
@@ -220,14 +166,14 @@ async function settle($: EngineInterface, id: string, call: Call): Promise<void>
   call.outcome = outcome
   const retally = (s: Record<string, ToolStat>): Record<string, ToolStat> =>
     ({ ...s, [call.key]: before === null ? tally(s[call.key], outcome, 1) : tally(tally(s[call.key], before, -1), outcome, 1) })
-  await update($, stats, retally)
+  await updateStats($, retally)
   if (call.agentId !== null) await updateRow($, call.agentId, r => ({ ...r, tools: retally(r.tools) }))
   if (outcome !== 'ok') await addRow($, id, call, outcome, reason, isNew, before !== null && before !== 'ok' ? call.rowId : null, by)
   // A block counts for the script that made it; a later settle that names another blocker moves the count (spec C6)
   const counted = call.by
   call.by = by
   if (counted !== by) {
-    await update($, blockers, b => {
+    await updateBlockers($, b => {
       const out = { ...b }
       if (counted !== null) {
         const n = (out[counted] ?? 0) - 1
@@ -240,13 +186,13 @@ async function settle($: EngineInterface, id: string, call: Call): Promise<void>
   }
   const isMain = call.agentId === null
   const failed = (o: Outcome | null): number => (o !== null && o !== 'ok' ? 1 : 0)
-  await update($, live, l => ({
+  await updateLive($, l => ({
     ...l,
     tools: isMain && l.turnId !== null && before === null ? l.tools + 1 : l.tools,
     failures: isMain && l.turnId !== null ? l.failures + failed(outcome) - failed(before) : l.failures,
     running: l.running.filter(r => r.id !== id),
   }))
-  if (isMain && before === null) await update($, meta, m => ({ ...m, mainCalls: m.mainCalls + 1 }))
+  if (isMain && before === null) await updateMeta($, m => ({ ...m, mainCalls: m.mainCalls + 1 }))
   // A Skill call that failed loaded nothing, and one whose skill ran forked loaded it into a subagent
   if (isMain && before === null && outcome === 'ok' && call.isFork !== true && call.key.startsWith('Skill: ')) {
     await addSkill($, call.key.slice('Skill: '.length))
@@ -273,7 +219,7 @@ async function writeUsage($: EngineInterface, reading: SessionUsage, today?: num
   const at = await $.clock.now()
   if (typeof today === 'number') todayMem = reading.cost === undefined ? null : { cost: reading.cost.usd, today, date: localDate(at) }
   const fresh = windowsOf(reading.rateLimits)
-  await update($, usage, u => ({
+  await updateUsage($, u => ({
     tokens: reading.context.tokens ?? null, window: reading.context.window, percent: reading.context.percent ?? null,
     startedAt: reading.startedAt, ...nextWindows(u, fresh, reading.context.tokens !== undefined), costUsd: reading.cost?.usd ?? null,
     todayUsd: today === undefined ? u.todayUsd : today, at,
@@ -294,9 +240,9 @@ async function storeWindows($: EngineInterface, windows: Window[], at: number): 
 // A session with no windows of its own yet shows the ones the last reading on this machine stored, while their reset is
 // ahead, marked as read before
 async function seedWindows($: EngineInterface): Promise<void> {
-  if ((await read($, usage)).windows.length > 0) return
+  if ((await readUsage($)).windows.length > 0) return
   const stored = storedWindows(await $.store.get('usage:windows'), await $.clock.now())
-  if (stored !== null) await update($, usage, u => ({ ...u, windows: stored.windows, windowsAt: stored.at }))
+  if (stored !== null) await updateUsage($, u => ({ ...u, windows: stored.windows, windowsAt: stored.at }))
 }
 
 // The HEAD file the place was read from, so the 30-second poll reads that one file for a checkout; the working folder
@@ -353,7 +299,7 @@ async function readPlace($: EngineInterface, edited?: string): Promise<void> {
   const shown = folder === null ? {} : { folder }
   if (repo === null && folder === null) {
     placeMem.repo = null
-    await update($, meta, setPlace({ project: baseName(root ?? cwd), branch: null }))
+    await updateMeta($, setPlace({ project: baseName(root ?? cwd), branch: null }))
     return
   }
   const found = await findHead($, at)
@@ -361,7 +307,7 @@ async function readPlace($: EngineInterface, edited?: string): Promise<void> {
   placeMem.repo = found?.dir ?? null
   countSoon($)
   const project = root === null ? baseName(found?.dir ?? repo?.root ?? cwd) : baseName(root)
-  await update($, meta, setPlace({ project, ...shown, branch: found?.branch ?? null }))
+  await updateMeta($, setPlace({ project, ...shown, branch: found?.branch ?? null }))
 }
 
 // A side agent's note the user passed on (2026-11-11): Claude edits by full path without a `cd`, so the folder of the
@@ -396,7 +342,7 @@ async function countChanges($: EngineInterface): Promise<void> {
       changesMem.again = false
       const changes = await readChanges($).catch(() => null)
       const sync = await readSync($).catch(() => null)
-      await update($, meta, m => {
+      await updateMeta($, m => {
         if (m.place === undefined) return m
         const p = m.place
         const isSame = JSON.stringify(p.changes ?? null) === JSON.stringify(changes) && JSON.stringify(p.sync ?? null) === JSON.stringify(sync)
@@ -458,8 +404,8 @@ async function pollPlace($: EngineInterface): Promise<void> {
   const head = placeMem.head
   if (head === null) return
   const text = await readText($, head)
-  const place = (await read($, meta)).place
-  if (text !== null && place !== undefined) await update($, meta, setPlace({ ...place, branch: headBranch(text) }))
+  const place = (await readMeta($)).place
+  if (text !== null && place !== undefined) await updateMeta($, setPlace({ ...place, branch: headBranch(text) }))
 }
 
 // What the band shows before the first reply: the model, Claude Code's version, the place, the stored windows and the
@@ -467,13 +413,13 @@ async function pollPlace($: EngineInterface): Promise<void> {
 async function readStart($: EngineInterface): Promise<void> {
   try {
     const model = await $.session.model()
-    await update($, meta, m => (m.model === null ? { ...m, model } : m))
+    await updateMeta($, m => (m.model === null ? { ...m, model } : m))
   } catch {
     // The first step names the model
   }
   try {
     const engine = await $.session.version()
-    await update($, meta, m => ({ ...m, version: engine.version }))
+    await updateMeta($, m => ({ ...m, version: engine.version }))
   } catch {
     // No version item
   }
@@ -515,20 +461,20 @@ const tickMem = { minute: -1 }
 // Once a second: the engine's list moves the live agent rows, the band's figures are read every 5 seconds and the
 // clocks on screen redraw while anything runs, and the clocks redraw once a minute while the band is full
 async function tickOnce($: EngineInterface): Promise<void> {
-  const rows = await read($, agents)
+  const rows = await readAgents($)
   const anyLive = rows.some(r => isLive(r.status))
   const now = await $.clock.now()
   if (anyLive) {
     const listed = await $.agent.list()
     if (JSON.stringify(refreshAgents(rows, listed, now)) !== JSON.stringify(rows)) {
-      await update($, agents, current => refreshAgents(current, listed, now))
+      await updateAgents($, current => refreshAgents(current, listed, now))
     }
   }
-  const u = await read($, usage)
-  if (dropPassed(u, now) !== null) await update($, usage, x => dropPassed(x, now) ?? x)
-  const isWarm = needsTick(await read($, cache), billingOf((await read($, usage)).windows), now)
+  const u = await readUsage($)
+  if (dropPassed(u, now) !== null) await updateUsage($, x => dropPassed(x, now) ?? x)
+  const isWarm = needsTick(await readCache($), billingOf((await readUsage($)).windows), now)
   const minute = Math.floor(now / 60_000)
-  const isNewMinute = minute !== tickMem.minute && (await read($, bandSetting)).mode === 'full'
+  const isNewMinute = minute !== tickMem.minute && (await readBandSetting($)).mode === 'full'
   tickMem.minute = minute
   // Past local midnight, today's cost is the new date's in the store
   if (todayMem !== null && todayMem.date !== localDate(now)) {
@@ -538,7 +484,7 @@ async function tickOnce($: EngineInterface): Promise<void> {
       // The next tick tries again
     }
   }
-  const isBusy = anyLive || (await read($, live)).turnId !== null
+  const isBusy = anyLive || (await readLive($)).turnId !== null
   if (isBusy && now - freshMem.at >= FRESH_EVERY_MS) {
     try {
       await freshUsage($)
@@ -546,7 +492,7 @@ async function tickOnce($: EngineInterface): Promise<void> {
       // The band keeps its last figures until the next tick
     }
   }
-  if (isBusy || isWarm || isNewMinute) await update($, tick, n => n + 1)
+  if (isBusy || isWarm || isNewMinute) await updateTick($, n => n + 1)
   // A failure the pane marked seen, a /clear or a stack file read leaves the line as it was until here
   await syncStatus($)
 }
@@ -565,11 +511,11 @@ const statusMem = { last: null as string | undefined | null }
 // room for.
 const bandMem = { isShown: false, isUnder: false, columns: null as number | null, hasFooter: false, hasStatusLine: false }
 async function syncStatus($: EngineInterface): Promise<void> {
-  const u = await read($, usage)
-  const runway = runwayOf(await read($, stack), u, (await read($, meta)).model)
+  const u = await readUsage($)
+  const runway = runwayOf(await readStack($), u, (await readMeta($)).model)
   const raw = statusText({
-    percent: runway?.percent ?? u.percent, newFailures: (await read($, failures)).filter(f => f.isNew).length,
-    recLevel: (await read($, rec)).level, isBandShown: bandMem.isShown,
+    percent: runway?.percent ?? u.percent, newFailures: (await readFailures($)).filter(f => f.isNew).length,
+    recLevel: (await readRec($)).level, isBandShown: bandMem.isShown,
   })
   const text = raw === null ? undefined : mask(raw)
   if (text === statusMem.last) return
@@ -594,7 +540,7 @@ async function readCacheConfig($: EngineInterface, held: Held): Promise<void> {
     }),
     isTerminal: held.isTerminal,
   }
-  if (JSON.stringify((await read($, cache)).config) !== JSON.stringify(config)) await update($, cache, c => ({ ...c, config }))
+  if (JSON.stringify((await readCache($)).config) !== JSON.stringify(config)) await updateCache($, c => ({ ...c, config }))
 }
 
 // Sets the toast's timer afresh: due 5 minutes before a 1h cache goes cold, or 3 where Claude Code should compact it
@@ -602,8 +548,8 @@ async function readCacheConfig($: EngineInterface, held: Held): Promise<void> {
 async function armCacheClose($: EngineInterface, held: Held): Promise<void> {
   held.close?.cancel()
   held.close = null
-  const c = await read($, cache)
-  const u = await read($, usage)
+  const c = await readCache($)
+  const u = await readUsage($)
   const at = toastAt(c, billingOf(u.windows), u.tokens)
   if (at === null) return
   const now = await $.clock.now()
@@ -615,15 +561,15 @@ async function armCacheClose($: EngineInterface, held: Held): Promise<void> {
 // The toast, once per warm stretch, while the main loop is idle and the cache is still 1h and warm by then; a
 // compaction of Claude Code's own has made it cold
 async function cacheClose($: EngineInterface): Promise<void> {
-  const c = await read($, cache)
-  const u = await read($, usage)
+  const c = await readCache($)
+  const u = await readUsage($)
   const v = cacheView(c, billingOf(u.windows), await $.clock.now(), u.tokens)
   if (v.tier.tier !== '1h' || !v.isClosing || c.toastedFor === c.lastAt) return
-  if ((await read($, live)).turnId !== null) return
+  if ((await readLive($)).turnId !== null) return
   const rewrite = v.rewriteUsd === null ? '' : ` (rewrite ≈ ${usd(v.rewriteUsd)})`
   toast($, `Cache cold in ${v.tier.isEstimate ? '≈' : ''}${minutes(v.leftMs ?? 0)}${rewrite}: press 3 to compact, or /inspect cache`)
   const lastAt = c.lastAt
-  await update($, cache, x => ({ ...x, toastedFor: lastAt }))
+  await updateCache($, x => ({ ...x, toastedFor: lastAt }))
 }
 
 // An agent's step: its model and effort, its context as the sum the engine's own `context_tokens` uses, and how it
@@ -632,9 +578,9 @@ async function agentStep($: EngineInterface, e: TurnStepInput, step: TurnStepRes
   const u = step.usage
   const id = e.agentId ?? ''
   // A loop no spawn announced is counted apart (spec C3)
-  if (!(await read($, agents)).some(r => r.id === id)) {
+  if (!(await readAgents($)).some(r => r.id === id)) {
     const now = await $.clock.now()
-    await update($, loops, list => addLoopStep(list, id, u?.output_tokens ?? 0, now))
+    await updateLoops($, list => addLoopStep(list, id, u?.output_tokens ?? 0, now))
     return
   }
   await updateRow($, id, r => ({
@@ -650,28 +596,28 @@ const spendMem = new Map<string, number>()
 
 async function resetAll($: EngineInterface): Promise<void> {
   spendMem.clear()
-  await update($, stats, () => INITIAL.stats)
-  await update($, failures, () => INITIAL.failures)
-  await update($, turns, () => INITIAL.turns)
-  await update($, live, () => INITIAL.live)
-  await update($, usage, () => INITIAL.usage)
-  await update($, totals, () => INITIAL.totals)
-  await update($, meta, () => INITIAL.meta)
-  await update($, view, () => INITIAL.view)
-  await update($, pace, () => INITIAL.pace)
-  await update($, agents, () => INITIAL.agents)
-  await update($, cache, () => INITIAL.cache)
-  await update($, tick, () => 0)
-  await update($, plans, () => INITIAL.plans)
-  await update($, credit, () => INITIAL.credit)
-  await update($, tasks, () => INITIAL.tasks)
-  await update($, rec, () => INITIAL.rec)
-  await update($, quiet, () => INITIAL.quiet)
-  await update($, handoff, () => INITIAL.handoff)
-  await update($, stack, () => INITIAL.stack)
-  await update($, blockers, () => INITIAL.blockers)
-  await update($, parts, () => INITIAL.parts)
-  await update($, loops, () => INITIAL.loops)
+  await resetStats($)
+  await resetFailures($)
+  await resetTurns($)
+  await resetLive($)
+  await resetUsage($)
+  await resetTotals($)
+  await resetMeta($)
+  await resetView($)
+  await resetPace($)
+  await resetAgents($)
+  await resetCache($)
+  await updateTick($, () => 0)
+  await resetPlans($)
+  await resetCredit($)
+  await resetTasks($)
+  await resetRec($)
+  await resetQuiet($)
+  await resetHandoff($)
+  await resetStack($)
+  await resetBlockers($)
+  await resetParts($)
+  await resetLoops($)
   partsMem.lastAt = null
 }
 
@@ -686,7 +632,7 @@ async function storedTimes($: EngineInterface): Promise<Record<string, unknown>>
 
 // Each plan's time: every other session's from the store, this session's from its own totals
 async function timesOf($: EngineInterface, files: Watched<Plan>[]): Promise<Pick<Plans, 'times' | 'overhead'>> {
-  const entries = { ...(await storedTimes($)), ...(await read($, credit)).mine }
+  const entries = { ...(await storedTimes($)), ...(await readCredit($)).mine }
   const times: Plans['times'] = {}
   const overhead: Plans['overhead'] = {}
   for (const w of files) {
@@ -705,15 +651,15 @@ const statusesOf = (files: Watched<Plan>[]): string =>
 // The loops named (every open one when null) close at `now`: each span goes to its keys (Decision 9) in one update,
 // so a span two closers race for counts once. This session's totals are then stored whole, in order.
 async function closeLoops($: EngineInterface, held: Held, loops: string[] | null, now: number, reopen: boolean, given?: Plans): Promise<void> {
-  const c = await read($, credit)
+  const c = await readCredit($)
   const open = Object.keys(c.slices).filter(loop => loops === null || loops.includes(loop))
   if (open.length === 0) return
-  const p = given ?? await read($, plans)
-  const rows = await read($, agents)
-  const shown = creditedPlan(p, (await read($, view)).planSlug, (await read($, tasks)).length > 0)
+  const p = given ?? await readPlans($)
+  const rows = await readAgents($)
+  const shown = creditedPlan(p, (await readView($)).planSlug, (await readTasks($)).length > 0)
   const closes = await closesOf($, c, open, p, shown)
   let spans: Record<string, number> = {}
-  const after = await update($, credit, cur => {
+  const after = await updateCredit($, cur => {
     const closed = closeSlices(cur, closes, now, reopen)
     spans = closed.spans
     return closed.credit
@@ -721,9 +667,9 @@ async function closeLoops($: EngineInterface, held: Held, loops: string[] | null
   // With the task list shown, the main loop's span and those of agents whose spawn was seen go to its running items
   if (shown === 'tasks') {
     const ms = Object.entries(spans).filter(([loop]) => loop === 'main' || rows.some(r => r.id === loop)).reduce((n, [, x]) => n + x, 0)
-    const running = (await read($, tasks)).filter(t => t.status === 'in_progress').length
+    const running = (await readTasks($)).filter(t => t.status === 'in_progress').length
     if (ms > 0 && running > 0) {
-      await update($, tasks, list => {
+      await updateTasks($, list => {
         const n = list.filter(t => t.status === 'in_progress').length
         return n === 0 ? list : list.map(t => (t.status === 'in_progress' ? { ...t, ms: t.ms + ms / n } : t))
       })
@@ -738,14 +684,14 @@ async function closeLoops($: EngineInterface, held: Held, loops: string[] | null
   }
   await held.writes
   if (keys.length === 0) return
-  const files = (await read($, plans)).plans
+  const files = (await readPlans($)).plans
   const sums = await timesOf($, files)
-  await update($, plans, x => ({ ...x, ...sums }))
+  await updatePlans($, x => ({ ...x, ...sums }))
 }
 
 // Where each named open loop's span goes (Decision 9)
 async function closesOf($: EngineInterface, c: Credit, loops: string[], p: Plans, shown: Watched<Plan> | 'tasks' | null): Promise<Close[]> {
-  const rows = await read($, agents)
+  const rows = await readAgents($)
   const session = await $.session.id()
   return loops.map(loop => {
     const row = rows.find(r => r.id === loop)
@@ -757,14 +703,14 @@ async function closesOf($: EngineInterface, c: Credit, loops: string[], p: Plans
 
 // The open slices' time so far, by step id (or task id) and as overhead, for the shown plan or task list to draw
 async function liveOf($: EngineInterface, p: Plans, shown: Watched<Plan> | 'tasks' | null, now: number): Promise<{ steps: Record<string, number>; overhead: number }> {
-  const c = await read($, credit)
+  const c = await readCredit($)
   const loops = Object.keys(c.slices)
   if (loops.length === 0 || shown === null) return { steps: {}, overhead: 0 }
   if (shown === 'tasks') {
-    const rows = await read($, agents)
+    const rows = await readAgents($)
     const ms = loops.filter(loop => loop === 'main' || rows.some(r => r.id === loop))
       .reduce((n, loop) => n + sliceMs(c.slices[loop] ?? { at: now, waitMs: 0, named: [] }, now), 0)
-    const running = (await read($, tasks)).filter(t => t.status === 'in_progress')
+    const running = (await readTasks($)).filter(t => t.status === 'in_progress')
     return { steps: Object.fromEntries(running.map(t => [t.id, ms / running.length])), overhead: 0 }
   }
   const spans = liveSpans(c, await closesOf($, c, loops, p, shown), now)
@@ -781,15 +727,15 @@ const FINISH_SHOWN_MS = 10 * 60_000
 
 // Alfred Code's scoring level while its status file is in use and scoring is on, which colours the band's score
 async function scoreLevel($: EngineInterface): Promise<number | null> {
-  const s = await read($, stack)
+  const s = await readStack($)
   return s.state === 'used' && s.scorer !== null && s.scorer.on ? s.scorer.level : null
 }
 
 
 async function planDraw($: EngineInterface, now: number): Promise<PlanDraw> {
-  const p = await read($, plans)
-  const items = await read($, tasks)
-  const pinned = (await read($, view)).planSlug
+  const p = await readPlans($)
+  const items = await readTasks($)
+  const pinned = (await readView($)).planSlug
   const shown = shownPlan(p, pinned, items.length > 0)
   const credited = creditedPlan(p, pinned, items.length > 0)
   const tab = await drawnPlan($, p, items, shown, now)
@@ -827,8 +773,8 @@ async function drawnPlan($: EngineInterface, p: Plans, items: TaskItem[], w: Wat
 
 // A loop's slice opens at its turn's start; the main slice marks each live agent that names a step
 async function openSlice($: EngineInterface, loop: string, now: number): Promise<void> {
-  const named = loop === 'main' ? (await read($, agents)).filter(r => isLive(r.status)).map(markOf).filter((m): m is string => m !== null) : []
-  await update($, credit, c => ({ ...c, slices: { ...c.slices, [loop]: { at: now, waitMs: 0, named } } }))
+  const named = loop === 'main' ? (await readAgents($)).filter(r => isLive(r.status)).map(markOf).filter((m): m is string => m !== null) : []
+  await updateCredit($, c => ({ ...c, slices: { ...c.slices, [loop]: { at: now, waitMs: 0, named } } }))
 }
 
 const markOf = (r: AgentRow): string | null => (r.plan !== null && r.task !== null ? `${r.plan}:${r.task}` : null)
@@ -836,9 +782,9 @@ const markOf = (r: AgentRow): string | null => (r.plan !== null && r.task !== nu
 // An agent naming a step, spawned or starting a turn while the main loop's turn runs, makes that turn overhead
 async function addMark($: EngineInterface, mark: string | null): Promise<void> {
   if (mark === null) return
-  const main = (await read($, credit)).slices.main
+  const main = (await readCredit($)).slices.main
   if (main === undefined || main.named.includes(mark)) return
-  await update($, credit, c => {
+  await updateCredit($, c => {
     const m = c.slices.main
     return m === undefined || m.named.includes(mark) ? c : { ...c, slices: { ...c.slices, main: { ...m, named: [...m.named, mark] } } }
   })
@@ -847,8 +793,8 @@ async function addMark($: EngineInterface, mark: string | null): Promise<void> {
 // A wait known only once its call settles goes to the slice open now, at most that slice's age, so a slice reopened
 // during the call never loses the work after the reopen
 async function addWait($: EngineInterface, loop: string, ms: number, now: number): Promise<void> {
-  if (ms <= 0 || (await read($, credit)).slices[loop] === undefined) return
-  await update($, credit, c => {
+  if (ms <= 0 || (await readCredit($)).slices[loop] === undefined) return
+  await updateCredit($, c => {
     const s = c.slices[loop]
     return s === undefined ? c : { ...c, slices: { ...c.slices, [loop]: { ...s, waitMs: s.waitMs + Math.min(ms, Math.max(0, now - s.at)) } } }
   })
@@ -856,23 +802,23 @@ async function addWait($: EngineInterface, loop: string, ms: number, now: number
 
 // A session resumed under its own id starts from its stored totals, so its first close adds to them
 async function seedMine($: EngineInterface): Promise<void> {
-  if (Object.keys((await read($, credit)).mine).length > 0) return
+  if (Object.keys((await readCredit($)).mine).length > 0) return
   const mine = mineOf(await storedTimes($), await $.session.id())
-  if (Object.keys(mine).length > 0) await update($, credit, c => ({ ...c, mine: { ...mine, ...c.mine } }))
+  if (Object.keys(mine).length > 0) await updateCredit($, c => ({ ...c, mine: { ...mine, ...c.mine } }))
 }
 
 // The plan and scores folders read again. A step whose status changed closes and reopens the open slices first, so
 // the time before the change goes to the steps that were running then. A note the file's previous good parse this
 // session lacks, and a plan that finishes this session (its previous good parse unfinished), raise their toasts once.
 async function reloadPlans($: EngineInterface, held: Held): Promise<void> {
-  const before = await read($, plans)
+  const before = await readPlans($)
   const now = await $.clock.now()
   const ownPlans = await readFolder($, PLANS_DIR, before.plans, parsePlan)
   const ownScores = await readFolder($, SCORES_DIR, before.scores, parseScores)
   // Alfred Code's plan folder: the one its status file names, else the one it let go, read once more to see it
   // finished, then kept 10 minutes after it finished
   // A status file that will not read, or whose `plan` will not, says nothing: the plan it named stays named
-  const s = await read($, stack)
+  const s = await readStack($)
   const isSaid = s.state === 'used' && !s.ignored.includes('plan')
   const named = isSaid ? s.plan : before.alfred?.folder ?? null
   const lingering = named === null ? before.alfred : null
@@ -915,7 +861,7 @@ async function reloadPlans($: EngineInterface, held: Held): Promise<void> {
   const keep = alfredRead !== null && alfredPlan !== null && (named !== null || (doneAt !== undefined && now - doneAt < FINISH_SHOWN_MS))
   const alfred = keep && folder !== null ? { name: alfredRead.name, folder } : null
   // A folder let go leaves the project's own files as they were read
-  await update($, plans, p => ({
+  await updatePlans($, p => ({
     ...p, plans: keep ? planFiles : ownPlans, scores: keep ? scoreFiles : ownScores, times, overhead,
     finished: { ...p.finished, ...finished }, toasted, alfred,
   }))
@@ -955,7 +901,7 @@ const LABEL: Record<string, string> = { five_hour: '5h', seven_day: '7d' }
 // the highest of 75 and 90 that the 5h or weekly window crossed upward since its last reading, once per window.
 async function trackPace($: EngineInterface, limits: readonly SessionRateLimit[], now: number): Promise<string[]> {
   let due: string[] = []
-  await update($, pace, p => {
+  await updatePace($, p => {
     due = []
     const out = { ...p }
     for (const w of limits) {
@@ -983,13 +929,13 @@ async function trackPace($: EngineInterface, limits: readonly SessionRateLimit[]
 async function endTurn($: EngineInterface, turnId: string, durationMs: number, end: Turn['end'], used: { tokensIn: number; tokensOut: number }): Promise<void> {
   const reading = await $.session.usage()
   const now = await $.clock.now()
-  const before = await read($, meta)
-  const counts = await read($, live)
+  const before = await readMeta($)
+  const counts = await readLive($)
   // The cost between the turn's start and end; none when either read failed, or under half a cent or negative
   const start = spendMem.get(turnId)
   spendMem.delete(turnId)
   const spend = start === undefined || reading.cost === undefined ? null : reading.cost.usd - start
-  await update($, turns, list => {
+  await updateTurns($, list => {
     const turn: Turn = {
       n: before.turnCount + 1, turnId, promptAt: counts.promptAt,
       replyAt: now, durationMs, ...used, tools: counts.tools, failures: counts.failures,
@@ -997,8 +943,8 @@ async function endTurn($: EngineInterface, turnId: string, durationMs: number, e
     }
     return [...list, turn].slice(-50)
   })
-  await update($, meta, m => ({ ...m, lastReplyAt: now, turnCount: m.turnCount + 1 }))
-  await update($, live, () => INITIAL.live)
+  await updateMeta($, m => ({ ...m, lastReplyAt: now, turnCount: m.turnCount + 1 }))
+  await resetLive($)
   if (reading.cost !== undefined) await recordCost($, await $.session.id(), reading.cost.usd, now)
   await takeUsage($, reading.cost !== undefined ? await todayUsd($, now) : undefined)
 }
@@ -1008,13 +954,13 @@ async function endTurn($: EngineInterface, turnId: string, durationMs: number, e
 async function openInspect($: EngineInterface, tab: Tab): Promise<UiOpenResult> {
   // Esc at an idle, empty prompt closes it: on the terminal's main screen nothing takes a click (the user, 2026-11-12)
   const opening = $.ui.open({ id: 'inspect', title: 'Inspect', closeOnEscape: true })
-  await update($, view, v => ({ ...v, tab }))
+  await updateView($, v => ({ ...v, tab }))
   // The Usage tab reads the context's parts again when the last read is over a minute old
   if (tab === 'usage' && (partsMem.lastAt === null || (await $.clock.now()) - partsMem.lastAt > 60_000)) readBreakdownSoon($)
   const opened = await opening
   if (!opened.isPlaced) return opened
   if (tab === 'now' || tab === 'tools') {
-    await update($, failures, list => (list.some(f => f.isNew) ? list.map(f => ({ ...f, isNew: false })) : list))
+    await updateFailures($, list => (list.some(f => f.isNew) ? list.map(f => ({ ...f, isNew: false })) : list))
   }
   return opened
 }
@@ -1043,7 +989,7 @@ const outOf = (what: string, word: string | undefined, count: number, first: str
 // The pane on `tab`, unless it is open on one of `tabs` already: '' when drawn, else why not
 async function showOn($: EngineInterface, tab: Tab, tabs: Tab[]): Promise<string> {
   const isOpen = (await $.ui.panes().catch(() => [])).some(p => p.id === 'inspect')
-  if (isOpen && tabs.includes((await read($, view)).tab)) return ''
+  if (isOpen && tabs.includes((await readView($)).tab)) return ''
   const opened = await openInspect($, tab)
   return opened.isPlaced ? '' : ` The pane is open but not drawn: ${opened.reason}.`
 }
@@ -1059,7 +1005,7 @@ async function bandCommand($: EngineInterface, word: string): Promise<string> {
 
 // '/inspect show [n]' and '/inspect copy [n]': the failure whose row starts with n, the newest when n is left out
 async function failureCommand($: EngineInterface, action: 'show' | 'copy', word: string | undefined): Promise<string> {
-  const list = (await read($, failures)).map((f, i) => ({ f, n: numberOf(f, i) }))
+  const list = (await readFailures($)).map((f, i) => ({ f, n: numberOf(f, i) }))
   const newest = list[list.length - 1]
   if (newest === undefined) return `No tool failure to ${action}.`
   const n = word === undefined ? newest.n : ordinal(word)
@@ -1081,7 +1027,7 @@ async function failureCommand($: EngineInterface, action: 'show' | 'copy', word:
 
 // '/inspect report [n]': report n of the agents that finished with one, in the Agents tab's order, the top first
 async function reportCommand($: EngineInterface, word: string | undefined): Promise<string> {
-  const list = reportRows(await read($, agents))
+  const list = reportRows(await readAgents($))
   if (list.length === 0) return 'No agent report to show.'
   const n = ordinal(word)
   const r = list[n - 1]
@@ -1091,7 +1037,7 @@ async function reportCommand($: EngineInterface, word: string | undefined): Prom
 
 // Show and Hide as one toggle, as the button: shown, the pane comes up on a tab that lists it
 async function toggleCommand($: EngineInterface, id: string, name: string, tab: Tab, tabs: Tab[]): Promise<string> {
-  const isShown = (await read($, view)).shown.includes(id)
+  const isShown = (await readView($)).shown.includes(id)
   await toggleShown($, id)
   if (isShown) return `Hid ${name}.`
   return `Showing ${name} in the inspect pane.${await showOn($, tab, tabs)}`
@@ -1104,7 +1050,7 @@ async function inspectFromBand($: EngineInterface): Promise<void> {
 }
 
 async function toggleShown($: EngineInterface, id: string): Promise<void> {
-  await update($, view, v => ({ ...v, shown: v.shown.includes(id) ? v.shown.filter(x => x !== id) : [...v.shown, id] }))
+  await updateView($, v => ({ ...v, shown: v.shown.includes(id) ? v.shown.filter(x => x !== id) : [...v.shown, id] }))
 }
 
 const TABS: Tab[] = ['now', 'usage', 'agents', 'tools', 'cache', 'timeline', 'plan']
@@ -1120,10 +1066,10 @@ async function countCompaction($: EngineInterface, held: Held): Promise<void> {
   if (recLevel() !== 'off') noteMem.told = 'off'
   // F8's next reading sets the handled step to the highest at or under it, so a compaction under the threshold re-arms
   handoffMem.rearm = true
-  await update($, handoff, h => (h.isAskUp ? { ...h, isAskUp: false } : h))
+  await updateHandoff($, h => (h.isAskUp ? { ...h, isAskUp: false } : h))
   const at = await $.clock.now()
-  await update($, meta, m => ({ ...m, compactions: m.compactions + 1, lastCompactAt: at }))
-  await update($, cache, afterCompact)
+  await updateMeta($, m => ({ ...m, compactions: m.compactions + 1, lastCompactAt: at }))
+  await updateCache($, afterCompact)
   await armCacheClose($, held)
 }
 
@@ -1277,14 +1223,14 @@ async function loadRec($: EngineInterface, note: string | null = null): Promise<
     setRec(level, words, recMem.home)
     $.ui.invalidate('ui.render')
   }
-  await update($, rec, r => (r.level === level && r.count === words.length && r.note === note ? r : { level, count: words.length, note }))
+  await updateRec($, r => (r.level === level && r.count === words.length && r.note === note ? r : { level, count: words.length, note }))
   await syncStatus($)
 }
 
 // Whether a site masks: mask.ts's level, which a /clear, a resume or a fork leaves as it was while the atom is reset;
 // the atom is read so the site redraws when REC changes
 async function isRecOn($: EngineInterface): Promise<boolean> {
-  await read($, rec)
+  await readRec($)
   return recLevel() !== 'off'
 }
 
@@ -1343,7 +1289,7 @@ async function setField<F extends Field>($: EngineInterface, field: F, value: Va
 // "quiet" into the quiet atom
 async function loadQuiet($: EngineInterface): Promise<boolean> {
   const isOn = settingsNow().quiet
-  await update($, quiet, q => (q.isOn === isOn ? q : { isOn }))
+  await updateQuiet($, q => (q.isOn === isOn ? q : { isOn }))
   return isOn
 }
 
@@ -1355,7 +1301,7 @@ async function loadBand($: EngineInterface): Promise<BandMode> {
   const isUnder = v.bandPlace === 'under'
   bandMem.isUnder = isUnder
   const next: BandSetting = { mode, ...(isOpen ? { isToolsOpen: true } : {}), ...(isUnder ? { isUnder: true } : {}) }
-  await update($, bandSetting, b =>
+  await updateBandSetting($, b =>
     (b.mode === mode && (b.isToolsOpen === true) === isOpen && (b.isUnder === true) === isUnder ? b : next))
   return mode
 }
@@ -1366,23 +1312,23 @@ async function bandInputOf(
   $: EngineInterface, at: { columns: number; maxRows: number | undefined; isWorking: boolean; under?: BandInput['under']; isLeftOut: boolean },
 ): Promise<BandInput> {
   // Read so the running times redraw each second while a turn runs
-  await read($, tick)
+  await readTick($)
   const now = await $.clock.now()
   const d = await planDraw($, now)
-  const u = await read($, usage)
-  const h = await read($, handoff)
-  const st = await read($, stack)
-  const m = await read($, meta)
+  const u = await readUsage($)
+  const h = await readHandoff($)
+  const st = await readStack($)
+  const m = await readMeta($)
   const runway = runwayOf(st, u, m.model)
-  const setting = await read($, bandSetting)
-  const p = await read($, parts)
+  const setting = await readBandSetting($)
+  const p = await readParts($)
   return {
     now, columns: at.columns, ...(at.maxRows === undefined ? {} : { maxRows: at.maxRows }), isWorking: at.isWorking,
-    live: await read($, live), usage: u, meta: m, turns: await read($, turns),
-    newFailures: (await read($, failures)).filter(f => f.isNew).length, pace: await read($, pace), agents: await read($, agents),
-    cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score, isPlanScore: d.isPlanScore, scoreLevel: await scoreLevel($), rec: recOf(await read($, rec)),
+    live: await readLive($), usage: u, meta: m, turns: await readTurns($),
+    newFailures: (await readFailures($)).filter(f => f.isNew).length, pace: await readPace($), agents: await readAgents($),
+    cache: await readCache($), plan: d.band, planInvalid: d.invalid, score: d.score, isPlanScore: d.isPlanScore, scoreLevel: await scoreLevel($), rec: recOf(await readRec($)),
     forecast: forecastOf(h, u, runway), handoffAsk: h.isAskUp ? h.handled : null, runway, banner: bannerSegs(st),
-    mode: setting.mode, totals: await read($, totals), stats: await read($, stats),
+    mode: setting.mode, totals: await readTotals($), stats: await readStats($),
     isToolsOpen: setting.isToolsOpen === true, listing: p.skills ?? null,
     rules: { always: p.rules ?? [], byPath: m.pathRules ?? [], isTracked: !at.isLeftOut },
     ...(at.under === undefined ? {} : { under: at.under }),
@@ -1400,7 +1346,7 @@ const isPassingAbove = (surface: string): boolean => bandMem.isUnder && surface 
 
 // A skill the main loop loaded: in its context from then on, until the conversation starts over
 async function addSkill($: EngineInterface, name: string): Promise<void> {
-  await update($, meta, m => ({ ...m, skills: { ...m.skills, [name]: (m.skills?.[name] ?? 0) + 1 } }))
+  await updateMeta($, m => ({ ...m, skills: { ...m.skills, [name]: (m.skills?.[name] ?? 0) + 1 } }))
 }
 
 // F8's memory outside $.state: whether the stack stood F8 down, which outlives a /clear until a read of the new id's
@@ -1418,7 +1364,7 @@ const handoffMem = {
 // Only ask mode keeps an ask up: a change to auto or off, here or polled from another session, takes it down
 async function loadHandoff($: EngineInterface): Promise<void> {
   const s = { mode: settingsNow().handoff, threshold: settingsNow().handoffAt }
-  await update($, handoff, h => (h.mode === s.mode && h.threshold === s.threshold ? h : { ...h, ...s, isAskUp: s.mode === 'ask' && h.isAskUp }))
+  await updateHandoff($, h => (h.mode === s.mode && h.threshold === s.threshold ? h : { ...h, ...s, isAskUp: s.mode === 'ask' && h.isAskUp }))
 }
 
 // The stack's resume prompt, in module memory only (Phase 5 spec 'Where values live'); `last`, the `stack` value the
@@ -1454,41 +1400,41 @@ async function readStatusNow($: EngineInterface, keep: boolean): Promise<boolean
       text = null
     }
   }
-  await readStack($, { exists, text, id, now, inWindow })
+  await writeStackFrom($, { exists, text, id, now, inWindow })
   let found: ReturnType<typeof parseStatus> | null = text === null ? null : parseStatus(text, id)
   if (found === null && inWindow && handoffMem.stoodDown) found = { state: 'stood-down', reason: null }
   const wasStoodDown = handoffMem.stoodDown
   handoffMem.stoodDown = found?.state === 'stood-down'
   const alfred: Handoff['alfred'] = found === null || found.state === 'runs' ? { state: 'none', reason: null } : { state: found.state, reason: found.reason }
-  await update($, handoff, h => {
+  await updateHandoff($, h => {
     if (h.alfred.state === alfred.state && h.alfred.reason === alfred.reason) return h
     return { ...h, alfred, isAskUp: alfred.state === 'stood-down' ? false : h.isAskUp }
   })
   // A stand-down lifted by this read steps at the last reading, so the ask returns without waiting for a turn; a
   // compaction's re-arm waits for a fresh reading instead
   if (!wasStoodDown || handoffMem.stoodDown || handoffMem.rearm) return exists
-  const u = await read($, usage)
+  const u = await readUsage($)
   if (u.tokens !== null && u.window !== null) await stepHandoff($, u.tokens, u.window)
   return exists
 }
 
 // The `stack` atom from one read: inside the window a missing file writes back the last value and keeps the prompt;
 // every other read writes its own value, and `last` with it
-async function readStack($: EngineInterface, r: { exists: boolean; text: string | null; id: string; now: number; inWindow: boolean }): Promise<void> {
+async function writeStackFrom($: EngineInterface, r: { exists: boolean; text: string | null; id: string; now: number; inWindow: boolean }): Promise<void> {
   if (!r.exists && r.inWindow) {
     const last = stackMem.last
-    if (last !== null) await update($, stack, s => (JSON.stringify(s) === JSON.stringify(last) ? s : last))
+    if (last !== null) await updateStack($, s => (JSON.stringify(s) === JSON.stringify(last) ? s : last))
     return
   }
   const parsed = r.text === null ? null : parseStack(r.text, r.id)
-  const base: Stack = { ...INITIAL.stack, readAt: r.now }
+  const base: Stack = { ...INITIAL_STACK, readAt: r.now }
   const next: Stack = !r.exists ? { ...base, reason: NO_FILE }
     : parsed === null ? { ...base, state: 'ignored', reason: UNREADABLE }
     : parsed.state === 'ignored' ? { ...base, state: 'ignored', reason: parsed.reason }
     : { ...base, ...parsed.fields, state: 'used', hasPrompt: parsed.prompt !== null }
   stackMem.prompt = parsed?.state === 'used' ? parsed.prompt : null
   stackMem.last = next
-  await update($, stack, s => (JSON.stringify(s) === JSON.stringify(next) ? s : next))
+  await updateStack($, s => (JSON.stringify(s) === JSON.stringify(next) ? s : next))
 }
 
 // The time of the last breakdown read that gave one, for the Usage tab's 60-second rule (spec C1)
@@ -1508,7 +1454,7 @@ async function readBreakdown($: EngineInterface): Promise<SessionContextBreakdow
   const cwd = await $.session.cwd()
   const next = partsOf(b, cwd, now, await linkedRules($, b, cwd))
   partsMem.lastAt = now
-  await update($, parts, () => next)
+  await updateParts($, () => next)
   return b
 }
 
@@ -1524,8 +1470,8 @@ function readBreakdownSoon($: EngineInterface): void {
 // that fails, gives the window for that reading alone and counts a miss; the third miss for one model and window
 // keeps the window as the point and asks no more.
 async function pointOf($: EngineInterface, window: number): Promise<number> {
-  const key = `${(await read($, meta)).model ?? ''}:${window}`
-  const known = (await read($, handoff)).point
+  const key = `${(await readMeta($)).model ?? ''}:${window}`
+  const known = (await readHandoff($)).point
   if (handoffMem.pointKey === key && known !== null) return known
   if (handoffMem.pointMiss.key !== key) handoffMem.pointMiss = { key, count: 0 }
   const b = await readBreakdown($)
@@ -1533,12 +1479,12 @@ async function pointOf($: EngineInterface, window: number): Promise<number> {
     const count = ++handoffMem.pointMiss.count
     const point = count >= 3 ? window : null
     if (point !== null) handoffMem.pointKey = key
-    await update($, handoff, h => (h.point === point ? h : { ...h, point }))
+    await updateHandoff($, h => (h.point === point ? h : { ...h, point }))
     return window
   }
   const point = b.isAutoCompactEnabled && b.autoCompactThreshold !== undefined ? b.autoCompactThreshold : window
   handoffMem.pointKey = key
-  await update($, handoff, h => (h.point === point ? h : { ...h, point }))
+  await updateHandoff($, h => (h.point === point ? h : { ...h, point }))
   return point
 }
 
@@ -1561,7 +1507,7 @@ function startSave($: EngineInterface, by: SaveBy): Promise<SaveResult> {
 // masked for keys, emails and phones whatever REC's level. A save arms the resume prompt unless the stack stood F8 down.
 async function writeHandoff($: EngineInterface, by: SaveBy): Promise<SaveResult> {
   const at = await $.clock.now()
-  const before = await read($, handoff)
+  const before = await readHandoff($)
   let result: SaveResult
   let percent: number | null = null
   try {
@@ -1577,12 +1523,12 @@ async function writeHandoff($: EngineInterface, by: SaveBy): Promise<SaveResult>
   } catch (err) {
     result = { at, isOk: false, reason: (err instanceof Error ? err.message : String(err)).split('\n')[0] || 'unknown' }
   }
-  await update($, handoff, h => ({ ...h, lastSave: result }))
+  await updateHandoff($, h => ({ ...h, lastSave: result }))
   if (!result.isOk) {
     toast($, TOASTS.failed(result.reason ?? 'unknown'))
     return result
   }
-  handoffMem.savedStep = (await read($, handoff)).handled
+  handoffMem.savedStep = (await readHandoff($)).handled
   if (!handoffMem.stoodDown) handoffMem.armedAt = at
   if (by === 'compact') toast($, TOASTS.compacting())
   else if (by === 'press') toast($, handoffMem.stoodDown ? TOASTS.savedOnly() : TOASTS.saved())
@@ -1606,12 +1552,12 @@ async function isForeign($: EngineInterface): Promise<boolean> {
 // What a save copies: the plan this session works on, its scores, git and the mod's counts. A plan file written
 // before this session began is none of this session's.
 async function saveInput($: EngineInterface, at: number, git: string[]): Promise<SaveInput> {
-  const h = await read($, handoff)
-  const u = await read($, usage)
-  const m = await read($, meta)
-  const p = await read($, plans)
-  const items = await read($, tasks)
-  const w = creditedPlan(p, (await read($, view)).planSlug, items.length > 0)
+  const h = await readHandoff($)
+  const u = await readUsage($)
+  const m = await readMeta($)
+  const p = await readPlans($)
+  const items = await readTasks($)
+  const w = creditedPlan(p, (await readView($)).planSlug, items.length > 0)
   let plan: SaveInput['plan'] = w === 'tasks' ? 'tasks' : null
   let scores: ScoresPart | null = null
   if (w !== null && w !== 'tasks' && w.value !== null && p.since !== null && w.mtimeMs >= p.since) {
@@ -1628,8 +1574,8 @@ async function saveInput($: EngineInterface, at: number, git: string[]): Promise
       }
     }
   }
-  const counted = Object.values(await read($, stats))
-  const isWorking = (await read($, live)).turnId !== null
+  const counted = Object.values(await readStats($))
+  const isWorking = (await readLive($)).turnId !== null
   const point = h.point ?? u.window
   return {
     at, percent: u.tokens === null || point === null ? null : percentOf(u.tokens, point), threshold: h.threshold,
@@ -1637,26 +1583,26 @@ async function saveInput($: EngineInterface, at: number, git: string[]): Promise
     counts: {
       turn: m.turnCount + (isWorking ? 1 : 0), durationMs: u.startedAt === null ? null : at - u.startedAt,
       calls: counted.reduce((n, t) => n + t.calls, 0), failed: counted.reduce((n, t) => n + t.failed, 0),
-      agents: (await read($, agents)).length, costUsd: u.costUsd, isEstimate: u.windows.length > 0,
+      agents: (await readAgents($)).length, costUsd: u.costUsd, isEstimate: u.windows.length > 0,
     },
   }
 }
 
 // h, 4 and `/auto-handoff now`: the ask comes down and a save starts
 async function saveNow($: EngineInterface): Promise<void> {
-  await update($, handoff, h => (h.isAskUp ? { ...h, isAskUp: false } : h))
+  await updateHandoff($, h => (h.isAskUp ? { ...h, isAskUp: false } : h))
   void startSave($, 'press')
 }
 
 // r: the ask comes down until the next step
 async function dismissAsk($: EngineInterface): Promise<void> {
-  await update($, handoff, h => (h.isAskUp ? { ...h, isAskUp: false } : h))
+  await updateHandoff($, h => (h.isAskUp ? { ...h, isAskUp: false } : h))
 }
 
 // c: a save first, unless one was made at this step, then Phase 2's compaction; a failed save compacts nothing, so
 // the context is never lost without its handoff
 async function saveThenCompact($: EngineInterface, held: Held): Promise<void> {
-  const h = await read($, handoff)
+  const h = await readHandoff($)
   await dismissAsk($)
   if (!(h.lastSave?.isOk === true && handoffMem.savedStep === h.handled)) {
     if (!(await startSave($, 'compact')).isOk) return
@@ -1705,7 +1651,7 @@ function startOver($: EngineInterface, source: string | null, calls: Map<string,
     handoffMem.savedStep = null
     await resetAll($)
     await loadSettings($)
-    if (!isClear) await update($, meta, m => ({ ...m, isResumed: true }))
+    if (!isClear) await updateMeta($, m => ({ ...m, isResumed: true }))
     // This read, finding no file, reads once more at 2 s
     if (!(await readStatus($, true))) {
       stackMem.reread = $.clock.after(2000, () => {
@@ -1715,7 +1661,7 @@ function startOver($: EngineInterface, source: string | null, calls: Map<string,
     }
     if (isClear) await fillResume($)
     const now = await $.clock.now()
-    await update($, plans, p => ({ ...p, since: now }))
+    await updatePlans($, p => ({ ...p, since: now }))
     await seedMine($)
     scheduleReload($, held)
     await baseline($, await takeUsage($, await todayUsd($, now)))
@@ -1743,7 +1689,7 @@ async function followConversation($: EngineInterface, by: 'prompt' | null, calls
 // f, or '/inspect fill': what it did, which the press toasts and the command answers
 async function fillStack($: EngineInterface): Promise<string> {
   const text = stackMem.prompt
-  if (!fillReady(await read($, stack), text)) return STACK_TOASTS.gone
+  if (!fillReady(await readStack($), text)) return STACK_TOASTS.gone
   if ((await $.prompt.read()).text.trim() !== '') return STACK_TOASTS.notEmpty
   return fillToast(await $.prompt.fill({ text }))
 }
@@ -1758,17 +1704,17 @@ function handoffView(h: Handoff, u: Usage, isWorking: boolean, runway: Runway | 
 async function stepHandoff($: EngineInterface, tokens: number | undefined, window: number): Promise<void> {
   if (tokens === undefined) return
   const percent = percentOf(tokens, await pointOf($, window))
-  const h = await read($, handoff)
+  const h = await readHandoff($)
   const steps = stepsOf(h.threshold)
   if (handoffMem.rearm) {
     handoffMem.rearm = false
-    await update($, handoff, x => ({ ...x, handled: stepUnder(percent, steps) }))
+    await updateHandoff($, x => ({ ...x, handled: stepUnder(percent, steps) }))
     return
   }
   if (h.mode === 'off' || h.alfred.state === 'stood-down') return
   const step = nextStep(h.handled, percent, steps)
   if (step === null) return
-  await update($, handoff, x => ({ ...x, handled: step, isAskUp: x.mode === 'ask' }))
+  await updateHandoff($, x => ({ ...x, handled: step, isAskUp: x.mode === 'ask' }))
   if (h.mode === 'ask') toast($, TOASTS.ask(step))
   else void startSave($, 'auto')
 }
@@ -1776,12 +1722,12 @@ async function stepHandoff($: EngineInterface, tokens: number | undefined, windo
 // The state line a bare /auto-handoff prints: the mode, the threshold, F8's context percent and the last save; stood
 // down, the runway while it applies, as the HANDOFF row
 async function handoffState($: EngineInterface): Promise<string> {
-  const h = await read($, handoff)
-  const u = await read($, usage)
+  const h = await readHandoff($)
+  const u = await readUsage($)
   const point = h.point ?? u.window
   const ctx = u.tokens === null || point === null ? 'ctx –' : `ctx ${percentOf(u.tokens, point)}%`
   if (h.alfred.state === 'stood-down') {
-    const runway = runwayOf(await read($, stack), u, (await read($, meta)).model)
+    const runway = runwayOf(await readStack($), u, (await readMeta($)).model)
     return `${runway === null ? ctx : `ctx ${runway.percent}% of ${tokens(runway.resumeAt)}`} · handoff by Alfred Code`
   }
   if (h.mode === 'off') return `Handoff: off · ${ctx}`
@@ -1837,12 +1783,12 @@ export const register: Register = (on, options) => {
         isTeammate: e.isTeammate === true, model: spawned.model,
       }, now)
       // A dispatch is a new row: a resume of a kept one runs that row again (upsertSpawn's own test)
-      const isKnown = e.resume !== undefined && (await read($, agents)).some(r => r.id === id)
-      if (!isKnown) await update($, meta, m => ({ ...m, agentTypes: { ...m.agentTypes, [row.type]: (m.agentTypes?.[row.type] ?? 0) + 1 } }))
-      await update($, agents, rows => upsertSpawn(rows, row, e.resume !== undefined))
+      const isKnown = e.resume !== undefined && (await readAgents($)).some(r => r.id === id)
+      if (!isKnown) await updateMeta($, m => ({ ...m, agentTypes: { ...m.agentTypes, [row.type]: (m.agentTypes?.[row.type] ?? 0) + 1 } }))
+      await updateAgents($, rows => upsertSpawn(rows, row, e.resume !== undefined))
       await addMark($, markOf(row))
       // Its first step came before its spawn resolved: the loop is this agent's
-      if ((await read($, loops)).some(l => l.id === id)) await update($, loops, list => list.filter(l => l.id !== id))
+      if ((await readLoops($)).some(l => l.id === id)) await updateLoops($, list => list.filter(l => l.id !== id))
     }
     return spawned
   }).catch(($, e, next) => next(e))
@@ -1858,14 +1804,14 @@ export const register: Register = (on, options) => {
     const startedAt = await $.clock.now()
     call.startedAt = startedAt
     if (call.agentId === null) {
-      await update($, live, l => ({ ...l, running: [...l.running, { id: e.tool_use_id, tool: e.tool, label: call.target, startedAt }] }))
+      await updateLive($, l => ({ ...l, running: [...l.running, { id: e.tool_use_id, tool: e.tool, label: call.target, startedAt }] }))
     } else {
       const action = actionOf(e.tool, call.target)
       await updateRow($, call.agentId, r => ({ ...r, action }))
     }
     const loop = call.agentId ?? 'main'
     const isWait = isAllWait(e.tool, call.agentId === null)
-    if (isWait) await update($, credit, c => openWait(c, loop, e.tool_use_id, startedAt))
+    if (isWait) await updateCredit($, c => openWait(c, loop, e.tool_use_id, startedAt))
     const ran = await next(e)
     // A `cd` in the main loop's Bash, or a file it edited or wrote, moves the folder Claude works in: the place is read
     // again off the hook
@@ -1889,7 +1835,7 @@ export const register: Register = (on, options) => {
     const wait = waitOf({ tool: e.tool, ms, isMain: call.agentId === null, isAsked: call.facts.asked, outcome: call.outcome, durationMs: call.durationMs })
     let isClosed = false
     if (isWait) {
-      await update($, credit, c => {
+      await updateCredit($, c => {
         const closed = closeWait(c, loop, e.tool_use_id, endedAt)
         isClosed = closed !== null
         return closed ?? c
@@ -1900,13 +1846,13 @@ export const register: Register = (on, options) => {
     if (e.tool === 'Write' || e.tool === 'Edit' || e.tool === 'NotebookEdit') scheduleReload($, held)
     if (call.agentId === null && call.outcome === 'ok') {
       const result = ran.result
-      const list = await read($, tasks)
+      const list = await readTasks($)
       const after = tasksAfter(list, e.tool, input, result)
       if (after !== null) {
         // As with a plan's steps, a status change closes and reopens the open slices first, so the time before it goes
         // to the items in progress then
         if (statusesOfTasks(after) !== statusesOfTasks(list)) await closeLoops($, held, null, await $.clock.now(), true)
-        await update($, tasks, items => tasksAfter(items, e.tool, input, result) ?? items)
+        await updateTasks($, items => tasksAfter(items, e.tool, input, result) ?? items)
       }
     }
     return ran
@@ -1984,8 +1930,8 @@ export const register: Register = (on, options) => {
       if (pending !== undefined) {
         if (isFork) pending.isFork = true
       } else {
-        await update($, stats, s => ({ ...s, [key]: tally(s[key], 'ok', 1) }))
-        if (!isFork && (await read($, live)).turnId === null) await addSkill($, e.skill)
+        await updateStats($, s => ({ ...s, [key]: tally(s[key], 'ok', 1) }))
+        if (!isFork && (await readLive($)).turnId === null) await addSkill($, e.skill)
       }
       return prompted
     }).catch(($, e, next) => next(e))
@@ -1999,7 +1945,7 @@ export const register: Register = (on, options) => {
         const tokens = e.context_tokens ?? 0
         if (e.source !== 'clear' && cost !== undefined && tokens > 0) {
           const model = e.model ?? null
-          await update($, cache, c => takeRate(c, cost, tokens, model))
+          await updateCache($, c => takeRate(c, cost, tokens, model))
         }
       }
       await readCacheConfig($, held)
@@ -2018,7 +1964,7 @@ export const register: Register = (on, options) => {
     on('classic.InstructionsLoaded', async ($, e, next) => {
       const byPath = e.load_reason === 'path_glob_match' ? baseName(e.file_path) : e.load_reason === 'nested_traversal' ? ruleName(e.file_path, e.memory_type) : null
       const name = e.agent_id === undefined ? byPath : null
-      if (name !== null) await update($, meta, m => (m.pathRules?.includes(name) === true ? m : { ...m, pathRules: [...(m.pathRules ?? []), name] }))
+      if (name !== null) await updateMeta($, m => (m.pathRules?.includes(name) === true ? m : { ...m, pathRules: [...(m.pathRules ?? []), name] }))
       return next(e)
     }).catch(($, e, next) => next(e))
 
@@ -2053,17 +1999,17 @@ export const register: Register = (on, options) => {
     await seedMine($)
     windowsMem.stored = null
     // A process that starts on a conversation with prompts in it resumed one; a reload keeps $.state and its last reading
-    const isFresh = (await read($, usage)).at === 0
+    const isFresh = (await readUsage($)).at === 0
     const reading = await takeUsage($, await todayUsd($, now))
     await baseline($, reading)
     await readStart($)
-    if (isFresh && (await $.session.turns().catch(() => 0)) > 0) await update($, meta, m => ({ ...m, isResumed: true }))
+    if (isFresh && (await $.session.turns().catch(() => 0)) > 0) await updateMeta($, m => ({ ...m, isResumed: true }))
     held.isTerminal = e.surface === 'terminal' && e.isInteractive
     await readCacheConfig($, held)
     // A reload keeps $.state but not the module's timer: a cache still warm gets its toast armed again
     await armCacheClose($, held)
     // A plan's file must be written after this to run; a reload keeps the first start's time
-    await update($, plans, p => (p.since === null ? { ...p, since: now } : p))
+    await updatePlans($, p => (p.since === null ? { ...p, since: now } : p))
     $.clock.every(30_000, () => {
       queueReload($, held)
       // The status file is read whatever the settings read did
@@ -2084,14 +2030,14 @@ export const register: Register = (on, options) => {
     if (e.origin.kind !== 'composer' && e.origin.kind !== 'bridge') return next(e)
     const at = await $.clock.now()
     const key = fingerprint(e.text)
-    await update($, meta, m => ({ ...m, waiting: [...m.waiting, { at, key }].slice(-5) }))
+    await updateMeta($, m => ({ ...m, waiting: [...m.waiting, { at, key }].slice(-5) }))
     const level = recLevel()
     const note = level === noteMem.told ? null : recNote(level)
     noteMem.told = level
     const entered = await next(note === null ? e : { ...e, context: [...(e.context ?? []), note] })
     const settled = entered.drop === undefined ? fingerprint(entered.text) : null
     if (settled !== key) {
-      await update($, meta, m => ({
+      await updateMeta($, m => ({
         ...m,
         waiting: settled === null ? m.waiting.filter(w => w.at !== at || w.key !== key)
           : m.waiting.map(w => (w.at === at && w.key === key ? { at, key: settled } : w)),
@@ -2106,22 +2052,22 @@ export const register: Register = (on, options) => {
     await openSlice($, e.agentId ?? 'main', now)
     if (e.agentId !== undefined) {
       await updateRow($, e.agentId, r => ({ ...r, status: 'running', endedAt: null }))
-      const row = (await read($, agents)).find(r => r.id === e.agentId)
+      const row = (await readAgents($)).find(r => r.id === e.agentId)
       if (row !== undefined) await addMark($, markOf(row))
     }
     if (e.agentId === undefined) {
       const startedAt = now
       // The turn answers the waiting prompt with its text; the prompts waiting before it never started a turn
       const key = fingerprint(e.text)
-      const waiting = (await read($, meta)).waiting
+      const waiting = (await readMeta($)).waiting
       const promptAt = waiting.find(w => w.key === key)?.at ?? null
       if (promptAt !== null) {
-        await update($, meta, m => {
+        await updateMeta($, m => {
           const i = m.waiting.findIndex(w => w.key === key)
           return { ...m, lastPromptAt: promptAt, waiting: i < 0 ? m.waiting : m.waiting.slice(i + 1) }
         })
       }
-      await update($, live, () => ({ turnId: e.turnId, startedAt, tools: 0, failures: 0, running: [], promptAt }))
+      await updateLive($, () => ({ turnId: e.turnId, startedAt, tools: 0, failures: 0, running: [], promptAt }))
       spendMem.clear()
       try {
         const cost = (await $.session.usage()).cost
@@ -2151,16 +2097,16 @@ export const register: Register = (on, options) => {
     }
     const step = yield* next(e)
     try {
-      await update($, meta, m => ({ ...m, model: e.model, effort: e.effort === undefined ? m.effort : String(e.effort) }))
+      await updateMeta($, m => ({ ...m, model: e.model, effort: e.effort === undefined ? m.effort : String(e.effort) }))
       const output = step.usage?.output_tokens
       if (output !== undefined && startedAt !== null) {
         const ms = (await $.clock.now()) - startedAt
-        await update($, totals, t => ({ ...t, stepOutput: t.stepOutput + output, stepMs: t.stepMs + ms }))
+        await updateTotals($, t => ({ ...t, stepOutput: t.stepOutput + output, stepMs: t.stepMs + ms }))
       }
       const u = step.usage
       const at = startedAt
       if (u !== null && at !== null && u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens > 0) {
-        await update($, cache, c => addRequest(c, u, at))
+        await updateCache($, c => addRequest(c, u, at))
         await armCacheClose($, held)
       }
     } catch {
@@ -2177,9 +2123,9 @@ export const register: Register = (on, options) => {
   on('turn.complete', async ($, e, next) => {
     const done = await next(e)
     await closeLoops($, held, [e.agentId ?? 'main'], await $.clock.now(), false)
-    if (e.agentId !== undefined && !(await read($, agents)).some(r => r.id === e.agentId)) {
+    if (e.agentId !== undefined && !(await readAgents($)).some(r => r.id === e.agentId)) {
       const id = e.agentId
-      if ((await read($, loops)).some(l => l.id === id)) await update($, loops, list => list.map(l => (l.id === id ? { ...l, isDone: true } : l)))
+      if ((await readLoops($)).some(l => l.id === id)) await updateLoops($, list => list.map(l => (l.id === id ? { ...l, isDone: true } : l)))
       return done
     }
     if (e.agentId !== undefined) {
@@ -2192,7 +2138,7 @@ export const register: Register = (on, options) => {
     }
     const u = e.usage
     if (u !== undefined) {
-      await update($, totals, t => ({
+      await updateTotals($, t => ({
         ...t,
         input: t.input + u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens,
         output: t.output + u.output_tokens,
@@ -2214,7 +2160,7 @@ export const register: Register = (on, options) => {
     const measured = await next(e)
     const at = await $.clock.now()
     const fresh = windowsOf(e.rateLimits)
-    await update($, usage, u => {
+    await updateUsage($, u => {
       const { windowsAt: _stored, ...rest } = u
       return {
         ...rest, tokens: e.context.tokens ?? null, window: e.context.window, percent: e.context.percent ?? null,
@@ -2241,11 +2187,11 @@ export const register: Register = (on, options) => {
   on('classic.PostModelSwitch', async ($, e, next) => {
     const done = await next(e)
     // The band names the model before the first step does (the review, 2026-11-11)
-    await update($, meta, m => ({ ...m, model: e.to_model }))
-    const billing = billingOf((await read($, usage)).windows)
+    await updateMeta($, m => ({ ...m, model: e.to_model }))
+    const billing = billingOf((await readUsage($)).windows)
     const now = await $.clock.now()
     const s = { ttl: e.cache_ttl, contextTokens: e.context_tokens, usd: e.estimated_cache_write_usd, model: e.to_model, billing }
-    await update($, cache, c => takeSwitch(c, s, now, true))
+    await updateCache($, c => takeSwitch(c, s, now, true))
     await armCacheClose($, held)
     return done
   }).catch(($, e, next) => next(e))
@@ -2254,10 +2200,10 @@ export const register: Register = (on, options) => {
   on('classic.PreModelSwitch', async ($, e, next) => {
     const done = await next(e)
     if (done.block !== undefined || done.permissionDecision === 'deny' || done.permissionDecision === 'ask') return done
-    const billing = billingOf((await read($, usage)).windows)
+    const billing = billingOf((await readUsage($)).windows)
     const now = await $.clock.now()
     const s = { ttl: e.cache_ttl, contextTokens: e.context_tokens, usd: e.estimated_cache_write_usd, model: e.to_model, billing }
-    await update($, cache, c => takeSwitch(c, s, now, false))
+    await updateCache($, c => takeSwitch(c, s, now, false))
     await armCacheClose($, held)
     return done
   }).catch(($, e, next) => next(e))
@@ -2275,12 +2221,12 @@ export const register: Register = (on, options) => {
     if (tab === undefined) return { text: INSPECT_HELP }
     if (tab === 'plan') {
       const name = words[1] ?? null
-      const good = (await read($, plans)).plans.filter(w => w.value !== null).map(w => w.name).sort()
+      const good = (await readPlans($)).plans.filter(w => w.value !== null).map(w => w.name).sort()
       if (name !== null && !good.includes(name)) {
         const asked = oneLine(printable(name), 40)
         return { text: good.length === 0 ? `No plan named ${asked}. No plan file in ${PLANS_DIR}/.` : `No plan named ${asked}. Plans: ${good.join(', ')}.` }
       }
-      await update($, view, v => (v.planSlug === name ? v : { ...v, planSlug: name }))
+      await updateView($, v => (v.planSlug === name ? v : { ...v, planSlug: name }))
     }
     const opened = await openInspect($, tab)
     return { text: opened.isPlaced ? 'Opened the inspect pane.' : `The inspect pane is open but not drawn: ${opened.reason}.` }
@@ -2320,7 +2266,7 @@ export const register: Register = (on, options) => {
       return { text: `Saving a handoff to ${HANDOFF_PATH}, then compacting.` }
     }
     if (args === 'later') {
-      if (!(await read($, handoff)).isAskUp) return { text: 'No handoff ask is up.' }
+      if (!(await readHandoff($)).isAskUp) return { text: 'No handoff ask is up.' }
       await dismissAsk($)
       return { text: 'The handoff ask is down until the next step.' }
     }
@@ -2337,7 +2283,7 @@ export const register: Register = (on, options) => {
     await loadSettings($)
     const state = await handoffState($)
     const from = settingsMem.resolved?.from
-    const sources = (await read($, handoff)).alfred.state === 'stood-down' || from === undefined
+    const sources = (await readHandoff($)).alfred.state === 'stood-down' || from === undefined
       ? ''
       : ` · mode from ${sourceName(from.handoff, '/auto-handoff')} · first ask from ${sourceName(from.handoffAt, '/auto-handoff')}`
     return { text: mask(`${state}${sources}\n${HANDOFF_USAGE}`) }
@@ -2347,7 +2293,7 @@ export const register: Register = (on, options) => {
     // Decided on module memory, so a person above meets no new read before the survey's check; the read keeps this
     // hook drawn again on a later "bandPlace": "above". The width it lends the footer redraws it only on a change.
     if (isPassingAbove(e.surface)) {
-      await read($, bandSetting)
+      await readBandSetting($)
       if (bandMem.columns !== e.props.bodyColumns) {
         bandMem.columns = e.props.bodyColumns
         $.ui.invalidate('ui.render')
@@ -2371,7 +2317,7 @@ export const register: Register = (on, options) => {
   // The band under the input, in Claude Code's footer on the terminal (spec band-under U2): Claude Code's own line first,
   // then the band, at the site above's width and the rows the screen leaves; above, or elsewhere, the footer as it was
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
-    const setting = await read($, bandSetting)
+    const setting = await readBandSetting($)
     const v = e.viewport
     if (setting.isUnder !== true || e.surface !== 'terminal' || v === undefined) return next(e)
     if (!bandMem.hasFooter) {
@@ -2396,7 +2342,7 @@ export const register: Register = (on, options) => {
   // The main loop's spinner adds its action, context and the agents running; an agent's spinner, that agent's
   on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
     const text = spinnerSuffix({
-      requestId: e.requestId ?? '', live: await read($, live), percent: (await read($, usage)).percent, agents: await read($, agents),
+      requestId: e.requestId ?? '', live: await readLive($), percent: (await readUsage($)).percent, agents: await readAgents($),
     })
     // REC masks the engine's word and message as well as the mod's own suffix
     const word = mask(e.props.word)
@@ -2431,7 +2377,7 @@ export const register: Register = (on, options) => {
   // An unfolded group's rows draw `output` inline, so a row's input and output are both masked
   on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
     if (e.props.isErrored && typeof e.props.output === 'string' && !errorMem.has(e.props.tool_use_id)) keepError(e.props.tool_use_id, e.props.output)
-    if ((await read($, quiet)).isOn && !e.props.isRunning && (e.props.isExpanded !== true || compactMem.marks.has(e.props.tool_use_id))) {
+    if ((await readQuiet($)).isOn && !e.props.isRunning && (e.props.isExpanded !== true || compactMem.marks.has(e.props.tool_use_id))) {
       const columns = e.viewport?.columns ?? 120
       const lines = callLine(compactOf(e.props.tool_use_id, e.props), columns, { cwd: rowsMem.cwd })
       return drawLines($, e, lines, { noColor: await isNoColor($), press: {}, columns , fill: true })
@@ -2466,7 +2412,7 @@ export const register: Register = (on, options) => {
     // only in that view (an unfolded group draws its rows' output inline), so it unmarks its row and redraws it in full
     if (e.props.isExpanded === true && compactMem.marks.delete(e.props.tool_use_id)) $.ui.invalidate('ui.render')
     const isDropped = e.props.isErrored || DROPS_RESULT.includes(e.props.tool)
-    if (isDropped && e.props.isExpanded !== true && (await read($, quiet)).isOn) return drawLines($, e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
+    if (isDropped && e.props.isExpanded !== true && (await readQuiet($)).isOn) return drawLines($, e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
     if (!(await isRecOn($))) return next(e)
     if (e.props.isErrored && errorRows.has(e.props.tool_use_id)) return drawLines($, e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
     const masked = maskResult({ ...e.props, error: errorMem.get(e.props.tool_use_id) ?? null }, mask)
@@ -2482,7 +2428,7 @@ export const register: Register = (on, options) => {
   // git results, and `isExpanded` is the one prop a rewrite changes, so REC unfolds it into ToolUse rows, which the
   // hook above masks, live or settled.
   on('ui.render', { component: 'ToolGroup' }, async ($, e, next) => {
-    const isQuiet = (await read($, quiet)).isOn
+    const isQuiet = (await readQuiet($)).isOn
     const isRec = await isRecOn($)
     const ids = e.props.calls.flatMap(c => (c.tool_use_id === undefined ? [] : [c.tool_use_id]))
     if (e.props.isExpanded) {
@@ -2506,24 +2452,24 @@ export const register: Register = (on, options) => {
   }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : next({ ...e, props: { ...e.props, questions: neutralDialog(e.props.questions) } })))
 
   on('ui.render', { component: 'Pane', requestId: 'inspect' }, async ($, e) => {
-    await read($, tick)
+    await readTick($)
     const now = await $.clock.now()
-    const counts = await read($, live)
-    const shown = await read($, view)
-    const rows = await read($, failures)
+    const counts = await readLive($)
+    const shown = await readView($)
+    const rows = await readFailures($)
     const d = await planDraw($, now)
-    const u = await read($, usage)
-    const h = await read($, handoff)
-    const m = await read($, meta)
-    const st = await read($, stack)
+    const u = await readUsage($)
+    const h = await readHandoff($)
+    const m = await readMeta($)
+    const st = await readStack($)
     const runway = runwayOf(st, u, m.model)
     const input = {
       now, columns: e.props.bodyColumns, isWorking: counts.turnId !== null, live: counts, usage: u,
-      meta: m, turns: await read($, turns), newFailures: rows.filter(f => f.isNew).length,
-      pace: await read($, pace), failures: rows, stats: await read($, stats), totals: await read($, totals), view: shown,
-      agents: await read($, agents), cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score, isPlanScore: d.isPlanScore, scoreLevel: await scoreLevel($), blockers: await read($, blockers), parts: await read($, parts),
-      loops: await read($, loops),
-      rec: recOf(await read($, rec)), forecast: forecastOf(h, u, runway), handoff: handoffView(h, u, counts.turnId !== null, runway),
+      meta: m, turns: await readTurns($), newFailures: rows.filter(f => f.isNew).length,
+      pace: await readPace($), failures: rows, stats: await readStats($), totals: await readTotals($), view: shown,
+      agents: await readAgents($), cache: await readCache($), plan: d.band, planInvalid: d.invalid, score: d.score, isPlanScore: d.isPlanScore, scoreLevel: await scoreLevel($), blockers: await readBlockers($), parts: await readParts($),
+      loops: await readLoops($),
+      rec: recOf(await readRec($)), forecast: forecastOf(h, u, runway), handoff: handoffView(h, u, counts.turnId !== null, runway),
       stack: { view: st, prompt: stackMem.prompt, runway, sessionModel: m.model },
     }
     const bar = tabBar(shown.tab, counts.turnId !== null, e.props.bodyColumns)
@@ -2564,7 +2510,7 @@ export const register: Register = (on, options) => {
 
   // The private-words pane: words are added only here, never through a command's arguments, which the transcript echoes
   on('ui.render', { component: 'Pane', requestId: 'rec' }, async ($, e) => {
-    const r = await read($, rec)
+    const r = await readRec($)
     const words = recMem.words
     const press: Record<string, () => unknown> = {}
     if (r.level === 'off') words.forEach((w, i) => { press[`remove-${i}`] = () => removeRecWord($, w) })
