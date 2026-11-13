@@ -726,7 +726,8 @@ start, every 30 seconds and after `/clear`, and shows more:
   (`"plan": ".alfred/docs/work/plans/<feature>/"`), the plan row shows that plan from the folder's `status.json`,
   before any other plan, from `awaiting approval` to `done ✓`. It ends with the score from the folder's
   `scoring.json`: the kept round's total, `▲` or `▼` against the round graded before it, green at or above the scoring
-  level and amber under it, and `grading` while the grading still runs. A plan let go finished stays 10 minutes. No
+  level and amber under it, `grading` while the grading still runs, and `withheld` once
+  Alfred Code withheld the plan (its `scoring.json` `status`, from alfred-code 3.12). A plan let go finished stays 10 minutes. No
   folder named, or a file with another schema, and the plan row shows what it would without Alfred Code.
 - **The resume prompt:** while the pane has the focus (Ctrl+X Tab, or a click in fullscreen), `f` fills the stack's
   prompt into an empty prompt box, never sending it. Enter in the prompt box sends it; in the terminal the focus is

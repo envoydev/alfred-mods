@@ -2617,7 +2617,7 @@ const BandAdapter = (() => {
     // The plan's score as the band's ScoresView carries it: the kept round's total, its arrow against the round before
     const total = num(d.planScore), prevTotal = num(d.planPrevScore)
     const score = m.plan && total > 0
-      ? { scale: 100, totals: [], delta: prevTotal > 0 ? total - prevTotal : null, shown: { round: prevTotal > 0 ? 2 : 1, total }, isGrading: !!m.grading,
+      ? { scale: 100, totals: [], delta: prevTotal > 0 ? total - prevTotal : null, shown: { round: prevTotal > 0 ? 2 : 1, total }, isGrading: !!m.grading && !m.withheld, isWithheld: !!m.withheld,
         criteria: [], severities: [], fixed: [], improved: [], open: [], hasStatus: false }
       : null
     const banner = m.alfred
@@ -2808,11 +2808,11 @@ const BAND_DATA0 = {
 // The session's situation: what is happening, not what the settings say
 const BAND_MODES0 = {
   running: true, fullscreen: false, statusLine: false, alfred: true, autoRun: false, autoCompact: true, scorer: true, runway: false,
-  upstream: true, plan: false, planAwaiting: false, grading: false, fresh: false, collapsed: false, cols: 150, rows: 12, termRows: 40
+  upstream: true, plan: false, planAwaiting: false, grading: false, withheld: false, fresh: false, collapsed: false, cols: 150, rows: 12, termRows: 40
 }
 const BAND_BASE = {
   running: false, fullscreen: false, statusLine: false, alfred: false, autoRun: false, autoCompact: false, scorer: false, runway: false,
-  upstream: true, plan: false, planAwaiting: false, grading: false, fresh: false, collapsed: false, rows: 12, termRows: 40
+  upstream: true, plan: false, planAwaiting: false, grading: false, withheld: false, fresh: false, collapsed: false, rows: 12, termRows: 40
 }
 // No settings file sets anything: every field takes its default
 const BAND_CFG0 = { user: {}, project: {}, local: {}, legacy: {} }
@@ -2826,7 +2826,7 @@ const BAND_PRESETS = [
   ['A bad value falls through', 'The local file says "compact", which "band" does not take, so the user file\'s "calm" applies, and the mod says so once in a toast that never quotes the bad value.', { running: true }, null, { user: { band: 'calm' }, local: { band: 'compact' } }],
   ['With Alfred Code: auto-run, auto-compact, scoring and the runway', "The mode banner leads line 1 from the session's start: auto-run, auto-compact with where Claude Code compacts for the session's model, and scoring. With the runway, ctx is measured against Alfred Code's trigger, not the window.", { running: true, alfred: true, autoRun: true, autoCompact: true, scorer: true, runway: true }],
   ['A plan in progress', 'The plan row sits under the project row, above usage: - the title, the steps done, the step in progress and the plan\'s score with its change from the round before.', { running: true, plan: true }],
-  ['An Alfred Code plan and its score', "Alfred Code's status file names the plan's folder; the plan row reads its status.json and ends with the score from its scoring.json: the kept round's total, ▲ against the round before, green at or above the scoring bar and amber under it. While grading still runs, the newest total shows, marked grading.", { running: true, alfred: true, scorer: true, plan: true }, () => ({ planTitle: 'Waste bin (plannings)', planDone: 1, planTotal: 4, planStep: '3 Restore deleted plan books', planScore: 85, planPrevScore: 72 })],
+  ['An Alfred Code plan and its score', "Alfred Code's status file names the plan's folder; the plan row reads its status.json and ends with the score from its scoring.json: the kept round's total, ▲ against the round before, green at or above the scoring bar and amber under it. While grading still runs, the newest total shows, marked grading; a plan Alfred Code withheld shows it marked withheld.", { running: true, alfred: true, scorer: true, plan: true }, () => ({ planTitle: 'Waste bin (plannings)', planDone: 1, planTotal: 4, planStep: '3 Restore deleted plan books', planScore: 85, planPrevScore: 72 })],
   ['An Alfred Code plan awaiting approval', 'Before you approve it, the plan row says awaiting approval in place of a step; its score shows once it was graded, amber here as 76 is under the scoring bar of 80.', { alfred: true, scorer: true, plan: true, planAwaiting: true }, d => ({ planTitle: 'Waste bin (plannings)', planDone: 0, planTotal: 4, planStep: '', planScore: 76, planPrevScore: 64, agents: noRun(d.agents) })],
   ['Context past 80%', 'Between turns the handoff ask takes the last row: 4, or a click, saves a handoff. It asks again every 5 points, up to 95.', {}, d => ({ ctxUsed: Math.ceil(Number(d.window) * 0.82), agents: noRun(d.agents) })],
   ['Handoff from 70%', 'The user file moves the first ask to 70%; it asks again every 5 points up to 95. "handoff": "auto" would save with no ask, "off" never.', {}, d => ({ ctxUsed: Math.ceil(Number(d.window) * 0.72), agents: noRun(d.agents) }), { user: { handoffAt: 70 } }],
@@ -2868,7 +2868,7 @@ const FIELDS = [
 const SWITCHES = [
   ['running','A turn is running'],['fullscreen','Fullscreen (CLAUDE_CODE_NO_FLICKER=1)'],
   ['alfred','Alfred Code is installed'],['autoRun','auto-run on'],['autoCompact','auto-compact on'],['scorer','scoring on'],['runway','Runway: fresh session at the trigger'],
-  ['upstream','The branch has an upstream (pushed with -u)'],['plan','A plan file exists'],['planAwaiting','The plan awaits approval (Alfred Code)'],['grading','Grading still runs (Alfred Code)'],['fresh','First second of the session'],['collapsed','Band collapsed (Ctrl+X Ctrl+A, above only)']
+  ['upstream','The branch has an upstream (pushed with -u)'],['plan','A plan file exists'],['planAwaiting','The plan awaits approval (Alfred Code)'],['grading','Grading still runs (Alfred Code)'],['withheld','Alfred Code withheld the plan'],['fresh','First second of the session'],['collapsed','Band collapsed (Ctrl+X Ctrl+A, above only)']
 ];
 // The four sources the page edits, each the "alfred-mods" fields it sets
 const SOURCES = ['legacy', 'user', 'project', 'local'];
