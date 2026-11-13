@@ -1,7 +1,7 @@
 // The settings folder's effects: what it reads and writes through $
-import type { Field, From, Resolved, Source, Values } from './types'
-import { DEFAULTS, FIELDS, LEGACY_KEYS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast, writeField } from './settings'
-import type { Level } from '../rec/types'
+import type { Field, From, ResolvedSettings, Source, SettingsValues } from './types'
+import { DEFAULTS, FIELDS, LEGACY_KEYS, SOURCES, holdRec, holdToast, legacyOf, movedToast, sourceFileName, resolveSettings, skippedToast, writeField } from './settings'
+import type { RecLevel } from '../rec/types'
 import { toast } from '../core/effects'
 import { applyQuiet } from '../tools/effects'
 import { recStatus } from '../rec/rec'
@@ -16,14 +16,14 @@ import type { HookInput, HookNext } from '../core/types'
 // run at a time as the status file's reads are. `rec`, the level in force and the source that set it; `skippedKey`,
 // the skipped values last told; `isHoldTold`, whether REC's hold was told. A new claude run starts them over.
 const settingsMemory = {
-  resolved: null as Resolved | null, rec: null as { level: Level; from: From } | null, skippedKey: '', isHoldTold: false,
+  resolved: null as ResolvedSettings | null, rec: null as { level: RecLevel; from: From } | null, skippedKey: '', isHoldTold: false,
   reading: Promise.resolve() as Promise<void>,
 }
 
-export const settingsInForce = (): Values => settingsMemory.resolved?.values ?? DEFAULTS
+export const settingsInForce = (): SettingsValues => settingsMemory.resolved?.values ?? DEFAULTS
 
 // REC's level in force and the source that set it, or null before the settings are read
-export function recInForce(): { level: Level; from: From } | null {
+export function recInForce(): { level: RecLevel; from: From } | null {
   return settingsMemory.rec
 }
 
@@ -52,7 +52,7 @@ export async function readSettingsNow($: EngineInterface, isStart: boolean): Pro
     rec: await $.store.get('settings:rec').catch(() => null),
     handoff: rawHandoff,
   })
-  const r = resolve(layers, legacy)
+  const r = resolveSettings(layers, legacy)
   settingsMemory.resolved = r
   await retireLegacyKeys($, r, legacy, rawHandoff)
   if (isStart) await toastMovedOnce($, r)
@@ -83,7 +83,7 @@ export async function readSettingsNow($: EngineInterface, isStart: boolean): Pro
 
 // S7: a field the user's own file sets, machine-wide as the store is, drops its old value; a project or local value
 // overrides the old one without retiring it. A refused delete is tried at the next read.
-export async function retireLegacyKeys($: EngineInterface, r: Resolved, legacy: Partial<Values>, rawHandoff: unknown): Promise<void> {
+export async function retireLegacyKeys($: EngineInterface, r: ResolvedSettings, legacy: Partial<SettingsValues>, rawHandoff: unknown): Promise<void> {
   for (const field of r.userFields) {
     const key = LEGACY_KEYS[field]
     if (key !== undefined && legacy[field] !== undefined) await $.store.delete(key).catch(() => undefined)
@@ -100,12 +100,12 @@ export async function retireLegacyKeys($: EngineInterface, r: Resolved, legacy: 
 
 // S7's toast, at a run's first read, once per machine: the earlier commands' choices still in force. A refused read of
 // the mark counts as told, so a failing store never repeats it.
-export async function toastMovedOnce($: EngineInterface, r: Resolved): Promise<void> {
+export async function toastMovedOnce($: EngineInterface, r: ResolvedSettings): Promise<void> {
   const kept: Partial<Record<Field, unknown>> = {}
   for (const field of FIELDS) if (r.from[field] === 'legacy' && r.values[field] !== DEFAULTS[field]) kept[field] = r.values[field]
   if (Object.keys(kept).length === 0 || (await $.store.get('settings:moved').catch(() => true)) === true) return
   // 30 s to copy the line (the review's #1)
-  toast($, movedToast(kept as Partial<Values>), 30_000)
+  toast($, movedToast(kept as Partial<SettingsValues>), 30_000)
   await $.store.set('settings:moved', true).catch(() => undefined)
 }
 
@@ -121,8 +121,8 @@ export async function userSettingsPath($: EngineInterface): Promise<string | nul
 // The one write of /rec on|strict|off and /auto-handoff ask|auto|off|at <percent> (the user's ruling, 2026-11-12): the
 // field into the user file, every other key kept. The files are read first, so the answer names a higher file that
 // still comes first; Claude Code's ConfigChange then brings the change in, as it does an edit by hand.
-export async function writeUserField<F extends Field>($: EngineInterface, field: F, value: Values[F]): Promise<string> {
-  const user = nameOf('user')
+export async function writeUserField<F extends Field>($: EngineInterface, field: F, value: SettingsValues[F]): Promise<string> {
+  const user = sourceFileName('user')
   const shown = `"${field}": ${JSON.stringify(value)}`
   const byHand = (why: string): string => `Nothing was written: ${why}. Set ${shown} under "alfred-mods" in ${user} by hand.`
   await loadSettings($)
@@ -139,7 +139,7 @@ export async function writeUserField<F extends Field>($: EngineInterface, field:
   const r = settingsMemory.resolved
   const from = r?.from[field]
   const isFirst = r !== null && r !== undefined && (from === 'policy' || from === 'flag' || from === 'local' || from === 'project')
-  return `Set ${shown} in ${user}.${isFirst ? ` ${nameOf(from)} gives ${JSON.stringify(r.values[field])}, which comes first.` : ''}`
+  return `Set ${shown} in ${user}.${isFirst ? ` ${sourceFileName(from)} gives ${JSON.stringify(r.values[field])}, which comes first.` : ''}`
 }
 
 export function reloadSettingsSoon($: EngineInterface, e: HookInput<'classic.ConfigChange'>, next: HookNext<'classic.ConfigChange'>) {
@@ -150,6 +150,6 @@ export function reloadSettingsSoon($: EngineInterface, e: HookInput<'classic.Con
 }
 
 // The settings as last resolved, with each value's source; null before the first read
-export function resolvedSettings(): Resolved | null {
+export function resolvedSettings(): ResolvedSettings | null {
   return settingsMemory.resolved
 }

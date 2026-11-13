@@ -24,14 +24,14 @@ export type ScoresView = {
   fixed: Finding[]; improved: Finding[]; open: Finding[]; hasStatus: boolean
 }
 
-export type Named = { plan: string | null; task: string | null }
+export type NamedStep = { plan: string | null; task: string | null }
 
-export type Target = { steps: string[]; isShared: boolean } | 'overhead' | null
+export type CloseTarget = { steps: string[]; isShared: boolean } | 'overhead' | null
 
 // The store keys a loop's span is split among, equally; none: the span is taken and goes nowhere, or to the task list
-export type Close = { loop: string; keys: string[]; isShared: boolean }
+export type SliceClose = { loop: string; keys: string[]; isShared: boolean }
 
-export type Entries = Record<string, unknown>
+export type TimeEntries = Record<string, unknown>
 
 // A settled call, for the person's wait inside it
 export type CallWait = { tool: string; ms: number; isMain: boolean; isAsked: boolean; outcome: Outcome | null; durationMs: number | null }

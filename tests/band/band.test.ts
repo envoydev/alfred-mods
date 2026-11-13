@@ -3,15 +3,15 @@ import type { Engine } from 'claude-code/testing'
 import type { On, RenderElement, RenderSurface, SessionRateLimit, SessionUsage } from 'claude-code'
 
 import { drawLines } from '../../hooks/core/draw'
-import { clock, when } from '../../hooks/core/format'
+import { clockText, whenText } from '../../hooks/core/format'
 import { mask } from '../../hooks/rec/mask'
 import { SPAWN, START, engine, held, rows, spawns, stubAll } from '../kit'
 
 const SURFACES = ['terminal', 'desktop'] as const
 // Three hours before the 5h window resets, three days before the 7d one: each reset as the band words it
 const NOW = Date.parse('2026-10-28T14:00:00Z')
-const R5 = when(Date.parse('2026-10-28T17:00:00Z'))
-const R7 = when(Date.parse('2026-10-31T09:00:00Z'))
+const R5 = whenText(Date.parse('2026-10-28T17:00:00Z'))
+const R7 = whenText(Date.parse('2026-10-31T09:00:00Z'))
 
 const band = (isWorking: boolean, bodyColumns = 120, hasSurvey = false) =>
   ({ hasSurvey, isCollapsed: false, isWorking, maxRows: 6, bodyColumns, scroll: { offset: 0, bodyRows: 6 }, view: {} })
@@ -199,7 +199,7 @@ for (const surface of SURFACES) {
     const lines = await rows(await mount($, surface, band(false)))
 
     // 1% a minute from 60% at 14:20 runs out at 15:00, before the 17:00 reset
-    const out = clock(Date.parse('2026-10-28T15:00:00Z'))
+    const out = clockText(Date.parse('2026-10-28T15:00:00Z'))
     expect(lines.some(l => new RegExp(`5h ▰▰▰▱▱ 60% \\(${R5}\\) full ≈${out} │ 7d 30% \\(${R7}\\)`).test(l))).toBe(true)
   })
 

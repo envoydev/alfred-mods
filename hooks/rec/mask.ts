@@ -1,10 +1,10 @@
 import { compile, maskHits, maskText } from './rec'
 import { setMasker } from '../core/format'
-import type { Compiled, Hit, Level } from './types'
+import type { Compiled, Hit, RecLevel } from './types'
 
 // REC's level, words and compiled classes live here in module memory, which /clear does not reset; the `rec` atom
 // only makes surfaces redraw. The words are never put in $.state.
-let level: Level = 'off'
+let level: RecLevel = 'off'
 let compiled: Compiled = compile('off', [], null)
 
 // Masked text by its original, up to 256 entries and 4 MiB of text, emptied on each change of level or words
@@ -17,14 +17,14 @@ let passes = 0
 // The file's classes, whatever the level: keys, emails and phones, never private words or home paths
 const FILE = compile('on', [], null)
 
-export function setRec(next: Level, words: string[], home: string | null): void {
+export function setRec(next: RecLevel, words: string[], home: string | null): void {
   level = next
   compiled = compile(next, words, home)
   cache.clear()
   cached = 0
 }
 
-export function recLevel(): Level {
+export function recLevel(): RecLevel {
   return level
 }
 

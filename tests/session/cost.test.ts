@@ -2,14 +2,14 @@ import { expect, test } from 'claude-code/testing'
 
 import { baseWrites, dayUsd, recordWrites, staleKeys } from '../../hooks/session/cost'
 import { localDate } from '../../hooks/core/forecast'
-import type { Entries } from '../../hooks/session/types'
+import type { CostEntries } from '../../hooks/session/types'
 
 // Local times, as the day the cost belongs to is the machine's
 const at = (day: number, h: number, m: number): number => new Date(2026, 9, day, h, m).getTime()
 const NOON = at(28, 12, 0)
 
 // A store in memory: each reading's writes land on it, as the functions taking `$` do through $.store
-const record = (store: Entries, id: string, usd: number, now: number): Entries => ({ ...store, ...recordWrites(store, id, usd, now) })
+const record = (store: CostEntries, id: string, usd: number, now: number): CostEntries => ({ ...store, ...recordWrites(store, id, usd, now) })
 
 test('two sessions on one day add up', () => {
   const store = record(record({}, 's1', 1.0, NOON), 's2', 0.5, NOON)

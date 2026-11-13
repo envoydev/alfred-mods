@@ -7,7 +7,7 @@ import type { CallFacts, Failure, Outcome, ToolStat } from './types'
 // its reason names one (spec C6). A plugin in a tier above may keep classic.PostToolUseFailure from the mod, so two
 // rules stand without it: an abort read from the mod's own hook marks an interrupt, and in auto mode an `ask` nobody
 // saw was the classifier's allow, so its error is the tool's (a classifier block still arrives as PermissionDenied).
-export function classify(f: CallFacts): { outcome: Outcome; reason: string; isNew: boolean; by: string | null } {
+export function classifyCall(f: CallFacts): { outcome: Outcome; reason: string; isNew: boolean; by: string | null } {
   // Claude Code wraps an input error in a tag meant for the model
   const text = (f.result?.text ?? '').replace(/<\/?tool_use_error>/g, '')
   const plain = (outcome: Outcome, reason: string, isNew: boolean) => ({ outcome, reason, isNew, by: null })
@@ -82,18 +82,18 @@ export function targetOf(tool: string, input: Record<string, unknown>, cwd: stri
 }
 
 // A repeat of the last row raises its count and moves its time; anything else is appended. Keeps the last `limit`.
-export function fold(list: Failure[], next: Failure, limit = 10): Failure[] {
+export function foldFailure(list: Failure[], next: Failure, limit = 10): Failure[] {
   const prev = list[list.length - 1]
   if (prev && prev.tool === next.tool && prev.target === next.target && prev.outcome === next.outcome && prev.reason === next.reason) {
     return [...list.slice(0, -1), { ...prev, at: next.at, detail: next.detail, count: prev.count + 1, isNew: prev.isNew || next.isNew }]
   }
-  const n = next.n ?? Math.max(0, ...list.map(numberOf)) + 1
+  const n = next.n ?? Math.max(0, ...list.map(failureNumberOf)) + 1
   return [...list, { ...next, n }].slice(-limit)
 }
 
 // A row's number: its own, or, for a row an earlier version kept, its place from the oldest (the user, 2026-11-12:
 // 'right now I need to count and order')
-export function numberOf(f: Failure, i: number): number {
+export function failureNumberOf(f: Failure, i: number): number {
   return f.n ?? i + 1
 }
 

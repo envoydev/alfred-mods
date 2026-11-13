@@ -2,7 +2,7 @@
 // text that replaces each match with its token (spec 'What each class hides').
 import { AMOUNTS, EMAILS, KEYS, LEFT_ALONE, PHONES, strictSamples } from './samples'
 import type { Line } from '../core/types'
-import type { Compiled, Hit, Klass, Level, RecState } from './types'
+import type { Compiled, Hit, Klass, RecLevel, RecState } from './types'
 
 const whole = (token: string) => (m: RegExpExecArray): Hit => ({ start: m.index, end: m.index + m[0].length, text: token })
 
@@ -96,7 +96,7 @@ function homeClasses(home: string): Klass[] {
   return out
 }
 
-export function compile(level: Level, words: string[], home: string | null): Compiled {
+export function compile(level: RecLevel, words: string[], home: string | null): Compiled {
   if (level === 'off') return { level, classes: [] }
   const classes: Klass[] = [TOKENS, { re: KEY, hit: keyHit }, { re: EMAIL, hit: whole('‹email›') }, { re: PHONE, hit: phoneHit }]
   // The longest word first, so the longest at a start wins
@@ -147,7 +147,7 @@ export function maskHits(c: Compiled, text: string): Hit[] {
   return kept
 }
 
-export const LEVELS: Level[] = ['off', 'on', 'strict']
+export const LEVELS: RecLevel[] = ['off', 'on', 'strict']
 
 // The stored words, anything else read as none
 export function parseWords(v: unknown): string[] {
@@ -157,7 +157,7 @@ export function parseWords(v: unknown): string[] {
 const countText = (n: number): string => `${n} private ${n === 1 ? 'word' : 'words'}`
 
 // '● REC on · hiding keys · emails · phones · 3 private words', strict adding what it hides; off is 'REC off'
-export function recStatus(level: Level, count: number): string {
+export function recStatus(level: RecLevel, count: number): string {
   if (level === 'off') return 'REC off'
   const parts = ['keys', 'emails', 'phones', ...(count > 0 ? [countText(count)] : [])]
   if (level === 'strict') parts.push('account', 'home paths', '$ amounts')
@@ -171,7 +171,7 @@ const NOTE_ON = 'Screen recording is on (alfred-mods REC). Until told it is off,
 const NOTE_STRICT = 'Also leave out account names, home folder paths and dollar amounts.'
 const NOTE_OFF = 'Screen recording is off (alfred-mods REC); the earlier limit on secret values no longer applies.'
 
-export function recNote(level: Level): string {
+export function recNote(level: RecLevel): string {
   return level === 'off' ? NOTE_OFF : level === 'strict' ? `${NOTE_ON} ${NOTE_STRICT}` : NOTE_ON
 }
 
@@ -202,7 +202,7 @@ export function addWord(words: string[], raw: string): { words: string[] } | { r
 }
 
 // The rec pane's lines above its field: with REC off the words, each with its remove button; with REC on the count
-export function recPaneLines(level: Level, words: string[]): Line[] {
+export function recPaneLines(level: RecLevel, words: string[]): Line[] {
   if (level !== 'off') return [[{ text: 'Private words', bold: true }], [{ text: `${countText(words.length)} · turn REC off to see or remove them` }]]
   const out: Line[] = [[{ text: 'Private words', bold: true }, { text: `  ${words.length} of 100`, tone: 'dim' }]]
   if (words.length === 0) out.push([{ text: 'No private words yet.', tone: 'dim' }])
@@ -216,7 +216,7 @@ const row = (ok: boolean, label: string, hidden: number, total: number, tail: st
 
 // /rec test: the masker over the fake samples, one set per class, and the person's words, at the level that applies.
 // A failed sample prints its class and the fake sample; a failed private word, its position only.
-export function recTest(level: Level, words: string[], home: string | null): string {
+export function recTest(level: RecLevel, words: string[], home: string | null): string {
   const c = compile(level, words, home)
   const out = [`/rec test · level ${level}`]
   const failed: string[] = []

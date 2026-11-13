@@ -19,7 +19,7 @@ const LENGTH: Record<string, number> = { five_hour: 5 * 3_600_000, seven_day: 7 
 // When a window reaches 100% at the rate from its first point to its last, if that comes before it resets. Null under
 // 3 points, or while they span under 5% of the window's length (15 minutes of 5h, 8.4 hours of a week), as one
 // whole-point step over a few minutes reads as a steep rise; null too for a window of unknown length.
-export function pace(kind: string, points: PacePoint[], resetsAt: number | null, now: number): 'on-pace' | { limitAt: number } | null {
+export function paceForecast(kind: string, points: PacePoint[], resetsAt: number | null, now: number): 'on-pace' | { limitAt: number } | null {
   const first = points[0]
   const last = points[points.length - 1]
   const length = LENGTH[kind]

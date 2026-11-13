@@ -1,5 +1,5 @@
 // The session's types: its turns, figures and windows (declared in the state contract)
-import type { Live, Meta, Pace, PacePoint, Running, Totals, Turn, TurnEnd, Usage, Waiting, Window } from '../../types'
-export type { Live, Meta, Pace, PacePoint, Running, Totals, Turn, TurnEnd, Usage, Waiting, Window }
+import type { Live, Meta, Pace, PacePoint, RunningCall, Totals, Turn, TurnEnd, Usage, WaitingPrompt, RateWindow } from '../../types'
+export type { Live, Meta, Pace, PacePoint, RunningCall, Totals, Turn, TurnEnd, Usage, WaitingPrompt, RateWindow }
 
-export type Entries = Record<string, unknown>
+export type CostEntries = Record<string, unknown>

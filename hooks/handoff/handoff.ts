@@ -3,8 +3,8 @@
 // HANDOFF.md, the Now tab's HANDOFF row and F8's toasts.
 import type { ProcessRunResult } from 'claude-code'
 
-import { barSegs, pctSeg } from '../band/gauges'
-import { clock, duration, mins, modelText, tokens, usd } from '../core/format'
+import { barSegs, percentSeg } from '../band/gauges'
+import { clockText, durationText, minutesText, modelText, tokensText, usdText } from '../core/format'
 import type { Line, Seg } from '../core/types'
 import type { Handoff, HandoffMode, HandoffView, PlanPart, SaveInput, SaveResult } from './types'
 import type { Severity, StepStatus } from '../plan/types'
@@ -84,8 +84,8 @@ export const TOASTS = {
   // While the stack stands F8 down, a save arms no resume prompt
   savedOnly: (): string => `Handoff saved to ${HANDOFF_PATH}`,
   compacting: (): string => `Handoff saved to ${HANDOFF_PATH} - compacting`,
-  filled: (at: number): string => `Resume prompt filled from the handoff saved ${clock(at)} - press Enter to send`,
-  fallback: (at: number): string => `Handoff saved ${clock(at)}: ask Claude to read ${HANDOFF_PATH}`,
+  filled: (at: number): string => `Resume prompt filled from the handoff saved ${clockText(at)} - press Enter to send`,
+  fallback: (at: number): string => `Handoff saved ${clockText(at)}: ask Claude to read ${HANDOFF_PATH}`,
   failed: (reason: string): string => `Handoff not saved: ${reason}`,
 }
 
@@ -124,8 +124,8 @@ function nextLine(plan: SaveInput['plan']): string {
   if (plan === 'tasks') return 'Task list in use; its items are not written to this file.'
   const running = plan.steps.find(s => s.status === 'in_progress')
   if (running !== undefined) {
-    const of = running.forecastMs === null ? '' : ` of ≈${mins(running.forecastMs)}`
-    return `${running.id} ${running.title} - in progress, ${mins(running.actualMs)}${of}.`
+    const of = running.forecastMs === null ? '' : ` of ≈${minutesText(running.forecastMs)}`
+    return `${running.id} ${running.title} - in progress, ${minutesText(running.actualMs)}${of}.`
   }
   const next = plan.steps.find(s => s.status === 'pending')
   return next === undefined ? 'Plan finished.' : `${next.id} ${next.title} - next.`
@@ -133,7 +133,7 @@ function nextLine(plan: SaveInput['plan']): string {
 
 function stepLine(s: PlanPart['steps'][number]): string {
   const isDone = s.status === 'done' || s.status === 'skipped'
-  const state = s.status === 'done' ? `done in ${mins(s.actualMs)}` : s.status === 'in_progress' ? 'in progress' : s.status
+  const state = s.status === 'done' ? `done in ${minutesText(s.actualMs)}` : s.status === 'in_progress' ? 'in progress' : s.status
   const notes = s.notes > 0 ? ` - ✎ ${plural(s.notes, 'note')}` : ''
   return `- [${isDone ? 'x' : ' '}] ${s.id} ${s.title} - ${state}${notes}`
 }
@@ -150,7 +150,7 @@ export function handoffText(s: SaveInput): string {
   ]
   const out = [
     MARKER,
-    `# Handoff - ${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${clock(s.at)}`,
+    `# Handoff - ${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${clockText(s.at)}`,
     '',
     `${about.join(' · ')}.`,
     `To continue in a new session, ask Claude to read ${HANDOFF_PATH} and resume from Next.`,
@@ -168,10 +168,10 @@ export function handoffText(s: SaveInput): string {
   const c = s.counts
   const session = [
     `Turn ${c.turn}`,
-    ...(c.durationMs === null ? [] : [duration(c.durationMs)]),
+    ...(c.durationMs === null ? [] : [durationText(c.durationMs)]),
     `${plural(c.calls, 'tool call')}${c.failed > 0 ? `, ${c.failed} failed` : ''}`,
     ...(c.agents > 0 ? [plural(c.agents, 'agent')] : []),
-    ...(c.costUsd === null ? [] : [`${usd(c.costUsd)}${c.isEstimate ? ' est.' : ''}`]),
+    ...(c.costUsd === null ? [] : [`${usdText(c.costUsd)}${c.isEstimate ? ' est.' : ''}`]),
   ]
   out.push('', '## Session', '', session.join(' · '), '')
   return out.join('\n')
@@ -185,20 +185,20 @@ const SEP: Seg = { text: ' · ' }
 // CODE section's (Phase 5).
 export function handoffLines(h: HandoffView, _columns: number): Line[] {
   if (h.mode === 'off') return []
-  const of = h.point !== null && h.window !== null && h.point !== h.window ? ` of ${tokens(h.point)}` : ''
+  const of = h.point !== null && h.window !== null && h.point !== h.window ? ` of ${tokensText(h.point)}` : ''
   const plain = h.percent === null ? 'ctx –' : `ctx ${h.percent}%${of}`
-  const gauge = (p: number): Seg[] => [{ text: 'ctx ' }, ...barSegs(p), pctSeg(p), { text: of }]
+  const gauge = (p: number): Seg[] => [{ text: 'ctx ' }, ...barSegs(p), percentSeg(p), { text: of }]
   const steps = stepsOf(h.threshold)
   const after = (step: number | null): number | null => steps.find(s => step === null || s > step) ?? null
   let row: Line
   if (h.alfred.state === 'stood-down') {
-    const ctx = h.runway === null ? plain : `ctx ${h.runway.percent}% of ${tokens(h.runway.resumeAt)}`
+    const ctx = h.runway === null ? plain : `ctx ${h.runway.percent}% of ${tokensText(h.runway.resumeAt)}`
     row = [{ text: `${ctx} · handoff by Alfred Code` }]
   }
   else if (h.mode === 'auto') {
     const next = after(h.handled)
     const saved = h.lastSave?.isOk === true
-      ? ` · saved${h.handled === null ? '' : ` at ${h.handled}%`} (${clock(h.lastSave.at)})${next === null ? '' : ` · next save at ${next}%`}`
+      ? ` · saved${h.handled === null ? '' : ` at ${h.handled}%`} (${clockText(h.lastSave.at)})${next === null ? '' : ` · next save at ${next}%`}`
       : ` · saves at ${h.threshold}%`
     row = [{ text: plain + saved }]
   } else if (h.percent === null) row = [{ text: `ctx – · asks at ${h.threshold}%` }]
@@ -215,8 +215,8 @@ export function handoffLines(h: HandoffView, _columns: number): Line[] {
   }
   const out: Line[] = [[{ text: 'HANDOFF', bold: true, tone: 'handoff' }], row]
   const last: SaveResult | null = h.lastSave
-  if (last !== null && !last.isOk) out.push([{ text: `✗ save failed ${clock(last.at)}: ${last.reason ?? 'unknown'}`, tone: 'fail' }])
-  else if (last !== null) out.push([{ text: `last save ${clock(last.at)} · ${HANDOFF_PATH}`, tone: 'dim' }])
+  if (last !== null && !last.isOk) out.push([{ text: `✗ save failed ${clockText(last.at)}: ${last.reason ?? 'unknown'}`, tone: 'fail' }])
+  else if (last !== null) out.push([{ text: `last save ${clockText(last.at)} · ${HANDOFF_PATH}`, tone: 'dim' }])
   return out
 }
 
@@ -231,6 +231,6 @@ export function handoffViewOf(h: Handoff, u: Usage, isWorking: boolean, runway: 
 // What the forecast counts to: the stack's resume trigger over the window while the runway applies and the window is
 // known, else F8's threshold over the window, to the compaction point's moment
 export function forecastTargetOf(h: Handoff, u: Usage, runway: Runway | null): { at: number; label: string } {
-  if (runway !== null && runway.at !== null) return { at: runway.at, label: tokens(runway.resumeAt) }
+  if (runway !== null && runway.at !== null) return { at: runway.at, label: tokensText(runway.resumeAt) }
   return { at: h.point !== null && u.window !== null ? windowThreshold(h.threshold, h.point, u.window) : h.threshold, label: `${h.threshold}%` }
 }

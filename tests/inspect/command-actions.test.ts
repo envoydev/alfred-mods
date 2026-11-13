@@ -5,7 +5,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine, MockClock } from 'claude-code/testing'
 import type { On, RenderSurface, RenderViewport } from 'claude-code'
 
-import { resolve, skippedToast } from '../../hooks/settings/settings'
+import { resolveSettings, skippedToast } from '../../hooks/settings/settings'
 import { STACK_TOASTS } from '../../hooks/stack/stack'
 import { PRESENTATION, SPAWN, START, engine, engineSites, rows, setUser, stubAll, watchState } from '../kit'
 import type { FileStub } from '../kit'
@@ -40,8 +40,8 @@ const measure = ($: Engine, percent: number) =>
 const isBand = (lines: string[]): boolean => lines.some(l => l.startsWith('ctx '))
 
 test('"band" takes "off", and a bad value names it', () => {
-  expect(resolve({ user: { band: 'off' } }, {}).values.band).toBe('off')
-  const r = resolve({ local: { band: 'none' } }, {})
+  expect(resolveSettings({ user: { band: 'off' } }, {}).values.band).toBe('off')
+  const r = resolveSettings({ local: { band: 'none' } }, {})
   expect(skippedToast(r.skipped[0]!, r)).toBe('"band" in .claude/settings.local.json takes "full", "calm" or "off" - using "full" from the default')
 })
 

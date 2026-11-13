@@ -1,6 +1,6 @@
 // The full band's info line: model, effort, speed, cache and times
-import { billingOf, cacheView, minutes } from '../cache/cache'
-import { mins, modelParts, modelText, tokens } from '../core/format'
+import { billingOf, cacheView, minutesLeftText } from '../cache/cache'
+import { minutesText, modelParts, modelText, tokensText } from '../core/format'
 import type { BandInput } from './types'
 import type { Line, Seg } from '../core/types'
 import { timeParts } from './gauges'
@@ -15,24 +15,24 @@ const dimText = (text: string): Line => [{ text, tone: 'dim' }]
 // time, the average output speed, the cache, the last prompt and reply, Claude Code's version
 function infoItems(b: BandInput): Item[] {
   const items: Item[] = []
-  const model = b.meta.model
+  const model = b.session.model
   if (model !== null) {
     const family = modelParts(model)?.family
     const name: Seg = family === undefined ? { text: modelText(model, true) } : { text: modelText(model, true), tone: family }
-    items.push({ keep: 6, forms: [b.meta.effort === null ? [name] : [name, { text: ` ◑ ${b.meta.effort}`, tone: 'dim' }]] })
+    items.push({ keep: 6, forms: [b.session.effort === null ? [name] : [name, { text: ` ◑ ${b.session.effort}`, tone: 'dim' }]] })
   }
-  if (b.usage.startedAt !== null) items.push({ keep: 5, forms: [dimText(mins(b.now - b.usage.startedAt))] })
+  if (b.usage.startedAt !== null) items.push({ keep: 5, forms: [dimText(minutesText(b.now - b.usage.startedAt))] })
   const t = b.totals
   if (t !== undefined && t.stepMs > 0) items.push({ keep: 3, forms: [dimText(`≈${Math.round(t.stepOutput / (t.stepMs / 1000))} tok/s avg`)] })
   if (b.cache.session.read + b.cache.session.write > 0) {
     const v = cacheView(b.cache, billingOf(b.usage.windows), b.now, b.usage.tokens)
-    items.push({ keep: 4, forms: [dimText(v.leftMs === null ? 'cache cold' : `cache warm ${v.tier.isEstimate ? '≈' : ''}${minutes(v.leftMs)}`)] })
+    items.push({ keep: 4, forms: [dimText(v.leftMs === null ? 'cache cold' : `cache warm ${v.tier.isEstimate ? '≈' : ''}${minutesLeftText(v.leftMs)}`)] })
   }
   // The running turn's prompt while one runs; the last turn's, as line 1 of the calm band shows it, otherwise
   const parts = timeParts(b, 2, true)
   if (parts.length > 0) items.push({ keep: 1, forms: parts.map((_, i) => dimText(parts.slice(0, parts.length - i).join(' · '))) })
   // Claude Code's version, from the first second; the first to go when the width runs out
-  if (b.meta.version !== undefined) items.push({ keep: 0.5, forms: [dimText(`CC ${b.meta.version}`)] })
+  if (b.session.version !== undefined) items.push({ keep: 0.5, forms: [dimText(`CC ${b.session.version}`)] })
   return items
 }
 

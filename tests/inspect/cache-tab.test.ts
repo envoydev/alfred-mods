@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { RenderSurface, SessionUsage } from 'claude-code'
 
-import { clock as clockText } from '../../hooks/core/format'
+import { clockText } from '../../hooks/core/format'
 import { PRESENTATION, START, SWITCH, engine, rows, step, stepEngine, stubAll, watchState } from '../kit'
 import type { Cache } from '../../hooks/cache/types'
 import type { Meta } from '../../hooks/session/types'

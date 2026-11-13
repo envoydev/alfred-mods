@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import type { SessionUsage } from 'claude-code'
 
 import { localDate } from '../../hooks/core/forecast'
-import { when } from '../../hooks/core/format'
+import { whenText } from '../../hooks/core/format'
 import { PRESENTATION, SPAWN, START, engine, stubAll, watchState } from '../kit'
 import type { Meta, Totals, Turn, Usage } from '../../hooks/session/types'
 
@@ -64,7 +64,7 @@ test('the 5h window toasts once at 75 and once at 90', async ($, on) => {
   }
 
   expect(toasts).toHaveLength(2)
-  const reset = when(Date.parse('2026-10-28T17:00:00Z'))
+  const reset = whenText(Date.parse('2026-10-28T17:00:00Z'))
   expect(toasts).toEqual([`5h limit at 75%, resets ${reset}`, `5h limit at 90%, resets ${reset}`])
 })
 
@@ -79,7 +79,7 @@ test('the 7d window toasts as 7d with its reset date', async ($, on) => {
     })
   }
 
-  expect(toasts).toEqual([`7d limit at 75%, resets ${when(Date.parse('2026-10-31T09:00:00Z'))}`])
+  expect(toasts).toEqual([`7d limit at 75%, resets ${whenText(Date.parse('2026-10-31T09:00:00Z'))}`])
 })
 
 test('a precompute or skipped compaction is not counted', async ($, on) => {

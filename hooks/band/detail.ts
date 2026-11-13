@@ -22,11 +22,11 @@ function toolsByCalls(stats: Record<string, ToolStat> | undefined): [string, Too
 export function toggleForms(b: BandInput): Line[] {
   const count = (n: number, one: string): string | null => (n === 0 ? null : `${n} ${one}${n === 1 ? '' : 's'}`)
   const calls = toolsByCalls(b.stats).reduce((n, [, s]) => n + s.calls, 0)
-  const dispatched = Object.values(b.meta.agentTypes ?? {}).reduce((n, k) => n + k, 0)
+  const dispatched = Object.values(b.session.agentTypes ?? {}).reduce((n, k) => n + k, 0)
   const running = b.agents.filter(r => isLive(r.status)).length
   const drawn = rulesDrawn(b.rules ?? NO_RULES)
   const tools = count(calls, 'tool')
-  const skills = count(Object.keys(b.meta.skills ?? {}).length, 'skill')
+  const skills = count(Object.keys(b.session.skills ?? {}).length, 'skill')
   const agents = count(dispatched, 'agent')
   const rules = count(drawn.always.length + drawn.byPath.length, 'rule')
   if (tools === null && skills === null && agents === null && rules === null) return []
@@ -43,13 +43,13 @@ export function toggleForms(b: BandInput): Line[] {
 // skills listing alone is no skill, and with by path untracked, no always-on rule is no rule
 export function toolRows(b: BandInput): Line[] {
   const used = toolsByCalls(b.stats)
-  const isResumed = b.meta.isResumed === true
-  const hasSkills = Object.keys(b.meta.skills ?? {}).length > 0
-  const hasAgents = Object.keys(b.meta.agentTypes ?? {}).length > 0
+  const isResumed = b.session.isResumed === true
+  const hasSkills = Object.keys(b.session.skills ?? {}).length > 0
+  const hasAgents = Object.keys(b.session.agentTypes ?? {}).length > 0
   const drawn = rulesDrawn(b.rules ?? NO_RULES)
   const hasRules = drawn.always.length + drawn.byPath.length > 0
-  const skills = skillSegs(b.meta.skills, isResumed)
-  if (b.listing !== undefined && b.listing !== null) skills.push({ text: listedText(b.listing), tone: 'dim' })
+  const skills = skillSegs(b.session.skills, isResumed)
+  if (b.skillListing !== undefined && b.skillListing !== null) skills.push({ text: listedText(b.skillListing), tone: 'dim' })
   const label = (text: string): Seg => ({ text: text.padEnd(ROW_LABEL), tone: 'dim' })
   const under: Seg = { text: ' '.repeat(ROW_LABEL) }
   const row = (name: string, items: Line[]): Line[] => wrapRows(label(name), under, items, b.columns, ROW_JOIN)
@@ -57,7 +57,7 @@ export function toolRows(b: BandInput): Line[] {
   return [
     ...(used.length === 0 ? [] : row('tools:', one(used.map(([key, s]): Seg => ({ text: `${key} ×${s.calls}` }))))),
     ...(hasSkills ? row('skills:', one(skills)) : []),
-    ...(hasAgents ? row('agents:', agentSegs(b.agents, b.meta.agentTypes, isResumed)) : []),
+    ...(hasAgents ? row('agents:', agentSegs(b.agents, b.session.agentTypes, isResumed)) : []),
     ...(hasRules ? row('rules:', ruleSegs(b.rules ?? NO_RULES, isResumed)) : []),
   ]
 }

@@ -16,7 +16,7 @@ import { compactNow } from '../cache/effects'
 import type { Pending, MatchedInput } from '../core/types'
 import { planViewOf, readPlans, readTasks } from '../plan/effects'
 import { runwayOf } from '../stack/stack'
-import { clock, tokens } from '../core/format'
+import { clockText, tokensText } from '../core/format'
 import { loadSettings, resolvedSettings, writeUserField, settingsInForce } from '../settings/effects'
 import { readView } from '../inspect/effects'
 import { toast } from '../core/effects'
@@ -244,10 +244,10 @@ export async function handoffStateLine($: EngineInterface): Promise<string> {
   const ctx = u.tokens === null || point === null ? 'ctx –' : `ctx ${percentOf(u.tokens, point)}%`
   if (h.alfred.state === 'stood-down') {
     const runway = runwayOf(await readStack($), u, (await readMeta($)).model)
-    return `${runway === null ? ctx : `ctx ${runway.percent}% of ${tokens(runway.resumeAt)}`} · handoff by Alfred Code`
+    return `${runway === null ? ctx : `ctx ${runway.percent}% of ${tokensText(runway.resumeAt)}`} · handoff by Alfred Code`
   }
   if (h.mode === 'off') return `Handoff: off · ${ctx}`
-  const saved = h.lastSave?.isOk === true ? ` · last save ${clock(h.lastSave.at)} (${HANDOFF_PATH})` : ''
+  const saved = h.lastSave?.isOk === true ? ` · last save ${clockText(h.lastSave.at)} (${HANDOFF_PATH})` : ''
   return `Handoff: ${h.mode} at ${h.threshold}% · ${ctx}${saved}`
 }
 

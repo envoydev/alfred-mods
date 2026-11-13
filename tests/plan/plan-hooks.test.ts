@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { runs, shownPlan } from '../../hooks/plan/plan'
+import { isPlanRunning, shownPlan } from '../../hooks/plan/plan'
 import { PRESENTATION, SPAWN, START, engine, spawns, stubAll, watchState } from '../kit'
 import { PLAN_JSON, SCORES_JSON, planText } from '../plans'
 import type { Credit, Plans, TaskItem } from '../../hooks/plan/types'
@@ -158,12 +158,12 @@ test('only a plan written this session runs, and a reload keeps when the session
   await clock.advance(300)
   const shown = () => plansOf(state).plans[0]
   expect(plansOf(state).since).toBe(10_000)
-  expect(runs(shown()!, plansOf(state).since)).toBe(false)
+  expect(isPlanRunning(shown()!, plansOf(state).since)).toBe(false)
 
   files.current[PLAN_PATH] = { text: PLAN_JSON, mtimeMs: 12_000 }
   await $.tool.call({ tool: 'Write', file_path: PLAN_PATH, content: '' })
   await clock.advance(300)
-  expect(runs(shown()!, plansOf(state).since)).toBe(true)
+  expect(isPlanRunning(shown()!, plansOf(state).since)).toBe(true)
   await clock.set(20_000)
   await $.session.start(START)
   expect(plansOf(state).since).toBe(10_000)
@@ -175,19 +175,19 @@ test('after /clear a plan from before it stays out, and one written after runs',
   engine(on)
   await $.session.start(START)
   await clock.advance(300)
-  expect(runs(plansOf(state).plans[0]!, plansOf(state).since)).toBe(true)
+  expect(isPlanRunning(plansOf(state).plans[0]!, plansOf(state).since)).toBe(true)
 
   await clock.set(20_000)
   await $.classic.SessionStart({ source: 'clear' })
   expect(plansOf(state).since).toBe(20_000)
   expect(state.get('credit')).toEqual({ slices: {}, mine: {} })
   await clock.advance(300)
-  expect(runs(plansOf(state).plans[0]!, plansOf(state).since)).toBe(false)
+  expect(isPlanRunning(plansOf(state).plans[0]!, plansOf(state).since)).toBe(false)
   files.current[PLAN_PATH] = { text: PLAN_JSON, mtimeMs: 25_000 }
   await clock.set(25_000)
   await $.tool.call({ tool: 'Write', file_path: PLAN_PATH, content: '' })
   await clock.advance(300)
-  expect(runs(plansOf(state).plans[0]!, plansOf(state).since)).toBe(true)
+  expect(isPlanRunning(plansOf(state).plans[0]!, plansOf(state).since)).toBe(true)
 })
 
 // Task 6: crediting working time. The plan runs (written after the start at 0) with S4 in progress.

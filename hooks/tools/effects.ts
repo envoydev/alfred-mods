@@ -5,14 +5,14 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 import type { ToolCall, CompactCall, Failure, Outcome, Quiet, ToolStat } from './types'
 import { addRunningCall, addLoadedSkill, countMainCall, readLive, settleRunningCall } from '../session/effects'
-import { classify, fold, tallyOutcome, targetOf, toolKey } from './outcome'
+import { classifyCall, foldFailure, tallyOutcome, targetOf, toolKey } from './outcome'
 import { isInspectDrawn, readView } from '../inspect/effects'
 import { isTrackedLoop, updateAgentRow } from '../agents/effects'
 import { keepNewest } from '../core/collections'
 import { settingsInForce } from '../settings/effects'
 import { syncStatusLine } from '../band/effects'
 import { actionOf } from '../agents/agents'
-import { isAllWait, waitOf } from '../plan/steptime'
+import { isAllWait, waitMsOf } from '../plan/steptime'
 import { mask } from '../rec/mask'
 import { followEditedFile, pollPlace, workingFolder } from '../place/effects'
 import type { Pending, HookInput, HookNext, MatchedInput, MatchedNext } from '../core/types'
@@ -103,7 +103,7 @@ export async function addFailureRow($: EngineInterface, id: string, call: ToolCa
       : old.count > 1 ? list.map(f => (f === old ? { ...f, count: f.count - 1 } : f))
       : list.filter(f => f !== old)
     // A call settled again keeps its row's number
-    const out = fold(rest, old !== undefined && old.count === 1 && old.n !== undefined ? { ...row, n: old.n } : row)
+    const out = foldFailure(rest, old !== undefined && old.count === 1 && old.n !== undefined ? { ...row, n: old.n } : row)
     call.failureId = out[out.length - 1]?.id ?? null
     return out
   })
@@ -129,7 +129,7 @@ export function compactCallOf(id: string | undefined, c: { tool: string; input: 
 
 // Counts a settled call, or counts it again when a later event changed its outcome
 export async function settleToolCall($: EngineInterface, id: string, call: ToolCall): Promise<void> {
-  const { outcome, reason, isNew, by } = classify(call.facts)
+  const { outcome, reason, isNew, by } = classifyCall(call.facts)
   rowMemory.outcomes.delete(id)
   // In auto mode a check's ask that no one saw and no hook refused was the classifier's allow (outcome.ts)
   const f = call.facts
@@ -222,7 +222,7 @@ export async function trackToolCall($: EngineInterface, e: HookInput<'tool.call'
   await settleToolCall($, e.tool_use_id, call)
   const endedAt = await $.clock.now()
   const ms = endedAt - startedAt
-  const wait = waitOf({ tool: e.tool, ms, isMain: call.agentId === null, isAsked: call.facts.asked, outcome: call.outcome, durationMs: call.durationMs })
+  const wait = waitMsOf({ tool: e.tool, ms, isMain: call.agentId === null, isAsked: call.facts.asked, outcome: call.outcome, durationMs: call.durationMs })
   let isClosed = false
   if (isWait) isClosed = await closeCallWait($, loop, e.tool_use_id, endedAt)
   if (wait === null) call.pendingMs = ms

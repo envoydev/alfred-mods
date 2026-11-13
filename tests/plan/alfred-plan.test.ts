@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { parseAlfredScoring, parseAlfredStatus } from '../../hooks/plan/alfredplan'
-import { planView, runs, scoresView } from '../../hooks/plan/plan'
+import { planView, isPlanRunning, scoresView } from '../../hooks/plan/plan'
 import { SCORING_JSON, STATUS_JSON } from '../plans'
 
 const status = (over: Record<string, unknown> = {}): string => JSON.stringify({ ...JSON.parse(STATUS_JSON), ...over })
@@ -79,13 +79,13 @@ test('while grading runs (released null) the score is the newest round\'s, marke
 test('a plan Alfred Code closed no longer runs, whatever its tasks say', () => {
   const plan = parseAlfredStatus(status({ completedAt: '2026-11-13T12:00Z' }))
   if (plan === null) throw new Error('fixture')
-  expect(runs({ name: 'p', mtimeMs: 10, size: 1, value: plan, isInvalid: false, isNamed: true }, 0)).toBe(false)
-  expect(runs({ name: 'p', mtimeMs: 10, size: 1, value: plan, isInvalid: false }, 0)).toBe(false)
+  expect(isPlanRunning({ name: 'p', mtimeMs: 10, size: 1, value: plan, isInvalid: false, isNamed: true }, 0)).toBe(false)
+  expect(isPlanRunning({ name: 'p', mtimeMs: 10, size: 1, value: plan, isInvalid: false }, 0)).toBe(false)
 })
 
 test('the named plan runs once begun even when its file was written before this session began', () => {
   const plan = parseAlfredStatus(STATUS_JSON)
   if (plan === null) throw new Error('fixture')
-  expect(runs({ name: 'p', mtimeMs: 10, size: 1, value: plan, isInvalid: false, isNamed: true }, 1000)).toBe(true)
-  expect(runs({ name: 'p', mtimeMs: 10, size: 1, value: plan, isInvalid: false }, 1000)).toBe(false)
+  expect(isPlanRunning({ name: 'p', mtimeMs: 10, size: 1, value: plan, isInvalid: false, isNamed: true }, 1000)).toBe(true)
+  expect(isPlanRunning({ name: 'p', mtimeMs: 10, size: 1, value: plan, isInvalid: false }, 1000)).toBe(false)
 })

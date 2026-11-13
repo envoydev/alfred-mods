@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine, MockClock } from 'claude-code/testing'
 import type { On, RenderSurface, SessionUsage } from 'claude-code'
 
-import { clock as clockText } from '../../hooks/core/format'
+import { clockText } from '../../hooks/core/format'
 import { HANDOFF_USAGE as USAGE } from '../../hooks/handoff/handoff'
 import { KEYS } from '../../hooks/rec/samples'
 import { NO_READING, PRESENTATION, SPAWN, START, engine, gitResult, rows, setUser, step, stepEngine, stubAll, watchState } from '../kit'

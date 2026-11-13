@@ -3,12 +3,12 @@
 // stored, which outlives a reload.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
-import type { Close, Credit, Plan, PlanDrawing, PlanView, Plans, Scores, TaskItem, Watched } from './types'
+import type { SliceClose, Credit, Plan, PlanDrawing, PlanView, Plans, Scores, TaskItem, Watched } from './types'
 import type { Pending } from '../core/types'
-import { FINISH_SHOWN_MS, PLANS_DIR, SCORES_DIR, creditedPlan, isPlanDone, newUserNotes, parsePlan, parseScores, planView, runs, scoresView, shownPlan, stepStatusKey, taskStatusKey, taskView, tasksAfter } from './plan'
-import { closeOf, closeSlices, closeWait, liveSpans, mineOf, openWait, overheadKey, sliceMs, stepKey, sumTimes } from './steptime'
+import { FINISH_SHOWN_MS, PLANS_DIR, SCORES_DIR, creditedPlan, isPlanDone, newUserNotes, parsePlan, parseScores, planView, isPlanRunning, scoresView, shownPlan, stepStatusKey, taskStatusKey, taskView, tasksAfter } from './plan'
+import { closeTargetOf, closeSlices, closeWait, liveSpans, sessionTimesOf, openWait, overheadKey, sliceMs, stepKey, sumTimes } from './steptime'
 import { parseAlfredScoring, parseAlfredStatus } from './alfredplan'
-import { mins, oneLine } from '../core/format'
+import { minutesText, oneLine } from '../core/format'
 import { scoresLabel } from './planlines'
 import { toast } from '../core/effects'
 import { isLive, stepMarkOf } from '../agents/agents'
@@ -116,14 +116,14 @@ export async function closeLoopSlices($: EngineInterface, pending: Pending, loop
 }
 
 // Where each named open loop's span goes (Decision 9)
-export async function closeTargetsOf($: EngineInterface, c: Credit, loops: string[], p: Plans, shown: Watched<Plan> | 'tasks' | null): Promise<Close[]> {
+export async function closeTargetsOf($: EngineInterface, c: Credit, loops: string[], p: Plans, shown: Watched<Plan> | 'tasks' | null): Promise<SliceClose[]> {
   const rows = await readAgents($)
   const session = await $.session.id()
   return loops.map(loop => {
     const row = rows.find(r => r.id === loop)
     const lines = loop === 'main' ? null : row === undefined ? undefined : { plan: row.plan, task: row.task }
     const slice = c.slices[loop] ?? { at: 0, waitMs: 0, named: [] }
-    return closeOf(loop, slice, lines, p.plans, p.since, shown === 'tasks' ? null : shown, session)
+    return closeTargetOf(loop, slice, lines, p.plans, p.since, shown === 'tasks' ? null : shown, session)
   })
 }
 
@@ -185,7 +185,7 @@ export async function planViewOf($: EngineInterface, p: Plans, items: TaskItem[]
   const v = planView(w.value, p.times[w.name] ?? {}, (p.overhead[w.name] ?? 0) + live.overhead, live.steps, now)
   // Alfred Code's named plan draws while open, begun or awaiting approval
   const isNamed = p.alfred !== null && p.alfred !== undefined && p.alfred.name === w.name && !v.isFinished
-  return { v, isRunning: isNamed || runs(w, p.since) || (doneAt !== undefined && now - doneAt < FINISH_SHOWN_MS) }
+  return { v, isRunning: isNamed || isPlanRunning(w, p.since) || (doneAt !== undefined && now - doneAt < FINISH_SHOWN_MS) }
 }
 
 // A loop's slice opens at its turn's start; the main slice marks each live agent that names a step
@@ -218,7 +218,7 @@ export async function addWaitTime($: EngineInterface, loop: string, ms: number, 
 // A session resumed under its own id starts from its stored totals, so its first close adds to them
 export async function seedSessionTimes($: EngineInterface): Promise<void> {
   if (Object.keys((await readCredit($)).mine).length > 0) return
-  const mine = mineOf(await readStoredTimes($), await $.session.id())
+  const mine = sessionTimesOf(await readStoredTimes($), await $.session.id())
   if (Object.keys(mine).length > 0) await updateCredit($, c => ({ ...c, mine: { ...mine, ...c.mine } }))
 }
 
@@ -234,8 +234,8 @@ export async function reloadPlanFiles($: EngineInterface, pending: Pending): Pro
   // finished, then kept 10 minutes after it finished
   // A status file that will not read, or whose `plan` will not, says nothing: the plan it named stays named
   const s = await readStack($)
-  const isSaid = s.state === 'used' && !s.ignored.includes('plan')
-  const named = isSaid ? s.plan : before.alfred?.folder ?? null
+  const isPlanNamed = s.state === 'used' && !s.ignored.includes('plan')
+  const named = isPlanNamed ? s.plan : before.alfred?.folder ?? null
   const lingering = named === null ? before.alfred : null
   const folder = named ?? lingering?.folder ?? null
   // The last read is this folder's only when the folder is the same, so a new folder never shows the old plan
@@ -268,7 +268,7 @@ export async function reloadPlanFiles($: EngineInterface, pending: Pending): Pro
     seen.add(key)
     if (had !== null && !isPlanDone(had)) {
       finished[w.name] = now
-      due.push(`Plan done: ${plan.title} in ${mins(planView(plan, times[w.name] ?? {}, overhead[w.name] ?? 0, {}, now).workedMs)}`)
+      due.push(`Plan done: ${plan.title} in ${minutesText(planView(plan, times[w.name] ?? {}, overhead[w.name] ?? 0, {}, now).workedMs)}`)
     }
   }
   const toasted = [...seen].slice(-100)

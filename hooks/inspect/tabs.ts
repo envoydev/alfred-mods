@@ -1,15 +1,15 @@
 // Each /inspect tab, from the session's values to lines of styled segments.
 import { LOOPS_NOTE, agentTime, agentTree, isLive, laneFit, lanesOf, loopsLine, reportLine, statusGlyph, toolSummary } from '../agents/agents'
-import { barSegs, pctSeg, windowsInOrder } from '../band/gauges'
+import { barSegs, percentSeg, windowsInOrder } from '../band/gauges'
 import { wrapRows } from '../band/wrap'
 import { skillSegs } from '../band/detail'
-import { cacheWarning, working } from '../band/working'
+import { cacheWarning, workingLine } from '../band/working'
 import { REC_MARK } from '../band/band'
 import { IDLE_COMPACT_MS, billingOf, cacheLine, cacheView, selfCompacts, toastAt } from '../cache/cache'
-import { clock, duration, fitLine, modelParts, modelText, printable, tokens, usd, when } from '../core/format'
-import { pace, turnsLeft } from '../core/forecast'
+import { clockText, durationText, fitLine, modelParts, modelText, printable, tokensText, usdText, whenText } from '../core/format'
+import { paceForecast, turnsLeft } from '../core/forecast'
 import { handoffLines } from '../handoff/handoff'
-import { numberOf } from '../tools/outcome'
+import { failureNumberOf } from '../tools/outcome'
 import { PARTS_LABEL, listedText, loadedTexts, partsLines } from '../context/parts'
 import { planSection } from '../plan/planlines'
 import { recStatus } from '../rec/rec'
@@ -92,11 +92,11 @@ export function agentsLines(b: TabInput): Line[] {
   if (order.length > 0) head.push({ text: `   ${order.map(k => `${k} ${counts.get(k)}`).join(' · ')}`, tone: 'dim' })
   const root: Line = [b.isWorking ? { text: '⟳ main chat', bold: true } : { text: '✓', tone: 'ok' }]
   if (!b.isWorking) root.push({ text: ' main chat' })
-  if (b.meta.model !== null) {
-    const parts = modelParts(b.meta.model)
-    root.push({ text: ' · ' }, parts === null ? { text: b.meta.model } : { text: modelText(b.meta.model), tone: parts.family })
+  if (b.session.model !== null) {
+    const parts = modelParts(b.session.model)
+    root.push({ text: ' · ' }, parts === null ? { text: b.session.model } : { text: modelText(b.session.model), tone: parts.family })
   }
-  root.push({ text: ` · ${b.meta.mainCalls} ${b.meta.mainCalls === 1 ? 'tool' : 'tools'}` })
+  root.push({ text: ` · ${b.session.mainCalls} ${b.session.mainCalls === 1 ? 'tool' : 'tools'}` })
   const out: Line[] = [head]
   // Two or more agents on one time axis, where the pane has room for a 10-cell bar (spec C2)
   const lanes = lanesOf(b.agents, b.now)
@@ -129,7 +129,7 @@ export function agentsLines(b: TabInput): Line[] {
     }
     const used = toolSummary(r.tools)
     const parts: Line[] = []
-    if (r.contextTokens !== null) parts.push([{ text: `ctx ${tokens(r.contextTokens)}` }])
+    if (r.contextTokens !== null) parts.push([{ text: `ctx ${tokensText(r.contextTokens)}` }])
     if (used.tools.length > 0) parts.push([{ text: `tools ${used.tools.join(' · ')}` }])
     if (used.skills.length > 0) parts.push([{ text: 'skills ' }, { text: used.skills.join(' · '), tone: 'skill' }])
     if (parts.length > 0) out.push([{ text: indent, tone: 'dim' }, ...parts.flatMap((p, i) => (i === 0 ? p : [{ text: '   ' }, ...p]))])
@@ -162,14 +162,14 @@ export function cacheLines(b: TabInput): Line[] {
   if (reused.length > 0) out.push([{ text: 'Reused', width: LABEL }, { text: reused.join(' · ') }])
   const t = v.tier
   const source = t.from === 'pin' ? `${t.tier}, set by ${c.config.pin?.from ?? ''}`
-    : t.from === 'switch' ? `${t.tier}, from the model switch at ${clock(c.tierAt ?? 0)}`
+    : t.from === 'switch' ? `${t.tier}, from the model switch at ${clockText(c.tierAt ?? 0)}`
     : `≈${t.tier}, Claude Code's default ${BILLED[billing] ?? ''}`
   const priced = c.ratePerToken !== null && c.rateModel !== null ? ` · rewrite priced on ${modelText(c.rateModel, true)}` : ''
   out.push([{ text: 'Tier', width: LABEL }, { text: `${source}${priced}` }])
   const warnAt = toastAt(c, billing, b.usage.tokens)
   if (c.lastAt !== null && selfCompacts(c, billing, b.usage.tokens)) {
-    const warn = warnAt === null ? '' : `, else a warning at ≈${clock(warnAt)}`
-    out.push([{ text: 'Idle', width: LABEL }, { text: `Claude Code should compact it itself at ≈${clock(c.lastAt + IDLE_COMPACT_MS)}${warn}` }])
+    const warn = warnAt === null ? '' : `, else a warning at ≈${clockText(warnAt)}`
+    out.push([{ text: 'Idle', width: LABEL }, { text: `Claude Code should compact it itself at ≈${clockText(c.lastAt + IDLE_COMPACT_MS)}${warn}` }])
   }
   return out
 }
@@ -188,7 +188,7 @@ function agentsSection(b: TabInput): Line[] {
     if (r.effort !== null) line.push({ text: ` ◑ ${r.effort}` })
     line.push({ text: ']' })
     if (r.action !== null) line.push({ text: ` ▸ ${r.action}` })
-    if (r.contextTokens !== null) line.push({ text: `   ctx ${tokens(r.contextTokens)}`, tone: 'dim' })
+    if (r.contextTokens !== null) line.push({ text: `   ctx ${tokensText(r.contextTokens)}`, tone: 'dim' })
     out.push(line)
   }
   if (skills !== null) out.push(skills)
@@ -203,7 +203,7 @@ const parse = (iso: string | null): number | null => {
 // The failures the newest first, each with the number '/inspect show <n>' and 'copy <n>' take (the user, 2026-11-12:
 // 'right now I need to count and order'), right-aligned to the widest
 function numberedFailures(b: TabInput): Line[] {
-  const listed = b.failures.map((f, i) => ({ f, n: numberOf(f, i) })).reverse()
+  const listed = b.failures.map((f, i) => ({ f, n: failureNumberOf(f, i) })).reverse()
   const width = Math.max(0, ...listed.map(x => String(x.n).length))
   return listed.flatMap(x => failureRows(x.f, b.view.shown, x.n, width))
 }
@@ -221,8 +221,8 @@ export function paneCommands(failures: Failure[], agents: AgentRow[]): Record<st
     'handoff-dismiss': '/auto-handoff later', 'stack-fill': '/inspect fill',
   }
   failures.forEach((f, i) => {
-    out[`show-${f.id}`] = `/inspect show ${numberOf(f, i)}`
-    out[`copy-${f.id}`] = `/inspect copy ${numberOf(f, i)}`
+    out[`show-${f.id}`] = `/inspect show ${failureNumberOf(f, i)}`
+    out[`copy-${f.id}`] = `/inspect copy ${failureNumberOf(f, i)}`
   })
   reportRows(agents).forEach((r, i) => {
     out[`report-${r.id}`] = `/inspect report ${i + 1}`
@@ -249,7 +249,7 @@ function failureRows(f: Failure, shown: string[], n: number, width: number): Lin
   const line: Line = [
     { text: `${String(n).padStart(width)} ` },
     { text: isError ? '✗ ' : '⊘ ', tone: isError ? 'fail' : 'warn' },
-    { text: `${clock(f.at)} `, tone: 'dim' },
+    { text: `${clockText(f.at)} `, tone: 'dim' },
     { text: f.tool },
   ]
   if (f.target !== '') line.push({ text: `  ${f.target}`, tone: 'dim' })
@@ -266,7 +266,7 @@ export function nowLines(b: TabInput): Line[] {
   // REC's status first while it is on
   if (b.rec !== undefined && b.rec.level !== 'off') out.push([REC_MARK, { text: recStatus(b.rec.level, b.rec.words).slice('● REC'.length) }])
   // The turn's line here; the plan has its own section
-  if (b.isWorking) out.push(working({ ...b, plan: null }, false))
+  if (b.isWorking) out.push(workingLine({ ...b, plan: null }, false))
   if (b.plan !== null) out.push(...planSection(b.plan, b.columns))
   if (b.handoff !== undefined) out.push(...handoffLines(b.handoff, b.columns))
   if (b.stack !== undefined) out.push(...stackLines(b.stack.view, { ...b.stack, columns: b.columns }))
@@ -291,22 +291,22 @@ function badge(model: string | null): Seg {
 function skillsRow(skills: Record<string, number> | undefined, isResumed: boolean, p: Parts, columns: number): Line[] {
   if (loadedTexts(skills).length === 0 && p.skills === undefined) return []
   const items = skillSegs(skills, isResumed)
-  if (p.skills !== undefined) items.push({ text: `${listedText(p.skills)} · ${tokens(p.skills.tokens)}` })
+  if (p.skills !== undefined) items.push({ text: `${listedText(p.skills)} · ${tokensText(p.skills.tokens)}` })
   return wrapRows({ text: 'Skills', width: PARTS_LABEL }, { text: '', width: PARTS_LABEL }, items.map(s => [s]), columns, ' · ')
 }
 
 export function usageLines(b: TabInput): Line[] {
   const u = b.usage
-  const head: Line = [{ text: 'Usage  ', bold: true }, badge(b.meta.model)]
-  if (b.meta.effort !== null) head.push({ text: ` ◑ ${b.meta.effort}`, tone: 'dim' })
-  if (u.startedAt !== null) head.push({ text: `   session ${duration(b.now - u.startedAt)}`, tone: 'dim' })
+  const head: Line = [{ text: 'Usage  ', bold: true }, badge(b.session.model)]
+  if (b.session.effort !== null) head.push({ text: ` ◑ ${b.session.effort}`, tone: 'dim' })
+  if (u.startedAt !== null) head.push({ text: `   session ${durationText(b.now - u.startedAt)}`, tone: 'dim' })
   const out: Line[] = [head]
 
   const ctx: Line = [{ text: 'Context', width: LABEL }]
   if (u.percent === null) ctx.push({ text: '—', tone: 'dim' })
   else {
-    ctx.push(...barSegs(u.percent), pctSeg(u.percent))
-    if (u.tokens !== null && u.window !== null) ctx.push({ text: `   ${tokens(u.tokens)} / ${tokens(u.window)}`, tone: 'dim' })
+    ctx.push(...barSegs(u.percent), percentSeg(u.percent))
+    if (u.tokens !== null && u.window !== null) ctx.push({ text: `   ${tokensText(u.tokens)} / ${tokensText(u.window)}`, tone: 'dim' })
     const series = b.turns.flatMap(t => (t.contextPercent === null ? [] : [t.contextPercent]))
     const left = turnsLeft(series, b.forecast?.at)
     if (left !== null) ctx.push({ text: `   ≈${left} turns to ${b.forecast?.label ?? '80%'}`, tone: 'dim' })
@@ -317,25 +317,25 @@ export function usageLines(b: TabInput): Line[] {
 
   for (const w of windowsInOrder(u.windows)) {
     const name = w.kind === 'five_hour' ? '5h' : w.kind === 'seven_day' ? '7d' : w.kind
-    const line: Line = [{ text: name, width: LABEL }, ...barSegs(w.percentUsed), pctSeg(w.percentUsed, storedMark(u.windowsAt))]
+    const line: Line = [{ text: name, width: LABEL }, ...barSegs(w.percentUsed), percentSeg(w.percentUsed, storedMark(u.windowsAt))]
     const reset = parse(w.resetsAt)
-    if (reset !== null) line.push({ text: `   resets ${when(reset)}`, tone: 'dim' })
-    const p = pace(w.kind, b.pace[w.kind]?.points ?? [], reset, b.now)
+    if (reset !== null) line.push({ text: `   resets ${whenText(reset)}`, tone: 'dim' })
+    const p = paceForecast(w.kind, b.pace[w.kind]?.points ?? [], reset, b.now)
     if (p === 'on-pace') line.push({ text: '   on pace', tone: 'ok' })
-    else if (p !== null) line.push({ text: `   full ≈${clock(p.limitAt)}`, tone: 'warn' })
+    else if (p !== null) line.push({ text: `   full ≈${clockText(p.limitAt)}`, tone: 'warn' })
     out.push(line)
   }
 
-  const cost = [u.costUsd === null ? null : `${usd(u.costUsd)} session`, u.todayUsd === null ? null : `${usd(u.todayUsd)} today`]
+  const cost = [u.costUsd === null ? null : `${usdText(u.costUsd)} session`, u.todayUsd === null ? null : `${usdText(u.todayUsd)} today`]
     .filter((part): part is string => part !== null)
   if (cost.length > 0) out.push([{ text: 'Cost', width: LABEL }, { text: `${cost.join(' · ')}${u.windows.length > 0 ? ', est.' : ''}` }])
 
   const t = b.totals
   // Output over the main loop's request time, first token and the hooks beneath included: a throughput, not a decode speed
   const rate = t.stepMs > 0 ? ` · ≈${Math.round(t.stepOutput / (t.stepMs / 1000))} tok/s avg` : ''
-  out.push([{ text: 'Tokens', width: LABEL }, { text: `in ${tokens(t.input)} · out ${tokens(t.output)} · cache read ${tokens(t.cacheRead)} · cache write ${tokens(t.cacheWrite)}${rate}` }])
-  if (b.parts !== undefined) out.push(...partsLines(b.parts), ...skillsRow(b.meta.skills, b.meta.isResumed === true, b.parts, b.columns))
-  out.push([{ text: `Compactions ${b.meta.compactions}${b.meta.lastCompactAt === null ? '' : `, at ${clock(b.meta.lastCompactAt)}`}` }])
+  out.push([{ text: 'Tokens', width: LABEL }, { text: `in ${tokensText(t.input)} · out ${tokensText(t.output)} · cache read ${tokensText(t.cacheRead)} · cache write ${tokensText(t.cacheWrite)}${rate}` }])
+  if (b.parts !== undefined) out.push(...partsLines(b.parts), ...skillsRow(b.session.skills, b.session.isResumed === true, b.parts, b.columns))
+  out.push([{ text: `Compactions ${b.session.compactions}${b.session.lastCompactAt === null ? '' : `, at ${clockText(b.session.lastCompactAt)}`}` }])
   return out
 }
 
@@ -385,8 +385,8 @@ export function timelineLines(turns: Turn[], rows: number, isEstimate: boolean, 
   if (turns.length === 0) out.push([{ text: 'No turns yet.', tone: 'dim' }])
   for (const t of [...turns].reverse().slice(0, rows)) {
     const cells = pick([
-      String(t.n), t.promptAt === null ? '—' : clock(t.promptAt), clock(t.replyAt), duration(t.durationMs), `${tokens(t.tokensIn)} / ${tokens(t.tokensOut)}`,
-      String(t.tools), t.spendUsd === undefined || t.spendUsd === null ? '-' : usd(t.spendUsd),
+      String(t.n), t.promptAt === null ? '—' : clockText(t.promptAt), clockText(t.replyAt), durationText(t.durationMs), `${tokensText(t.tokensIn)} / ${tokensText(t.tokensOut)}`,
+      String(t.tools), t.spendUsd === undefined || t.spendUsd === null ? '-' : usdText(t.spendUsd),
     ])
     out.push([...timelineRow(cells, widths, {}, spend), t.failures > 0 ? { text: String(t.failures), tone: 'fail' } : { text: '0', tone: 'dim' }])
   }

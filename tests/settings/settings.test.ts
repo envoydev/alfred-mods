@@ -1,14 +1,14 @@
 import { expect, test } from 'claude-code/testing'
 
-import { DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast, writeField } from '../../hooks/settings/settings'
-import type { Field, Resolved, Skip, Source, Values } from '../../hooks/settings/types'
+import { DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, sourceFileName, resolveSettings, skippedToast, writeField } from '../../hooks/settings/settings'
+import type { Field, ResolvedSettings, Skip, Source, SettingsValues } from '../../hooks/settings/types'
 
 // A valid value for each field that differs from its default, and a second one that differs from both
-const ONE: Values = { band: 'calm', bandPlace: 'under', bandRows: false, quiet: false, rec: 'on', handoff: 'auto', handoffAt: 70 }
-const TWO: Values = { band: 'full', bandPlace: 'above', bandRows: true, quiet: true, rec: 'strict', handoff: 'off', handoffAt: 60 }
+const ONE: SettingsValues = { band: 'calm', bandPlace: 'under', bandRows: false, quiet: false, rec: 'on', handoff: 'auto', handoffAt: 70 }
+const TWO: SettingsValues = { band: 'full', bandPlace: 'above', bandRows: true, quiet: true, rec: 'strict', handoff: 'off', handoffAt: 60 }
 
 // The first skip a resolve listed
-function skipOf(r: Resolved): Skip {
+function skipOf(r: ResolvedSettings): Skip {
   const skip = r.skipped[0]
   if (skip === undefined) throw new Error('nothing skipped')
   return skip
@@ -21,12 +21,12 @@ test('the fields in their order, the sources highest first', () => {
 
 test('each field from each source', () => {
   for (const field of FIELDS) {
-    const alone = resolve({ user: { [field]: ONE[field] } }, {})
+    const alone = resolveSettings({ user: { [field]: ONE[field] } }, {})
     expect(alone.values[field]).toEqual(ONE[field])
     expect(alone.from[field]).toBe('user')
     const pairs: [Source, Source][] = [['local', 'user'], ['flag', 'local'], ['policy', 'flag'], ['project', 'user']]
     for (const [high, low] of pairs) {
-      const r = resolve({ [high]: { [field]: TWO[field] }, [low]: { [field]: ONE[field] } }, {})
+      const r = resolveSettings({ [high]: { [field]: TWO[field] }, [low]: { [field]: ONE[field] } }, {})
       expect(r.values[field]).toEqual(TWO[field])
       expect(r.from[field]).toBe(high)
     }
@@ -34,30 +34,30 @@ test('each field from each source', () => {
 })
 
 test('a bad value falls to the file below', () => {
-  const r = resolve({ local: { band: 'compact' }, user: { band: 'calm' } }, {})
+  const r = resolveSettings({ local: { band: 'compact' }, user: { band: 'calm' } }, {})
   expect(r.values.band).toBe('calm')
   expect(r.from.band).toBe('user')
   expect(r.skipped).toEqual([{ field: 'band', source: 'local' }])
   for (const bad of [100, 9, 80.5, '80']) {
-    const b = resolve({ user: { handoffAt: bad } }, {})
+    const b = resolveSettings({ user: { handoffAt: bad } }, {})
     expect(b.values.handoffAt).toBe(80)
     expect(b.from.handoffAt).toBe('default')
     expect(b.skipped).toEqual([{ field: 'handoffAt', source: 'user' }])
   }
-  const rows = resolve({ project: { bandRows: 'no' } }, {})
+  const rows = resolveSettings({ project: { bandRows: 'no' } }, {})
   expect(rows.values.bandRows).toBe(true)
   expect(rows.skipped).toEqual([{ field: 'bandRows', source: 'project' }])
 })
 
 test('a bad value under the one in use is not told', () => {
-  const r = resolve({ local: { band: 'calm' }, user: { band: 'compact' } }, {})
+  const r = resolveSettings({ local: { band: 'calm' }, user: { band: 'compact' } }, {})
   expect(r.values.band).toBe('calm')
   expect(r.skipped).toEqual([])
 })
 
 test('a non-object key gives that file nothing', () => {
   for (const local of ['on', ['x'], null, 3, true]) {
-    const r = resolve({ local, user: { band: 'calm', rec: 'on' } }, {})
+    const r = resolveSettings({ local, user: { band: 'calm', rec: 'on' } }, {})
     expect(r.values.band).toBe('calm')
     expect(r.from.band).toBe('user')
     expect(r.values.rec).toBe('on')
@@ -66,23 +66,23 @@ test('a non-object key gives that file nothing', () => {
 })
 
 test('unknown fields are ignored', () => {
-  const r = resolve({ user: { rows: false, Band: 'calm' } }, {})
+  const r = resolveSettings({ user: { rows: false, Band: 'calm' } }, {})
   expect(r.values).toEqual(DEFAULTS)
   expect(r.skipped).toEqual([])
   expect(r.userFields).toEqual([])
 })
 
 test('the old layer sits under the user file', () => {
-  const alone = resolve({}, { rec: 'strict' })
+  const alone = resolveSettings({}, { rec: 'strict' })
   expect(alone.values.rec).toBe('strict')
   expect(alone.from.rec).toBe('legacy')
-  const under = resolve({ user: { rec: 'off' } }, { rec: 'strict' })
+  const under = resolveSettings({ user: { rec: 'off' } }, { rec: 'strict' })
   expect(under.values.rec).toBe('off')
   expect(under.from.rec).toBe('user')
 })
 
 test('the defaults', () => {
-  const r = resolve({}, {})
+  const r = resolveSettings({}, {})
   expect(r.values).toEqual(DEFAULTS)
   expect(DEFAULTS).toEqual({ band: 'full', bandPlace: 'above', bandRows: true, quiet: true, rec: 'off', handoff: 'ask', handoffAt: 80 })
   for (const field of FIELDS) expect(r.from[field]).toBe('default')
@@ -91,25 +91,25 @@ test('the defaults', () => {
 })
 
 test('rec follows the order', () => {
-  const r = resolve({ project: { rec: 'off' }, user: { rec: 'on' } }, {})
+  const r = resolveSettings({ project: { rec: 'off' }, user: { rec: 'on' } }, {})
   expect(r.values.rec).toBe('off')
   expect(r.from.rec).toBe('project')
 })
 
 test('userFields lists the fields the user file gives', () => {
-  expect(resolve({ user: { band: 'calm', rec: 'bad' } }, {}).userFields).toEqual(['band'])
-  const fields: Field[] = resolve({ local: { band: 'full' }, user: { band: 'calm', handoffAt: 70 } }, {}).userFields
+  expect(resolveSettings({ user: { band: 'calm', rec: 'bad' } }, {}).userFields).toEqual(['band'])
+  const fields: Field[] = resolveSettings({ local: { band: 'full' }, user: { band: 'calm', handoffAt: 70 } }, {}).userFields
   expect(fields).toEqual(['band', 'handoffAt'])
 })
 
 test('the skipped toast names the file, the values and the value in use', () => {
-  const r = resolve({ local: { band: 'compact' }, user: { band: 'calm' } }, {})
+  const r = resolveSettings({ local: { band: 'compact' }, user: { band: 'calm' } }, {})
   expect(skippedToast(skipOf(r), r)).toBe('"band" in .claude/settings.local.json takes "full", "calm" or "off" - using "calm" from ~/.claude/settings.json')
-  const at = resolve({ user: { handoffAt: 100 } }, {})
+  const at = resolveSettings({ user: { handoffAt: 100 } }, {})
   const text = skippedToast(skipOf(at), at)
   expect(text).toBe('"handoffAt" in ~/.claude/settings.json takes a whole number from 10 to 95 - using 80 from the default')
   expect(text).not.toContain('100')
-  const legacy = resolve({ flag: { rec: 'loud' } }, { rec: 'on' })
+  const legacy = resolveSettings({ flag: { rec: 'loud' } }, { rec: 'on' })
   expect(skippedToast(skipOf(legacy), legacy)).toBe('"rec" in --settings takes "off", "on" or "strict" - using "on" from an earlier command')
   const each: [Field, unknown, string][] = [
     ['bandPlace', 'below', '"above" or "under"'],
@@ -118,19 +118,19 @@ test('the skipped toast names the file, the values and the value in use', () => 
     ['handoff', 'never', '"ask", "auto" or "off"']
   ]
   for (const [field, bad, values] of each) {
-    const b = resolve({ policy: { [field]: bad } }, {})
+    const b = resolveSettings({ policy: { [field]: bad } }, {})
     expect(skippedToast(skipOf(b), b)).toBe(`"${field}" in managed settings takes ${values} - using ${JSON.stringify(DEFAULTS[field])} from the default`)
   }
 })
 
 test('nameOf names each source', () => {
-  expect(nameOf('user')).toBe('~/.claude/settings.json')
-  expect(nameOf('project')).toBe('.claude/settings.json')
-  expect(nameOf('local')).toBe('.claude/settings.local.json')
-  expect(nameOf('flag')).toBe('--settings')
-  expect(nameOf('policy')).toBe('managed settings')
-  expect(nameOf('legacy')).toBe('an earlier command')
-  expect(nameOf('default')).toBe('the default')
+  expect(sourceFileName('user')).toBe('~/.claude/settings.json')
+  expect(sourceFileName('project')).toBe('.claude/settings.json')
+  expect(sourceFileName('local')).toBe('.claude/settings.local.json')
+  expect(sourceFileName('flag')).toBe('--settings')
+  expect(sourceFileName('policy')).toBe('managed settings')
+  expect(sourceFileName('legacy')).toBe('an earlier command')
+  expect(sourceFileName('default')).toBe('the default')
 })
 
 // The old commands' store keys, as 0.7 and the branches since wrote them (S7)
@@ -178,7 +178,7 @@ test('holdRec takes the next level unless a lower source lowers it', () => {
 test('the toasts put what to do first and fit the box', () => {
   expect(movedToast({ rec: 'strict', bandRows: false }).startsWith('Add "alfred-mods": { ')).toBe(true)
   expect(holdToast('strict', 'local').length).toBeLessThanOrEqual(120)
-  const r = resolve({ local: { bandPlace: 'below' }, user: { bandPlace: 'under' } }, {})
+  const r = resolveSettings({ local: { bandPlace: 'below' }, user: { bandPlace: 'under' } }, {})
   expect(skippedToast(skipOf(r), r).length).toBeLessThanOrEqual(120)
 })
 

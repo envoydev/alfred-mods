@@ -1,7 +1,7 @@
 // Agents as rows: what a spawn says, how a run ends, which rows are kept, the tree they draw and their tool counts.
 import type { AgentInfo } from 'claude-code'
 
-import { duration, oneLine, tokens } from '../core/format'
+import { durationText, oneLine, tokensText } from '../core/format'
 import type { AgentRow, AgentStatus, LaneFit, Loop, TreeRow } from './types'
 import type { Lane, Line, Seg } from '../core/types'
 import type { TurnEnd } from '../session/types'
@@ -61,7 +61,7 @@ export function refreshAgents(rows: AgentRow[], listed: readonly AgentInfo[], no
 
 // How long the agent has run, or how it ended and after how long
 export function agentTime(r: AgentRow, now: number): string {
-  const took = duration((r.endedAt ?? now) - r.startedAt)
+  const took = durationText((r.endedAt ?? now) - r.startedAt)
   switch (r.status) {
     case 'running': return took
     case 'waiting': return `waiting · ${took}`
@@ -127,7 +127,7 @@ export function loopsLine(loops: Loop[], now: number, note: string): Line[] {
   if (loops.length === 0) return []
   const active = loops.filter(l => !l.isDone && now - l.lastAt < 15_000).length
   const output = loops.reduce((sum, l) => sum + l.output, 0)
-  return [[{ text: `Other loops ${loops.length} · ${active} active · out ${tokens(output)}` }], [{ text: note, tone: 'dim' }]]
+  return [[{ text: `Other loops ${loops.length} · ${active} active · out ${tokensText(output)}` }], [{ text: note, tone: 'dim' }]]
 }
 
 // A teammate waits for its next message; any other agent's run ends

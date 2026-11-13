@@ -20,25 +20,25 @@ export type Turn = {
   spendUsd?: number | null
 }
 // Every main-loop call in flight, oldest first
-export type Running = { id: string; tool: string; label: string; startedAt: number }
+export type RunningCall = { id: string; tool: string; label: string; startedAt: number }
 export type Live = {
-  turnId: string | null; startedAt: number | null; tools: number; failures: number; running: Running[]; promptAt: number | null
+  turnId: string | null; startedAt: number | null; tools: number; failures: number; running: RunningCall[]; promptAt: number | null
 }
-export type Window = { kind: string; percentUsed: number; resetsAt: string | null }
+export type RateWindow = { kind: string; percentUsed: number; resetsAt: string | null }
 export type Usage = {
   tokens: number | null; window: number | null; percent: number | null; startedAt: number | null
-  windows: Window[]; costUsd: number | null; todayUsd: number | null; at: number
+  windows: RateWindow[]; costUsd: number | null; todayUsd: number | null; at: number
   // When the windows shown were read by an earlier session, until this one's first reading with windows; absent after
   windowsAt?: number
 }
 export type Totals = { input: number; output: number; cacheRead: number; cacheWrite: number; stepOutput: number; stepMs: number }
 // A prompt the person entered that no turn has answered yet, by a fingerprint of its text, never the text
-export type Waiting = { at: number; key: string }
+export type WaitingPrompt = { at: number; key: string }
 // Where the session works (the user, 2026-11-11)
 export type Place = { project: string; folder?: string; branch: string | null; changes?: { added: number; removed: number }; sync?: { ahead: number; behind: number } }
 export type Meta = {
   model: string | null; effort: string | null; compactions: number; lastCompactAt: number | null
-  lastPromptAt: number | null; lastReplyAt: number | null; turnCount: number; waiting: Waiting[]
+  lastPromptAt: number | null; lastReplyAt: number | null; turnCount: number; waiting: WaitingPrompt[]
   // The main loop's settled tool calls this session
   mainCalls: number
   // The skills the main loop loaded into its context this conversation, by name, with how many times; absent before one
@@ -149,9 +149,9 @@ export type Plans = {
 // only; `ms`, the working time credited to it while in progress
 export type TaskItem = { id: string; subject: string; status: 'pending' | 'in_progress' | 'completed'; ms: number }
 // REC's level: off, on (keys, emails, phones, private words) or strict (also the account, home paths and $ amounts)
-export type Level = 'off' | 'on' | 'strict'
+export type RecLevel = 'off' | 'on' | 'strict'
 // What surfaces redraw on: the level, the word count and the pane's last refusal, never the words themselves
-export type RecState = { level: Level; count: number; note: string | null }
+export type RecState = { level: RecLevel; count: number; note: string | null }
 // "quiet": compact tool rows on or off, from the settings files (spec settings-values S2)
 export type Quiet = { isOn: boolean }
 // "band": the full band with its info line, calm, its two lines, or off, none, from the settings files

@@ -1,16 +1,16 @@
 // What the band shows from the session's first second (the user, 2026-11-11): the 5h and 7d windows the last reading
-import type { Usage, Window } from './types'
+import type { Usage, RateWindow } from './types'
 import type { SessionRateLimit } from 'claude-code'
 // on this machine stored, until this session's own, and the project and branch read from git's own files, with no git
 // process.
 
 // The stored windows still ahead of their reset, with the time they were read; null for a value of any other shape, or
 // with none left
-export function storedWindows(value: unknown, now: number): { at: number; windows: Window[] } | null {
+export function storedWindows(value: unknown, now: number): { at: number; windows: RateWindow[] } | null {
   if (typeof value !== 'object' || value === null) return null
   const v = value as { at?: unknown; windows?: unknown }
   if (typeof v.at !== 'number' || !Array.isArray(v.windows)) return null
-  const windows: Window[] = []
+  const windows: RateWindow[] = []
   for (const w of v.windows as unknown[]) {
     if (typeof w !== 'object' || w === null) return null
     const x = w as Record<string, unknown>
@@ -25,7 +25,7 @@ export function storedWindows(value: unknown, now: number): { at: number; window
 // The 5h and 7d windows a reading leaves: its own when it has some or a request has been made (`isRead`: off a
 // subscription a reading never has any), else the ones an earlier session stored (the user, 2026-11-11: the band from
 // the first second), else none
-export function nextWindows(u: Usage, fresh: Window[], isRead: boolean): Pick<Usage, 'windows' | 'windowsAt'> {
+export function nextWindows(u: Usage, fresh: RateWindow[], isRead: boolean): Pick<Usage, 'windows' | 'windowsAt'> {
   if (fresh.length > 0 || isRead || u.windowsAt === undefined) return { windows: fresh }
   return { windows: u.windows, windowsAt: u.windowsAt }
 }
@@ -43,5 +43,5 @@ export function dropPassed(u: Usage, now: number): Usage | null {
 // '≈' before a window's percent while it is a stored one
 export const storedMark = (windowsAt: number | null | undefined): string => (windowsAt === undefined || windowsAt === null ? '' : '≈')
 
-export const rateWindowsOf = (limits: readonly SessionRateLimit[]): Window[] =>
+export const rateWindowsOf = (limits: readonly SessionRateLimit[]): RateWindow[] =>
   limits.map(w => ({ kind: w.kind, percentUsed: w.percentUsed, resetsAt: w.resetsAt ?? null }))

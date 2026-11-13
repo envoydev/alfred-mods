@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, RenderSurface, SessionUsage } from 'claude-code'
 
-import { clock } from '../../hooks/core/format'
+import { clockText } from '../../hooks/core/format'
 import { EMAILS } from '../../hooks/rec/samples'
 import { stackLines } from '../../hooks/stack/stack'
 import { PRESENTATION, START, engine, rows, step, stepEngine, stubAll } from '../kit'
@@ -25,7 +25,7 @@ const without = (...names: string[]): FileStub => {
   for (const n of names) delete v[n]
   return { text: JSON.stringify(v), mtimeMs: 1 }
 }
-const READ = `read ${clock(NOW)} · written ${clock(Date.parse(WRITTEN))}`
+const READ = `read ${clockText(NOW)} · written ${clockText(Date.parse(WRITTEN))}`
 const reading = (tokens: number, window = 1_000_000): SessionUsage =>
   ({ startedAt: 0, context: { window, tokens, percent: Math.round(tokens * 100 / window) }, rateLimits: [] })
 const PANE = { title: 'Inspect', isFocused: true, bodyColumns: 120, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 40 }, view: {} }
@@ -115,8 +115,8 @@ for (const surface of SURFACES) {
     const noPrompt = await at(status({ handoffPrompt: null }))
     expect(noPrompt.some(l => l.startsWith('resume: '))).toBe(false)
     // Each poll reads 30 s after the one before: this is the thirteenth, then the fourteenth
-    expect((await at(status({ window: 'big' })))).toContain(`read ${clock(NOW + 13 * 30_000)} · written ${clock(Date.parse(WRITTEN))} · ignored: window`)
-    expect((await at(without('updatedAt'))).at(-1)).toBe(`read ${clock(NOW + 14 * 30_000)}`)
+    expect((await at(status({ window: 'big' })))).toContain(`read ${clockText(NOW + 13 * 30_000)} · written ${clockText(Date.parse(WRITTEN))} · ignored: window`)
+    expect((await at(without('updatedAt'))).at(-1)).toBe(`read ${clockText(NOW + 14 * 30_000)}`)
   })
 
   test(`a disagreeing model adds its warning and turns the runway off (${surface})`, async ($, on) => {
@@ -184,7 +184,7 @@ test('the heading is bold violet, the reason line and line 6 dim, the model warn
   expect(none[1]).toEqual([{ text: 'Alfred Code: no status file for this session', tone: 'dim' }])
   const used = stackLines(STACK, { prompt: 'Read a.md', runway: null, sessionModel: 'claude-sonnet-5-5', columns: 120 })
   expect(used[3]).toContainEqual({ text: ' · this session runs claude-sonnet-5-5: runway not used', tone: 'warn' })
-  expect(used.at(-1)).toEqual([{ text: `read ${clock(NOW)}`, tone: 'dim' }])
+  expect(used.at(-1)).toEqual([{ text: `read ${clockText(NOW)}`, tone: 'dim' }])
   // A state never read draws the no-file line
   expect(stackLines({ ...STACK, state: 'none', reason: null }, { prompt: null, runway: null, sessionModel: null, columns: 120 })[1])
     .toEqual([{ text: 'Alfred Code: no status file for this session', tone: 'dim' }])

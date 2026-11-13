@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { addRequest, afterCompact, billingOf, cacheLine, cacheView, idleOf, minutes, needsTick, pinOf, reuseTone, selfCompacts, takeSwitch, tierOf, toastAt } from '../../hooks/cache/cache'
+import { addRequest, afterCompact, billingOf, cacheLine, cacheView, idleOf, minutesLeftText, needsTick, pinOf, reuseTone, selfCompacts, takeSwitch, tierOf, toastAt } from '../../hooks/cache/cache'
 import type { Cache } from '../../hooks/cache/types'
 import type { Line } from '../../hooks/core/types'
 
@@ -71,7 +71,7 @@ test('warmth follows the tier', () => {
   expect(cacheView(FIVE, 'plan', 300_000).state).toBe('cold')
   const v = cacheView(SLIDE, 'plan', 180_000)
   expect(v.leftMs).toBe(3_420_000)
-  expect(minutes(v.leftMs ?? 0)).toBe('57m')
+  expect(minutesLeftText(v.leftMs ?? 0)).toBe('57m')
 })
 
 test('a model switch makes the cache cold and prices the rewrite', () => {
@@ -123,11 +123,11 @@ test("the warning's window is per tier", () => {
   expect(toastAt(FIVE, 'plan', null)).toBe(null)
   const late = cacheView(SLIDE, 'plan', 3_360_000)
   expect(late.isClosing).toBe(true)
-  expect(minutes(late.leftMs ?? 0)).toBe('4m')
+  expect(minutesLeftText(late.leftMs ?? 0)).toBe('4m')
   expect(cacheView(FIVE, 'plan', 200_000).isClosing).toBe(false)
   const last = cacheView(FIVE, 'plan', 250_000)
   expect(last.isClosing).toBe(true)
-  expect(minutes(last.leftMs ?? 0)).toBe('1m')
+  expect(minutesLeftText(last.leftMs ?? 0)).toBe('1m')
 })
 
 // The user's ruling (2026-10-28): under 100k cached a rewrite is cheap, and a compaction would lose more than it saves

@@ -101,7 +101,7 @@ export const isPlanDone = (plan: Plan): boolean => typeof plan.completedAt === '
 // A plan runs while it is begun and not done, and its file was written since this session began: a plan an earlier
 // session left with a step in progress neither takes the band's line 1 nor this session's time. Alfred Code's named
 // plan needs no fresh write: its status file naming it this session is the evidence.
-export function runs(w: Watched<Plan>, since: number | null): boolean {
+export function isPlanRunning(w: Watched<Plan>, since: number | null): boolean {
   const plan = w.value
   if (plan === null || !plan.steps.some(s => s.status !== 'pending') || isPlanDone(plan)) return false
   return w.isNamed === true || (since !== null && w.mtimeMs >= since)
@@ -118,7 +118,7 @@ export function shownPlan(p: Plans, pinned: string | null, hasTasks: boolean): W
   // The plan Alfred Code's status file names comes before the rest, begun or not
   const named = p.alfred === null || p.alfred === undefined ? undefined : good.find(w => w.name === p.alfred?.name)
   if (named !== undefined) return named
-  const running = newest(good.filter(w => runs(w, p.since)))
+  const running = newest(good.filter(w => isPlanRunning(w, p.since)))
   if (running !== null) return running
   if (hasTasks) return 'tasks'
   return newest(good)
@@ -128,7 +128,7 @@ export function shownPlan(p: Plans, pinned: string | null, hasTasks: boolean): W
 // read it never moves the time, or the band, away from the plan that runs
 export function creditedPlan(p: Plans, pinned: string | null, hasTasks: boolean): Watched<Plan> | 'tasks' | null {
   const pin = shownPlan(p, pinned, hasTasks)
-  return pinned === null || (pin !== null && pin !== 'tasks' && pin.name === pinned && runs(pin, p.since)) ? pin : shownPlan(p, null, hasTasks)
+  return pinned === null || (pin !== null && pin !== 'tasks' && pin.name === pinned && isPlanRunning(pin, p.since)) ? pin : shownPlan(p, null, hasTasks)
 }
 
 // The brief's 'Time for the plan': finished steps' time, plus each other step's forecast (its estimate times this

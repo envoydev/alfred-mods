@@ -1,7 +1,7 @@
 // F10's compact tool rows (brief 'Compact tool rows', Decisions 4 to 8): one line per call, runs of reads folded into
 // one, and the result block's preview emptied. Every line is drawn through drawLines, so REC masks it after compacting.
 import { reportLine } from '../agents/agents'
-import { duration, fitLine, tokens, widthOf } from '../core/format'
+import { durationText, fitLine, tokensText, widthOf } from '../core/format'
 import type { Line, Seg } from '../core/types'
 import type { CompactCall, RowContext } from './types'
 
@@ -133,8 +133,8 @@ function stepLines(c: CompactCall, columns: number, cwd?: string | null): Line[]
       const found = reportLine(said)
       if (found !== '') lines.push(step(`result: ${found}`))
       const uses = typeof out.totalToolUseCount === 'number' ? [`${out.totalToolUseCount} tool ${out.totalToolUseCount === 1 ? 'use' : 'uses'}`] : []
-      const spent = typeof out.totalTokens === 'number' ? [`${tokens(out.totalTokens)} tokens`] : []
-      const took = typeof out.totalDurationMs === 'number' ? [duration(out.totalDurationMs)] : []
+      const spent = typeof out.totalTokens === 'number' ? [`${tokensText(out.totalTokens)} tokens`] : []
+      const took = typeof out.totalDurationMs === 'number' ? [durationText(out.totalDurationMs)] : []
       if (uses.length + spent.length + took.length > 0) lines.push(step([...uses, ...spent, ...took].join(' · ')))
     }
     return lines
@@ -143,7 +143,7 @@ function stepLines(c: CompactCall, columns: number, cwd?: string | null): Line[]
     if (out === null) return []
     return [
       ...(str(out.backgroundTaskId) !== '' ? [step('running in the background')] : []),
-      ...(typeof out.timedOutAfterMs === 'number' ? [step(`timed out after ${duration(out.timedOutAfterMs)}`)] : []),
+      ...(typeof out.timedOutAfterMs === 'number' ? [step(`timed out after ${durationText(out.timedOutAfterMs)}`)] : []),
       ...(str(out.returnCodeInterpretation).trim() !== '' ? [step(str(out.returnCodeInterpretation).trim())] : []),
     ]
   }
@@ -188,7 +188,7 @@ function stepLines(c: CompactCall, columns: number, cwd?: string | null): Line[]
     if (out !== null && typeof out.bytes === 'number') {
       const moved = str(out.url) !== '' && site(str(out.url)) !== site(str(input.url)) ? ` from ${site(str(out.url))}` : ''
       const code = typeof out.code === 'number' ? ` · ${out.code}${str(out.codeText) === '' ? '' : ` ${str(out.codeText)}`}` : ''
-      const time = typeof out.durationMs === 'number' ? ` · ${duration(out.durationMs)}` : ''
+      const time = typeof out.durationMs === 'number' ? ` · ${durationText(out.durationMs)}` : ''
       lines.push(step(`fetched ${sizeOf(out.bytes)}${moved}${code}${time}`))
     }
     const asked = str(input.prompt).trim()

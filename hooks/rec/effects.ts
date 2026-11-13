@@ -3,7 +3,7 @@
 // stored, which outlives a reload.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
-import type { Level, RecState } from './types'
+import type { RecLevel, RecState } from './types'
 import { mask, maskSpans, recLevel, setRec } from './mask'
 import { loadSettings, recInForce, writeUserField } from '../settings/effects'
 import { LEVELS, REC_HELP, addWord, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec'
@@ -29,7 +29,7 @@ export function resetRec($: EngineInterface) {
 
 // The REC level the model was last told of, in module memory: the person's next prompt carries the note while the
 // level differs (Decision 11)
-const noteMemory = { told: 'off' as Level }
+const noteMemory = { told: 'off' as RecLevel }
 
 // REC's private words and the home folder, in module memory only: never in $.state, a log or a file
 // `compiled` names the level, words and home mask.ts holds, which a reload starts over at off

@@ -2,26 +2,26 @@
 // appears only when a threshold is crossed, something failed or a turn runs.
 import { isLive } from '../agents/agents'
 import { widthOf } from '../core/format'
-import { pace } from '../core/forecast'
+import { paceForecast } from '../core/forecast'
 import type { BandInput } from './types'
-import type { Level } from '../rec/types'
+import type { RecLevel } from '../rec/types'
 import type { Line, Seg } from '../core/types'
-import { fiveHourPace, gauges, narrowGauges, pct } from './gauges'
+import { fiveHourPace, gauges, narrowGauges, percentText } from './gauges'
 import { cellsOf } from './wrap'
 import { toolRows } from './detail'
 import { placeRow, planRow, usageRow } from './project'
 import { infoRows } from './info'
-import { cacheWarning, handoffAsk, lastTurn, underButton, withPlanTail, withTimes, withToday, working } from './working'
+import { cacheWarning, handoffAsk, lastTurn, underButton, withPlanTail, withTimes, withToday, workingLine } from './working'
 
 export const REC_MARK: Seg = { text: '● REC', tone: 'fail', bold: true }
 
 // The status line under the prompt (spec D2), which stays while the band is collapsed: what needs the person, short
 // and in the band's order - REC, the context once the band turns hot at 60, the new failures - or null for none. While
 // the band is in view it shows REC and the context itself, so the line leaves them out (spec 2026-11-11, D6).
-export function statusText(o: { percent: number | null; newFailures: number; recLevel: Level; isBandShown: boolean }): string | null {
+export function statusText(o: { percent: number | null; newFailures: number; recLevel: RecLevel; isBandShown: boolean }): string | null {
   const parts = [
     o.recLevel === 'off' || o.isBandShown ? null : '● REC',
-    !o.isBandShown && o.percent !== null && Math.round(o.percent) >= 60 ? `ctx ${pct(o.percent)}` : null,
+    !o.isBandShown && o.percent !== null && Math.round(o.percent) >= 60 ? `ctx ${percentText(o.percent)}` : null,
     o.newFailures > 0 ? `✗ ${o.newFailures} new` : null,
   ].filter((p): p is string => p !== null)
   return parts.length === 0 ? null : parts.join(' · ')
@@ -83,9 +83,9 @@ function bandRows(b: BandInput, k: Keep): Line[] {
 function bandBody(b: BandInput, isNarrow: boolean, k: Keep): Line[] {
   const u = b.usage
   // Before the first reading the calm band waits; the full band draws once the model or a stored window is known
-  const isFullKnown = b.mode === 'full' && (b.meta.model !== null || u.windows.length > 0)
+  const isFullKnown = b.mode === 'full' && (b.session.model !== null || u.windows.length > 0)
   if (b.turns.length === 0 && u.percent === null && !isFullKnown) return []
-  const invalid: Line = b.planInvalid ? [{ text: ' │ ', tone: 'dim' }, { text: 'plan file invalid', tone: 'warn' }] : []
+  const invalid: Line = b.isPlanInvalid ? [{ text: ' │ ', tone: 'dim' }, { text: 'plan file invalid', tone: 'warn' }] : []
   const gaugeLine = isNarrow ? narrowGauges(u, b.runway) : withToday(b, gauges(b), invalid)
   const line2 = [...gaugeLine, ...invalid]
   // The info line, then the project, plan and usage rows, then the detail rows while `bandRows` opens them; the full
@@ -109,7 +109,7 @@ function bandBody(b: BandInput, isNarrow: boolean, k: Keep): Line[] {
     const dim = (l: Line): Line => l.map(s => ('text' in s ? { text: s.text, tone: 'dim' as const } : s))
     return [[...dim(calm), ...invalid], ...info.map(dim)]
   }
-  if (b.isWorking) return [working(b, isNarrow), line2, ...info]
+  if (b.isWorking) return [workingLine(b, isNarrow), line2, ...info]
   const failed: Line = b.newFailures > 0
     ? [{ text: `✗ ${b.newFailures} new `, tone: 'fail' }, underButton(b, { key: 'inspect', label: 'Inspect', hotkey: '1' }, '/inspect')]
     : []
@@ -119,7 +119,7 @@ function bandBody(b: BandInput, isNarrow: boolean, k: Keep): Line[] {
   // band-under U2's place after the gauges), so a cut at the screen's edge takes the detail rows first; its commands are
   // longer than the digits above, so the items take a row each when one row cannot hold them
   const action: Line[] = items.length === 0 ? [] : b.under !== undefined && cellsOf(joined) > b.columns ? items : [joined]
-  const first = agentsRun ? working(b, isNarrow) : withPlanTail(b, lastTurn(b, isNarrow), head.length > 0 && k.isPlanKept)
+  const first = agentsRun ? workingLine(b, isNarrow) : withPlanTail(b, lastTurn(b, isNarrow), head.length > 0 && k.isPlanKept)
   const out = b.under === undefined ? [first, line2, ...info, ...action] : [...action, first, line2, ...info]
   return out.filter(l => l.length > 0)
 }

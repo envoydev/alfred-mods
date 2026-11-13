@@ -3,7 +3,7 @@
 // base name, so no home folder or user name reaches the atom.
 import type { SessionContextBreakdown } from 'claude-code'
 
-import { clock, tokens } from '../core/format'
+import { clockText, tokensText } from '../core/format'
 import { baseName } from '../place/place'
 import type { Parts, SkillListing } from './types'
 import type { Line } from '../core/types'
@@ -87,19 +87,19 @@ const LABEL = PARTS_LABEL
 export function partsLines(p: Parts): Line[] {
   if (p.at === null) return []
   const out: Line[] = []
-  const used = p.categories.map(c => `${c.name} ${tokens(c.tokens)}`)
-  out.push([{ text: 'In context', width: LABEL }, { text: [`est. ${clock(p.at)}`, ...used].join(' · ') }])
+  const used = p.categories.map(c => `${c.name} ${tokensText(c.tokens)}`)
+  out.push([{ text: 'In context', width: LABEL }, { text: [`est. ${clockText(p.at)}`, ...used].join(' · ') }])
   if (p.plugins.length > 0) {
     const named = p.plugins.map(x => {
       const what = [x.agents > 0 ? `${x.agents} agents` : null, x.skills > 0 ? `${x.skills} skills` : null].filter((s): s is string => s !== null)
-      return `${x.name} ${tokens(x.agentTokens + x.skillTokens)}: ${what.join(', ')}`
+      return `${x.name} ${tokensText(x.agentTokens + x.skillTokens)}: ${what.join(', ')}`
     })
     out.push([{ text: 'Plugins', width: LABEL }, { text: named.join(' · ') }])
   }
   if (p.memory.files > 0) {
     const m = p.memory
     const rest = m.files - m.top.length
-    const shown = [`${m.files} ${m.files === 1 ? 'file' : 'files'} ${tokens(m.tokens)}`, ...m.top.map(t => `${t.name} ${tokens(t.tokens)}`), ...(rest > 0 ? [`+${rest}`] : [])]
+    const shown = [`${m.files} ${m.files === 1 ? 'file' : 'files'} ${tokensText(m.tokens)}`, ...m.top.map(t => `${t.name} ${tokensText(t.tokens)}`), ...(rest > 0 ? [`+${rest}`] : [])]
     out.push([{ text: 'Memory', width: LABEL }, { text: shown.join(' · ') }])
   }
   return out

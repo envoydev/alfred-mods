@@ -1,6 +1,6 @@
 // The Plan tab, the Now tab's PLAN section and the band's plan line, from the plan and scores views to lines of
 // styled segments. Every title, note and finding is file content: draw.tsx makes each printable and masks it.
-import { bar, fitLine, mins, widthOf } from '../core/format'
+import { barText, fitLine, minutesText, widthOf } from '../core/format'
 import type { Line, Seg } from '../core/types'
 import type { Finding, PlanView, Scores, ScoresView, StepRow, StepStatus } from './types'
 
@@ -26,7 +26,7 @@ const hasLeft = (v: PlanView): boolean => v.total - v.finished > v.unestimated
 const isTasks = (v: PlanView): boolean => v.isCalibrated && v.rows.every(r => r.step.estimateMin === null)
 
 function planBar(percent: number): Line {
-  const [filled, empty] = bar(percent)
+  const [filled, empty] = barText(percent)
   return [{ text: filled, tone: 'plan' }, { text: empty, tone: 'dim' }]
 }
 
@@ -35,10 +35,10 @@ function planBar(percent: number): Line {
 export function planLine(v: PlanView, columns: number): Line {
   const title = fitLine(v.title, 80)
   const rest: Line = v.isFinished
-    ? [...planBar(100), { text: ` done ✓ in ${mins(v.workedMs)}` }]
+    ? [...planBar(100), { text: ` done ✓ in ${minutesText(v.workedMs)}` }]
     : [
       ...planBar(v.percent), { text: ` ${v.finished}/${v.total} · ` }, { text: `${v.percent}%`, tone: 'plan' },
-      { text: ` · ${mins(v.workedMs)}${hasLeft(v) ? ` · ≈${mins(v.leftMs)} left` : ''}` },
+      { text: ` · ${minutesText(v.workedMs)}${hasLeft(v) ? ` · ≈${minutesText(v.leftMs)} left` : ''}` },
     ]
   const first = v.running[0]
   const step: Line = first === undefined ? [] : [{ text: ` │ ▶ ${fitLine(first.step.title, 80)}` }]
@@ -92,8 +92,8 @@ function planBody(v: PlanView, columns: number, count: Line): Line {
 // Under 100 columns: '⟳ S4 12m · 2 agents', the first running step's id and its time
 export function narrowPlan(v: PlanView, agents: number): Line {
   const first = v.running[0]
-  const head: Seg = v.isFinished ? { text: `✓ done in ${mins(v.workedMs)}`, bold: true }
-    : first !== undefined ? { text: `⟳ ${fitLine(first.step.id, 12)} ${mins(first.actualMs)}`, bold: true }
+  const head: Seg = v.isFinished ? { text: `✓ done in ${minutesText(v.workedMs)}`, bold: true }
+    : first !== undefined ? { text: `⟳ ${fitLine(first.step.id, 12)} ${minutesText(first.actualMs)}`, bold: true }
     : { text: `⟳ ${v.finished}/${v.total}`, bold: true }
   return agents > 0 ? [head, { text: ` · ${agentCount(agents)}` }] : [head]
 }
@@ -101,10 +101,10 @@ export function narrowPlan(v: PlanView, agents: number): Line {
 // 'done in 24m', '12m of ≈24m', '≈18m', with 'shared' after a shared step's time
 function timeOf(r: StepRow): string {
   const s = r.step
-  const forecast = r.forecastMs === null ? null : `≈${mins(r.forecastMs)}`
-  const time = s.status === 'done' ? (r.actualMs > 0 ? `done in ${mins(r.actualMs)}` : 'done')
+  const forecast = r.forecastMs === null ? null : `≈${minutesText(r.forecastMs)}`
+  const time = s.status === 'done' ? (r.actualMs > 0 ? `done in ${minutesText(r.actualMs)}` : 'done')
     : s.status === 'skipped' ? 'skipped'
-    : s.status === 'in_progress' || r.actualMs > 0 ? `${mins(r.actualMs)}${forecast === null ? '' : ` of ${forecast}`}`
+    : s.status === 'in_progress' || r.actualMs > 0 ? `${minutesText(r.actualMs)}${forecast === null ? '' : ` of ${forecast}`}`
     : forecast ?? ''
   return r.isShared && time !== '' ? `${time} shared` : time
 }
@@ -114,7 +114,7 @@ function timeOf(r: StepRow): string {
 function stepRows(rows: StepRow[], indent: string, withEstimate: boolean, columns: number): Line[] {
   const times = rows.map(timeOf)
   const timeWidth = Math.max(0, ...times.map(t => t.length))
-  const ests = rows.map(r => (withEstimate && r.step.estimateMin !== null ? `est ${mins(r.step.estimateMin * MIN)}` : ''))
+  const ests = rows.map(r => (withEstimate && r.step.estimateMin !== null ? `est ${minutesText(r.step.estimateMin * MIN)}` : ''))
   const rights = rows.map((_, i) => (ests[i] === '' ? times[i] ?? '' : `${(times[i] ?? '').padEnd(timeWidth)}   ${ests[i] ?? ''}`))
   const rightWidth = Math.max(0, ...rights.map(t => t.length))
   const natural = rows.map(r => `${fitLine(r.step.id, 12)} ${fitLine(r.step.title, 60)}`.length + (r.notes.length > 0 ? NOTE.length + 3 : 0))
@@ -151,8 +151,8 @@ function stepRows(rows: StepRow[], indent: string, withEstimate: boolean, column
 // each running step and the next one, without the estimates
 export function planSection(v: PlanView, columns: number): Line[] {
   const head: Line = [{ text: 'PLAN', bold: true, tone: 'plan' }, { text: `   ${fitLine(v.title, 60)} · ${v.finished}/${v.total}` }]
-  if (v.isFinished) head.push({ text: ` · done in ${mins(v.workedMs)}` })
-  else if (hasLeft(v)) head.push({ text: ` · ≈${mins(v.leftMs)} left of ≈${mins(v.totalMs)}` })
+  if (v.isFinished) head.push({ text: ` · done in ${minutesText(v.workedMs)}` })
+  else if (hasLeft(v)) head.push({ text: ` · ≈${minutesText(v.leftMs)} left of ≈${minutesText(v.totalMs)}` })
   const shown = [v.lastFinished, ...v.running, v.next].filter((r, i, all): r is StepRow => r !== null && all.indexOf(r) === i)
   return [head, ...stepRows(shown, '  ', false, columns)]
 }
@@ -226,9 +226,9 @@ export function planLines(
   if (v === null) out.push([{ text: 'No plan file in .claude/session-inspector/plans/, and no task list this session.', tone: 'dim' }])
   else {
     const head: Line = [{ text: 'Plan', bold: true, tone: 'plan' }, { text: ` · ${fitLine(v.title, 60)}`, bold: true }, { text: `   ${v.finished}/${v.total}` }]
-    if (v.isFinished) head.push({ text: ` · done in ${mins(v.workedMs)}` })
+    if (v.isFinished) head.push({ text: ` · done in ${minutesText(v.workedMs)}` })
     else if (hasLeft(v)) {
-      head.push({ text: ` · ≈${mins(v.totalMs)} total · ≈${mins(v.leftMs)} left` })
+      head.push({ text: ` · ≈${minutesText(v.totalMs)} total · ≈${minutesText(v.leftMs)} left` })
       if (!isTasks(v)) head.push(v.isCalibrated ? { text: ` (×${ratioText(v.ratio)})` } : { text: ' (uncalibrated)', tone: 'dim' })
     }
     if (!isTasks(v) && v.unestimated > 0) head.push({ text: ` · ${v.unestimated} without an estimate`, tone: 'dim' })
@@ -236,12 +236,12 @@ export function planLines(
     if (o.invalid) out.push([{ text: 'plan file invalid: showing the last good read', tone: 'warn' }])
     out.push(...stepRows(v.rows, '', true, o.columns))
     for (const note of v.planNotes) out.push([{ text: '✎ ', tone: 'plan' }, { text: `'${fitLine(note, 200)}'` }])
-    if (v.overheadMs > 0) out.push([{ text: `Overhead  ${mins(v.overheadMs)}` }])
+    if (v.overheadMs > 0) out.push([{ text: `Overhead  ${minutesText(v.overheadMs)}` }])
   }
   if (s !== null) out.push(...scoreLines(s))
   for (const label of o.otherScores.slice(0, 3)) out.push([{ text: label, tone: 'dim' }])
   if (v !== null && o.updatedAt !== null) {
-    out.push([{ text: `last update ${mins(Math.max(0, o.now - o.updatedAt))} ago`, tone: v.staleMs === null ? 'dim' : 'warn' }])
+    out.push([{ text: `last update ${minutesText(Math.max(0, o.now - o.updatedAt))} ago`, tone: v.staleMs === null ? 'dim' : 'warn' }])
   }
   if (o.others.length > 0) out.push([{ text: `Other plans: ${o.others.join(', ')}   /inspect plan <name>`, tone: 'dim' }])
   return out

@@ -1,6 +1,6 @@
 // Alfred Code's status file past Phase 4's fields (Phase 5 spec 'The reader'): each field checked alone, a bad one
 // read as unknown and named in `ignored`, the rest of the file still used.
-import { clock, fitLine, tokens } from '../core/format'
+import { clockText, fitLine, tokensText } from '../core/format'
 import { parseStatus } from '../handoff/handoff'
 import type { Line, Seg } from '../core/types'
 import type { Usage } from '../session/types'
@@ -120,8 +120,8 @@ function contextLine(s: Stack, runway: Runway | null): string | null {
   if (s.fullContext === null) return null
   if (s.noOffer) return 'fresh session: no offer at this window'
   if (s.resumeAt === null) return 'fresh session offered'
-  const of = s.window === null ? '' : ` of ${tokens(s.window)}`
-  return `fresh session offered from ${tokens(s.resumeAt)}${of}${runway === null ? '' : ` · ctx ${runway.percent}% of it`}`
+  const of = s.window === null ? '' : ` of ${tokensText(s.window)}`
+  return `fresh session offered from ${tokensText(s.resumeAt)}${of}${runway === null ? '' : ` · ctx ${runway.percent}% of it`}`
 }
 
 // Line 3: the modes known, joined
@@ -153,9 +153,9 @@ export function stackLines(s: Stack, o: { prompt: string | null; runway: Runway 
   if (o.prompt !== null && (s.fullContext === 'fresh-session' || s.fullContext === 'compact')) {
     out.push([{ text: `resume: ${fitLine(o.prompt, Math.max(1, o.columns - BESIDE))}  ` }, FILL])
   }
-  const written = s.updatedAt === null ? '' : ` · written ${clock(s.updatedAt)}`
+  const written = s.updatedAt === null ? '' : ` · written ${clockText(s.updatedAt)}`
   const ignored = s.ignored.length === 0 ? '' : ` · ignored: ${s.ignored.join(', ')}`
-  out.push([{ text: `read ${s.readAt === null ? '–' : clock(s.readAt)}${written}${ignored}`, tone: 'dim' }])
+  out.push([{ text: `read ${s.readAt === null ? '–' : clockText(s.readAt)}${written}${ignored}`, tone: 'dim' }])
   return out
 }
 

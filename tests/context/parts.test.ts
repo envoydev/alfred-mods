@@ -3,7 +3,7 @@ import type { Engine } from 'claude-code/testing'
 import type { RenderSurface, SessionContextBreakdown, SessionUsage } from 'claude-code'
 
 import { PRESENTATION, START, engine, rows, stubAll, watchState } from '../kit'
-import { clock } from '../../hooks/core/format'
+import { clockText } from '../../hooks/core/format'
 import { memoryName, partsOf, ruleName } from '../../hooks/context/parts'
 import type { Parts } from '../../hooks/context/types'
 import type { Handoff } from '../../hooks/handoff/types'
@@ -74,7 +74,7 @@ for (const surface of SURFACES) {
     const lines = await usageTab($, surface)
     const i = lines.findIndex(l => l.startsWith('In context'))
     expect(lines.slice(i, i + 3)).toEqual([
-      `In context  est. ${clock(at)} · System prompt 3.1k · System tools 12k · MCP tools 4.2k · Custom agents 9.8k · Messages 61k`,
+      `In context  est. ${clockText(at)} · System prompt 3.1k · System tools 12k · MCP tools 4.2k · Custom agents 9.8k · Messages 61k`,
       'Plugins     alfred-code 11k: 45 agents, 38 skills · superpowers 1.4k: 14 skills',
       'Memory      5 files 6.5k · .claude/CLAUDE.md 2.1k · User CLAUDE.md 1.5k · AutoMem MEMORY.md 1.2k · +2',
     ])

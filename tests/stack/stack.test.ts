@@ -136,13 +136,13 @@ const BASE: BandInput = {
   now: 0, columns: 120, isWorking: false,
   live: { turnId: null, startedAt: null, tools: 0, failures: 0, running: [], promptAt: null },
   usage: USAGE,
-  meta: { model: null, effort: null, compactions: 0, lastCompactAt: null, lastPromptAt: null, lastReplyAt: null, turnCount: 0, waiting: [], mainCalls: 0 },
+  session: { model: null, effort: null, compactions: 0, lastCompactAt: null, lastPromptAt: null, lastReplyAt: null, turnCount: 0, waiting: [], mainCalls: 0 },
   turns: [], newFailures: 0, pace: {}, agents: [],
   cache: {
     tier: null, tierAt: null, tierBilling: null, config: { pin: null, idleOff: false, idleMinTokens: 200_000, isTerminal: false },
     ratePerToken: null, rateModel: null, lastAt: null, last: null, session: { read: 0, write: 0, input: 0 }, toastedFor: null,
   },
-  plan: null, planInvalid: false, score: null,
+  plan: null, isPlanInvalid: false, score: null,
 }
 const turn = (n: number, contextPercent: number): Turn => ({
   n, turnId: `t${n}`, promptAt: null, replyAt: 0, durationMs: 1000, tokensIn: 0, tokensOut: 0, tools: 0, failures: 0, contextPercent, end: 'answer',

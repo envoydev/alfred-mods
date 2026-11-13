@@ -35,7 +35,7 @@ const dimSeg = (text: string): Seg => ({ text, tone: 'dim' })
 // project, the branch of the repository holding the folder Claude works in, and that folder when it is not the
 // project's root, past 40 cells its last parts after '…/'; short of width the folder takes its last part, then goes
 export function placeRow(b: BandInput): Line[] {
-  const place = b.meta.place
+  const place = b.session.place
   if (place === undefined) return []
   const sep = dimSeg(ROW_JOIN)
   // The uncommitted changes after the branch, added in the OK colour and removed in the failure one; none when clean

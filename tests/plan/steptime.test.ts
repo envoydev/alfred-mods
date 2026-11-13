@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { closeSlices, liveSpans, mineOf, overheadKey, sliceMs, staleKeys, stepKey, sumTimes, targetsOf, waitOf } from '../../hooks/plan/steptime'
+import { closeSlices, liveSpans, sessionTimesOf, overheadKey, sliceMs, staleKeys, stepKey, sumTimes, targetsOf, waitMsOf } from '../../hooks/plan/steptime'
 import { FIVE, planOf } from '../plans'
 import type { Credit } from '../../hooks/plan/types'
 
@@ -85,18 +85,18 @@ test('keys untouched for 30 days are stale', () => {
 // No test plays a person's yes (the kit's EngineToolCall), so the approved-after-asking wait is pinned here
 test("a permission prompt's wait is left out, the tool's own time kept", () => {
   const bash = { tool: 'Bash', ms: 40_000, isMain: true, isAsked: true, outcome: 'ok' as const, durationMs: 5_000 }
-  expect(waitOf(bash)).toBe(35_000)
-  expect(waitOf({ ...bash, durationMs: null })).toBe(null)
-  expect(waitOf({ ...bash, isAsked: false, durationMs: null })).toBe(0)
-  expect(waitOf({ ...bash, outcome: 'denied', durationMs: null })).toBe(40_000)
-  expect(waitOf({ ...bash, tool: 'AskUserQuestion', isAsked: false })).toBe(40_000)
-  expect(waitOf({ ...bash, tool: 'Agent', isAsked: false })).toBe(40_000)
-  expect(waitOf({ ...bash, tool: 'Agent', isAsked: false, isMain: false })).toBe(0)
+  expect(waitMsOf(bash)).toBe(35_000)
+  expect(waitMsOf({ ...bash, durationMs: null })).toBe(null)
+  expect(waitMsOf({ ...bash, isAsked: false, durationMs: null })).toBe(0)
+  expect(waitMsOf({ ...bash, outcome: 'denied', durationMs: null })).toBe(40_000)
+  expect(waitMsOf({ ...bash, tool: 'AskUserQuestion', isAsked: false })).toBe(40_000)
+  expect(waitMsOf({ ...bash, tool: 'Agent', isAsked: false })).toBe(40_000)
+  expect(waitMsOf({ ...bash, tool: 'Agent', isAsked: false, isMain: false })).toBe(0)
 })
 
 test("a session's own keys seed its totals", () => {
   const entries = { 'step:p:S4:s1': { ms: 300_000, isShared: true, at: 0 }, 'overhead:p:s1': { ms: 5, at: 0 }, 'step:p:S4:s2': { ms: 9, isShared: false, at: 0 } }
-  expect(mineOf(entries, 's1')).toEqual({ 'step:p:S4:s1': { ms: 300_000, isShared: true }, 'overhead:p:s1': { ms: 5, isShared: false } })
+  expect(sessionTimesOf(entries, 's1')).toEqual({ 'step:p:S4:s1': { ms: 300_000, isShared: true }, 'overhead:p:s1': { ms: 5, isShared: false } })
 })
 
 test('an open slice shows its span so far, split among its keys, and stays open', () => {

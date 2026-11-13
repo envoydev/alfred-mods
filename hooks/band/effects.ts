@@ -100,12 +100,12 @@ export async function readBandInput(
   const p = await readParts($)
   return {
     now, columns: at.columns, ...(at.maxRows === undefined ? {} : { maxRows: at.maxRows }), isWorking: at.isWorking,
-    live: await readLive($), usage: u, meta: m, turns: await readTurns($),
+    live: await readLive($), usage: u, session: m, turns: await readTurns($),
     newFailures: (await readFailures($)).filter(f => f.isNew).length, pace: await readPace($), agents: await readAgents($),
-    cache: await readCache($), plan: d.band, planInvalid: d.invalid, score: d.score, isPlanScore: d.isPlanScore, scoreLevel: await readScoreLevel($), rec: recSummary(await readRec($)),
-    forecast: forecastTargetOf(h, u, runway), handoffAsk: h.isAskUp ? h.handled : null, runway, banner: bannerSegs(st),
+    cache: await readCache($), plan: d.band, isPlanInvalid: d.invalid, score: d.score, isPlanScore: d.isPlanScore, scoreLevel: await readScoreLevel($), rec: recSummary(await readRec($)),
+    forecast: forecastTargetOf(h, u, runway), handoffAskStep: h.isAskUp ? h.handled : null, runway, banner: bannerSegs(st),
     mode: setting.mode, totals: await readTotals($), stats: await readStats($),
-    isToolsOpen: setting.isToolsOpen === true, listing: p.skills ?? null,
+    isToolsOpen: setting.isToolsOpen === true, skillListing: p.skills ?? null,
     rules: { always: p.rules ?? [], byPath: m.pathRules ?? [], isTracked: !at.isLeftOut },
     ...(at.under === undefined ? {} : { under: at.under }),
   }

@@ -5,12 +5,12 @@ import { MODES, isThreshold } from '../handoff/handoff'
 import { LEVELS } from '../rec/rec'
 import type { BandMode } from '../band/types'
 import type { HandoffMode } from '../handoff/types'
-import type { Level } from '../rec/types'
-import type { Field, From, Resolved, Skip, Source, Values } from './types'
+import type { RecLevel } from '../rec/types'
+import type { Field, From, ResolvedSettings, Skip, Source, SettingsValues } from './types'
 
 export const FIELDS: readonly Field[] = ['band', 'bandPlace', 'bandRows', 'quiet', 'rec', 'handoff', 'handoffAt']
 export const SOURCES: readonly Source[] = ['policy', 'flag', 'local', 'project', 'user']
-export const DEFAULTS: Values = { band: 'full', bandPlace: 'above', bandRows: true, quiet: true, rec: 'off', handoff: 'ask', handoffAt: 80 }
+export const DEFAULTS: SettingsValues = { band: 'full', bandPlace: 'above', bandRows: true, quiet: true, rec: 'off', handoff: 'ask', handoffAt: 80 }
 
 // "off" draws no band, above or under (the user, 2026-11-12: '/inspect band off' hides it where nothing takes a key)
 export const BAND_MODES: readonly BandMode[] = ['full', 'calm', 'off']
@@ -34,13 +34,13 @@ const NAMES: Record<From, string> = {
   flag: '--settings', policy: 'managed settings', legacy: 'an earlier command', default: 'the default'
 }
 
-export function nameOf(from: From): string {
+export function sourceFileName(from: From): string {
   return NAMES[from]
 }
 
 // Each field walks the order down to its first valid value; a bad value on the way is skipped and listed, one under
 // the value in use is not. A key that is not an object, or a file that did not parse (absent), gives no fields.
-export function resolve(layers: Partial<Record<Source, unknown>>, legacy: Partial<Values>): Resolved {
+export function resolveSettings(layers: Partial<Record<Source, unknown>>, legacy: Partial<SettingsValues>): ResolvedSettings {
   const values = { ...DEFAULTS } as Record<Field, unknown>
   const from = {} as Record<Field, From>
   const skipped: Skip[] = []
@@ -68,19 +68,19 @@ export function resolve(layers: Partial<Record<Source, unknown>>, legacy: Partia
       from[field] = 'legacy'
     }
   }
-  return { values: values as Values, from, skipped, userFields }
+  return { values: values as SettingsValues, from, skipped, userFields }
 }
 
 // S3's toast for a skipped value: it names the file, the values the field takes and the value in use, never the bad one
-export function skippedToast(skip: Skip, r: Resolved): string {
+export function skippedToast(skip: Skip, r: ResolvedSettings): string {
   const using = JSON.stringify(r.values[skip.field])
-  return `"${skip.field}" in ${nameOf(skip.source)} takes ${RULES[skip.field].takes} - using ${using} from ${nameOf(r.from[skip.field])}`
+  return `"${skip.field}" in ${sourceFileName(skip.source)} takes ${RULES[skip.field].takes} - using ${using} from ${sourceFileName(r.from[skip.field])}`
 }
 
 // The old commands' store keys as an earlier command's choices (S7): only the values those commands wrote, so a fresh
 // store, or anything another version or a hand wrote, gives no field
-export function legacyOf(raw: { band: unknown; place: unknown; tools: unknown; quiet: unknown; rec: unknown; handoff: unknown }): Partial<Values> {
-  const out: Partial<Values> = {}
+export function legacyOf(raw: { band: unknown; place: unknown; tools: unknown; quiet: unknown; rec: unknown; handoff: unknown }): Partial<SettingsValues> {
+  const out: Partial<SettingsValues> = {}
   if (raw.band === 'calm' || raw.band === 'full') out.band = raw.band
   if (raw.place === 'under') out.bandPlace = 'under'
   if (raw.tools === 'open' || raw.tools === 'closed') out.bandRows = raw.tools === 'open'
@@ -101,7 +101,7 @@ const ORDER: readonly From[] = ['policy', 'flag', 'local', 'project', 'user', 'l
 // S3's one departure, REC's hold: after the session's first read, a lower level lowers REC only when it comes from the
 // source that set the level in force, or one above it. From a lower source - the file that set it gives no valid "rec"
 // any more, which a typo that drops the whole file also does - the level in force holds.
-export function holdRec(inForce: { level: Level; from: From } | null, next: { level: Level; from: From }): { level: Level; from: From; isHeld: boolean } {
+export function holdRec(inForce: { level: RecLevel; from: From } | null, next: { level: RecLevel; from: From }): { level: RecLevel; from: From; isHeld: boolean } {
   if (inForce === null || LEVELS.indexOf(next.level) >= LEVELS.indexOf(inForce.level) || ORDER.indexOf(next.from) <= ORDER.indexOf(inForce.from)) {
     return { ...next, isHeld: false }
   }
@@ -110,13 +110,13 @@ export function holdRec(inForce: { level: Level; from: From } | null, next: { le
 
 // S3's toast for a hold, once per hold. The toast box carries the mod's name and shows three 40-cell lines, so no
 // prefix and under 120 characters (the review's #1, Claude Code 2.1.322)
-export function holdToast(level: Level, from: From): string {
-  return `REC stays ${level}: ${nameOf(from)} no longer gives "rec" - fix the file, or set "rec": "off" in it`
+export function holdToast(level: RecLevel, from: From): string {
+  return `REC stays ${level}: ${sourceFileName(from)} no longer gives "rec" - fix the file, or set "rec": "off" in it`
 }
 
 // S7's toast, once per machine: the earlier commands' choices still in force, as the line to paste, in S2's order. The
 // line comes first, so the box's three lines show it before the why (the review's #1)
-export function movedToast(kept: Partial<Values>): string {
+export function movedToast(kept: Partial<SettingsValues>): string {
   const fields = FIELDS.filter(f => kept[f] !== undefined).map(f => `"${f}": ${JSON.stringify(kept[f])}`).join(', ')
   return `Add "alfred-mods": { ${fields} } to ~/.claude/settings.json - the choices your earlier commands made`
 }
@@ -125,7 +125,7 @@ export function movedToast(kept: Partial<Values>): string {
 // /inspect band (the user's rulings, 2026-11-12): every other key kept in its order, in the file's own indent, line ends and last
 // newline; null or blank text makes the file. A file that is not one JSON object, or whose "alfred-mods" is not an
 // object, is never rewritten: 'parse' or 'key' says which.
-export function writeField<F extends Field>(text: string | null, field: F, value: Values[F]): { text: string } | { why: 'parse' | 'key' } {
+export function writeField<F extends Field>(text: string | null, field: F, value: SettingsValues[F]): { text: string } | { why: 'parse' | 'key' } {
   const isBlank = text === null || text.trim() === ''
   let parsed: unknown = {}
   if (!isBlank) {
@@ -151,4 +151,4 @@ export const LEGACY_KEYS: Partial<Record<Field, string>> = {
 }
 
 // A source's name in the commands' answers: an earlier command's choice is named for its command (S7)
-export const sourceLabel = (from: From, command: '/rec' | '/auto-handoff' | '/band'): string => (from === 'legacy' ? `an earlier ${command}` : nameOf(from))
+export const sourceLabel = (from: From, command: '/rec' | '/auto-handoff' | '/band'): string => (from === 'legacy' ? `an earlier ${command}` : sourceFileName(from))

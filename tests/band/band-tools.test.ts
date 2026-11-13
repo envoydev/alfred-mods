@@ -5,7 +5,7 @@ import type { Engine } from 'claude-code/testing'
 import type { On, RenderSurface, SessionContextBreakdown, SessionUsage } from 'claude-code'
 
 import { PRESENTATION, START, engine, rows, setUser, step, stepEngine, stubAll, watchState } from '../kit'
-import { tokens } from '../../hooks/core/format'
+import { tokensText } from '../../hooks/core/format'
 import type { Parts } from '../../hooks/context/types'
 import type { Meta } from '../../hooks/session/types'
 
@@ -278,9 +278,9 @@ for (const surface of SURFACES) {
     skillCalls(on, $)
     await $.session.start(START)
     await measure($)
-    expect((await usageRows($, surface)).find(l => l.startsWith('Skills'))).toBe(`Skills      none loaded · 57 of 60 listed · ${tokens(3200)}`)
+    expect((await usageRows($, surface)).find(l => l.startsWith('Skills'))).toBe(`Skills      none loaded · 57 of 60 listed · ${tokensText(3200)}`)
     await $.tool.call({ tool: 'Skill', skill: 'solve-task' })
-    expect((await usageRows($, surface)).find(l => l.startsWith('Skills'))).toBe(`Skills      solve-task ×1 · 57 of 60 listed · ${tokens(3200)}`)
+    expect((await usageRows($, surface)).find(l => l.startsWith('Skills'))).toBe(`Skills      solve-task ×1 · 57 of 60 listed · ${tokensText(3200)}`)
   })
 
   test(`after a resume the Usage tab's Skills row counts from it (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
@@ -289,7 +289,7 @@ for (const surface of SURFACES) {
     await $.session.start(START)
     await $.classic.SessionStart({ source: 'resume' })
     await measure($)
-    expect((await usageRows($, surface)).find(l => l.startsWith('Skills'))).toBe(`Skills      none seen since resume · 57 of 60 listed · ${tokens(3200)}`)
+    expect((await usageRows($, surface)).find(l => l.startsWith('Skills'))).toBe(`Skills      none seen since resume · 57 of 60 listed · ${tokensText(3200)}`)
   })
 
   // The review of 2026-11-11: in a docked pane the row wraps, so the listing is never cut off
@@ -302,7 +302,7 @@ for (const surface of SURFACES) {
     await $.tool.call({ tool: 'Skill', skill: 'solve-task' })
     const lines = await usageRows($, surface, 46)
     const i = lines.findIndex(l => l.startsWith('Skills'))
-    expect(lines.slice(i, i + 2)).toEqual(['Skills      solve-task ×1', `            57 of 60 listed · ${tokens(3200)}`])
+    expect(lines.slice(i, i + 2)).toEqual(['Skills      solve-task ×1', `            57 of 60 listed · ${tokensText(3200)}`])
   })
 
   test(`with no listing and no skill loaded, the Usage tab has no Skills row (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {

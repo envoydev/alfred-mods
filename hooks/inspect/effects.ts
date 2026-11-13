@@ -6,7 +6,7 @@ import type { EngineInterface, UiOpenResult } from 'claude-code'
 import type { Tab, View } from './types'
 import { BAND_HELP, COPY_WHY, INSPECT_HELP, TAB_NAMES, ordinalOf, outOfRange } from './commands'
 import { oneLine, printable } from '../core/format'
-import { numberOf } from '../tools/outcome'
+import { failureNumberOf } from '../tools/outcome'
 import { loadSettings, resolvedSettings, writeUserField } from '../settings/effects'
 import { closePane, isNoColor, toast } from '../core/effects'
 import { isBreakdownStale, readBreakdownSoon, readParts } from '../context/effects'
@@ -82,7 +82,7 @@ export async function runBandCommand($: EngineInterface, word: string): Promise<
 
 // '/inspect show [n]' and '/inspect copy [n]': the failure whose row starts with n, the newest when n is left out
 export async function runFailureCommand($: EngineInterface, action: 'show' | 'copy', word: string | undefined): Promise<string> {
-  const list = (await readFailures($)).map((f, i) => ({ f, n: numberOf(f, i) }))
+  const list = (await readFailures($)).map((f, i) => ({ f, n: failureNumberOf(f, i) }))
   const newest = list[list.length - 1]
   if (newest === undefined) return `No tool failure to ${action}.`
   const n = word === undefined ? newest.n : ordinalOf(word)
@@ -167,9 +167,9 @@ export async function drawInspectPane($: EngineInterface, e: MatchedInput<'ui.re
   const runway = runwayOf(st, u, m.model)
   const input = {
     now, columns: e.props.bodyColumns, isWorking: counts.turnId !== null, live: counts, usage: u,
-    meta: m, turns: await readTurns($), newFailures: rows.filter(f => f.isNew).length,
+    session: m, turns: await readTurns($), newFailures: rows.filter(f => f.isNew).length,
     pace: await readPace($), failures: rows, stats: await readStats($), totals: await readTotals($), view: shown,
-    agents: await readAgents($), cache: await readCache($), plan: d.band, planInvalid: d.invalid, score: d.score, isPlanScore: d.isPlanScore, scoreLevel: await readScoreLevel($), blockers: await readBlockers($), parts: await readParts($),
+    agents: await readAgents($), cache: await readCache($), plan: d.band, isPlanInvalid: d.invalid, score: d.score, isPlanScore: d.isPlanScore, scoreLevel: await readScoreLevel($), blockers: await readBlockers($), parts: await readParts($),
     loops: await readLoops($),
     rec: recSummary(await readRec($)), forecast: forecastTargetOf(h, u, runway), handoff: handoffViewOf(h, u, counts.turnId !== null, runway),
     stack: { view: st, prompt: stackPrompt(), runway, sessionModel: m.model },

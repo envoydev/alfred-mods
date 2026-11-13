@@ -4,13 +4,13 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, ModelUsage } from 'claude-code'
 import type { Cache, CacheConfig } from './types'
-import { addRequest, afterCompact, billingOf, cacheView, idleOf, minutes, pinOf, takeRate, takeSwitch, toastAt } from './cache'
+import { addRequest, afterCompact, billingOf, cacheView, idleOf, minutesLeftText, pinOf, takeRate, takeSwitch, toastAt } from './cache'
 import { noteCompaction, readLive, readUsage, setModel } from '../session/effects'
 import type { Pending, HookInput, HookNext } from '../core/types'
 import { toast } from '../core/effects'
 import { retellRecNote } from '../rec/effects'
 import { rearmAfterCompaction } from '../handoff/effects'
-import { usd } from '../core/format'
+import { usdText } from '../core/format'
 import { readBreakdownSoon } from '../context/effects'
 
 const INITIAL_CACHE: Cache = {
@@ -72,8 +72,8 @@ export async function toastCacheClosing($: EngineInterface): Promise<void> {
   const v = cacheView(c, billingOf(u.windows), await $.clock.now(), u.tokens)
   if (v.tier.tier !== '1h' || !v.isClosing || c.toastedFor === c.lastAt) return
   if ((await readLive($)).turnId !== null) return
-  const rewrite = v.rewriteUsd === null ? '' : ` (rewrite ≈ ${usd(v.rewriteUsd)})`
-  toast($, `Cache cold in ${v.tier.isEstimate ? '≈' : ''}${minutes(v.leftMs ?? 0)}${rewrite}: press 3 to compact, or /inspect cache`)
+  const rewrite = v.rewriteUsd === null ? '' : ` (rewrite ≈ ${usdText(v.rewriteUsd)})`
+  toast($, `Cache cold in ${v.tier.isEstimate ? '≈' : ''}${minutesLeftText(v.leftMs ?? 0)}${rewrite}: press 3 to compact, or /inspect cache`)
   const lastAt = c.lastAt
   await updateCache($, x => ({ ...x, toastedFor: lastAt }))
 }

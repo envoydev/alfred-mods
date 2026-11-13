@@ -3,10 +3,10 @@
 // The rule: https://code.claude.com/docs/en/prompt-caching.md; idle compaction: settings-reference, `idleCompaction`.
 import type { ModelUsage } from 'claude-code'
 
-import { bar, toneOf, tokens, usd } from '../core/format'
+import { barText, toneOf, tokensText, usdText } from '../core/format'
 import type { Billing, Cache, CacheConfig, CacheTier, CacheView, TierOf } from './types'
 import type { Line, Tone } from '../core/types'
-import type { Window } from '../session/types'
+import type { RateWindow } from '../session/types'
 
 export const TTL_MS: Record<CacheTier, number> = { '5m': 300_000, '1h': 3_600_000 }
 // The warning's window: a 1h cache's last 5 minutes, a 5m cache's last minute
@@ -20,7 +20,7 @@ export const SELF_CLOSE_MS = 180_000
 export const WARN_MIN_TOKENS = 100_000
 
 // Within the plan's usage while a 5h or 7d window reads under 100; on usage credits once one reads 100 or more
-export function billingOf(windows: Window[]): Billing {
+export function billingOf(windows: RateWindow[]): Billing {
   const plan = windows.filter(w => w.kind === 'five_hour' || w.kind === 'seven_day')
   if (plan.length === 0) return 'other'
   return plan.some(w => w.percentUsed >= 100) ? 'credits' : 'plan'
@@ -132,7 +132,7 @@ export function needsTick(c: Cache, billing: Billing, now: number): boolean {
   return (now - c.lastAt) % 60_000 < 1000 || endsAt - now <= CLOSE_MS[tierOf(c, billing).tier]
 }
 
-export function minutes(ms: number): string {
+export function minutesLeftText(ms: number): string {
   return `${Math.ceil(ms / 60_000)}m`
 }
 
@@ -144,14 +144,14 @@ export function reuseTone(percent: number): Tone {
 // 'warm 52m ▰▰▰▰▱ 94% reused · 180k cached · rewrite ≈ $1.44', each part only when known
 export function cacheLine(v: CacheView): Line {
   const line: Line = v.state === 'warm'
-    ? [{ text: `warm ${v.tier.isEstimate ? '≈' : ''}${minutes(v.leftMs ?? 0)}`, tone: 'ok' }]
+    ? [{ text: `warm ${v.tier.isEstimate ? '≈' : ''}${minutesLeftText(v.leftMs ?? 0)}`, tone: 'ok' }]
     : [{ text: 'cold', tone: 'warn' }]
   if (v.reuseLast !== null) {
-    const [filled, empty] = bar(v.reuseLast)
+    const [filled, empty] = barText(v.reuseLast)
     const tone = reuseTone(v.reuseLast)
     line.push({ text: ' ' }, { text: filled, tone }, { text: empty, tone: 'dim' }, { text: ` ${Math.round(v.reuseLast)}% reused`, tone })
   }
-  if (v.cached > 0) line.push({ text: ` · ${tokens(v.cached)} cached` })
-  if (v.rewriteUsd !== null) line.push({ text: ` · rewrite ≈ ${usd(v.rewriteUsd)}` })
+  if (v.cached > 0) line.push({ text: ` · ${tokensText(v.cached)} cached` })
+  if (v.rewriteUsd !== null) line.push({ text: ` · rewrite ≈ ${usdText(v.rewriteUsd)}` })
   return line
 }

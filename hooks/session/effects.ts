@@ -3,14 +3,14 @@
 // stored, which outlives a reload.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, SessionRateLimit, SessionUsage } from 'claude-code'
-import type { Live, Meta, Pace, Running, Totals, Turn, Usage, Window } from './types'
+import type { Live, Meta, Pace, RunningCall, Totals, Turn, Usage, RateWindow } from './types'
 import type { Place } from '../place/types'
 import { withPlace } from '../place/place'
 import { baseWrites, dayUsd, recordWrites } from './cost'
-import type { Entries } from '../plan/types'
+import type { TimeEntries } from '../plan/types'
 import { localDate } from '../core/forecast'
 import { staleKeys } from '../plan/steptime'
-import { fingerprint, when } from '../core/format'
+import { fingerprint, whenText } from '../core/format'
 import { dropPassed, nextWindows, storedWindows, rateWindowsOf } from './windows'
 import { syncStatusLine } from '../band/effects'
 import { trackAgentStep, finishLoop, readAgents, readLoops, updateAgentRow } from '../agents/effects'
@@ -186,20 +186,20 @@ export async function countMainCall($: EngineInterface): Promise<void> {
 }
 
 // A main-loop call on the running list until it settles
-export async function addRunningCall($: EngineInterface, call: Running): Promise<void> {
+export async function addRunningCall($: EngineInterface, call: RunningCall): Promise<void> {
   await updateLive($, l => ({ ...l, running: [...l.running, call] }))
 }
 
 // The cost keys `keep` names, with their values; no other value is read, as the store holds 7 days of sessions
-export async function readCostEntries($: EngineInterface, keep: (key: string) => boolean): Promise<Entries> {
-  const entries: Entries = {}
+export async function readCostEntries($: EngineInterface, keep: (key: string) => boolean): Promise<TimeEntries> {
+  const entries: TimeEntries = {}
   for (const key of await $.store.keys()) {
     if (keep(key)) entries[key] = await $.store.get(key)
   }
   return entries
 }
 
-export async function writeCostEntries($: EngineInterface, writes: Entries): Promise<void> {
+export async function writeCostEntries($: EngineInterface, writes: TimeEntries): Promise<void> {
   for (const [key, value] of Object.entries(writes)) await $.store.set(key, value)
 }
 
@@ -221,7 +221,7 @@ export async function readTodayUsd($: EngineInterface, now: number): Promise<num
 
 // A day key is judged by its date alone; a last reading by when it was taken
 export async function pruneCost($: EngineInterface, now: number): Promise<void> {
-  const entries: Entries = {}
+  const entries: TimeEntries = {}
   for (const key of await $.store.keys()) {
     if (key.startsWith('cost:')) entries[key] = null
     else if (key.startsWith('cost-last:')) entries[key] = await $.store.get(key)
@@ -252,7 +252,7 @@ export async function writeUsageReading($: EngineInterface, reading: SessionUsag
   }))
 }
 
-export async function storeRateWindows($: EngineInterface, windows: Window[], at: number): Promise<void> {
+export async function storeRateWindows($: EngineInterface, windows: RateWindow[], at: number): Promise<void> {
   const json = JSON.stringify(windows.map(w => [w.kind, Math.round(w.percentUsed), w.resetsAt]))
   if (windows.length === 0 || json === storedWindowsMemory.stored) return
   storedWindowsMemory.stored = json
@@ -304,7 +304,7 @@ export async function trackPace($: EngineInterface, limits: readonly SessionRate
         : []
       if (marks.length > 0) {
         const reset = resetsAt === null ? NaN : Date.parse(resetsAt)
-        due.push(`${PACE_LABEL[w.kind]} limit at ${Math.max(...marks)}%, resets ${Number.isNaN(reset) ? 'later' : when(reset)}`)
+        due.push(`${PACE_LABEL[w.kind]} limit at ${Math.max(...marks)}%, resets ${Number.isNaN(reset) ? 'later' : whenText(reset)}`)
       }
       out[w.kind] = { resetsAt, points: [...points, { at: now, percent: w.percentUsed }].slice(-20), toasted: [...toasted, ...marks] }
     }

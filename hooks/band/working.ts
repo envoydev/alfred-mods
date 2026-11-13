@@ -1,13 +1,13 @@
 // The band while a turn runs: the working line, its spinner suffix, the cache and handoff asks, the plan's tail
 import { actionOf, isLive } from '../agents/agents'
-import { billingOf, cacheView, minutes } from '../cache/cache'
-import { duration, elapsed, fitLine, tokens, usd, widthOf } from '../core/format'
+import { billingOf, cacheView, minutesLeftText } from '../cache/cache'
+import { durationText, elapsedText, fitLine, tokensText, usdText, widthOf } from '../core/format'
 import { narrowPlan, planLine, scoreSeg } from '../plan/planlines'
 import type { AgentRow } from '../agents/types'
 import type { BandInput } from './types'
 import type { Live, Turn } from '../session/types'
 import type { Line, Seg } from '../core/types'
-import { pct, times } from './gauges'
+import { percentText, times } from './gauges'
 
 type ButtonSeg = Extract<Seg, { button: unknown }>['button']
 
@@ -25,7 +25,7 @@ export function underButton(b: BandInput, button: ButtonSeg, command: string): S
 export function withToday(b: BandInput, line: Line, after: Line): Line {
   const u = b.usage
   if (b.mode !== 'full' || u.todayUsd === null || u.costUsd === null) return line
-  const full = [...line, { text: ` · today ${usd(u.todayUsd)}` }]
+  const full = [...line, { text: ` · today ${usdText(u.todayUsd)}` }]
   return widthOf([...full, ...after]) <= b.columns ? full : line
 }
 
@@ -42,7 +42,7 @@ export function lastTurn(b: BandInput, isNarrow: boolean): Line {
   const t = b.turns[b.turns.length - 1]
   if (t === undefined) return []
   const ok = t.end === 'answer'
-  const line: Line = [{ text: ok ? '✓' : '✗', tone: ok ? 'ok' : 'fail' }, { text: ` Turn ${t.n} · ${duration(t.durationMs)}` }]
+  const line: Line = [{ text: ok ? '✓' : '✗', tone: ok ? 'ok' : 'fail' }, { text: ` Turn ${t.n} · ${durationText(t.durationMs)}` }]
   if (isNarrow) return line
   line.push({ text: ` · ${t.tools} ${t.tools === 1 ? 'tool' : 'tools'}` })
   if (t.failures > 0) line.push({ text: ` · ${t.failures} ✗`, tone: 'fail' })
@@ -66,13 +66,13 @@ function planTail(b: BandInput, isRowDrawn: boolean): Line {
 // The turn, or the agents while only they run, or the plan line while a plan runs; then each live agent's action and
 // the running Bash. Past the width the agent parts fold into ' +N agents', then the Bash part goes, then the plan's
 // step, then its title is cut.
-export function working(b: BandInput, isNarrow: boolean): Line {
+export function workingLine(b: BandInput, isNarrow: boolean): Line {
   const running = b.agents.filter(r => isLive(r.status))
   // The full band's plan has its own row, so line 1 keeps the turn there
   const plan = b.mode === 'full' ? null : b.plan
   if (plan !== null && isNarrow) return narrowPlan(plan, running.length)
-  const n = b.meta.turnCount + 1
-  const took = elapsed(b.now - (b.live.startedAt ?? b.now))
+  const n = b.session.turnCount + 1
+  const took = elapsedText(b.now - (b.live.startedAt ?? b.now))
   const count = b.mode === 'full' ? ` · ${b.live.tools} ${b.live.tools === 1 ? 'tool' : 'tools'}` : ''
   const head: Seg = b.isWorking
     ? { text: isNarrow ? `⟳ Turn ${n} ${took}` : `⟳ Turn ${n} · ${took}${count}`, bold: true }
@@ -82,7 +82,7 @@ export function working(b: BandInput, isNarrow: boolean): Line {
   const calls = b.live.running.filter(r => r.tool === 'Bash')
   const newest = calls[calls.length - 1]
   if (newest !== undefined) {
-    bash.push({ text: ` │ Bash ▸ ${newest.label} ${elapsed(b.now - newest.startedAt)}` })
+    bash.push({ text: ` │ Bash ▸ ${newest.label} ${elapsedText(b.now - newest.startedAt)}` })
     if (calls.length > 1) bash.push({ text: ` +${calls.length - 1}`, tone: 'dim' })
   }
   const parts: Line = running.map(r => ({ text: r.action === null ? ` │ ${r.type}` : ` │ ${r.type} ▸ ${r.action}` }))
@@ -106,11 +106,11 @@ export function spinnerSuffix(s: { requestId: string; live: Live; percent: numbe
   const row = s.agents.find(r => r.id === s.requestId)
   if (row !== undefined) {
     if (row.action !== null) parts.push(fitLine(row.action, 40))
-    if (row.contextTokens !== null) parts.push(`ctx ${tokens(row.contextTokens)}`)
+    if (row.contextTokens !== null) parts.push(`ctx ${tokensText(row.contextTokens)}`)
   } else {
     const newest = s.live.running[s.live.running.length - 1]
     if (newest !== undefined) parts.push(fitLine(actionOf(newest.tool, newest.label), 40))
-    if (s.percent !== null) parts.push(pct(s.percent))
+    if (s.percent !== null) parts.push(percentText(s.percent))
     const k = s.agents.filter(r => isLive(r.status)).length
     if (k > 0) parts.push(agentCount(k))
   }
@@ -126,13 +126,13 @@ export function cacheWarning(b: BandInput, hasHotkey: boolean): Line | null {
   const button = hasHotkey
     ? { key: 'compact', label: 'Compact', hotkey: '3', tone: 'cache' as const }
     : { key: 'compact', label: 'Compact', tone: 'cache' as const }
-  return [{ text: `⚠ cache cold in ${v.tier.isEstimate ? '≈' : ''}${minutes(v.leftMs ?? 0)} `, tone: 'warn' }, underButton(b, button, '/compact')]
+  return [{ text: `⚠ cache cold in ${v.tier.isEstimate ? '≈' : ''}${minutesLeftText(v.leftMs ?? 0)} `, tone: 'warn' }, underButton(b, button, '/compact')]
 }
 
 // F8's ask on line 3: the step the context passed, its violet button on hotkey 4
 export function handoffAsk(b: BandInput): Line | null {
-  if (b.handoffAsk === undefined || b.handoffAsk === null) return null
-  return [{ text: `⚠ ctx past ${b.handoffAsk}% `, tone: 'warn' }, underButton(b, { key: 'handoff', label: 'Handoff', hotkey: '4', tone: 'handoff' }, '/auto-handoff now')]
+  if (b.handoffAskStep === undefined || b.handoffAskStep === null) return null
+  return [{ text: `⚠ ctx past ${b.handoffAskStep}% `, tone: 'warn' }, underButton(b, { key: 'handoff', label: 'Handoff', hotkey: '4', tone: 'handoff' }, '/auto-handoff now')]
 }
 
 // The idle line 1 with ' │ PLAN 3/5 · score 81 ▲13' while it fits
