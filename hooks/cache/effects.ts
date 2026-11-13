@@ -46,7 +46,7 @@ export async function readCacheConfig($: EngineInterface, pending: Pending): Pro
     }),
     isTerminal: pending.isTerminal,
   }
-  if (JSON.stringify((await readCache($)).config) !== JSON.stringify(config)) await updateCache($, c => ({ ...c, config }))
+  if (JSON.stringify((await readCache($)).config) !== JSON.stringify(config)) await updateCache($, cache => ({ ...cache, config }))
 }
 
 // Sets the toast's timer afresh: due 5 minutes before a 1h cache goes cold, or 3 where Claude Code should compact it
@@ -54,9 +54,9 @@ export async function readCacheConfig($: EngineInterface, pending: Pending): Pro
 export async function armCacheToast($: EngineInterface, pending: Pending): Promise<void> {
   pending.cacheToast?.cancel()
   pending.cacheToast = null
-  const c = await readCache($)
-  const u = await readUsage($)
-  const at = toastAt(c, billingOf(u.windows), u.tokens)
+  const cache = await readCache($)
+  const usage = await readUsage($)
+  const at = toastAt(cache, billingOf(usage.windows), usage.tokens)
   if (at === null) return
   const now = await $.clock.now()
   pending.cacheToast = $.clock.after(Math.max(0, at - now), () => {
@@ -68,12 +68,12 @@ export async function armCacheToast($: EngineInterface, pending: Pending): Promi
 // compaction of Claude Code's own has made it cold
 export async function toastCacheClosing($: EngineInterface): Promise<void> {
   const c = await readCache($)
-  const u = await readUsage($)
-  const v = cacheView(c, billingOf(u.windows), await $.clock.now(), u.tokens)
-  if (v.tier.tier !== '1h' || !v.isClosing || c.toastedFor === c.lastAt) return
+  const usage = await readUsage($)
+  const cacheState = cacheView(c, billingOf(usage.windows), await $.clock.now(), usage.tokens)
+  if (cacheState.tier.tier !== '1h' || !cacheState.isClosing || c.toastedFor === c.lastAt) return
   if ((await readLive($)).turnId !== null) return
-  const rewrite = v.rewriteUsd === null ? '' : ` (rewrite ≈ ${usdText(v.rewriteUsd)})`
-  toast($, `Cache cold in ${v.tier.isEstimate ? '≈' : ''}${minutesLeftText(v.leftMs ?? 0)}${rewrite}: press 3 to compact, or /inspect cache`)
+  const rewrite = cacheState.rewriteUsd === null ? '' : ` (rewrite ≈ ${usdText(cacheState.rewriteUsd)})`
+  toast($, `Cache cold in ${cacheState.tier.isEstimate ? '≈' : ''}${minutesLeftText(cacheState.leftMs ?? 0)}${rewrite}: press 3 to compact, or /inspect cache`)
   const lastAt = c.lastAt
   await updateCache($, x => ({ ...x, toastedFor: lastAt }))
 }
@@ -127,7 +127,7 @@ export async function trackModelSwitch($: EngineInterface, e: HookInput<'classic
   const billing = billingOf((await readUsage($)).windows)
   const now = await $.clock.now()
   const s = { ttl: e.cache_ttl, contextTokens: e.context_tokens, usd: e.estimated_cache_write_usd, model: e.to_model, billing }
-  await updateCache($, c => takeSwitch(c, s, now, true))
+  await updateCache($, cache => takeSwitch(cache, s, now, true))
   await armCacheToast($, pending)
   return done
 }
@@ -138,17 +138,17 @@ export async function trackModelSwitchAsk($: EngineInterface, e: HookInput<'clas
   const billing = billingOf((await readUsage($)).windows)
   const now = await $.clock.now()
   const s = { ttl: e.cache_ttl, contextTokens: e.context_tokens, usd: e.estimated_cache_write_usd, model: e.to_model, billing }
-  await updateCache($, c => takeSwitch(c, s, now, false))
+  await updateCache($, cache => takeSwitch(cache, s, now, false))
   await armCacheToast($, pending)
   return done
 }
 
 // A main-loop request's cache figures, at the time its step started
 export async function addCacheRequest($: EngineInterface, usage: Pick<ModelUsage, 'input_tokens' | 'cache_read_input_tokens' | 'cache_creation_input_tokens'>, at: number): Promise<void> {
-  await updateCache($, c => addRequest(c, usage, at))
+  await updateCache($, cache => addRequest(cache, usage, at))
 }
 
 // A resumed conversation's cache rate, from its SessionStart
 export async function takeResumeRate($: EngineInterface, usd: number, tokens: number, model: string | null): Promise<void> {
-  await updateCache($, c => takeRate(c, usd, tokens, model))
+  await updateCache($, cache => takeRate(cache, usd, tokens, model))
 }
