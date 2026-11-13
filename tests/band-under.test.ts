@@ -4,8 +4,8 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { RenderSurface, RenderViewport } from 'claude-code'
 
-import { underRows } from '../hooks/band.js'
-import { START, engine, engineSites, failState, rows, stubAll } from './kit.js'
+import { underRows } from '../hooks/band'
+import { START, engine, engineSites, failState, rows, stubAll } from './kit'
 
 const ABOVE = { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 12, bodyColumns: 160, scroll: { offset: 0, bodyRows: 12 }, view: {} }
 const HINT = { isDraft: false, isWorking: false, hint: '? for shortcuts' }

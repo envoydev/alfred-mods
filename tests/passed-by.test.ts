@@ -5,7 +5,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine, Plugin } from 'claude-code/testing'
 import type { On, SessionUsage } from 'claude-code'
 
-import { PRESENTATION, START, engine, rows, stubAll, watchState } from './kit.js'
+import { PRESENTATION, START, engine, rows, stubAll, watchState } from './kit'
 import type { Meta, Turn } from '../types'
 
 const ON = 'Screen recording is on (alfred-mods REC). Until told it is off, do not write secret values, API keys, tokens, passwords, email addresses or phone numbers in replies; refer to them by name, such as "the token in .env". Work on the task as usual.'

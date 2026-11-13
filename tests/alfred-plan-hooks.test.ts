@@ -2,11 +2,11 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { shownPlan } from '../hooks/plan.js'
+import { shownPlan } from '../hooks/plan'
 import type { Plans } from '../types'
-import { START, engine, stubAll, watchState } from './kit.js'
-import type { FileStub } from './kit.js'
-import { PLAN_JSON, SCORING_JSON, STATUS_JSON } from './plans.js'
+import { START, engine, stubAll, watchState } from './kit'
+import type { FileStub } from './kit'
+import { PLAN_JSON, SCORING_JSON, STATUS_JSON } from './plans'
 
 // The plan folder the Alfred Code status file names (alfred-code's plan folder contract, the user's ruling of
 // 2026-11-13): read only through that field, so a project without Alfred Code reads exactly what it read before

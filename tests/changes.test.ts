@@ -3,8 +3,8 @@
 // lines as added, read off the hooks by one `git diff` and one `git ls-files`, each with a 2 s timeout
 import { expect, test } from 'claude-code/testing'
 
-import { aheadBehind, numstatTotals, untrackedNames } from '../hooks/changes.js'
-import { START, engine, stubAll, watchState } from './kit.js'
+import { aheadBehind, numstatTotals, untrackedNames } from '../hooks/changes'
+import { START, engine, stubAll, watchState } from './kit'
 import type { Meta } from '../types'
 
 const metaOf = (state: { get(key: string): unknown }): Meta => state.get('meta') as Meta

@@ -1,9 +1,9 @@
 import { expect, test } from 'claude-code/testing'
 
-import type { Line } from '../hooks/band.js'
-import { TOASTS, gitPart, handoffLines, handoffText, nextStep, parseStatus, percentOf, stepsOf, windowThreshold } from '../hooks/handoff.js'
-import type { HandoffView, SaveInput } from '../hooks/handoff.js'
-import { gitResult } from './kit.js'
+import type { Line } from '../hooks/band'
+import { TOASTS, gitPart, handoffLines, handoffText, nextStep, parseStatus, percentOf, stepsOf, windowThreshold } from '../hooks/handoff'
+import type { HandoffView, SaveInput } from '../hooks/handoff'
+import { gitResult } from './kit'
 
 test('steps run 5 points apart up to 95', () => {
   expect(stepsOf(80)).toEqual([80, 85, 90, 95])

@@ -4,8 +4,8 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, SessionUsage, TurnStepInput, TurnStepResult, TurnUsage } from 'claude-code'
 
-import { localDate } from '../hooks/forecast.js'
-import { SPAWN, START, engine, rows, step, stepEngine, stubAll, watchState } from './kit.js'
+import { localDate } from '../hooks/forecast'
+import { SPAWN, START, engine, rows, step, stepEngine, stubAll, watchState } from './kit'
 
 const NOW = Date.parse('2026-10-28T14:00:00Z')
 const MAIN_STEP = { turnId: 't1', index: 0, model: 'claude-sonnet-5-5', messageCount: 1 }

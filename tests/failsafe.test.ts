@@ -2,10 +2,10 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, RenderPropsOf } from 'claude-code'
 
-import { REC_HIDDEN, bandFailed, paneFailed } from '../hooks/failsafe.js'
-import { neutralDialog } from '../hooks/sites.js'
-import { EMAILS, KEYS } from '../hooks/samples.js'
-import { SPINNER, START, engine, engineSites, failState, rows, stubAll } from './kit.js'
+import { REC_HIDDEN, bandFailed, paneFailed } from '../hooks/failsafe'
+import { neutralDialog } from '../hooks/sites'
+import { EMAILS, KEYS } from '../hooks/samples'
+import { SPINNER, START, engine, engineSites, failState, rows, stubAll } from './kit'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const KEY = KEYS[0]!.text

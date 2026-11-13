@@ -2,10 +2,10 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, RenderElement, RenderSurface, SessionRateLimit, SessionUsage } from 'claude-code'
 
-import { drawLines } from '../hooks/draw.js'
-import { clock, when } from '../hooks/format.js'
-import { mask } from '../hooks/mask.js'
-import { SPAWN, START, engine, held, rows, spawns, stubAll } from './kit.js'
+import { drawLines } from '../hooks/draw'
+import { clock, when } from '../hooks/format'
+import { mask } from '../hooks/mask'
+import { SPAWN, START, engine, held, rows, spawns, stubAll } from './kit'
 
 const SURFACES = ['terminal', 'desktop'] as const
 // Three hours before the 5h window resets, three days before the 7d one: each reset as the band words it

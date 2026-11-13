@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, RenderElement, RenderSurface, SessionUsage } from 'claude-code'
 
-import { SPAWN, SPINNER, START, engine, held, rows, spawns, step, stepEngine, stubAll } from './kit.js'
+import { SPAWN, SPINNER, START, engine, held, rows, spawns, step, stepEngine, stubAll } from './kit'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const AT_17: SessionUsage = { startedAt: 0, context: { window: 200_000, tokens: 34_000, percent: 17 }, rateLimits: [] }

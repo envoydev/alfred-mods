@@ -1,8 +1,8 @@
 import { expect, test } from 'claude-code/testing'
 
-import { baseWrites, dayUsd, recordWrites, staleKeys } from '../hooks/cost.js'
-import type { Entries } from '../hooks/cost.js'
-import { localDate } from '../hooks/forecast.js'
+import { baseWrites, dayUsd, recordWrites, staleKeys } from '../hooks/cost'
+import type { Entries } from '../hooks/cost'
+import { localDate } from '../hooks/forecast'
 
 // Local times, as the day the cost belongs to is the machine's
 const at = (day: number, h: number, m: number): number => new Date(2026, 9, day, h, m).getTime()

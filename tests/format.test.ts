@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { bar, duration, elapsed, mins, oneLine, printable, tokens, usd, when } from '../hooks/format.js'
+import { bar, duration, elapsed, mins, oneLine, printable, tokens, usd, when } from '../hooks/format'
 
 test('a bar is 5 cells of 20%, one character each, a cell filled only when its share is reached', () => {
   expect(bar(45)).toEqual(['▰▰', '▱▱▱'])

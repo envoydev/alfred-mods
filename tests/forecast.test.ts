@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { pace, spark, turnsLeft } from '../hooks/forecast.js'
+import { pace, spark, turnsLeft } from '../hooks/forecast'
 
 test('turns left to 80%', () => {
   expect(turnsLeft([10, 20, 30])).toBe(5)

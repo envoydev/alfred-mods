@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import type { Plugin } from 'claude-code/testing'
 
-import { SPAWN, stubAll, watchState } from './kit.js'
+import { SPAWN, stubAll, watchState } from './kit'
 import type { Failure, Live } from '../types'
 
 // Each test's own hooks stand for the engine, in the order Phase 0 saw the events

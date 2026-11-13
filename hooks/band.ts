@@ -1,14 +1,14 @@
 // The band above the prompt, from the session's values to lines of styled segments. Calm by default: colour
 // appears only when a threshold is crossed, something failed or a turn runs.
-import { actionOf, isLive } from './agents.js'
-import { billingOf, cacheView, minutes } from './cache.js'
-import { bar, clock, duration, elapsed, fitLine, mins, modelParts, modelText, toneOf, tokens, usd, when, widthOf } from './format.js'
-import { pace, turnsLeft } from './forecast.js'
-import { listedText, loadedTexts } from './parts.js'
-import { narrowPlan, planLine, planRowParts, scoreSeg } from './planlines.js'
-import { storedMark } from './startup.js'
-import type { PlanView, ScoresView } from './plan.js'
-import type { Runway } from './stack.js'
+import { actionOf, isLive } from './agents'
+import { billingOf, cacheView, minutes } from './cache'
+import { bar, clock, duration, elapsed, fitLine, mins, modelParts, modelText, toneOf, tokens, usd, when, widthOf } from './format'
+import { pace, turnsLeft } from './forecast'
+import { listedText, loadedTexts } from './parts'
+import { narrowPlan, planLine, planRowParts, scoreSeg } from './planlines'
+import { storedMark } from './startup'
+import type { PlanView, ScoresView } from './plan'
+import type { Runway } from './stack'
 
 import type { AgentRow, AgentStatus, BandMode, Cache, Level, Live, Meta, Pace, SkillListing, ToolStat, Totals, Turn, Usage, Window } from '../types'
 

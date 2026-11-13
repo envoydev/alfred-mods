@@ -1,9 +1,9 @@
 import { expect, test } from 'claude-code/testing'
 import type { SessionUsage } from 'claude-code'
 
-import { localDate } from '../hooks/forecast.js'
-import { when } from '../hooks/format.js'
-import { PRESENTATION, SPAWN, START, engine, stubAll, watchState } from './kit.js'
+import { localDate } from '../hooks/forecast'
+import { when } from '../hooks/format'
+import { PRESENTATION, SPAWN, START, engine, stubAll, watchState } from './kit'
 import type { Meta, Totals, Turn, Usage } from '../types'
 
 const USAGE = {

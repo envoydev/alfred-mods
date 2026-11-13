@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, RenderSurface } from 'claude-code'
 
-import { PRESENTATION, SPAWN, START, engine, rows, spawns, stubAll } from './kit.js'
+import { PRESENTATION, SPAWN, START, engine, rows, spawns, stubAll } from './kit'
 
 // Spec C2: two or more agents draw on one time axis between the Agents tab's head and its tree
 const PANE = { title: 'Inspect', isFocused: false, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 40 }, view: {} }

@@ -2,11 +2,11 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, RenderElement, RenderSurface, SessionUsage } from 'claude-code'
 
-import { PRESENTATION, SPAWN, START, engine, rows as rowsOf, setUser, spawns, step, stepEngine, stubAll } from './kit.js'
-import { drawLines } from '../hooks/draw.js'
-import type { Line } from '../hooks/band.js'
-import type { FileStub } from './kit.js'
-import { NOW, PLAN_JSON, SCORES_JSON } from './plans.js'
+import { PRESENTATION, SPAWN, START, engine, rows as rowsOf, setUser, spawns, step, stepEngine, stubAll } from './kit'
+import { drawLines } from '../hooks/draw'
+import type { Line } from '../hooks/band'
+import type { FileStub } from './kit'
+import { NOW, PLAN_JSON, SCORES_JSON } from './plans'
 
 // The tree checks, ported from claude-flightdeck's tests (f9c3c52, tests/flightdeck.test.ts 938-995). The kit lays
 // nothing out, so they read the drawn tree as a row layout would.

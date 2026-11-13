@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { RenderSurface } from 'claude-code'
 
-import { PRESENTATION, SPAWN, engine, held, rows, spawns, step, stepEngine, stubAll } from './kit.js'
+import { PRESENTATION, SPAWN, engine, held, rows, spawns, step, stepEngine, stubAll } from './kit'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const PANE = { title: 'Inspect', isFocused: false, bodyColumns: 100, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 30 }, view: {} }

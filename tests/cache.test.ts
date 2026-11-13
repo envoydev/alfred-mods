@@ -3,8 +3,8 @@ import { expect, test } from 'claude-code/testing'
 import {
   addRequest, afterCompact, billingOf, cacheLine, cacheView, idleOf, minutes, needsTick, pinOf, reuseTone, selfCompacts,
   takeSwitch, tierOf, toastAt,
-} from '../hooks/cache.js'
-import type { Line } from '../hooks/band.js'
+} from '../hooks/cache'
+import type { Line } from '../hooks/band'
 import type { Cache } from '../types'
 
 // INITIAL.cache in register.ts, which does not export it

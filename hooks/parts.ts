@@ -3,9 +3,9 @@
 // base name, so no home folder or user name reaches the atom.
 import type { EngineInterface, SessionContextBreakdown } from 'claude-code'
 
-import { clock, tokens } from './format.js'
-import { baseName } from './startup.js'
-import type { Line } from './band.js'
+import { clock, tokens } from './format'
+import { baseName } from './startup'
+import type { Line } from './band'
 import type { Parts, SkillListing } from '../types'
 
 export const NO_PARTS: Parts = { at: null, categories: [], plugins: [], memory: { files: 0, tokens: 0, top: [] } }

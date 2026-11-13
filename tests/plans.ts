@@ -1,5 +1,5 @@
 // Plan and scores fixtures shared by the plan tests
-import { parsePlan } from '../hooks/plan.js'
+import { parsePlan } from '../hooks/plan'
 import type { Plan, PlanStep, StepStatus, StepTime } from '../types'
 
 // The brief's two examples ('Data contracts for the plan and scorer skills'), verbatim

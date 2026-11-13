@@ -3,8 +3,8 @@ import type { Engine } from 'claude-code/testing'
 import type { On, RenderSurface, SessionUsage } from 'claude-code'
 
 import type { Handoff, Stack } from '../types'
-import { PRESENTATION, START, engine, rows, stubAll, watchState } from './kit.js'
-import type { FileStub } from './kit.js'
+import { PRESENTATION, START, engine, rows, stubAll, watchState } from './kit'
+import type { FileStub } from './kit'
 
 const STATUS = '.claude/session-inspector/status/s1.json'
 const STATUS2 = '.claude/session-inspector/status/s2.json'

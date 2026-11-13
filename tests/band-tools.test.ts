@@ -4,8 +4,8 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, RenderSurface, SessionContextBreakdown, SessionUsage } from 'claude-code'
 
-import { PRESENTATION, START, engine, rows, setUser, step, stepEngine, stubAll, watchState } from './kit.js'
-import { tokens } from '../hooks/format.js'
+import { PRESENTATION, START, engine, rows, setUser, step, stepEngine, stubAll, watchState } from './kit'
+import { tokens } from '../hooks/format'
 
 import type { Meta, Parts } from '../types'
 

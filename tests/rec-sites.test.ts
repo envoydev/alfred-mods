@@ -2,10 +2,10 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, RenderPropsOf } from 'claude-code'
 
-import { compile, maskHits } from '../hooks/rec.js'
-import { EMAILS, KEYS } from '../hooks/samples.js'
-import { maskDeep, maskDialog, maskResult, resultLines } from '../hooks/sites.js'
-import { SPINNER, START, engine, engineSites, rows, setUser, stubAll } from './kit.js'
+import { compile, maskHits } from '../hooks/rec'
+import { EMAILS, KEYS } from '../hooks/samples'
+import { maskDeep, maskDialog, maskResult, resultLines } from '../hooks/sites'
+import { SPINNER, START, engine, engineSites, rows, setUser, stubAll } from './kit'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const EMAIL = EMAILS[0]!.text

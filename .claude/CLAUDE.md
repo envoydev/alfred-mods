@@ -55,10 +55,11 @@ project names, no absolute local paths, no tokens, nothing from a user's machine
   each mods API call is written in full (`$.store.get(...)`), never through a variable, destructuring or a computed
   name; each event name in `on(...)` is a string literal; no second `on` inside `register`; imports are relative
   `import` declarations of files inside the mod, plus the bare `claude-code`; no `require`, no dynamic `import()`.
-- **A relative import names its file with `.js`** (`from './format.js'` for `format.ts`), in `hooks/` and `tests/`.
-  From Claude Code 2.1.323 `claude plugin validate` type-checks every file on its own options and fails `--strict` on
-  a `.ts` path (TS5097), whatever `tsconfig.json` says; the loader and `claude plugin test` resolve `.js` to the `.ts`
-  file (checked 2026-11-13: validate, the test run and a live session).
+- **A relative import names its file with no extension** (`from './format'` for `format.ts`), in `hooks/` and
+  `tests/`. From Claude Code 2.1.323 `claude plugin validate` type-checks every file on its own options and fails
+  `--strict` on a `.ts` path (TS5097), whatever `tsconfig.json` says; validate, `claude plugin test` and the loader
+  resolve a path with no extension to its `.ts` or `.tsx` file (checked 2026-11-13: validate in both profiles, the
+  test run and a live session).
 
 ## Mod facts this repo relies on
 

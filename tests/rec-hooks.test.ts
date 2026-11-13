@@ -2,12 +2,12 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { EngineInterface, On, RenderElement, RenderInput, RenderSurface, SessionUsage } from 'claude-code'
 
-import { mask, setRec, toast } from '../hooks/mask.js'
-import { REC_HELP } from '../hooks/rec.js'
-import { planView } from '../hooks/plan.js'
-import { planLine } from '../hooks/planlines.js'
-import { FIVE, FIVE_OVERHEAD, FIVE_TIMES, NOW } from './plans.js'
-import { PRESENTATION, SPINNER, START, engine, held, rows, setUser, stubAll } from './kit.js'
+import { mask, setRec, toast } from '../hooks/mask'
+import { REC_HELP } from '../hooks/rec'
+import { planView } from '../hooks/plan'
+import { planLine } from '../hooks/planlines'
+import { FIVE, FIVE_OVERHEAD, FIVE_TIMES, NOW } from './plans'
+import { PRESENTATION, SPINNER, START, engine, held, rows, setUser, stubAll } from './kit'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const PANE = { title: 'Inspect', isFocused: false, bodyColumns: 100, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 30 }, view: {} }

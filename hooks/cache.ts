@@ -3,8 +3,8 @@
 // The rule: https://code.claude.com/docs/en/prompt-caching.md; idle compaction: settings-reference, `idleCompaction`.
 import type { ModelUsage } from 'claude-code'
 
-import type { Line, Tone } from './band.js'
-import { bar, toneOf, tokens, usd } from './format.js'
+import type { Line, Tone } from './band'
+import { bar, toneOf, tokens, usd } from './format'
 import type { Billing, Cache, CacheConfig, CacheTier, Window } from '../types'
 
 export const TTL_MS: Record<CacheTier, number> = { '5m': 300_000, '1h': 3_600_000 }

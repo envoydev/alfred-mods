@@ -1,8 +1,8 @@
 // REC's masker: the classes of what a recording hides, compiled once per level and word list, and the one pass over a
 // text that replaces each match with its token (spec 'What each class hides').
 import type { Level } from '../types'
-import type { Line } from './band.js'
-import { AMOUNTS, EMAILS, KEYS, LEFT_ALONE, PHONES, strictSamples } from './samples.js'
+import type { Line } from './band'
+import { AMOUNTS, EMAILS, KEYS, LEFT_ALONE, PHONES, strictSamples } from './samples'
 
 // A match and the text it draws as: a token, or digits as dots
 export type Hit = { start: number; end: number; text: string }

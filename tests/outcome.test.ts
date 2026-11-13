@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
-import { classify, fold, targetOf, toolKey } from '../hooks/outcome.js'
-import type { CallFacts } from '../hooks/outcome.js'
+import { classify, fold, targetOf, toolKey } from '../hooks/outcome'
+import type { CallFacts } from '../hooks/outcome'
 import type { Failure } from '../types'
 
 // Each fixture is a Phase 0 shape (the brief's question 12)

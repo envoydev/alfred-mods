@@ -1,9 +1,9 @@
 import type { EngineInterface } from 'claude-code'
 
 import type { Level } from '../types'
-import { compile, maskHits, maskText } from './rec.js'
-import type { Compiled, Hit } from './rec.js'
-import { printable, setMasker } from './format.js'
+import { compile, maskHits, maskText } from './rec'
+import type { Compiled, Hit } from './rec'
+import { printable, setMasker } from './format'
 
 // REC's level, words and compiled classes live here in module memory, which /clear does not reset; the `rec` atom
 // only makes surfaces redraw. The words are never put in $.state.

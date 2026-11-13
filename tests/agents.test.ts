@@ -2,9 +2,9 @@ import { expect, test } from 'claude-code/testing'
 
 import {
   actionOf, agentTree, isLive, keepRows, newRow, promptLines, refreshAgents, statusAt, toolSummary, upsertSpawn,
-} from '../hooks/agents.js'
-import { modelParts, modelText } from '../hooks/format.js'
-import { SPAWN, engine, spawns, stubAll, watchState } from './kit.js'
+} from '../hooks/agents'
+import { modelParts, modelText } from '../hooks/format'
+import { SPAWN, engine, spawns, stubAll, watchState } from './kit'
 import type { AgentRow, ToolStat } from '../types'
 
 const s = (calls: number, ok: number, failed: number, stopped: number): ToolStat => ({ calls, ok, failed, stopped })

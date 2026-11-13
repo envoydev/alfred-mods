@@ -2,7 +2,7 @@
 // or under, "bandRows" open or closed; an earlier /band's stored choice reads under the user's file (S7)
 import { expect, test } from 'claude-code/testing'
 
-import { START, engine, setUser, stubAll, watchState } from './kit.js'
+import { START, engine, setUser, stubAll, watchState } from './kit'
 
 test('"band": "calm" and "full" set it, from the user file', async ($, on) => {
   const kit = stubAll(on, { band: 'unset', quiet: 'unset', store: { 'settings:band-tools': 'closed' } })

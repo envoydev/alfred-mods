@@ -5,10 +5,10 @@ import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import type { BandSetting, Handoff, Quiet, RecState, Stack } from '../types'
-import { HANDOFF_USAGE } from '../hooks/handoff.js'
-import { REC_HELP, recStatus } from '../hooks/rec.js'
-import { PRESENTATION, START, engine, stubAll, watchState } from './kit.js'
-import type { FileStub } from './kit.js'
+import { HANDOFF_USAGE } from '../hooks/handoff'
+import { REC_HELP, recStatus } from '../hooks/rec'
+import { PRESENTATION, START, engine, stubAll, watchState } from './kit'
+import type { FileStub } from './kit'
 
 const STATUS = '.claude/session-inspector/status/s1.json'
 const STATUS_FILE: FileStub = {

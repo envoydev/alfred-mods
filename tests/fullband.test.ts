@@ -3,10 +3,10 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { RenderSurface, SessionUsage } from 'claude-code'
 
-import { bandLines, cellsOf, infoLine } from '../hooks/band.js'
-import type { BandInput, Line } from '../hooks/band.js'
-import { clock, widthOf } from '../hooks/format.js'
-import { START, engine, rows, step, stepEngine, stubAll } from './kit.js'
+import { bandLines, cellsOf, infoLine } from '../hooks/band'
+import type { BandInput, Line } from '../hooks/band'
+import { clock, widthOf } from '../hooks/format'
+import { START, engine, rows, step, stepEngine, stubAll } from './kit'
 
 import type { Cache, ToolStat, Turn } from '../types'
 

@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, PromptOrigin } from 'claude-code'
 
-import { START, engine, setUser, stubAll } from './kit.js'
+import { START, engine, setUser, stubAll } from './kit'
 
 const ON = 'Screen recording is on (alfred-mods REC). Until told it is off, do not write secret values, API keys, tokens, passwords, email addresses or phone numbers in replies; refer to them by name, such as "the token in .env". Work on the task as usual.'
 const STRICT = `${ON} Also leave out account names, home folder paths and dollar amounts.`

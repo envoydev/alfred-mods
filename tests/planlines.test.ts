@@ -1,10 +1,10 @@
 import { expect, test } from 'claude-code/testing'
 
-import { parseScores, planView, scoresView } from '../hooks/plan.js'
-import { planLine, planLines, scoresLabel } from '../hooks/planlines.js'
-import type { Line } from '../hooks/band.js'
-import { widthOf } from '../hooks/format.js'
-import { FIVE, FIVE_OVERHEAD, FIVE_TIMES, MIN, NOW, SCORES_JSON, planOf } from './plans.js'
+import { parseScores, planView, scoresView } from '../hooks/plan'
+import { planLine, planLines, scoresLabel } from '../hooks/planlines'
+import type { Line } from '../hooks/band'
+import { widthOf } from '../hooks/format'
+import { FIVE, FIVE_OVERHEAD, FIVE_TIMES, MIN, NOW, SCORES_JSON, planOf } from './plans'
 import type { Scores, ScoreRound } from '../types'
 
 const text = (line: Line): string => line.map(s => ('text' in s ? s.text : '')).join('').replace(/ +/g, ' ').trim()

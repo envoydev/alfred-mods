@@ -2,12 +2,12 @@
 // (Phase 4) hooks, and through printable(), as tool output can carry control characters.
 import type { EngineInterface, RenderElement, ResolveInput } from 'claude-code'
 
-import { mask } from './mask.js'
-import { laneFit, statusGlyph } from './agents.js'
-import type { LaneFit } from './agents.js'
-import { spark } from './forecast.js'
-import { printable } from './format.js'
-import type { Lane, Line, Seg, Tone } from './band.js'
+import { mask } from './mask'
+import { laneFit, statusGlyph } from './agents'
+import type { LaneFit } from './agents'
+import { spark } from './forecast'
+import { printable } from './format'
+import type { Lane, Line, Seg, Tone } from './band'
 import type { AgentStatus } from '../types'
 
 const show = (text: string): string => mask(printable(text))

@@ -2,8 +2,8 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { START, engine, stubAll } from './kit.js'
-import { statusText } from '../hooks/band.js'
+import { START, engine, stubAll } from './kit'
+import { statusText } from '../hooks/band'
 
 // Spec D2: one status line under the prompt, which Claude Code draws while the band is collapsed, only while something
 // needs the person. Claude Code puts '⚠ alfred-mods:' before it (the D2 probe), so the line has no ⚠ of its own.
