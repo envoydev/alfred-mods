@@ -4,6 +4,8 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 import type { Live, Meta, Pace, Totals, Turn, Usage } from './types'
+import type { Place } from '../place/types'
+import { setPlace } from '../place/place'
 
 const INITIAL_TURNS: Turn[] = []
 const turnsAtom = atom({ plugin: 'alfred-mods', key: 'turns' } as const, INITIAL_TURNS, { shape: 'turns-1' })
@@ -107,4 +109,26 @@ export const spendMem = new Map<string, number>()
 // One more agent of this type spawned this session
 export async function countAgentType($: EngineInterface, type: string): Promise<void> {
   await updateMeta($, m => ({ ...m, agentTypes: { ...m.agentTypes, [type]: (m.agentTypes?.[type] ?? 0) + 1 } }))
+}
+
+// The project row's place, its counts kept until the next count replaces them
+export async function showPlace($: EngineInterface, place: Place): Promise<void> {
+  await updateMeta($, setPlace(place))
+}
+
+// The place's uncommitted lines and its distance from upstream, written only when they moved
+export async function showPlaceCounts($: EngineInterface, changes: { added: number; removed: number } | null, sync: { ahead: number; behind: number } | null): Promise<void> {
+  await updateMeta($, m => {
+    if (m.place === undefined) return m
+    const p = m.place
+    const isSame = JSON.stringify(p.changes ?? null) === JSON.stringify(changes) && JSON.stringify(p.sync ?? null) === JSON.stringify(sync)
+    if (isSame) return m
+    return {
+      ...m,
+      place: {
+        project: p.project, ...(p.folder === undefined ? {} : { folder: p.folder }), branch: p.branch,
+        ...(changes === null ? {} : { changes }), ...(sync === null ? {} : { sync }),
+      },
+    }
+  })
 }

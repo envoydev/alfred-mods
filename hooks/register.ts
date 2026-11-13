@@ -18,7 +18,6 @@ import { clock, fingerprint, oneLine, printable, tokens, usd, when } from './cor
 import { mask, maskForFile, maskSpans, recLevel, setRec } from './rec/mask'
 import { maskDeep, maskDialog, maskResult, neutralDialog, resultLines } from './rec/sites'
 import { DROPS_RESULT, callLine, groupLines } from './tools/compact'
-import { aheadBehind, numstatTotals, textLines, untrackedNames } from './place/changes'
 import { FOREIGN, HANDOFF_PATH, HANDOFF_USAGE, MARKER, MODES, RESUME_PROMPT, TOASTS, gitPart, handoffText, nextStep, parseStatus, percentOf, statusPath, stepUnder, stepsOf, windowThreshold } from './handoff/handoff'
 import { NO_FILE, STACK_TOASTS, UNREADABLE, bannerSegs, fillReady, fillToast, parseStack, runwayOf } from './stack/stack'
 import { PLANS_DIR, creditedPlan, runs, scoresView, statusesOfTasks, tasksAfter } from './plan/plan'
@@ -28,7 +27,7 @@ import { agentsLines, asCommands, cacheLines, nowLines, paneCommands, reportRows
 import { classify, fold, numberOf, targetOf, toolKey } from './tools/outcome'
 import { LEVELS, REC_HELP, addWord, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec/rec'
 import { BAND_MODES, DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast, writeField } from './settings/settings'
-import { baseName, folderOf, gitDirOf, headBranch, parentOf } from './place/place'
+import { baseName } from './place/place'
 import { dropPassed, nextWindows, storedWindows } from './session/windows'
 import { compactMem, errorMem, errorRows, modeMem, readBlockers, readFailures, readQuiet, readStats, resetBlockers, resetFailures, resetQuiet, resetStats, updateBlockers, updateFailures, updateQuiet, updateStats } from './tools/effects'
 import { FRESH_EVERY_MS, freshMem, readLive, readMeta, readPace, readTick, readTotals, readTurns, readUsage, resetLive, resetMeta, resetPace, resetTotals, resetTurns, resetUsage, spendMem, updateLive, updateMeta, updatePace, updateTick, updateTotals, updateTurns, updateUsage, windowsMem } from './session/effects'
@@ -47,20 +46,16 @@ import type { Handoff, HandoffView, PlanPart, SaveBy, SaveInput, SaveResult, Sco
 import type { Tab } from './inspect/types'
 import type { Plans } from './plan/types'
 import type { RecState } from './rec/types'
-import type { Meta, Turn, Usage, Window } from './session/types'
+import type { Turn, Usage, Window } from './session/types'
 import type { Field, From, Resolved, Source, Values } from './settings/types'
 import type { Runway, Stack } from './stack/types'
 import type { Call, CallFacts, CompactCall, Failure, Outcome, ToolStat } from './tools/types'
 import type { Held } from './core/types'
-import { changesMem, placeMem, rowsMem } from './place/effects'
+import { editPlace, pollPlace, readPlace, rowsMem } from './place/effects'
 import { settingsMem, settingsNow } from './settings/effects'
 import { conversationMem, tickMem } from './lifecycle/effects'
 import { keepLast } from './core/collections'
-import { closePane, isNoColor, readText, toast } from './core/effects'
-
-
-
-
+import { closePane, isNoColor, toast } from './core/effects'
 
 const NO_FACTS: Omit<CallFacts, 'tool'> = {
   checked: null, checkReason: null, asked: false, failedInTool: false, interrupted: false, classifierReason: null, hookDeny: null, result: null,
@@ -210,147 +205,6 @@ async function seedWindows($: EngineInterface): Promise<void> {
   if ((await readUsage($)).windows.length > 0) return
   const stored = storedWindows(await $.store.get('usage:windows'), await $.clock.now())
   if (stored !== null) await updateUsage($, u => ({ ...u, windows: stored.windows, windowsAt: stored.at }))
-}
-
-const joinPath = (dir: string, name: string): string => (/[\\/]$/.test(dir) ? `${dir}${name}` : `${dir}/${name}`)
-
-// The folder holding `.git` at or above `cwd`, and its HEAD file and branch: a worktree's `.git` is a file naming its
-// git folder. No git process runs for the branch (spec: the user, 2026-11-11); the change counts run their own two.
-async function findHead($: EngineInterface, cwd: string): Promise<{ dir: string; head: string; branch: string | null } | null> {
-  let dir: string | null = cwd
-  for (let depth = 0; dir !== null && depth < 40; depth += 1, dir = parentOf(dir)) {
-    const file = await readText($, joinPath(dir, '.git'))
-    const gitDir = file === null ? joinPath(dir, '.git') : gitDirOf(file, dir)
-    if (gitDir === null) continue
-    const head = joinPath(gitDir, 'HEAD')
-    const text = await readText($, head)
-    if (text !== null) return { dir, head, branch: headBranch(text) }
-  }
-  return null
-}
-
-// The counts stay until the next count replaces them
-const setPlace = (place: NonNullable<Meta['place']>) => (m: Meta): Meta =>
-  m.place?.project === place.project && m.place.folder === place.folder && m.place.branch === place.branch ? m
-    : { ...m, place: { ...place, ...(m.place?.changes === undefined ? {} : { changes: m.place.changes }), ...(m.place?.sync === undefined ? {} : { sync: m.place.sync }) } }
-
-// The session's project, the folder Claude works in when it is not the project's root, and the branch of the repository
-// holding that folder (the user, 2026-11-11): a Bash `cd` moves `$.session.cwd()` and leaves `$.session.root()`. With no
-// root read, the project is the repository's folder or the working folder, as before. A refused read leaves no place.
-async function readPlace($: EngineInterface, edited?: string): Promise<void> {
-  const cwd = await $.session.cwd()
-  rowsMem.cwd = cwd
-  const repo = await $.session.repo()
-  const root = await $.session.root().catch(() => null)
-  const at = edited ?? cwd
-  placeMem.head = null
-  placeMem.cwd = cwd
-  placeMem.at = at
-  const folder = root === null ? null : folderOf(at, root)
-  const shown = folder === null ? {} : { folder }
-  if (repo === null && folder === null) {
-    placeMem.repo = null
-    await updateMeta($, setPlace({ project: baseName(root ?? cwd), branch: null }))
-    return
-  }
-  const found = await findHead($, at)
-  placeMem.head = found?.head ?? null
-  placeMem.repo = found?.dir ?? null
-  countSoon($)
-  const project = root === null ? baseName(found?.dir ?? repo?.root ?? cwd) : baseName(root)
-  await updateMeta($, setPlace({ project, ...shown, branch: found?.branch ?? null }))
-}
-
-// A side agent's note the user passed on (2026-11-11): Claude edits by full path without a `cd`, so the folder of the
-// file the main thread edited or wrote is where it works, until a `cd` moves the working folder again
-async function editPlace($: EngineInterface, file: string): Promise<void> {
-  const path = /^([\\/]|[A-Za-z]:)/.test(file) ? file : joinPath(await $.session.cwd(), file)
-  const dir = parentOf(path)
-  if (dir !== null && dir !== placeMem.at) await readPlace($, dir)
-  else countSoon($)
-}
-
-function countSoon($: EngineInterface): void {
-  $.clock.after(0, () => {
-    countChanges($).catch(() => undefined)
-  })
-}
-
-async function countChanges($: EngineInterface): Promise<void> {
-  if (changesMem.isRunning) {
-    changesMem.again = true
-    return
-  }
-  changesMem.isRunning = true
-  try {
-    do {
-      changesMem.again = false
-      const changes = await readChanges($).catch(() => null)
-      const sync = await readSync($).catch(() => null)
-      await updateMeta($, m => {
-        if (m.place === undefined) return m
-        const p = m.place
-        const isSame = JSON.stringify(p.changes ?? null) === JSON.stringify(changes) && JSON.stringify(p.sync ?? null) === JSON.stringify(sync)
-        if (isSame) return m
-        return {
-          ...m,
-          place: {
-            project: p.project, ...(p.folder === undefined ? {} : { folder: p.folder }), branch: p.branch,
-            ...(changes === null ? {} : { changes }), ...(sync === null ? {} : { sync }),
-          },
-        }
-      })
-    } while (changesMem.again)
-  } finally {
-    changesMem.isRunning = false
-  }
-}
-
-async function readChanges($: EngineInterface): Promise<{ added: number; removed: number } | null> {
-  const dir = placeMem.repo
-  if (dir === null) return null
-  const diff = await $.process.run(['git', '--no-optional-locks', 'diff', '--numstat', 'HEAD'], { cwd: dir, timeoutMs: 2000 })
-  if (diff.exitCode !== 0) return null
-  const totals = numstatTotals(diff.stdout)
-  const others = await $.process.run(['git', '--no-optional-locks', 'ls-files', '--others', '--exclude-standard', '-z'], { cwd: dir, timeoutMs: 2000 }).catch(() => null)
-  if (others === null || others.exitCode !== 0) return totals
-  const seen = new Map<string, { size: number; mtimeMs: number; lines: number }>()
-  for (const name of untrackedNames(others.stdout).slice(0, 200)) {
-    const path = joinPath(dir, name)
-    const stat = await $.fs.stat(path).catch(() => null)
-    if (stat === null || stat.kind !== 'file' || stat.size > 1024 * 1024) continue
-    const known = changesMem.lines.get(path)
-    if (known !== undefined && known.size === stat.size && known.mtimeMs === stat.mtimeMs) {
-      seen.set(path, known)
-      continue
-    }
-    const text = await $.fs.read(path).catch(() => null)
-    const lines = text === null ? null : textLines(text)
-    if (lines !== null) seen.set(path, { size: stat.size, mtimeMs: stat.mtimeMs, lines })
-  }
-  changesMem.lines = seen
-  return { added: totals.added + [...seen.values()].reduce((sum, f) => sum + f.lines, 0), removed: totals.removed }
-}
-
-// Commits ahead of and behind the branch's upstream (the user, 2026-11-12: 'git:(band-order) arrow-up-symbol 1
-// arrow-down-symbol 2'), as of the last fetch: the mod never fetches. No upstream, a detached HEAD, a refusal or a
-// timeout leaves them out
-async function readSync($: EngineInterface): Promise<{ ahead: number; behind: number } | null> {
-  const dir = placeMem.repo
-  if (dir === null) return null
-  const r = await $.process.run(['git', '--no-optional-locks', 'rev-list', '--left-right', '--count', '@{upstream}...HEAD'], { cwd: dir, timeoutMs: 2000 })
-  return r.exitCode === 0 ? aheadBehind(r.stdout) : null
-}
-
-// A checkout since: the poll reads the HEAD file the place came from, and counts the changes again
-async function pollPlace($: EngineInterface): Promise<void> {
-  if (placeMem.cwd !== null && (await $.session.cwd()) !== placeMem.cwd) return readPlace($)
-  countSoon($)
-  const head = placeMem.head
-  if (head === null) return
-  const text = await readText($, head)
-  const place = (await readMeta($)).place
-  if (text !== null && place !== undefined) await updateMeta($, setPlace({ ...place, branch: headBranch(text) }))
 }
 
 // What the band shows before the first reply: the model, Claude Code's version, the place, the stored windows and the
@@ -515,7 +369,6 @@ async function scoreLevel($: EngineInterface): Promise<number | null> {
   const s = await readStack($)
   return s.state === 'used' && s.scorer !== null && s.scorer.on ? s.scorer.level : null
 }
-
 
 const LABEL: Record<string, string> = { five_hour: '5h', seven_day: '7d' }
 
@@ -1037,7 +890,6 @@ async function pointOf($: EngineInterface, window: number): Promise<number> {
   return point
 }
 
-
 // A save runs from a 0 ms timer, so no hook waits on git; a request while one runs joins it
 function startSave($: EngineInterface, by: SaveBy): Promise<SaveResult> {
   if (handoffMem.saving !== null) return handoffMem.saving
@@ -1290,7 +1142,6 @@ function forecastOf(h: Handoff, u: Usage, runway: Runway | null): { at: number; 
   if (runway !== null && runway.at !== null) return { at: runway.at, label: tokens(runway.resumeAt) }
   return { at: h.point !== null && u.window !== null ? windowThreshold(h.threshold, h.point, u.window) : h.threshold, label: `${h.threshold}%` }
 }
-
 
 export const register: Register = (on, options) => {
   // The person's word that a managed plugin sends these events on past the mod: Claude Code then tells the model, once
