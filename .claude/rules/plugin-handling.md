@@ -14,7 +14,7 @@ Adding, changing, renaming or removing anything the mod ships. `.claude/CLAUDE.m
 
 ## One home per item
 
-- The hooks module is `hooks/register.ts`, the one file `hooks/hooks.json` names under `modules`. A sibling file it imports sits beside it, imported by relative path, only once the brief's Phase 0 probe confirms such an import loads.
+- The hooks module is `hooks/register.ts`, the one file `hooks/hooks.json` names under `modules`. It holds the wiring only: every `on(...)`, each calling one function of a feature folder. A feature lives in `hooks/<folder>/`: `types.ts`, logic files with no `$` and no state, and `effects.ts`, which owns the folder's atoms and module memory and is the folder's only file that touches `$`. Another folder reaches an atom through its owner's exported functions, never the handle. A test sits at the same path under `tests/`.
 - A test is a `*.test.ts` under `tests/`, written before the hook it covers is called done. Every mods API call the hook makes gets a stub.
 - `types/index.d.ts` declares the `PluginState` values once the mod uses `$.state`. `.claude-plugin/types/` is generated per build and git-ignored: never edit it.
 - The repo root is the plugin root, and Claude Code scans its default folders whatever the manifest says: never add `commands/`, `agents/`, `skills/`, `bin/`, `.mcp.json` or another default component path unless the mod ships it.

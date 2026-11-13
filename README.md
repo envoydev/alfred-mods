@@ -843,7 +843,8 @@ prompts) and idle time between turns do not.
 ## Development
 
 The repo root is the mod: `.claude-plugin/plugin.json` (the one place its version lives), `hooks/hooks.json` naming
-the hooks module `hooks/register.ts`, and tests under `tests/`. `.claude-plugin/marketplace.json` lists the root as
+the hooks module `hooks/register.ts` (the wiring; each feature lives in its folder under `hooks/`), and tests under
+`tests/` at the same paths. `.claude-plugin/marketplace.json` lists the root as
 the marketplace's one plugin.
 
 ```bash

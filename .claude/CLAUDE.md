@@ -55,6 +55,10 @@ project names, no absolute local paths, no tokens, nothing from a user's machine
   each mods API call is written in full (`$.store.get(...)`), never through a variable, destructuring or a computed
   name; each event name in `on(...)` is a string literal; no second `on` inside `register`; imports are relative
   `import` declarations of files inside the mod, plus the bare `claude-code`; no `require`, no dynamic `import()`.
+- **One owner per atom, in its folder's `effects.ts`.** `claude plugin validate` refuses an atom handed to another
+  file (checked 2026-11-13, Claude Code 2.1.323), so each `$.state` atom is made, read and updated in one
+  `hooks/<folder>/effects.ts`, and other folders call its exported functions. A logic file takes no `$`. A stored
+  field renamed means its atom's `shape` tag moves; a `$.store` key or a stored value's field is never renamed.
 - **A relative import names its file with no extension** (`from './format'` for `format.ts`), in `hooks/` and
   `tests/`. From Claude Code 2.1.323 `claude plugin validate` type-checks every file on its own options and fails
   `--strict` on a `.ts` path (TS5097), whatever `tsconfig.json` says; validate, `claude plugin test` and the loader

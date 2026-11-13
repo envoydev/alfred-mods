@@ -570,7 +570,7 @@ plan-file poll (Phase 3's timer). Each `/auto-handoff` change reads `settings:ha
 changes only the field it names, so a session that has not polled yet never writes back an old mode or threshold. Two
 writes in the same instant can still race, as a `$.store` get then set is not atomic, and the second wins; for a value
 the person types by hand that is acceptable. The context forecast on band line 2 (`≈6 turns`, `turnsLeft` in
-`hooks/forecast.ts`) counts the turns left to this threshold instead of a fixed 80, converted as the next section says.
+`hooks/forecast.ts` [now `hooks/core/forecast.ts`]) counts the turns left to this threshold instead of a fixed 80, converted as the next section says.
 
 #### Steps, asks and saves
 
@@ -588,7 +588,7 @@ would come only after the compaction F8 exists to get ahead of.
   only when the model or the window changes.
 - **Auto-compaction off** (`isAutoCompactEnabled` false, no threshold): the point is the window.
 - **The row** adds the point when it is not the window: `ctx ▰▰▰▰▱ 79% of 390k · asks at 80% · h: save now`.
-- **The forecast** on band line 2 and in the Now tab (both call `turnsLeft`, `hooks/band.ts` and `hooks/tabs.ts`)
+- **The forecast** on band line 2 and in the Now tab (both call `turnsLeft`, `hooks/band.ts` and `hooks/tabs.ts` [now `hooks/band/band.ts` and `hooks/inspect/tabs.ts`])
   takes F8's threshold over the window, so its turns run to the same moment: 80% of a 390k point on a 1M window is 31%
   of the window.
 
@@ -630,10 +630,10 @@ The Now tab draws a HANDOFF section, its heading violet, after PLAN and before A
   95 is handled.
 - **h** hands off: it saves HANDOFF.md and arms the resume prompt (below).
 - **c** saves a handoff first, unless a save happened at this step already, then compacts through Phase 2's
-  `compactNow` (`hooks/register.ts`), which already reports a skip, a failure and a second press. `c` is drawn only
+  `compactNow` (`hooks/register.ts` [now `hooks/cache/effects.ts`]), which already reports a skip, a failure and a second press. `c` is drawn only
   while no main-loop turn runs, since `$.session.compact` rejects while a turn runs.
 - **r** takes the ask down until the next step.
-- **Hotkey clash.** The pane's Cache tab uses hotkey `c` (`hooks/tabs.ts` TABS), and of two Buttons on one hotkey the
+- **Hotkey clash.** The pane's Cache tab uses hotkey `c` (`hooks/tabs.ts` [now `hooks/inspect/tabs.ts`] TABS), and of two Buttons on one hotkey the
   one drawn later wins. So the Cache tab moves to `k`. Phase 2 is not released, so no installed copy changes.
 
 #### What a save writes
@@ -711,7 +711,7 @@ This is the brief's 'extractive resume prompt' ('Decisions already made', Core a
 only into an empty prompt.
 
 - Each save, by h, 4, c, `now` or auto mode, arms it. The mod keeps the save's time in its module memory (`held` in
-  `hooks/register.ts`), which `/clear` does not reset, unlike `$.state`.
+  `hooks/register.ts` [now `handoffMemory.armedAt` in `hooks/handoff/effects.ts`]), which `/clear` does not reset, unlike `$.state`.
 - On `classic.SessionStart` with `source` `clear` within 2 hours of the last save, the mod reads the prompt with
   `$.prompt.read()`. If the draft is empty, it fills `Read .claude/session-inspector/HANDOFF.md, check that the branch
   it names is checked out, and continue from its Next section.` with `$.prompt.fill`, once, then disarms. Claude does
@@ -737,7 +737,7 @@ only into an empty prompt.
 | A save fails                                | `Handoff not saved: <reason>`                                             |
 
 The ask's toast names `/auto-handoff now` because band digits do not fire while the band is collapsed (brief, design
-rules). Every toast goes through `toast()` in `hooks/mask.ts`, so REC masks it.
+rules). Every toast goes through `toast()` in `hooks/mask.ts` [now `hooks/core/effects.ts`], so REC masks it.
 
 #### With Alfred Code installed
 
