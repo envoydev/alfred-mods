@@ -33,8 +33,8 @@ const stackMemory = {
 
 // Alfred Code's scoring level while its status file is in use and scoring is on, which colours the band's score
 export async function readScoreLevel($: EngineInterface): Promise<number | null> {
-  const s = await readStack($)
-  return s.state === 'used' && s.scorer !== null && s.scorer.on ? s.scorer.level : null
+  const stack = await readStack($)
+  return stack.state === 'used' && stack.scorer !== null && stack.scorer.on ? stack.scorer.level : null
 }
 
 // Reads run one at a time; each resolves to whether the session's status file exists
@@ -83,7 +83,7 @@ export async function writeStackFrom($: EngineInterface, r: { exists: boolean; t
     : { ...base, ...parsed.fields, state: 'used', hasPrompt: parsed.prompt !== null }
   stackMemory.prompt = parsed?.state === 'used' ? parsed.prompt : null
   stackMemory.last = next
-  await updateStack($, s => (JSON.stringify(s) === JSON.stringify(next) ? s : next))
+  await updateStack($, stack => (JSON.stringify(stack) === JSON.stringify(next) ? stack : next))
 }
 
 // `f` in the ALFRED CODE section: the stack's resume prompt into an empty draft, never sent. A press from a frame drawn
