@@ -7,21 +7,21 @@ import type { CallFacts, Failure, Outcome, ToolStat } from './types'
 // its reason names one (spec C6). A plugin in a tier above may keep classic.PostToolUseFailure from the mod, so two
 // rules stand without it: an abort read from the mod's own hook marks an interrupt, and in auto mode an `ask` nobody
 // saw was the classifier's allow, so its error is the tool's (a classifier block still arrives as PermissionDenied).
-export function classifyCall(f: CallFacts): { outcome: Outcome; reason: string; isNew: boolean; by: string | null } {
+export function classifyCall(facts: CallFacts): { outcome: Outcome; reason: string; isNew: boolean; by: string | null } {
   // Claude Code wraps an input error in a tag meant for the model
-  const text = (f.result?.text ?? '').replace(/<\/?tool_use_error>/g, '')
+  const text = (facts.result?.text ?? '').replace(/<\/?tool_use_error>/g, '')
   const plain = (outcome: Outcome, reason: string, isNew: boolean) => ({ outcome, reason, isNew, by: null })
-  if (f.result?.deny) return plain('blocked', `blocked: ${f.result.deny}`, false)
-  if (f.checked === 'deny') return f.checkReason === null ? plain('blocked', 'blocked by a rule', false) : hookBlock(f.checkReason, hookReason(f.checkReason))
-  if (f.classifierReason) return plain('blocked', `auto mode: ${f.classifierReason}`, false)
+  if (facts.result?.deny) return plain('blocked', `blocked: ${facts.result.deny}`, false)
+  if (facts.checked === 'deny') return facts.checkReason === null ? plain('blocked', 'blocked by a rule', false) : hookBlock(facts.checkReason, hookReason(facts.checkReason))
+  if (facts.classifierReason) return plain('blocked', `auto mode: ${facts.classifierReason}`, false)
   // A PermissionRequest hook answered the ask with a deny, so the person never saw it
-  if (f.hookDeny !== null) return hookBlock(f.hookDeny, f.hookDeny.trim() === '' ? 'blocked by a hook' : `hook: ${oneLine(f.hookDeny, 80)}`)
-  if (!f.result?.isError) return plain('ok', '', false)
-  if (f.failedInTool && f.interrupted) return plain('error', 'interrupted', false)
-  if (f.failedInTool) return plain('error', oneLine(text, 80) || 'failed', true)
-  if (f.checked === 'ask' && f.asked) return plain('denied', 'denied by you', true)
-  if (f.aborted) return plain('error', 'interrupted', false)
-  if (f.checked === 'ask' && !f.autoMode) return plain('refused', oneLine(text, 80) || 'refused', false)
+  if (facts.hookDeny !== null) return hookBlock(facts.hookDeny, facts.hookDeny.trim() === '' ? 'blocked by a hook' : `hook: ${oneLine(facts.hookDeny, 80)}`)
+  if (!facts.result?.isError) return plain('ok', '', false)
+  if (facts.failedInTool && facts.interrupted) return plain('error', 'interrupted', false)
+  if (facts.failedInTool) return plain('error', oneLine(text, 80) || 'failed', true)
+  if (facts.checked === 'ask' && facts.asked) return plain('denied', 'denied by you', true)
+  if (facts.aborted) return plain('error', 'interrupted', false)
+  if (facts.checked === 'ask' && !facts.autoMode) return plain('refused', oneLine(text, 80) || 'refused', false)
   // No check, an error, no failure: an input error or Claude Code's own refusal, shown as an error by the ruling
   return plain('error', oneLine(text, 80) || 'failed', true)
 }
@@ -71,7 +71,7 @@ function relative(path: string, cwd: string): string {
 
 // What a call acted on, in one line of 60.
 export function targetOf(tool: string, input: Record<string, unknown>, cwd: string): string {
-  const str = (v: unknown): string => (typeof v === 'string' ? v : '')
+  const str = (value: unknown): string => (typeof value === 'string' ? value : '')
   let target = ''
   if (tool === 'Bash') target = str(input.description) || str(input.command)
   else if (['Read', 'Edit', 'Write', 'NotebookEdit'].includes(tool)) target = relative(str(input.file_path) || str(input.notebook_path), cwd)
@@ -93,8 +93,8 @@ export function foldFailure(list: Failure[], next: Failure, limit = 10): Failure
 
 // A row's number: its own, or, for a row an earlier version kept, its place from the oldest (the user, 2026-11-12:
 // 'right now I need to count and order')
-export function failureNumberOf(f: Failure, i: number): number {
-  return f.n ?? i + 1
+export function failureNumberOf(failure: Failure, i: number): number {
+  return failure.n ?? i + 1
 }
 
 export function tallyOutcome(stat: ToolStat | undefined, outcome: Outcome, by: 1 | -1): ToolStat {

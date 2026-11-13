@@ -101,7 +101,7 @@ export async function addFailureRow($: EngineInterface, id: string, call: ToolCa
     const old = list[i]
     const rest = old === undefined ? list
       : old.count > 1 ? list.map(f => (f === old ? { ...f, count: f.count - 1 } : f))
-      : list.filter(f => f !== old)
+      : list.filter(failure => failure !== old)
     // A call settled again keeps its row's number
     const out = foldFailure(rest, old !== undefined && old.count === 1 && old.n !== undefined ? { ...row, n: old.n } : row)
     call.failureId = out[out.length - 1]?.id ?? null
@@ -132,17 +132,17 @@ export async function settleToolCall($: EngineInterface, id: string, call: ToolC
   const { outcome, reason, isNew, by } = classifyCall(call.facts)
   rowMemory.outcomes.delete(id)
   // In auto mode a check's ask that no one saw and no hook refused was the classifier's allow (outcome.ts)
-  const f = call.facts
-  const isAutoAllowed = outcome === 'ok' && f.autoMode && f.checked === 'ask' && !f.asked && f.hookDeny === null
+  const facts = call.facts
+  const isAutoAllowed = outcome === 'ok' && facts.autoMode && facts.checked === 'ask' && !facts.asked && facts.hookDeny === null
   rowMemory.outcomes.set(id, { outcome, reason, isAutoAllowed })
   keepNewest(rowMemory.outcomes)
   const before = call.outcome
   call.isSettled = true
   call.outcome = outcome
-  const retally = (s: Record<string, ToolStat>): Record<string, ToolStat> =>
-    ({ ...s, [call.key]: before === null ? tallyOutcome(s[call.key], outcome, 1) : tallyOutcome(tallyOutcome(s[call.key], before, -1), outcome, 1) })
+  const retally = (stats: Record<string, ToolStat>): Record<string, ToolStat> =>
+    ({ ...stats, [call.key]: before === null ? tallyOutcome(stats[call.key], outcome, 1) : tallyOutcome(tallyOutcome(stats[call.key], before, -1), outcome, 1) })
   await updateStats($, retally)
-  if (call.agentId !== null) await updateAgentRow($, call.agentId, r => ({ ...r, tools: retally(r.tools) }))
+  if (call.agentId !== null) await updateAgentRow($, call.agentId, row => ({ ...row, tools: retally(row.tools) }))
   if (outcome !== 'ok') await addFailureRow($, id, call, outcome, reason, isNew, before !== null && before !== 'ok' ? call.failureId : null, by)
   // A block counts for the script that made it; a later settle that names another blocker moves the count (spec C6)
   const counted = call.blockedBy
@@ -197,7 +197,7 @@ export async function trackToolCall($: EngineInterface, e: HookInput<'tool.call'
     await addRunningCall($, { id: e.tool_use_id, tool: e.tool, label: call.target, startedAt })
   } else {
     const action = actionOf(e.tool, call.target)
-    await updateAgentRow($, call.agentId, r => ({ ...r, action }))
+    await updateAgentRow($, call.agentId, row => ({ ...row, action }))
   }
   const loop = call.agentId ?? 'main'
   const isWait = isAllWait(e.tool, call.agentId === null)
@@ -291,11 +291,11 @@ export async function trackSkillPrompt($: EngineInterface, e: HookInput<'skill.p
   const prompted = await next(e)
   const key = `Skill: ${e.skill}`
   const isFork = e.frontmatter.context === 'fork'
-  const pending = [...calls.values()].find(c => !c.isSettled && c.key === key)
+  const pending = [...calls.values()].find(call => !call.isSettled && call.key === key)
   if (pending !== undefined) {
     if (isFork) pending.isFork = true
   } else {
-    await updateStats($, s => ({ ...s, [key]: tallyOutcome(s[key], 'ok', 1) }))
+    await updateStats($, stats => ({ ...stats, [key]: tallyOutcome(stats[key], 'ok', 1) }))
     if (!isFork && (await readLive($)).turnId === null) await addLoadedSkill($, e.skill)
   }
   return prompted
@@ -364,7 +364,7 @@ export async function drawToolGroup($: EngineInterface, e: MatchedInput<'ui.rend
 
 // The failures a shown tab listed are no longer new
 export async function markFailuresSeen($: EngineInterface): Promise<void> {
-  await updateFailures($, list => (list.some(f => f.isNew) ? list.map(f => ({ ...f, isNew: false })) : list))
+  await updateFailures($, list => (list.some(f => f.isNew) ? list.map(failure => ({ ...failure, isNew: false })) : list))
 }
 
 // The session's permission mode, when an event reports one
