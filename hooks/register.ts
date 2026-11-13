@@ -5,7 +5,7 @@ import type {
   EngineInterface, Register, SessionContextBreakdown, SessionRateLimit, SessionUsage, Timer, TurnStepInput, TurnStepResult, UiOpenResult,
 } from 'claude-code'
 
-import { actionOf, addLoopStep, isLive, markOf, newRow, refreshAgents, statusAt, upsertSpawn } from './agents/agents'
+import { actionOf, isLive, markOf, refreshAgents, statusAt } from './agents/agents'
 import { spinnerSuffix } from './band/working'
 import { bandLines, underRows } from './band/band'
 import { addRequest, afterCompact, billingOf, cacheView, idleOf, minutes, needsTick, pinOf, takeRate, takeSwitch, toastAt } from './cache/cache'
@@ -32,7 +32,7 @@ import { baseName, folderOf, gitDirOf, headBranch, parentOf } from './place/plac
 import { dropPassed, nextWindows, storedWindows } from './session/windows'
 import { compactMem, errorMem, errorRows, modeMem, readBlockers, readFailures, readQuiet, readStats, resetBlockers, resetFailures, resetQuiet, resetStats, updateBlockers, updateFailures, updateQuiet, updateStats } from './tools/effects'
 import { FRESH_EVERY_MS, freshMem, readLive, readMeta, readPace, readTick, readTotals, readTurns, readUsage, resetLive, resetMeta, resetPace, resetTotals, resetTurns, resetUsage, spendMem, updateLive, updateMeta, updatePace, updateTick, updateTotals, updateTurns, updateUsage, windowsMem } from './session/effects'
-import { readAgents, readLoops, resetAgents, resetLoops, updateAgents, updateLoops } from './agents/effects'
+import { agentStep, isCounted, readAgents, readLoops, resetAgents, resetLoops, trackSpawn, updateAgents, updateLoops, updateRow } from './agents/effects'
 import { readCache, resetCache, updateCache } from './cache/effects'
 import { addMark, addWait, closeLoops, drawnPlan, openSlice, planDraw, queueReload, readPlans, readTasks, resetCredit, resetPlans, resetTasks, scheduleReload, seedMine, storedTimes, updateCredit, updatePlans, updateTasks } from './plan/effects'
 import { INITIAL_STACK, readStack, resetStack, stackMem, updateStack } from './stack/effects'
@@ -41,7 +41,6 @@ import { noteMem, readRec, recMem, resetRec, updateRec } from './rec/effects'
 import { bandMem, isPassingAbove, loadBand, readBandSetting, statusMem, syncStatus } from './band/effects'
 import { partsMem, readParts, resetParts, updateParts } from './context/effects'
 import { readView, resetView, updateView } from './inspect/effects'
-import type { AgentRow } from './agents/types'
 import type { BandInput } from './band/types'
 import type { Cache, CacheConfig } from './cache/types'
 import type { Handoff, HandoffView, PlanPart, SaveBy, SaveInput, SaveResult, ScoresPart } from './handoff/types'
@@ -76,17 +75,6 @@ function tally(stat: ToolStat | undefined, outcome: Outcome, by: 1 | -1): ToolSt
     failed: t.failed + (outcome === 'error' ? by : 0),
     stopped: t.stopped + (outcome === 'ok' || outcome === 'error' ? 0 : by),
   }
-}
-
-// Calls of the main loop, and of agents whose spawn was seen; anything else is not counted
-async function isCounted($: EngineInterface, agentId: string | undefined): Promise<boolean> {
-  return agentId === undefined || (await readAgents($)).some(r => r.id === agentId)
-}
-
-// Changes the row of an agent whose spawn was seen; an unknown id writes nothing
-async function updateRow($: EngineInterface, id: string, fn: (r: AgentRow) => AgentRow): Promise<void> {
-  if (!(await readAgents($)).some(r => r.id === id)) return
-  await updateAgents($, rows => rows.map(r => (r.id === id ? fn(r) : r)))
 }
 
 // Whether the person sees the pane now, from the engine's record: it outlives a /clear and a reload, and knows a
@@ -493,24 +481,6 @@ async function cacheClose($: EngineInterface): Promise<void> {
   toast($, `Cache cold in ${v.tier.isEstimate ? '≈' : ''}${minutes(v.leftMs ?? 0)}${rewrite}: press 3 to compact, or /inspect cache`)
   const lastAt = c.lastAt
   await updateCache($, x => ({ ...x, toastedFor: lastAt }))
-}
-
-// An agent's step: its model and effort, its context as the sum the engine's own `context_tokens` uses, and how it
-// stopped, so a report cut off at max_tokens is flagged (spec C4)
-async function agentStep($: EngineInterface, e: TurnStepInput, step: TurnStepResult): Promise<void> {
-  const u = step.usage
-  const id = e.agentId ?? ''
-  // A loop no spawn announced is counted apart (spec C3)
-  if (!(await readAgents($)).some(r => r.id === id)) {
-    const now = await $.clock.now()
-    await updateLoops($, list => addLoopStep(list, id, u?.output_tokens ?? 0, now))
-    return
-  }
-  await updateRow($, id, r => ({
-    ...r, model: e.model, effort: e.effort === undefined ? r.effort : String(e.effort),
-    contextTokens: u === null ? r.contextTokens : u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens + u.output_tokens,
-    lastStop: step.stopReason ?? null,
-  }))
 }
 
 async function resetAll($: EngineInterface): Promise<void> {
@@ -1347,26 +1317,7 @@ export const register: Register = (on, options) => {
     return call
   }
 
-  on('agent.spawn', async ($, e, next) => {
-    const spawned = await next(e)
-    if (spawned.deny !== undefined) return spawned
-    const id = e.resume?.agentId ?? spawned.agentId
-    if (id !== undefined) {
-      const now = await $.clock.now()
-      const row = newRow({
-        id, parentId: e.parentAgentId ?? null, type: e.subagentType, description: e.description, prompt: e.prompt,
-        isTeammate: e.isTeammate === true, model: spawned.model,
-      }, now)
-      // A dispatch is a new row: a resume of a kept one runs that row again (upsertSpawn's own test)
-      const isKnown = e.resume !== undefined && (await readAgents($)).some(r => r.id === id)
-      if (!isKnown) await updateMeta($, m => ({ ...m, agentTypes: { ...m.agentTypes, [row.type]: (m.agentTypes?.[row.type] ?? 0) + 1 } }))
-      await updateAgents($, rows => upsertSpawn(rows, row, e.resume !== undefined))
-      await addMark($, markOf(row))
-      // Its first step came before its spawn resolved: the loop is this agent's
-      if ((await readLoops($)).some(l => l.id === id)) await updateLoops($, list => list.filter(l => l.id !== id))
-    }
-    return spawned
-  }).catch(($, e, next) => next(e))
+  on('agent.spawn', ($, e, next) => trackSpawn($, e, next)).catch(($, e, next) => next(e))
 
   on('tool.call', async ($, e, next) => {
     if (!(await isCounted($, e.agentId))) return next(e)

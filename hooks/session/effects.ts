@@ -103,3 +103,8 @@ export const FRESH_EVERY_MS = 5000
 // The session's cost at the main loop's turn.start, by turn id (spec C4); the main loop runs one turn at a time, so it
 // holds one. A /clear empties it: a turn across it has no start read in the new session.
 export const spendMem = new Map<string, number>()
+
+// One more agent of this type spawned this session
+export async function countAgentType($: EngineInterface, type: string): Promise<void> {
+  await updateMeta($, m => ({ ...m, agentTypes: { ...m.agentTypes, [type]: (m.agentTypes?.[type] ?? 0) + 1 } }))
+}
