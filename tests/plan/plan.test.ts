@@ -182,7 +182,7 @@ test('only the last 4 totals show, and a lone round has no change', () => {
   expect(scores(s => { s.rounds = [] })).toBe(null)
 })
 
-const item = (id: string, status: TaskItem['status'], minutes = 0): TaskItem => ({ id, subject: `Task ${id}`, status, ms: minutes * MIN })
+const item = (id: string, status: TaskItem['status'], minutes = 0): TaskItem => ({ id, subject: `Task ${id}`, status, workedMs: minutes * MIN })
 
 test("the task list's time left is the mean of 3 completed", () => {
   const v = taskView([item('1', 'completed', 2), item('2', 'completed', 4), item('3', 'completed', 6), item('4', 'in_progress'), item('5', 'pending')], {})
@@ -194,12 +194,12 @@ test("the task list's time left is the mean of 3 completed", () => {
 
 test('the task tools keep the task list', () => {
   const created = tasksAfter([], 'TaskCreate', { subject: 'Write tests' }, { task: { id: '1', subject: 'Write tests' } })
-  expect(created).toEqual([{ id: '1', subject: 'Write tests', status: 'pending', ms: 0 }])
+  expect(created).toEqual([{ id: '1', subject: 'Write tests', status: 'pending', workedMs: 0 }])
   const started = tasksAfter(created ?? [], 'TaskUpdate', { taskId: '1', status: 'in_progress' }, null)
   expect(started?.[0]?.status).toBe('in_progress')
   expect(tasksAfter(started ?? [], 'TaskUpdate', { taskId: '1', status: 'deleted' }, null)).toEqual([])
   expect(tasksAfter([], 'Read', {}, null)).toBe(null)
-  const listed = tasksAfter([{ id: '0', subject: 'A', status: 'in_progress', ms: 60_000 }], 'TodoWrite',
+  const listed = tasksAfter([{ id: '0', subject: 'A', status: 'in_progress', workedMs: 60_000 }], 'TodoWrite',
     { todos: [{ content: 'A', status: 'completed', activeForm: 'Doing A' }, { content: 'B', status: 'pending', activeForm: 'Doing B' }] }, null)
-  expect(listed).toEqual([{ id: '0', subject: 'A', status: 'completed', ms: 60_000 }, { id: '1', subject: 'B', status: 'pending', ms: 0 }])
+  expect(listed).toEqual([{ id: '0', subject: 'A', status: 'completed', workedMs: 60_000 }, { id: '1', subject: 'B', status: 'pending', workedMs: 0 }])
 })

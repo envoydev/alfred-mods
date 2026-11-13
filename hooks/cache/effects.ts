@@ -15,10 +15,10 @@ import { readBreakdownSoon } from '../context/effects'
 
 const INITIAL_CACHE: Cache = {
   tier: null, tierAt: null, tierBilling: null,
-  config: { pin: null, idleOff: false, idleMinTokens: 200_000, isTerminal: false },
-  ratePerToken: null, rateModel: null, lastAt: null, last: null, session: { read: 0, write: 0, input: 0 }, toastedFor: null,
+  config: { pin: null, isIdleCompactOff: false, idleMinTokens: 200_000, isTerminal: false },
+  ratePerToken: null, rateModel: null, lastRequestAt: null, lastRequest: null, sessionCounts: { read: 0, write: 0, input: 0 }, toastedForRequestAt: null,
 }
-const cacheAtom = atom({ plugin: 'alfred-mods', key: 'cache' } as const, INITIAL_CACHE, { shape: 'cache-1' })
+const cacheAtom = atom({ plugin: 'alfred-mods', key: 'cache' } as const, INITIAL_CACHE, { shape: 'cache-2' })
 export function readCache($: EngineInterface) {
   return read($, cacheAtom)
 }
@@ -70,12 +70,12 @@ export async function toastCacheClosing($: EngineInterface): Promise<void> {
   const c = await readCache($)
   const usage = await readUsage($)
   const cacheState = cacheView(c, billingOf(usage.rateWindows), await $.clock.now(), usage.contextTokens)
-  if (cacheState.tier.tier !== '1h' || !cacheState.isClosing || c.toastedFor === c.lastAt) return
+  if (cacheState.tier.tier !== '1h' || !cacheState.isClosing || c.toastedForRequestAt === c.lastRequestAt) return
   if ((await readLive($)).turnId !== null) return
   const rewrite = cacheState.rewriteUsd === null ? '' : ` (rewrite ≈ ${usdText(cacheState.rewriteUsd)})`
   toast($, `Cache cold in ${cacheState.tier.isEstimate ? '≈' : ''}${minutesLeftText(cacheState.leftMs ?? 0)}${rewrite}: press 3 to compact, or /inspect cache`)
-  const lastAt = c.lastAt
-  await updateCache($, x => ({ ...x, toastedFor: lastAt }))
+  const lastAt = c.lastRequestAt
+  await updateCache($, x => ({ ...x, toastedForRequestAt: lastAt }))
 }
 
 // A main-loop compaction that stands: counted, and the cache cold, as its cached prefix is gone; a compaction can drop

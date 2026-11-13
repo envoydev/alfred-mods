@@ -15,8 +15,8 @@ import { drawWithInput } from '../core/draw'
 import { closePane, isNoColor } from '../core/effects'
 import { sourceLabel } from '../settings/settings'
 
-const INITIAL_REC: RecState = { level: 'off', count: 0, note: null }
-const recAtom = atom({ plugin: 'alfred-mods', key: 'rec' } as const, INITIAL_REC, { shape: 'rec-1' })
+const INITIAL_REC: RecState = { level: 'off', wordCount: 0, note: null }
+const recAtom = atom({ plugin: 'alfred-mods', key: 'rec' } as const, INITIAL_REC, { shape: 'rec-2' })
 export function readRec($: EngineInterface) {
   return read($, recAtom)
 }
@@ -55,7 +55,7 @@ export async function applyRec($: EngineInterface, note: string | null = null): 
     setRec(level, words, wordsMemory.home)
     $.ui.invalidate('ui.render')
   }
-  await updateRec($, r => (r.level === level && r.count === words.length && r.note === note ? r : { level, count: words.length, note }))
+  await updateRec($, r => (r.level === level && r.wordCount === words.length && r.note === note ? r : { level, wordCount: words.length, note }))
   await syncStatusLine($)
 }
 

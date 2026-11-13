@@ -11,7 +11,7 @@ const SCORES_PATH = '.claude/session-inspector/scores/token-refresh.json'
 const ALL_DONE = { S4: 'done', S5: 'done' }
 
 const plansOf = (state: { get(key: string): unknown }): Plans => state.get('plans') as Plans
-const s4 = (state: { get(key: string): unknown }): string | undefined => plansOf(state).plans[0]?.value?.steps[3]?.status
+const s4 = (state: { get(key: string): unknown }): string | undefined => plansOf(state).planFiles[0]?.value?.steps[3]?.status
 
 test('the plan and scores files are read at the start', async ($, on) => {
   const { clock } = stubAll(on, { files: { [PLAN_PATH]: { text: PLAN_JSON, mtimeMs: 1 }, [SCORES_PATH]: { text: SCORES_JSON, mtimeMs: 1 } } })
@@ -22,9 +22,9 @@ test('the plan and scores files are read at the start', async ($, on) => {
   await clock.advance(300)
 
   const p = plansOf(state)
-  expect(p.plans[0]).toMatchObject({ name: 'token-refresh', isInvalid: false })
-  expect(p.plans[0]?.value?.steps).toHaveLength(5)
-  expect(p.scores[0]?.value?.rounds).toHaveLength(2)
+  expect(p.planFiles[0]).toMatchObject({ name: 'token-refresh', isInvalid: false })
+  expect(p.planFiles[0]?.value?.steps).toHaveLength(5)
+  expect(p.scoreFiles[0]?.value?.rounds).toHaveLength(2)
 })
 
 test('a Write is followed by a read within 300 ms', async ($, on) => {
@@ -65,11 +65,11 @@ test('a cut read keeps the last good plan, and the next read recovers', async ($
 
   files.current[PLAN_PATH] = { text: '{"version":1,"title":"Tok', mtimeMs: 2 }
   await clock.advance(30_000)
-  expect(plansOf(state).plans[0]).toMatchObject({ isInvalid: true })
+  expect(plansOf(state).planFiles[0]).toMatchObject({ isInvalid: true })
   expect(s4(state)).toBe('in_progress')
   files.current[PLAN_PATH] = { text: planText({ S4: 'done' }), mtimeMs: 3 }
   await clock.advance(30_000)
-  expect(plansOf(state).plans[0]).toMatchObject({ isInvalid: false })
+  expect(plansOf(state).planFiles[0]).toMatchObject({ isInvalid: false })
   expect(s4(state)).toBe('done')
 })
 
@@ -80,7 +80,7 @@ test('a file over 4 MiB is invalid without a read', async ($, on) => {
   await $.session.start(START)
   await clock.advance(300)
 
-  expect(plansOf(state).plans[0]).toMatchObject({ isInvalid: true, value: null })
+  expect(plansOf(state).planFiles[0]).toMatchObject({ isInvalid: true, value: null })
   expect(files.reads).not.toContain(PLAN_PATH)
 })
 
@@ -90,11 +90,11 @@ test('a removed plan file leaves the view', async ($, on) => {
   engine(on)
   await $.session.start(START)
   await clock.advance(300)
-  expect(plansOf(state).plans).toHaveLength(1)
+  expect(plansOf(state).planFiles).toHaveLength(1)
 
   delete files.current[PLAN_PATH]
   await clock.advance(30_000)
-  expect(plansOf(state).plans).toEqual([])
+  expect(plansOf(state).planFiles).toEqual([])
 })
 
 test('a note integrated after the first read is toasted once', async ($, on) => {
@@ -121,7 +121,7 @@ test("a plan's first finish is toasted", async ($, on) => {
   files.current[PLAN_PATH] = { text: planText(ALL_DONE), mtimeMs: 2 }
   await clock.advance(30_000)
   expect(toasts).toEqual(['Plan done: Token refresh in <1m'])
-  expect(plansOf(state).finished['token-refresh']).toBe(30_000)
+  expect(plansOf(state).finishedAt['token-refresh']).toBe(30_000)
   files.current[PLAN_PATH] = { text: planText(ALL_DONE), mtimeMs: 3 }
   await clock.advance(30_000)
   expect(toasts).toHaveLength(1)
@@ -135,8 +135,8 @@ test('a plan already finished at the first read raises nothing', async ($, on) =
   await clock.advance(300)
 
   expect(toasts).toEqual([])
-  expect(plansOf(state).finished).toEqual({})
-  expect(plansOf(state).toasted).toContain('done:token-refresh')
+  expect(plansOf(state).finishedAt).toEqual({})
+  expect(plansOf(state).toastedKeys).toContain('done:token-refresh')
 })
 
 test('a missing folder reads as empty, and nothing is written there', async ($, on) => {
@@ -146,8 +146,8 @@ test('a missing folder reads as empty, and nothing is written there', async ($, 
   await $.session.start(START)
   await clock.advance(300)
 
-  expect(plansOf(state).plans).toEqual([])
-  expect(plansOf(state).scores).toEqual([])
+  expect(plansOf(state).planFiles).toEqual([])
+  expect(plansOf(state).scoreFiles).toEqual([])
 })
 
 test('only a plan written this session runs, and a reload keeps when the session began', async ($, on) => {
@@ -156,17 +156,17 @@ test('only a plan written this session runs, and a reload keeps when the session
   engine(on)
   await $.session.start(START)
   await clock.advance(300)
-  const shown = () => plansOf(state).plans[0]
-  expect(plansOf(state).since).toBe(10_000)
-  expect(isPlanRunning(shown()!, plansOf(state).since)).toBe(false)
+  const shown = () => plansOf(state).planFiles[0]
+  expect(plansOf(state).watchedSince).toBe(10_000)
+  expect(isPlanRunning(shown()!, plansOf(state).watchedSince)).toBe(false)
 
   files.current[PLAN_PATH] = { text: PLAN_JSON, mtimeMs: 12_000 }
   await $.tool.call({ tool: 'Write', file_path: PLAN_PATH, content: '' })
   await clock.advance(300)
-  expect(isPlanRunning(shown()!, plansOf(state).since)).toBe(true)
+  expect(isPlanRunning(shown()!, plansOf(state).watchedSince)).toBe(true)
   await clock.set(20_000)
   await $.session.start(START)
-  expect(plansOf(state).since).toBe(10_000)
+  expect(plansOf(state).watchedSince).toBe(10_000)
 })
 
 test('after /clear a plan from before it stays out, and one written after runs', async ($, on) => {
@@ -175,19 +175,19 @@ test('after /clear a plan from before it stays out, and one written after runs',
   engine(on)
   await $.session.start(START)
   await clock.advance(300)
-  expect(isPlanRunning(plansOf(state).plans[0]!, plansOf(state).since)).toBe(true)
+  expect(isPlanRunning(plansOf(state).planFiles[0]!, plansOf(state).watchedSince)).toBe(true)
 
   await clock.set(20_000)
   await $.classic.SessionStart({ source: 'clear' })
-  expect(plansOf(state).since).toBe(20_000)
-  expect(state.get('credit')).toEqual({ slices: {}, mine: {} })
+  expect(plansOf(state).watchedSince).toBe(20_000)
+  expect(state.get('credit')).toEqual({ slices: {}, sessionTimes: {} })
   await clock.advance(300)
-  expect(isPlanRunning(plansOf(state).plans[0]!, plansOf(state).since)).toBe(false)
+  expect(isPlanRunning(plansOf(state).planFiles[0]!, plansOf(state).watchedSince)).toBe(false)
   files.current[PLAN_PATH] = { text: PLAN_JSON, mtimeMs: 25_000 }
   await clock.set(25_000)
   await $.tool.call({ tool: 'Write', file_path: PLAN_PATH, content: '' })
   await clock.advance(300)
-  expect(isPlanRunning(plansOf(state).plans[0]!, plansOf(state).since)).toBe(true)
+  expect(isPlanRunning(plansOf(state).planFiles[0]!, plansOf(state).watchedSince)).toBe(true)
 })
 
 // Task 6: crediting working time. The plan runs (written after the start at 0) with S4 in progress.
@@ -213,7 +213,7 @@ test("a main turn's time goes to the running step", async ($, on) => {
   await $.turn.complete(complete('t1'))
 
   expect(store.get(S4_KEY)).toEqual({ ms: 120_000, isShared: false, at: 121_000 })
-  expect(plansOf(state).times['token-refresh']?.S4?.ms).toBe(120_000)
+  expect(plansOf(state).stepTimes['token-refresh']?.S4?.ms).toBe(120_000)
 })
 
 test('an AskUserQuestion call is left out', { timeoutMs: 15_000 }, async ($, on) => {
@@ -409,7 +409,7 @@ test('a session resumed under its own id keeps its stored step time', async ($, 
   await $.turn.complete(complete('t1'))
 
   expect(msAt(store, S4_KEY)).toBe(360_000)
-  expect(plansOf(state).times['token-refresh']?.S4?.ms).toBe(360_000)
+  expect(plansOf(state).stepTimes['token-refresh']?.S4?.ms).toBe(360_000)
 })
 
 test('idle time between turns never counts', async ($, on) => {
@@ -456,7 +456,7 @@ test('TaskCreate and TaskUpdate keep the task list', async ($, on) => {
 
   await $.tool.call({ tool: 'TaskCreate', subject: 'Write tests', description: 'd' })
   await $.tool.call({ tool: 'TaskUpdate', taskId: '1', status: 'in_progress' })
-  expect(tasksOf(state)).toEqual([{ id: '1', subject: 'Write tests', status: 'in_progress', ms: 0 }])
+  expect(tasksOf(state)).toEqual([{ id: '1', subject: 'Write tests', status: 'in_progress', workedMs: 0 }])
   await $.tool.call({ tool: 'TaskUpdate', taskId: '1', status: 'deleted' })
   expect(tasksOf(state)).toEqual([])
 })
@@ -473,9 +473,9 @@ test("TodoWrite replaces the list and keeps a subject's time", async ($, on) => 
   await $.turn.start({ text: 'q', turnId: 't1' })
   await clock.set(61_000)
   await $.turn.complete(complete('t1'))
-  expect(tasksOf(state)[0]?.ms).toBe(60_000)
+  expect(tasksOf(state)[0]?.workedMs).toBe(60_000)
   await $.tool.call({ tool: 'TodoWrite', todos: [todo('A', 'completed'), todo('B', 'in_progress')] })
-  expect(tasksOf(state)).toEqual([{ id: '0', subject: 'A', status: 'completed', ms: 60_000 }, { id: '1', subject: 'B', status: 'in_progress', ms: 0 }])
+  expect(tasksOf(state)).toEqual([{ id: '0', subject: 'A', status: 'completed', workedMs: 60_000 }, { id: '1', subject: 'B', status: 'in_progress', workedMs: 0 }])
 })
 
 test('a task status change inside a turn credits the time before it to the item that was in progress', async ($, on) => {
@@ -493,7 +493,7 @@ test('a task status change inside a turn credits the time before it to the item 
   await $.tool.call({ tool: 'TodoWrite', todos: [todo('A', 'completed'), todo('B', 'completed')] })
   await clock.set(110_000)
   await $.turn.complete(complete('t1'))
-  expect(tasksOf(state).map(t => t.ms)).toEqual([60_000, 40_000])
+  expect(tasksOf(state).map(t => t.workedMs)).toEqual([60_000, 40_000])
 })
 
 test("an agent's task call is not the session's task list", async ($, on) => {
@@ -522,7 +522,7 @@ test("with a plan file shown, the main loop's time goes to the plan, not the tas
   await clock.advance(60_000)
   await $.turn.complete(complete('t1'))
   expect(msAt(store, S4_KEY)).toBe(60_000)
-  expect(tasksOf(state)[0]?.ms).toBe(0)
+  expect(tasksOf(state)[0]?.workedMs).toBe(0)
 })
 
 test('a task list this session shows over a plan left by an earlier session', async ($, on) => {
@@ -539,7 +539,7 @@ test('a task list this session shows over a plan left by an earlier session', as
   await $.turn.start({ text: 'q', turnId: 't1' })
   await clock.advance(60_000)
   await $.turn.complete(complete('t1'))
-  expect(tasksOf(state)[0]?.ms).toBe(60_000)
+  expect(tasksOf(state)[0]?.workedMs).toBe(60_000)
   expect(msAt(store, S4_KEY)).toBe(undefined)
 })
 

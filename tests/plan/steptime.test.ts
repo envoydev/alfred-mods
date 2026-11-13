@@ -32,34 +32,34 @@ test("an agent naming a step the plan lacks follows the main loop's rule", () =>
 })
 
 test('a slice is its time less its waits, never below 0', () => {
-  expect(sliceMs({ at: 1000, waitMs: 4000, named: [] }, 10_000)).toBe(5000)
-  expect(sliceMs({ at: 1000, waitMs: 20_000, named: [] }, 10_000)).toBe(0)
+  expect(sliceMs({ openedAt: 1000, waitMs: 4000, namedSteps: [] }, 10_000)).toBe(5000)
+  expect(sliceMs({ openedAt: 1000, waitMs: 20_000, namedSteps: [] }, 10_000)).toBe(0)
 })
 
 test('a slice closed twice is counted once', () => {
-  const c: Credit = { slices: { main: { at: 0, waitMs: 0, named: [] } }, mine: {} }
+  const c: Credit = { slices: { main: { openedAt: 0, waitMs: 0, namedSteps: [] } }, sessionTimes: {} }
   const once = closeSlices(c, [{ loop: 'main', keys: ['step:p:S4:s1'], isShared: false }], 60_000, false)
-  expect(once.credit.mine['step:p:S4:s1']?.ms).toBe(60_000)
+  expect(once.credit.sessionTimes['step:p:S4:s1']?.ms).toBe(60_000)
   expect(once.credit.slices.main).toBe(undefined)
   const twice = closeSlices(once.credit, [{ loop: 'main', keys: ['step:p:S4:s1'], isShared: false }], 70_000, false)
-  expect(twice.credit.mine['step:p:S4:s1']?.ms).toBe(60_000)
+  expect(twice.credit.sessionTimes['step:p:S4:s1']?.ms).toBe(60_000)
   expect(twice.spans).toEqual({})
 })
 
 test('a reopen restarts only a slice still open', () => {
-  const c: Credit = { slices: { main: { at: 0, waitMs: 5000, named: ['p:S5'] } }, mine: {} }
+  const c: Credit = { slices: { main: { openedAt: 0, waitMs: 5000, namedSteps: ['p:S5'] } }, sessionTimes: {} }
   const close = [{ loop: 'main', keys: ['overhead:p:s1'], isShared: false }]
-  expect(closeSlices(c, close, 60_000, true).credit.slices.main).toEqual({ at: 60_000, waitMs: 0, named: ['p:S5'] })
-  expect(closeSlices({ slices: {}, mine: {} }, close, 60_000, true).credit.slices).toEqual({})
+  expect(closeSlices(c, close, 60_000, true).credit.slices.main).toEqual({ openedAt: 60_000, waitMs: 0, namedSteps: ['p:S5'] })
+  expect(closeSlices({ slices: {}, sessionTimes: {} }, close, 60_000, true).credit.slices).toEqual({})
 })
 
 test('two loops naming one step both add, and a shared span splits', () => {
-  const c: Credit = { slices: { a1: { at: 0, waitMs: 0, named: [] }, a2: { at: 30_000, waitMs: 0, named: [] } }, mine: {} }
+  const c: Credit = { slices: { a1: { openedAt: 0, waitMs: 0, namedSteps: [] }, a2: { openedAt: 30_000, waitMs: 0, namedSteps: [] } }, sessionTimes: {} }
   const both = closeSlices(c, [{ loop: 'a1', keys: ['step:p:S5:s1'], isShared: false }, { loop: 'a2', keys: ['step:p:S5:s1'], isShared: false }], 60_000, false)
-  expect(both.credit.mine['step:p:S5:s1']?.ms).toBe(90_000)
-  const split = closeSlices({ slices: { main: { at: 0, waitMs: 0, named: [] } }, mine: {} },
+  expect(both.credit.sessionTimes['step:p:S5:s1']?.ms).toBe(90_000)
+  const split = closeSlices({ slices: { main: { openedAt: 0, waitMs: 0, namedSteps: [] } }, sessionTimes: {} },
     [{ loop: 'main', keys: ['step:p:S4:s1', 'step:p:S5:s1'], isShared: true }], 60_000, false)
-  expect(split.credit.mine).toEqual({ 'step:p:S4:s1': { ms: 30_000, isShared: true }, 'step:p:S5:s1': { ms: 30_000, isShared: true } })
+  expect(split.credit.sessionTimes).toEqual({ 'step:p:S4:s1': { ms: 30_000, isShared: true }, 'step:p:S5:s1': { ms: 30_000, isShared: true } })
 })
 
 test("every session's keys add up, and one plan's never count for another", () => {
@@ -100,9 +100,9 @@ test("a session's own keys seed its totals", () => {
 })
 
 test('an open slice shows its span so far, split among its keys, and stays open', () => {
-  const c: Credit = { slices: { main: { at: 0, waitMs: 10_000, named: [] } }, mine: {} }
+  const c: Credit = { slices: { main: { openedAt: 0, waitMs: 10_000, namedSteps: [] } }, sessionTimes: {} }
   const closes = [{ loop: 'main', keys: ['step:p:S3:s1', 'step:p:S4:s1'], isShared: true }, { loop: 'gone', keys: ['overhead:p:s1'], isShared: false }]
 
   expect(liveSpans(c, closes, 70_000)).toEqual({ 'step:p:S3:s1': 30_000, 'step:p:S4:s1': 30_000 })
-  expect(c.slices.main).toEqual({ at: 0, waitMs: 10_000, named: [] })
+  expect(c.slices.main).toEqual({ openedAt: 0, waitMs: 10_000, namedSteps: [] })
 })

@@ -214,7 +214,7 @@ for (const surface of SURFACES) {
     // The engine stamps a plugin's compaction 'plugin'; the kit leaves the trigger unset
     expect(triggers).toHaveLength(1)
     expect((state.get('session') as Session).compactions).toBe(1)
-    expect((state.get('cache') as Cache).lastAt).toBe(null)
+    expect((state.get('cache') as Cache).lastRequestAt).toBe(null)
   })
 
   test(`a skipped compaction says why (${surface})`, async ($, on) => {

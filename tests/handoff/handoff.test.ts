@@ -125,8 +125,8 @@ test('50 paths then +N more', () => {
 })
 
 const VIEW: HandoffView = {
-  mode: 'ask', threshold: 80, isAskUp: false, percent: 62, point: 200_000, window: 200_000, handled: null, lastSave: null,
-  alfred: { state: 'none', reason: null }, isWorking: false, runway: null,
+  mode: 'ask', threshold: 80, isAskUp: false, percent: 62, compactPoint: 200_000, window: 200_000, handledStep: null, lastSave: null,
+  stackStatus: { state: 'none', reason: null }, isWorking: false, runway: null,
 }
 // Each line as drawn: a button as `<hotkey>: <label>`, as the types draw a `plain` one
 const drawn = (lines: Line[]): string[] => lines.map(l => l.map(s => ('text' in s ? s.text : 'button' in s ? `${s.button.hotkey}: ${s.button.label}` : '')).join(''))
@@ -134,35 +134,35 @@ const drawn = (lines: Line[]): string[] => lines.map(l => l.map(s => ('text' in 
 test("the HANDOFF row in each state, the ask's r: dismiss at 95, the last-save row", () => {
   expect(drawn(handoffLines(VIEW, 100))).toEqual(['HANDOFF', 'ctx ▰▰▰▱▱ 62% · asks at 80% · h: save now'])
   expect(drawn(handoffLines({ ...VIEW, percent: null }, 100))).toEqual(['HANDOFF', 'ctx – · asks at 80%'])
-  expect(drawn(handoffLines({ ...VIEW, percent: 79, point: 390_000, window: 1_000_000 }, 100))[1]).toBe('ctx ▰▰▰▱▱ 79% of 390k · asks at 80% · h: save now')
-  expect(drawn(handoffLines({ ...VIEW, percent: 82, isAskUp: true, handled: 80 }, 100))[1])
+  expect(drawn(handoffLines({ ...VIEW, percent: 79, compactPoint: 390_000, window: 1_000_000 }, 100))[1]).toBe('ctx ▰▰▰▱▱ 79% of 390k · asks at 80% · h: save now')
+  expect(drawn(handoffLines({ ...VIEW, percent: 82, isAskUp: true, handledStep: 80 }, 100))[1])
     .toBe('⚠ ctx ▰▰▰▰▱ 82% · past 80% · h: save handoff · c: compact · r: remind at 85%')
-  expect(drawn(handoffLines({ ...VIEW, percent: 96, isAskUp: true, handled: 95 }, 100))[1]).toBe('⚠ ctx ▰▰▰▰▱ 96% · past 95% · h: save handoff · c: compact · r: dismiss')
+  expect(drawn(handoffLines({ ...VIEW, percent: 96, isAskUp: true, handledStep: 95 }, 100))[1]).toBe('⚠ ctx ▰▰▰▰▱ 96% · past 95% · h: save handoff · c: compact · r: dismiss')
   expect(drawn(handoffLines({ ...VIEW, mode: 'auto' }, 100))).toEqual(['HANDOFF', 'ctx 62% · saves at 80%'])
   const saved = { at: AT, isOk: true, reason: null }
-  expect(drawn(handoffLines({ ...VIEW, mode: 'auto', percent: 82, handled: 80, lastSave: saved }, 100)))
+  expect(drawn(handoffLines({ ...VIEW, mode: 'auto', percent: 82, handledStep: 80, lastSave: saved }, 100)))
     .toEqual(['HANDOFF', 'ctx 82% · saved at 80% (14:05) · next save at 85%', 'last save 14:05 · .claude/session-inspector/HANDOFF.md'])
   expect(drawn(handoffLines({ ...VIEW, lastSave: { at: AT, isOk: false, reason: "HANDOFF.md exists and is not the mod's" } }, 100)))
     .toEqual(['HANDOFF', 'ctx ▰▰▰▱▱ 62% · asks at 80% · h: save now', "✗ save failed 14:05: HANDOFF.md exists and is not the mod's"])
-  expect(drawn(handoffLines({ ...VIEW, alfred: { state: 'stood-down', reason: null } }, 100))).toEqual(['HANDOFF', 'ctx 62% · handoff by Alfred Code'])
+  expect(drawn(handoffLines({ ...VIEW, stackStatus: { state: 'stood-down', reason: null } }, 100))).toEqual(['HANDOFF', 'ctx 62% · handoff by Alfred Code'])
   // The reason moved to the ALFRED CODE section (Phase 5)
-  expect(drawn(handoffLines({ ...VIEW, alfred: { state: 'ignored', reason: 'schema 2' } }, 100)))
+  expect(drawn(handoffLines({ ...VIEW, stackStatus: { state: 'ignored', reason: 'schema 2' } }, 100)))
     .toEqual(['HANDOFF', 'ctx ▰▰▰▱▱ 62% · asks at 80% · h: save now'])
   expect(handoffLines({ ...VIEW, mode: 'off' }, 100)).toEqual([])
 })
 
 test('c is not drawn while a turn runs', () => {
-  expect(drawn(handoffLines({ ...VIEW, percent: 82, isAskUp: true, handled: 80, isWorking: true }, 100))[1])
+  expect(drawn(handoffLines({ ...VIEW, percent: 82, isAskUp: true, handledStep: 80, isWorking: true }, 100))[1])
     .toBe('⚠ ctx ▰▰▰▰▱ 82% · past 80% · h: save handoff · r: remind at 85%')
 })
 
 test('after r, the calm row names the step it asks at next, and none once 95 is handled', () => {
-  expect(drawn(handoffLines({ ...VIEW, percent: 82, handled: 80 }, 100))[1]).toBe('ctx ▰▰▰▰▱ 82% · asks at 85% · h: save now')
-  expect(drawn(handoffLines({ ...VIEW, percent: 96, handled: 95 }, 100))[1]).toBe('ctx ▰▰▰▰▱ 96% · h: save now')
+  expect(drawn(handoffLines({ ...VIEW, percent: 82, handledStep: 80 }, 100))[1]).toBe('ctx ▰▰▰▰▱ 82% · asks at 85% · h: save now')
+  expect(drawn(handoffLines({ ...VIEW, percent: 96, handledStep: 95 }, 100))[1]).toBe('ctx ▰▰▰▰▱ 96% · h: save now')
 })
 
 test('the row buttons are plain, on h, c and r, and the heading violet', () => {
-  const [head, row] = handoffLines({ ...VIEW, percent: 82, isAskUp: true, handled: 80 }, 100)
+  const [head, row] = handoffLines({ ...VIEW, percent: 82, isAskUp: true, handledStep: 80 }, 100)
   expect(head).toEqual([{ text: 'HANDOFF', bold: true, tone: 'handoff' }])
   const buttons = row!.flatMap(s => ('button' in s ? [s.button] : []))
   expect(buttons.map(b => [b.key, b.hotkey, b.plain])).toEqual([['handoff-save', 'h', true], ['handoff-compact', 'c', true], ['handoff-dismiss', 'r', true]])

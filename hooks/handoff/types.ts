@@ -21,7 +21,7 @@ export type SaveInput = {
 
 // What the Now tab's HANDOFF section reads: the atom with F8's context percent, whether a main-loop turn runs and
 // Alfred Code's runway, which the stood-down row measures against
-export type HandoffView = Pick<Handoff, 'mode' | 'threshold' | 'isAskUp' | 'point' | 'handled' | 'lastSave' | 'alfred'> & {
+export type HandoffView = Pick<Handoff, 'mode' | 'threshold' | 'isAskUp' | 'compactPoint' | 'handledStep' | 'lastSave' | 'stackStatus'> & {
   percent: number | null; window: number | null; isWorking: boolean; runway: Runway | null
 }
 

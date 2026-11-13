@@ -87,14 +87,14 @@ export function foldFailure(list: Failure[], next: Failure, limit = 10): Failure
   if (prev && prev.tool === next.tool && prev.target === next.target && prev.outcome === next.outcome && prev.reason === next.reason) {
     return [...list.slice(0, -1), { ...prev, at: next.at, detail: next.detail, count: prev.count + 1, isNew: prev.isNew || next.isNew }]
   }
-  const n = next.n ?? Math.max(0, ...list.map(failureNumberOf)) + 1
-  return [...list, { ...next, n }].slice(-limit)
+  const failureNumber = next.failureNumber ?? Math.max(0, ...list.map(failureNumberOf)) + 1
+  return [...list, { ...next, failureNumber }].slice(-limit)
 }
 
 // A row's number: its own, or, for a row an earlier version kept, its place from the oldest (the user, 2026-11-12:
 // 'right now I need to count and order')
 export function failureNumberOf(failure: Failure, i: number): number {
-  return failure.n ?? i + 1
+  return failure.failureNumber ?? i + 1
 }
 
 export function tallyOutcome(stat: ToolStat | undefined, outcome: Outcome, by: 1 | -1): ToolStat {

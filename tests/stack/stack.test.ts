@@ -24,8 +24,8 @@ test('a full valid file reads every field', () => {
   expect(r).toEqual({
     state: 'used',
     fields: {
-      fullContext: 'fresh-session', model: 'claude-opus-5-5', window: 1000000, resumeAt: 150000, noOffer: false,
-      autoRun: true, scorer: { on: true, level: 80, rounds: 3 }, autoCompact: null, plan: null, updatedAt: Date.parse('2026-10-29T14:03:00Z'), ignored: [],
+      fullContext: 'fresh-session', model: 'claude-opus-5-5', window: 1000000, resumeAt: 150000, hasNoOffer: false,
+      autoRun: true, scorer: { on: true, level: 80, rounds: 3 }, autoCompact: null, plan: null, updatedAt: Date.parse('2026-10-29T14:03:00Z'), ignoredFields: [],
     },
     prompt: PROMPT,
   })
@@ -45,7 +45,7 @@ test('each bad form reads as unknown and is listed', () => {
   for (const [field, value] of bad) {
     const r = parseStack(file({ [field]: value }), 's1')
     if (r.state !== 'used') throw new Error(`${field} ${JSON.stringify(value)}: the file was not used`)
-    expect(r.fields.ignored).toEqual([field])
+    expect(r.fields.ignoredFields).toEqual([field])
     const got = field === 'handoffPrompt' ? r.prompt : (r.fields as Record<string, unknown>)[field]
     expect(got).toBe(null)
     // The rest of the file still counts
@@ -59,7 +59,7 @@ test('a missing field is unknown and not listed', () => {
   const r = parseStack(JSON.stringify({ schema: 1, session: 's1', fullContext: 'compact' }), 's1')
   expect(r).toEqual({
     state: 'used',
-    fields: { fullContext: 'compact', model: null, window: null, resumeAt: null, noOffer: false, autoRun: null, scorer: null, autoCompact: null, plan: null, updatedAt: null, ignored: [] },
+    fields: { fullContext: 'compact', model: null, window: null, resumeAt: null, hasNoOffer: false, autoRun: null, scorer: null, autoCompact: null, plan: null, updatedAt: null, ignoredFields: [] },
     prompt: null,
   })
 })
@@ -68,8 +68,8 @@ test('resumeAt null sets noOffer', () => {
   const r = parseStack(file({ resumeAt: null }), 's1')
   if (r.state !== 'used') throw new Error('not used')
   expect(r.fields.resumeAt).toBe(null)
-  expect(r.fields.noOffer).toBe(true)
-  expect(r.fields.ignored).toEqual([])
+  expect(r.fields.hasNoOffer).toBe(true)
+  expect(r.fields.ignoredFields).toEqual([])
 })
 
 test('resumeAt under 10,000,000 counts when window is unknown', () => {
@@ -77,7 +77,7 @@ test('resumeAt under 10,000,000 counts when window is unknown', () => {
   if (r.state !== 'used') throw new Error('not used')
   expect(r.fields.window).toBe(null)
   expect(r.fields.resumeAt).toBe(150000)
-  expect(r.fields.ignored).toEqual(['window'])
+  expect(r.fields.ignoredFields).toEqual(['window'])
   const missing = parseStack(JSON.stringify({ ...FULL, window: undefined, resumeAt: 9_999_999 }), 's1')
   if (missing.state !== 'used') throw new Error('not used')
   expect(missing.fields.resumeAt).toBe(9_999_999)
@@ -88,7 +88,7 @@ test('updatedAt that does not parse is unknown and not listed', () => {
     const r = parseStack(file({ updatedAt }), 's1')
     if (r.state !== 'used') throw new Error('not used')
     expect(r.fields.updatedAt).toBe(null)
-    expect(r.fields.ignored).toEqual([])
+    expect(r.fields.ignoredFields).toEqual([])
   }
 })
 
@@ -97,7 +97,7 @@ test('line feeds and tabs pass in handoffPrompt', () => {
   const r = parseStack(file({ handoffPrompt: text }), 's1')
   if (r.state !== 'used') throw new Error('not used')
   expect(r.prompt).toBe(text)
-  expect(r.fields.ignored).toEqual([])
+  expect(r.fields.ignoredFields).toEqual([])
 })
 
 test('null scorer and null model are unknown and not listed', () => {
@@ -107,15 +107,15 @@ test('null scorer and null model are unknown and not listed', () => {
   expect(r.fields.model).toBe(null)
   expect(r.fields.window).toBe(null)
   expect(r.prompt).toBe(null)
-  expect(r.fields.ignored).toEqual([])
+  expect(r.fields.ignoredFields).toEqual([])
 })
 
 test("a bad fullContext is unknown and listed, Phase 4's runs", () => {
   const r = parseStack(file({ fullContext: 'later' }), 's1')
   if (r.state !== 'used') throw new Error('not used')
   expect(r.fields.fullContext).toBe(null)
-  expect(r.fields.ignored).toEqual(['fullContext'])
-  expect(parseStack(file({ fullContext: 'off' }), 's1')).toMatchObject({ state: 'used', fields: { fullContext: 'off', ignored: [] } })
+  expect(r.fields.ignoredFields).toEqual(['fullContext'])
+  expect(parseStack(file({ fullContext: 'off' }), 's1')).toMatchObject({ state: 'used', fields: { fullContext: 'off', ignoredFields: [] } })
 })
 
 test("Phase 4's reasons come through", () => {
@@ -128,8 +128,8 @@ test("Phase 4's reasons come through", () => {
 
 // Task 4: the runway and the banner
 const STACK: Stack = {
-  state: 'used', reason: null, fullContext: 'fresh-session', model: 'claude-opus-5-5', window: 1000000, resumeAt: 150000, noOffer: false,
-  autoRun: true, scorer: { on: true, level: 80, rounds: 3 }, autoCompact: null, plan: null, hasPrompt: true, updatedAt: null, readAt: 0, ignored: [],
+  state: 'used', reason: null, fullContext: 'fresh-session', model: 'claude-opus-5-5', window: 1000000, resumeAt: 150000, hasNoOffer: false,
+  autoRun: true, scorer: { on: true, level: 80, rounds: 3 }, autoCompact: null, plan: null, hasPrompt: true, updatedAt: null, readAt: 0, ignoredFields: [],
 }
 const USAGE: Usage = { contextTokens: 93_000, contextWindow: 1_000_000, contextPercent: 9, startedAt: 0, rateWindows: [], costUsd: null, todayUsd: null, readingAt: 0 }
 const BASE: BandInput = {
@@ -139,8 +139,8 @@ const BASE: BandInput = {
   session: { model: null, effort: null, compactions: 0, lastCompactAt: null, lastPromptAt: null, lastReplyAt: null, turnCount: 0, waitingPrompts: [], mainToolCalls: 0 },
   turns: [], newFailures: 0, pace: {}, agents: [],
   cache: {
-    tier: null, tierAt: null, tierBilling: null, config: { pin: null, idleOff: false, idleMinTokens: 200_000, isTerminal: false },
-    ratePerToken: null, rateModel: null, lastAt: null, last: null, session: { read: 0, write: 0, input: 0 }, toastedFor: null,
+    tier: null, tierAt: null, tierBilling: null, config: { pin: null, isIdleCompactOff: false, idleMinTokens: 200_000, isTerminal: false },
+    ratePerToken: null, rateModel: null, lastRequestAt: null, lastRequest: null, sessionCounts: { read: 0, write: 0, input: 0 }, toastedForRequestAt: null,
   },
   plan: null, isPlanInvalid: false, score: null,
 }
@@ -151,8 +151,8 @@ const text = (l: Line): string => l.map(s => ('text' in s ? s.text : '')).join('
 const RUNWAY = { percent: 62, resumeAt: 150000, at: 15 }
 
 test('resumeAt with no window reads under 10,000,000', () => {
-  expect(parseStack(file({ window: null, resumeAt: 10_000_000 }), 's1')).toMatchObject({ state: 'used', fields: { resumeAt: null, ignored: ['resumeAt'] } })
-  expect(parseStack(file({ window: null, resumeAt: 9_999_999 }), 's1')).toMatchObject({ state: 'used', fields: { resumeAt: 9_999_999, ignored: [] } })
+  expect(parseStack(file({ window: null, resumeAt: 10_000_000 }), 's1')).toMatchObject({ state: 'used', fields: { resumeAt: null, ignoredFields: ['resumeAt'] } })
+  expect(parseStack(file({ window: null, resumeAt: 9_999_999 }), 's1')).toMatchObject({ state: 'used', fields: { resumeAt: 9_999_999, ignoredFields: [] } })
 })
 
 test('modelsAgree', () => {
@@ -169,7 +169,7 @@ test('runwayOf', () => {
   expect(runwayOf(STACK, { ...USAGE, contextWindow: null }, null)).toEqual({ percent: 62, resumeAt: 150000, at: null })
   expect(runwayOf({ ...STACK, fullContext: 'compact' }, USAGE, null)).toBe(null)
   expect(runwayOf({ ...STACK, fullContext: 'off' }, USAGE, null)).toBe(null)
-  expect(runwayOf({ ...STACK, resumeAt: null, noOffer: true }, USAGE, null)).toBe(null)
+  expect(runwayOf({ ...STACK, resumeAt: null, hasNoOffer: true }, USAGE, null)).toBe(null)
   expect(runwayOf({ ...STACK, state: 'ignored', reason: 'schema 2' }, USAGE, null)).toBe(null)
   expect(runwayOf(STACK, USAGE, 'claude-sonnet-5-5')).toBe(null)
   expect(runwayOf(STACK, { ...USAGE, contextTokens: null }, null)).toBe(null)
@@ -201,7 +201,7 @@ test('the band goes hot at 60% of the runway', () => {
 test('the Usage tab counts turns to the runway, else to 80%', () => {
   const input = {
     ...BASE, turns: [turn(1, 5), turn(2, 7), turn(3, 9)], failures: [], stats: {},
-    totals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, stepOutput: 0, stepMs: 0 }, view: { tab: 'usage' as const, shown: [], planSlug: null },
+    totals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, stepOutput: 0, stepMs: 0 }, view: { tab: 'usage' as const, expandedIds: [], pinnedPlan: null },
   }
   expect(usageLines({ ...input, forecast: { at: 15, label: '150k' } }).map(text).join('\n')).toContain('≈3 turns to 150k')
   expect(usageLines({ ...input, forecast: { at: 15, label: '80%' } }).map(text).join('\n')).toContain('≈3 turns to 80%')
@@ -211,14 +211,14 @@ test('the Usage tab counts turns to the runway, else to 80%', () => {
 test('the Usage tab labels tok/s an average', () => {
   const input = {
     ...BASE, turns: [], failures: [], stats: {},
-    totals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, stepOutput: 7000, stepMs: 100_000 }, view: { tab: 'usage' as const, shown: [], planSlug: null },
+    totals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, stepOutput: 7000, stepMs: 100_000 }, view: { tab: 'usage' as const, expandedIds: [], pinnedPlan: null },
   }
   expect(usageLines(input).map(text).join('\n')).toContain(' · ≈70 tok/s avg')
 })
 
 const VIEW: HandoffView = {
-  mode: 'ask', threshold: 80, isAskUp: false, percent: 31, point: 300_000, window: 1_000_000, handled: null, lastSave: null,
-  alfred: { state: 'stood-down', reason: null }, isWorking: false, runway: null,
+  mode: 'ask', threshold: 80, isAskUp: false, percent: 31, compactPoint: 300_000, window: 1_000_000, handledStep: null, lastSave: null,
+  stackStatus: { state: 'stood-down', reason: null }, isWorking: false, runway: null,
 }
 
 test('the stood-down HANDOFF row reads the runway', () => {
@@ -304,9 +304,9 @@ test('autoCompact reads on and at, or null; a bad form is unknown and listed', (
   }
   expect(at({ on: true, at: 490000 }).autoCompact).toEqual({ on: true, at: 490000 })
   expect(at({ on: false, at: null }).autoCompact).toEqual({ on: false, at: null })
-  expect(at(null)).toMatchObject({ autoCompact: null, ignored: [] })
+  expect(at(null)).toMatchObject({ autoCompact: null, ignoredFields: [] })
   for (const bad of [{ on: 'yes', at: 490000 }, { on: true, at: 0 }, { on: true, at: 1.5 }, { on: true, at: '490000' }, { on: true }, [], 'on', true]) {
-    expect(at(bad)).toMatchObject({ autoCompact: null, ignored: ['autoCompact'], fullContext: 'fresh-session', autoRun: true })
+    expect(at(bad)).toMatchObject({ autoCompact: null, ignoredFields: ['autoCompact'], fullContext: 'fresh-session', autoRun: true })
   }
 })
 
@@ -332,10 +332,10 @@ test('plan reads a relative folder, without its trailing slash, or null; a path 
   }
   expect(at('.alfred/docs/work/plans/waste-bin/').plan).toBe('.alfred/docs/work/plans/waste-bin')
   expect(at('.alfred/docs/work/plans/waste-bin').plan).toBe('.alfred/docs/work/plans/waste-bin')
-  expect(at(null)).toMatchObject({ plan: null, ignored: [] })
-  expect(parseStack(file(), 's1')).toMatchObject({ fields: { plan: null, ignored: [] } })
+  expect(at(null)).toMatchObject({ plan: null, ignoredFields: [] })
+  expect(parseStack(file(), 's1')).toMatchObject({ fields: { plan: null, ignoredFields: [] } })
   for (const bad of ['/abs/plans/x/', '../x/', 'a/../../x', 'a\\b', 'C:/x', '', '/', 'a//b', 'a/./b', 'a\nb', 42, {}, ['a']]) {
-    expect(at(bad)).toMatchObject({ plan: null, ignored: ['plan'], fullContext: 'fresh-session' })
+    expect(at(bad)).toMatchObject({ plan: null, ignoredFields: ['plan'], fullContext: 'fresh-session' })
   }
-  expect(at('x'.repeat(301))).toMatchObject({ plan: null, ignored: ['plan'] })
+  expect(at('x'.repeat(301))).toMatchObject({ plan: null, ignoredFields: ['plan'] })
 })

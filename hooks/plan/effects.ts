@@ -16,8 +16,8 @@ import { readStack } from '../stack/effects'
 import { readView } from '../inspect/effects'
 import { readAgents } from '../agents/effects'
 
-const INITIAL_PLANS: Plans = { plans: [], scores: [], times: {}, overhead: {}, finished: {}, toasted: [], since: null, alfred: null }
-const plansAtom = atom({ plugin: 'alfred-mods', key: 'plans' } as const, INITIAL_PLANS, { shape: 'plans-2' })
+const INITIAL_PLANS: Plans = { planFiles: [], scoreFiles: [], stepTimes: {}, overheadMs: {}, finishedAt: {}, toastedKeys: [], watchedSince: null, alfredFolder: null }
+const plansAtom = atom({ plugin: 'alfred-mods', key: 'plans' } as const, INITIAL_PLANS, { shape: 'plans-3' })
 export function readPlans($: EngineInterface) {
   return read($, plansAtom)
 }
@@ -28,8 +28,8 @@ export function resetPlans($: EngineInterface) {
   return update($, plansAtom, () => INITIAL_PLANS)
 }
 
-const INITIAL_CREDIT: Credit = { slices: {}, mine: {} }
-const creditAtom = atom({ plugin: 'alfred-mods', key: 'credit' } as const, INITIAL_CREDIT, { shape: 'credit-1' })
+const INITIAL_CREDIT: Credit = { slices: {}, sessionTimes: {} }
+const creditAtom = atom({ plugin: 'alfred-mods', key: 'credit' } as const, INITIAL_CREDIT, { shape: 'credit-2' })
 export function readCredit($: EngineInterface) {
   return read($, creditAtom)
 }
@@ -41,7 +41,7 @@ export function resetCredit($: EngineInterface) {
 }
 
 const INITIAL_TASKS: TaskItem[] = []
-const tasksAtom = atom({ plugin: 'alfred-mods', key: 'tasks' } as const, INITIAL_TASKS, { shape: 'tasks-1' })
+const tasksAtom = atom({ plugin: 'alfred-mods', key: 'tasks' } as const, INITIAL_TASKS, { shape: 'tasks-2' })
 export function readTasks($: EngineInterface) {
   return read($, tasksAtom)
 }
@@ -62,16 +62,16 @@ export async function readStoredTimes($: EngineInterface): Promise<Record<string
 }
 
 // Each plan's time: every other session's from the store, this session's from its own totals
-export async function planTimesOf($: EngineInterface, files: Watched<Plan>[]): Promise<Pick<Plans, 'times' | 'overhead'>> {
-  const entries = { ...(await readStoredTimes($)), ...(await readCredit($)).mine }
-  const times: Plans['times'] = {}
-  const overhead: Plans['overhead'] = {}
+export async function planTimesOf($: EngineInterface, files: Watched<Plan>[]): Promise<Pick<Plans, 'stepTimes' | 'overheadMs'>> {
+  const entries = { ...(await readStoredTimes($)), ...(await readCredit($)).sessionTimes }
+  const times: Plans['stepTimes'] = {}
+  const overhead: Plans['overheadMs'] = {}
   for (const file of files) {
     const sum = sumTimes(entries, file.name)
     times[file.name] = sum.times
     overhead[file.name] = sum.overhead
   }
-  return { times, overhead }
+  return { stepTimes: times, overheadMs: overhead }
 }
 
 // The loops named (every open one when null) close at `now`: each span goes to its keys (Decision 9) in one update,
@@ -82,7 +82,7 @@ export async function closeLoopSlices($: EngineInterface, pending: Pending, loop
   if (open.length === 0) return
   const plans = given ?? await readPlans($)
   const rows = await readAgents($)
-  const shown = creditedPlan(plans, (await readView($)).planSlug, (await readTasks($)).length > 0)
+  const shown = creditedPlan(plans, (await readView($)).pinnedPlan, (await readTasks($)).length > 0)
   const closes = await closeTargetsOf($, credit, open, plans, shown)
   let spans: Record<string, number> = {}
   const after = await updateCredit($, cur => {
@@ -97,20 +97,20 @@ export async function closeLoopSlices($: EngineInterface, pending: Pending, loop
     if (ms > 0 && running > 0) {
       await updateTasks($, list => {
         const n = list.filter(t => t.status === 'in_progress').length
-        return n === 0 ? list : list.map(t => (t.status === 'in_progress' ? { ...t, ms: t.ms + ms / n } : t))
+        return n === 0 ? list : list.map(t => (t.status === 'in_progress' ? { ...t, workedMs: t.workedMs + ms / n } : t))
       })
     }
   }
   const keys = [...new Set(closes.flatMap(close => close.keys))]
   for (const key of keys) {
-    const step = after.mine[key]
+    const step = after.sessionTimes[key]
     if (step === undefined) continue
     const stored = key.startsWith('overhead:') ? { ms: step.ms, at: now } : { ms: step.ms, isShared: step.isShared, at: now }
     pending.timeWrites = pending.timeWrites.then(() => $.store.set(key, stored)).catch(() => undefined)
   }
   await pending.timeWrites
   if (keys.length === 0) return
-  const files = (await readPlans($)).plans
+  const files = (await readPlans($)).planFiles
   const sums = await planTimesOf($, files)
   await updatePlans($, plans => ({ ...plans, ...sums }))
 }
@@ -122,8 +122,8 @@ export async function closeTargetsOf($: EngineInterface, credit: Credit, loops: 
   return loops.map(loop => {
     const row = rows.find(r => r.id === loop)
     const lines = loop === 'main' ? null : row === undefined ? undefined : { plan: row.plan, task: row.task }
-    const slice = credit.slices[loop] ?? { at: 0, waitMs: 0, named: [] }
-    return closeTargetOf(loop, slice, lines, plans.plans, plans.since, shown === 'tasks' ? null : shown, session)
+    const slice = credit.slices[loop] ?? { openedAt: 0, waitMs: 0, namedSteps: [] }
+    return closeTargetOf(loop, slice, lines, plans.planFiles, plans.watchedSince, shown === 'tasks' ? null : shown, session)
   })
 }
 
@@ -135,7 +135,7 @@ export async function liveStepTimes($: EngineInterface, plans: Plans, shown: Wat
   if (shown === 'tasks') {
     const rows = await readAgents($)
     const ms = loops.filter(loop => loop === 'main' || rows.some(row => row.id === loop))
-      .reduce((n, loop) => n + sliceMs(credit.slices[loop] ?? { at: now, waitMs: 0, named: [] }, now), 0)
+      .reduce((n, loop) => n + sliceMs(credit.slices[loop] ?? { openedAt: now, waitMs: 0, namedSteps: [] }, now), 0)
     const running = (await readTasks($)).filter(t => t.status === 'in_progress')
     return { steps: Object.fromEntries(running.map(task => [task.id, ms / running.length])), overhead: 0 }
   }
@@ -152,14 +152,14 @@ export async function liveStepTimes($: EngineInterface, plans: Plans, shown: Wat
 export async function readPlanDrawing($: EngineInterface, now: number): Promise<PlanDrawing> {
   const plans = await readPlans($)
   const items = await readTasks($)
-  const pinned = (await readView($)).planSlug
+  const pinned = (await readView($)).pinnedPlan
   const shown = shownPlan(plans, pinned, items.length > 0)
   const credited = creditedPlan(plans, pinned, items.length > 0)
   const tab = await planViewOf($, plans, items, shown, now)
   const band = credited === shown ? tab : await planViewOf($, plans, items, credited, now)
   const nameOf = (w: Watched<Plan> | 'tasks' | null): string | null => (w === null || w === 'tasks' ? null : w.name)
   const name = nameOf(shown)
-  const scored = plans.scores.filter((w): w is Watched<Scores> & { value: Scores } => w.value !== null).sort((a, b) => b.mtimeMs - a.mtimeMs)
+  const scored = plans.scoreFiles.filter((w): w is Watched<Scores> & { value: Scores } => w.value !== null).sort((a, b) => b.mtimeMs - a.mtimeMs)
   const ownOf = (n: string | null) => (n === null ? undefined : scored.find(w => w.value.subject.kind === 'plan' && w.value.subject.ref === n))
   const full = name === null ? scored[0] : ownOf(name)
   const own = ownOf(nameOf(credited))
@@ -168,7 +168,7 @@ export async function readPlanDrawing($: EngineInterface, now: number): Promise<
     shown: tab.v, band: band.isRunning ? band.v : null, invalid: shown !== null && shown !== 'tasks' && shown.isInvalid,
     scores: full === undefined ? null : scoresView(full.value), score: newest === undefined ? null : scoresView(newest.value),
     isPlanScore: own !== undefined,
-    others: plans.plans.filter(w => w.name !== name).map(file => (file.value === null ? `${file.name} (invalid)` : file.name)).sort(),
+    others: plans.planFiles.filter(w => w.name !== name).map(file => (file.value === null ? `${file.name} (invalid)` : file.name)).sort(),
     otherScores: scored.filter(w => w !== full).slice(0, 3).map(w => scoresLabel(w.name, w.value)),
     updatedAt: shown === null || shown === 'tasks' ? null : shown.value?.updatedAt ?? null,
   }
@@ -181,27 +181,27 @@ export async function planViewOf($: EngineInterface, plans: Plans, items: TaskIt
     return { v: taskView(items, live.steps), isRunning: items.some(t => t.status !== 'completed') && items.some(task => task.status !== 'pending') }
   }
   if (w === null || w.value === null) return { v: null, isRunning: false }
-  const doneAt = plans.finished[w.name]
-  const view = planView(w.value, plans.times[w.name] ?? {}, (plans.overhead[w.name] ?? 0) + live.overhead, live.steps, now)
+  const doneAt = plans.finishedAt[w.name]
+  const view = planView(w.value, plans.stepTimes[w.name] ?? {}, (plans.overheadMs[w.name] ?? 0) + live.overhead, live.steps, now)
   // Alfred Code's named plan draws while open, begun or awaiting approval
-  const isNamed = plans.alfred !== null && plans.alfred !== undefined && plans.alfred.name === w.name && !view.isFinished
-  return { v: view, isRunning: isNamed || isPlanRunning(w, plans.since) || (doneAt !== undefined && now - doneAt < FINISH_SHOWN_MS) }
+  const isNamed = plans.alfredFolder !== null && plans.alfredFolder !== undefined && plans.alfredFolder.name === w.name && !view.isFinished
+  return { v: view, isRunning: isNamed || isPlanRunning(w, plans.watchedSince) || (doneAt !== undefined && now - doneAt < FINISH_SHOWN_MS) }
 }
 
 // A loop's slice opens at its turn's start; the main slice marks each live agent that names a step
 export async function openLoopSlice($: EngineInterface, loop: string, now: number): Promise<void> {
   const named = loop === 'main' ? (await readAgents($)).filter(row => isLive(row.status)).map(stepMarkOf).filter((m): m is string => m !== null) : []
-  await updateCredit($, credit => ({ ...credit, slices: { ...credit.slices, [loop]: { at: now, waitMs: 0, named } } }))
+  await updateCredit($, credit => ({ ...credit, slices: { ...credit.slices, [loop]: { openedAt: now, waitMs: 0, namedSteps: named } } }))
 }
 
 // An agent naming a step, spawned or starting a turn while the main loop's turn runs, makes that turn overhead
 export async function addStepMark($: EngineInterface, mark: string | null): Promise<void> {
   if (mark === null) return
   const main = (await readCredit($)).slices.main
-  if (main === undefined || main.named.includes(mark)) return
+  if (main === undefined || main.namedSteps.includes(mark)) return
   await updateCredit($, credit => {
     const slice = credit.slices.main
-    return slice === undefined || slice.named.includes(mark) ? credit : { ...credit, slices: { ...credit.slices, main: { ...slice, named: [...slice.named, mark] } } }
+    return slice === undefined || slice.namedSteps.includes(mark) ? credit : { ...credit, slices: { ...credit.slices, main: { ...slice, namedSteps: [...slice.namedSteps, mark] } } }
   })
 }
 
@@ -211,15 +211,15 @@ export async function addWaitTime($: EngineInterface, loop: string, ms: number, 
   if (ms <= 0 || (await readCredit($)).slices[loop] === undefined) return
   await updateCredit($, credit => {
     const slice = credit.slices[loop]
-    return slice === undefined ? credit : { ...credit, slices: { ...credit.slices, [loop]: { ...slice, waitMs: slice.waitMs + Math.min(ms, Math.max(0, now - slice.at)) } } }
+    return slice === undefined ? credit : { ...credit, slices: { ...credit.slices, [loop]: { ...slice, waitMs: slice.waitMs + Math.min(ms, Math.max(0, now - slice.openedAt)) } } }
   })
 }
 
 // A session resumed under its own id starts from its stored totals, so its first close adds to them
 export async function seedSessionTimes($: EngineInterface): Promise<void> {
-  if (Object.keys((await readCredit($)).mine).length > 0) return
+  if (Object.keys((await readCredit($)).sessionTimes).length > 0) return
   const mine = sessionTimesOf(await readStoredTimes($), await $.session.id())
-  if (Object.keys(mine).length > 0) await updateCredit($, credit => ({ ...credit, mine: { ...mine, ...credit.mine } }))
+  if (Object.keys(mine).length > 0) await updateCredit($, credit => ({ ...credit, sessionTimes: { ...mine, ...credit.sessionTimes } }))
 }
 
 // The plan and scores folders read again. A step whose status changed closes and reopens the open slices first, so
@@ -228,21 +228,21 @@ export async function seedSessionTimes($: EngineInterface): Promise<void> {
 export async function reloadPlanFiles($: EngineInterface, pending: Pending): Promise<void> {
   const before = await readPlans($)
   const now = await $.clock.now()
-  const ownPlans = await readJsonFolder($, PLANS_DIR, before.plans, parsePlan)
-  const ownScores = await readJsonFolder($, SCORES_DIR, before.scores, parseScores)
+  const ownPlans = await readJsonFolder($, PLANS_DIR, before.planFiles, parsePlan)
+  const ownScores = await readJsonFolder($, SCORES_DIR, before.scoreFiles, parseScores)
   // Alfred Code's plan folder: the one its status file names, else the one it let go, read once more to see it
   // finished, then kept 10 minutes after it finished
   // A status file that will not read, or whose `plan` will not, says nothing: the plan it named stays named
   const stack = await readStack($)
-  const isPlanNamed = stack.state === 'used' && !stack.ignored.includes('plan')
-  const named = isPlanNamed ? stack.plan : before.alfred?.folder ?? null
-  const lingering = named === null ? before.alfred : null
+  const isPlanNamed = stack.state === 'used' && !stack.ignoredFields.includes('plan')
+  const named = isPlanNamed ? stack.plan : before.alfredFolder?.folder ?? null
+  const lingering = named === null ? before.alfredFolder : null
   const folder = named ?? lingering?.folder ?? null
   // The last read is this folder's only when the folder is the same, so a new folder never shows the old plan
-  const isSame = before.alfred !== null && before.alfred !== undefined && before.alfred.folder === folder
+  const isSame = before.alfredFolder !== null && before.alfredFolder !== undefined && before.alfredFolder.folder === folder
   const alfredRead = folder === null ? null : await readAlfredFolder($, folder, {
-    plan: isSame ? before.plans.find(w => w.name === before.alfred?.name) : undefined,
-    scores: isSame ? before.scores.find(w => w.name === before.alfred?.name) : undefined,
+    plan: isSame ? before.planFiles.find(w => w.name === before.alfredFolder?.name) : undefined,
+    scores: isSame ? before.scoreFiles.find(w => w.name === before.alfredFolder?.name) : undefined,
   }, parseAlfredStatus, parseAlfredScoring)
   // The folder's files stand in for a same-named plan or scores file of the project's own folder while they exist
   const alfredPlan = alfredRead?.plan ? { ...alfredRead.plan, isNamed: named !== null } : null
@@ -250,16 +250,16 @@ export async function reloadPlanFiles($: EngineInterface, pending: Pending): Pro
   const without = <T>(list: Watched<T>[], over: Watched<unknown> | null): Watched<T>[] => (over === null ? list : list.filter(w => w.name !== over.name))
   const planFiles = [...without(ownPlans, alfredPlan), ...(alfredPlan === null ? [] : [alfredPlan])]
   const scoreFiles = [...without(ownScores, alfredScores), ...(alfredScores === null ? [] : [alfredScores])]
-  if (stepStatusKey(before.plans) !== stepStatusKey(planFiles)) await closeLoopSlices($, pending, null, now, true, before)
-  const { times, overhead } = await planTimesOf($, planFiles)
-  const seen = new Set(before.toasted)
+  if (stepStatusKey(before.planFiles) !== stepStatusKey(planFiles)) await closeLoopSlices($, pending, null, now, true, before)
+  const { stepTimes, overheadMs } = await planTimesOf($, planFiles)
+  const seen = new Set(before.toastedKeys)
   const finished: Record<string, number> = {}
   const due: string[] = []
   for (const w of planFiles) {
     const plan = w.value
     if (plan === null || w.isInvalid) continue
     // A folder read for the first time has no last state, whatever plan shared its name before
-    const had = w === alfredPlan && !isSame ? null : before.plans.find(b => b.name === w.name)?.value ?? null
+    const had = w === alfredPlan && !isSame ? null : before.planFiles.find(b => b.name === w.name)?.value ?? null
     if (had !== null) {
       for (const change of newUserNotes(had.changes, plan.changes)) due.push(`✎ Note folded into ${change.step ?? 'the plan'}: '${oneLine(change.note ?? '', 60)}'`)
     }
@@ -268,17 +268,17 @@ export async function reloadPlanFiles($: EngineInterface, pending: Pending): Pro
     seen.add(key)
     if (had !== null && !isPlanDone(had)) {
       finished[w.name] = now
-      due.push(`Plan done: ${plan.title} in ${minutesText(planView(plan, times[w.name] ?? {}, overhead[w.name] ?? 0, {}, now).workedMs)}`)
+      due.push(`Plan done: ${plan.title} in ${minutesText(planView(plan, stepTimes[w.name] ?? {}, overheadMs[w.name] ?? 0, {}, now).workedMs)}`)
     }
   }
   const toasted = [...seen].slice(-100)
-  const doneAt = alfredRead === null ? undefined : finished[alfredRead.name] ?? before.finished[alfredRead.name]
+  const doneAt = alfredRead === null ? undefined : finished[alfredRead.name] ?? before.finishedAt[alfredRead.name]
   const keep = alfredRead !== null && alfredPlan !== null && (named !== null || (doneAt !== undefined && now - doneAt < FINISH_SHOWN_MS))
   const alfred = keep && folder !== null ? { name: alfredRead.name, folder } : null
   // A folder let go leaves the project's own files as they were read
   await updatePlans($, p => ({
-    ...p, plans: keep ? planFiles : ownPlans, scores: keep ? scoreFiles : ownScores, times, overhead,
-    finished: { ...p.finished, ...finished }, toasted, alfred,
+    ...p, planFiles: keep ? planFiles : ownPlans, scoreFiles: keep ? scoreFiles : ownScores, stepTimes, overheadMs,
+    finishedAt: { ...p.finishedAt, ...finished }, toastedKeys: toasted, alfredFolder: alfred,
   }))
   for (const text of due) toast($, text)
 }
@@ -398,10 +398,10 @@ export async function followTaskTools($: EngineInterface, pending: Pending, tool
 
 // A plan's file must be written after this to run
 export async function restartPlanWatch($: EngineInterface, now: number): Promise<void> {
-  await updatePlans($, plans => ({ ...plans, since: now }))
+  await updatePlans($, plans => ({ ...plans, watchedSince: now }))
 }
 
 // The same at a session's start; a reload keeps the first start's time
 export async function startPlanWatch($: EngineInterface, now: number): Promise<void> {
-  await updatePlans($, plans => (plans.since === null ? { ...plans, since: now } : plans))
+  await updatePlans($, plans => (plans.watchedSince === null ? { ...plans, watchedSince: now } : plans))
 }

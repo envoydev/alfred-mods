@@ -6,10 +6,10 @@ export type Failure = {
   id: string; at: number; tool: string; target: string
   outcome: Exclude<Outcome, 'ok'>; reason: string; detail: string; count: number; isNew: boolean
   // The hook script that blocked the call (spec C6); absent in a row an earlier version kept
-  by?: string | null
+  blockedBy?: string | null
   // Its number for '/inspect show <n>', counting up through the session and never changed, so a failure that lands
   // while a turn runs moves no other row's; absent in a row an earlier version kept
-  n?: number
+  failureNumber?: number
 }
 export type TurnEnd = 'answer' | 'aborted' | 'refusal' | 'error'
 export type Turn = {
@@ -63,7 +63,7 @@ export type Session = {
 }
 export type Tab = 'now' | 'usage' | 'agents' | 'tools' | 'cache' | 'timeline' | 'plan'
 // `planSlug`: the plan `/inspect plan <name>` pinned, shown while its file parses
-export type View = { tab: Tab; shown: string[]; planSlug: string | null }
+export type View = { tab: Tab; expandedIds: string[]; pinnedPlan: string | null }
 export type PacePoint = { at: number; percent: number }
 export type Pace = Record<string, { resetsAt: string | null; points: PacePoint[]; toastedMarks: number[] }>
 // The engine's AgentStatus, copied: a contract imports nothing
@@ -82,21 +82,21 @@ export type AgentRow = {
 }
 // A model loop no spawn announced (spec C3): its steps and output tokens, first and last step, and whether its
 // turn.complete came
-export type Loop = { id: string; steps: number; output: number; firstAt: number; lastAt: number; isDone: boolean }
+export type Loop = { id: string; steps: number; outputTokens: number; firstAt: number; lastAt: number; isDone: boolean }
 export type CacheTier = '5m' | '1h'
 // Read off the 5h and 7d windows: within the plan's usage, on usage credits, or neither window (off a subscription)
 export type Billing = 'plan' | 'credits' | 'other'
 export type CacheCounts = { read: number; write: number; input: number }
 // What the variables and settings choose; `from` names the variable or key that pinned the tier.
 // `isTerminal`: the session started in the terminal's REPL, the one place idle compaction runs for every account.
-export type CacheConfig = { pin: { tier: CacheTier; from: string } | null; idleOff: boolean; idleMinTokens: number; isTerminal: boolean }
+export type CacheConfig = { pin: { tier: CacheTier; from: string } | null; isIdleCompactOff: boolean; idleMinTokens: number; isTerminal: boolean }
 export type Cache = {
   // The last model switch's report, and the billing it was made under
   tier: CacheTier | null; tierAt: number | null; tierBilling: Billing | null
   config: CacheConfig
   ratePerToken: number | null; rateModel: string | null
-  lastAt: number | null; last: CacheCounts | null; session: CacheCounts
-  toastedFor: number | null
+  lastRequestAt: number | null; lastRequest: CacheCounts | null; sessionCounts: CacheCounts
+  toastedForRequestAt: number | null
 }
 
 // A plan file and a scores file, as the README's 'Plan and score files' contract gives them; times in epoch ms
@@ -111,9 +111,9 @@ export type StepTime = { ms: number; isShared: boolean }
 // A loop's working time since its turn began: the main loop's, or an agent's by its id. `named`: the main slice's
 // `<plan>:<step>` marks, one per agent naming a step that was live during the turn; `waits`: its all-wait calls still
 // open, by call id, with their start
-export type Slice = { at: number; waitMs: number; named: string[]; waits?: Record<string, number> }
+export type Slice = { openedAt: number; waitMs: number; namedSteps: string[]; openWaits?: Record<string, number> }
 // The open slices, and this session's step and overhead totals by their $.store key
-export type Credit = { slices: Record<string, Slice>; mine: Record<string, StepTime> }
+export type Credit = { slices: Record<string, Slice>; sessionTimes: Record<string, StepTime> }
 // `approvedAt` and `completedAt` come from Alfred Code's status.json only: null until approved, or while open
 export type Plan = {
   title: string; updatedAt: number | null; steps: PlanStep[]; changes: PlanChange[]
@@ -138,20 +138,20 @@ export type Watched<T> = { name: string; mtimeMs: number; size: number; value: T
 // The folder's plans and scores; every session's step times summed per plan; when each plan finished this session;
 // the notes and finishes already seen; and when this session began, which a plan's file must be written after to run
 export type Plans = {
-  plans: Watched<Plan>[]; scores: Watched<Scores>[]
-  times: Record<string, Record<string, StepTime>>; overhead: Record<string, number>
-  finished: Record<string, number>; toasted: string[]; since: number | null
+  planFiles: Watched<Plan>[]; scoreFiles: Watched<Scores>[]
+  stepTimes: Record<string, Record<string, StepTime>>; overheadMs: Record<string, number>
+  finishedAt: Record<string, number>; toastedKeys: string[]; watchedSince: number | null
   // The Alfred Code plan folder read with them, by its name: the one the status file names, or the one it let go
   // finished, for 10 minutes (alfred-code's plan folder contract)
-  alfred: { name: string; folder: string } | null
+  alfredFolder: { name: string; folder: string } | null
 }
 // A main-loop task list item, from TaskCreate, TaskUpdate or TodoWrite: its subject is a tool input, kept in $.state
 // only; `ms`, the working time credited to it while in progress
-export type TaskItem = { id: string; subject: string; status: 'pending' | 'in_progress' | 'completed'; ms: number }
+export type TaskItem = { id: string; subject: string; status: 'pending' | 'in_progress' | 'completed'; workedMs: number }
 // REC's level: off, on (keys, emails, phones, private words) or strict (also the account, home paths and $ amounts)
 export type RecLevel = 'off' | 'on' | 'strict'
 // What surfaces redraw on: the level, the word count and the pane's last refusal, never the words themselves
-export type RecState = { level: RecLevel; count: number; note: string | null }
+export type RecState = { level: RecLevel; wordCount: number; note: string | null }
 // "quiet": compact tool rows on or off, from the settings files (spec settings-values S2)
 export type Quiet = { isOn: boolean }
 // "band": the full band with its info line, calm, its two lines, or off, none, from the settings files
@@ -164,8 +164,8 @@ export type BandSetting = { mode: BandMode; isToolsOpen?: boolean; isUnder?: boo
 export type HandoffMode = 'ask' | 'auto' | 'off'
 export type SaveResult = { at: number; isOk: boolean; reason: string | null }
 export type Handoff = {
-  mode: HandoffMode; threshold: number; point: number | null; handled: number | null; isAskUp: boolean
-  lastSave: SaveResult | null; alfred: { state: 'none' | 'stood-down' | 'ignored'; reason: string | null }
+  mode: HandoffMode; threshold: number; compactPoint: number | null; handledStep: number | null; isAskUp: boolean
+  lastSave: SaveResult | null; stackStatus: { state: 'none' | 'stood-down' | 'ignored'; reason: string | null }
 }
 
 // The stack's status file past Phase 4's fields (Phase 5): `state` none (no file), used, or ignored with `reason`;
@@ -178,18 +178,18 @@ export type StackScorer = { on: boolean; level: number; rounds: number }
 export type StackAutoCompact = { on: boolean; at: number | null }
 export type Stack = {
   state: 'none' | 'used' | 'ignored'; reason: string | null
-  fullContext: FullContext | null; model: string | null; window: number | null; resumeAt: number | null; noOffer: boolean
+  fullContext: FullContext | null; model: string | null; window: number | null; resumeAt: number | null; hasNoOffer: boolean
   autoRun: boolean | null; scorer: StackScorer | null; autoCompact: StackAutoCompact | null; hasPrompt: boolean
   // The plan folder the session works on, relative to the project root, no trailing slash (alfred-code's plan folder contract)
   plan: string | null
-  updatedAt: number | null; readAt: number | null; ignored: string[]
+  updatedAt: number | null; readAt: number | null; ignoredFields: string[]
 }
 
 // What fills the context (spec C1), from the last breakdown read: `at` null before one. Categories of kind `used` only;
 // plugins by name, from their agents and skills; memory files named inside the project, else by type and base name.
 export type PartsPlugin = { name: string; agents: number; agentTokens: number; skills: number; skillTokens: number }
 export type Parts = {
-  at: number | null; categories: { name: string; tokens: number }[]; plugins: PartsPlugin[]
+  breakdownAt: number | null; categories: { name: string; tokens: number }[]; plugins: PartsPlugin[]
   memory: { files: number; tokens: number; top: { name: string; tokens: number }[] }
   // The skill listing: the skills it carries, of the session's, and its tokens; absent when the breakdown has none
   skills?: SkillListing

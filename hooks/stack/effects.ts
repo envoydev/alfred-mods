@@ -9,10 +9,10 @@ import { NO_FILE, STACK_TOASTS, UNREADABLE, fillReady, fillToast, parseStack } f
 import { followStatusFile } from '../handoff/effects'
 
 const INITIAL_STACK: Stack = {
-  state: 'none', reason: null, fullContext: null, model: null, window: null, resumeAt: null, noOffer: false, autoRun: null, scorer: null, autoCompact: null, plan: null,
-  hasPrompt: false, updatedAt: null, readAt: null, ignored: [],
+  state: 'none', reason: null, fullContext: null, model: null, window: null, resumeAt: null, hasNoOffer: false, autoRun: null, scorer: null, autoCompact: null, plan: null,
+  hasPrompt: false, updatedAt: null, readAt: null, ignoredFields: [],
 }
-const stackAtom = atom({ plugin: 'alfred-mods', key: 'stack' } as const, INITIAL_STACK, { shape: 'stack-2' })
+const stackAtom = atom({ plugin: 'alfred-mods', key: 'stack' } as const, INITIAL_STACK, { shape: 'stack-3' })
 export function readStack($: EngineInterface) {
   return read($, stackAtom)
 }

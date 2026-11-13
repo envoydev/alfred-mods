@@ -73,7 +73,7 @@ export function parseStack(text: string, session: string): StackRead {
   const parsed = typeof value.updatedAt === 'string' ? Date.parse(value.updatedAt) : NaN
   return {
     state: 'used',
-    fields: { fullContext, model, window, resumeAt, noOffer, autoRun, scorer, autoCompact, plan, updatedAt: Number.isNaN(parsed) ? null : parsed, ignored },
+    fields: { fullContext, model, window, resumeAt, hasNoOffer: noOffer, autoRun, scorer, autoCompact, plan, updatedAt: Number.isNaN(parsed) ? null : parsed, ignoredFields: ignored },
     prompt,
   }
 }
@@ -118,7 +118,7 @@ function contextLine(stack: Stack, runway: Runway | null): string | null {
   if (stack.fullContext === 'compact') return 'compacts where Claude Code compacts'
   if (stack.fullContext === 'off') return 'full context: off · Handoff runs'
   if (stack.fullContext === null) return null
-  if (stack.noOffer) return 'fresh session: no offer at this window'
+  if (stack.hasNoOffer) return 'fresh session: no offer at this window'
   if (stack.resumeAt === null) return 'fresh session offered'
   const of = stack.window === null ? '' : ` of ${tokensText(stack.window)}`
   return `fresh session offered from ${tokensText(stack.resumeAt)}${of}${runway === null ? '' : ` · ctx ${runway.percent}% of it`}`
@@ -154,7 +154,7 @@ export function stackLines(stack: Stack, o: { prompt: string | null; runway: Run
     out.push([{ text: `resume: ${fitLine(o.prompt, Math.max(1, o.columns - BESIDE))}  ` }, FILL])
   }
   const written = stack.updatedAt === null ? '' : ` · written ${clockText(stack.updatedAt)}`
-  const ignored = stack.ignored.length === 0 ? '' : ` · ignored: ${stack.ignored.join(', ')}`
+  const ignored = stack.ignoredFields.length === 0 ? '' : ` · ignored: ${stack.ignoredFields.join(', ')}`
   out.push([{ text: `read ${stack.readAt === null ? '–' : clockText(stack.readAt)}${written}${ignored}`, tone: 'dim' }])
   return out
 }

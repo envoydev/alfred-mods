@@ -65,7 +65,7 @@ for (const surface of SURFACES) {
     await $.tool.call({ tool: 'Bash', command: 'echo probe-guard', description: 'Probe' })
     await $.tool.call({ tool: 'Bash', command: 'rm a.txt', description: 'Remove' })
 
-    expect((state.get('failures') as Failure[]).map(f => [f.reason, f.by])).toEqual([
+    expect((state.get('failures') as Failure[]).map(f => [f.reason, f.blockedBy])).toEqual([
       ['blocked by guard-bash.js: use Monitor', 'guard-bash.js'],
       ['guard: marked', null],
       ['PreToolUse:Bash hook error: no rm', null],
@@ -103,12 +103,12 @@ test("a PermissionRequest hook's deny is named too, and a later PermissionDenied
   on('tool.call', () => answered())
 
   await $.tool.call({ tool: 'Bash', command: 'git push', tool_use_id: 't1' })
-  expect((state.get('failures') as Failure[])[0]).toMatchObject({ outcome: 'blocked', reason: 'blocked by perm-guard.mjs: not on main', by: 'perm-guard.mjs' })
+  expect((state.get('failures') as Failure[])[0]).toMatchObject({ outcome: 'blocked', reason: 'blocked by perm-guard.mjs: not on main', blockedBy: 'perm-guard.mjs' })
   expect(state.get('blockers')).toEqual({ 'perm-guard.mjs': 1 })
 
   // The classifier is named the blocker after all: the count follows the row
   await $.classic.PermissionDenied({ tool_name: 'Bash', tool_input: {}, tool_use_id: 't1', reason: 'pushes to main' })
-  expect((state.get('failures') as Failure[])[0]).toMatchObject({ reason: 'auto mode: pushes to main', by: null })
+  expect((state.get('failures') as Failure[])[0]).toMatchObject({ reason: 'auto mode: pushes to main', blockedBy: null })
   expect(state.get('blockers')).toEqual({})
 })
 
@@ -123,7 +123,7 @@ test('an old failure without by reads as null, and no blockers atom draws no lin
   on('state.get', async ($$, e, next) => {
     const r = await next(e)
     if (e.key !== 'failures' || written.has(e.key) || r.value === undefined) return r
-    return { value: { ...r.value, value: { shape: 'failures-1', value: [old] } } }
+    return { value: { ...r.value, value: { shape: 'failures-2', value: [old] } } }
   })
   stubAll(on)
 

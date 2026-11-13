@@ -114,8 +114,8 @@ export function reportLine(report: string): string {
 // Loops no spawn announced (spec C3): a step adds to its loop, or starts one; the newest 60 are kept
 export function addLoopStep(loops: Loop[], id: string, output: number, now: number): Loop[] {
   const known = loops.find(l => l.id === id)
-  if (known !== undefined) return loops.map(loop => (loop === known ? { ...loop, steps: loop.steps + 1, output: loop.output + output, lastAt: now } : loop))
-  return [...loops, { id, steps: 1, output, firstAt: now, lastAt: now, isDone: false }].slice(-60)
+  if (known !== undefined) return loops.map(loop => (loop === known ? { ...loop, steps: loop.steps + 1, outputTokens: loop.outputTokens + output, lastAt: now } : loop))
+  return [...loops, { id, steps: 1, outputTokens: output, firstAt: now, lastAt: now, isDone: false }].slice(-60)
 }
 
 // D3 found workflow agents raise agent.spawn, so what is left is a compaction's or a fork's loop
@@ -126,7 +126,7 @@ export const LOOPS_NOTE = '(no spawn: compactions, forks)'
 export function loopsLine(loops: Loop[], now: number, note: string): Line[] {
   if (loops.length === 0) return []
   const active = loops.filter(l => !l.isDone && now - l.lastAt < 15_000).length
-  const output = loops.reduce((sum, loop) => sum + loop.output, 0)
+  const output = loops.reduce((sum, loop) => sum + loop.outputTokens, 0)
   return [[{ text: `Other loops ${loops.length} · ${active} active · out ${tokensText(output)}` }], [{ text: note, tone: 'dim' }]]
 }
 

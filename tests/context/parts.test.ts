@@ -159,9 +159,9 @@ test('one read serves the point and the parts', { timeoutMs: 15_000 }, async ($,
   await measure($)
 
   expect(usage.breakdowns).toBe(1)
-  expect((state.get('handoff') as Handoff).point).toBe(160_000)
+  expect((state.get('handoff') as Handoff).compactPoint).toBe(160_000)
   const parts = state.get('parts') as Parts
-  expect(parts.at).not.toBeNull()
+  expect(parts.breakdownAt).not.toBeNull()
   expect(parts.categories.map(c => c.name)).toEqual(['System prompt', 'System tools', 'MCP tools', 'Custom agents', 'Messages'])
   expect(parts.plugins).toEqual([
     { name: 'alfred-code', agents: 45, agentTokens: 9000, skills: 38, skillTokens: 1900 },

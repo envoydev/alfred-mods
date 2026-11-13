@@ -24,7 +24,7 @@ function infoItems(input: BandInput): Item[] {
   if (input.usage.startedAt !== null) items.push({ keep: 5, forms: [dimText(minutesText(input.now - input.usage.startedAt))] })
   const totals = input.totals
   if (totals !== undefined && totals.stepMs > 0) items.push({ keep: 3, forms: [dimText(`≈${Math.round(totals.stepOutput / (totals.stepMs / 1000))} tok/s avg`)] })
-  if (input.cache.session.read + input.cache.session.write > 0) {
+  if (input.cache.sessionCounts.read + input.cache.sessionCounts.write > 0) {
     const cacheState = cacheView(input.cache, billingOf(input.usage.rateWindows), input.now, input.usage.contextTokens)
     items.push({ keep: 4, forms: [dimText(cacheState.leftMs === null ? 'cache cold' : `cache warm ${cacheState.tier.isEstimate ? '≈' : ''}${minutesLeftText(cacheState.leftMs)}`)] })
   }

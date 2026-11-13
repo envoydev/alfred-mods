@@ -26,11 +26,11 @@ test("main-loop requests feed the cache and an agent's do not", async ($, on) =>
   stepEngine(on, () => MAIN)
 
   await mainStep($)
-  expect(state.get('cache')).toMatchObject({ lastAt: 0, last: { read: 169_200, write: 10_800, input: 0 } })
+  expect(state.get('cache')).toMatchObject({ lastRequestAt: 0, lastRequest: { read: 169_200, write: 10_800, input: 0 } })
 
   await $.agent.spawn(SPAWN)
   await step($, { turnId: 'x', index: 0, model: 'claude-haiku-5-5', messageCount: 1, agentId: 'a1' })
-  expect((state.get('cache') as Cache).session.read).toBe(169_200)
+  expect((state.get('cache') as Cache).sessionCounts.read).toBe(169_200)
 })
 
 test('a model switch reports the tier under its billing and prices the rewrite', async ($, on) => {
@@ -43,7 +43,7 @@ test('a model switch reports the tier under its billing and prices the rewrite',
   await $.classic.PostModelSwitch(SWITCH)
 
   const c = state.get('cache') as Cache
-  expect(c).toMatchObject({ tier: '1h', tierBilling: 'plan', rateModel: 'claude-opus-5-5', lastAt: null })
+  expect(c).toMatchObject({ tier: '1h', tierBilling: 'plan', rateModel: 'claude-opus-5-5', lastRequestAt: null })
   expect(Math.abs((c.ratePerToken ?? 0) - 0.000008) < 1e-12).toBe(true)
 })
 
@@ -56,7 +56,7 @@ test('a switch declined after PreModelSwitch keeps the cache warm', { timeoutMs:
 
   await mainStep($)
   await $.classic.PreModelSwitch(SWITCH)
-  expect(state.get('cache')).toMatchObject({ lastAt: 0, tier: '1h' })
+  expect(state.get('cache')).toMatchObject({ lastRequestAt: 0, tier: '1h' })
 
   await clock.advance(3_300_000)
   expect(cacheToasts(toasts)).toHaveLength(1)
@@ -89,7 +89,7 @@ test('the settings that choose the tier and idle compaction are read at the star
 
   await $.session.start(START)
 
-  expect((state.get('cache') as Cache).config).toMatchObject({ pin: { tier: '1h', from: 'promptCacheTtl' }, idleOff: true })
+  expect((state.get('cache') as Cache).config).toMatchObject({ pin: { tier: '1h', from: 'promptCacheTtl' }, isIdleCompactOff: true })
 })
 
 test("idle compaction's threshold is read at the start", async ($, on) => {
@@ -131,9 +131,9 @@ test('after a reload, a warm 1h cache still gets its toast', { timeoutMs: 15_000
   engine(on)
   // A reload keeps $.state and runs register and session.start again: the cache stands warm from a switch at 0
   const warm: Cache = {
-    tier: '1h', tierAt: 0, tierBilling: 'plan', config: { pin: null, idleOff: false, idleMinTokens: 200_000, isTerminal: true },
-    ratePerToken: 0.000008, rateModel: 'claude-opus-5-5', lastAt: 0, last: { read: 169_200, write: 10_800, input: 0 },
-    session: { read: 169_200, write: 10_800, input: 0 }, toastedFor: null,
+    tier: '1h', tierAt: 0, tierBilling: 'plan', config: { pin: null, isIdleCompactOff: false, idleMinTokens: 200_000, isTerminal: true },
+    ratePerToken: 0.000008, rateModel: 'claude-opus-5-5', lastRequestAt: 0, lastRequest: { read: 169_200, write: 10_800, input: 0 },
+    sessionCounts: { read: 169_200, write: 10_800, input: 0 }, toastedForRequestAt: null,
   }
   let isWritten = false
   on('state.set', async ($, e, next) => {
@@ -143,7 +143,7 @@ test('after a reload, a warm 1h cache still gets its toast', { timeoutMs: 15_000
   on('state.get', async ($, e, next) => {
     const r = await next(e)
     if (e.key !== 'cache' || isWritten || r.value === undefined) return r
-    return { value: { ...r.value, value: { shape: 'cache-1', value: warm } } }
+    return { value: { ...r.value, value: { shape: 'cache-2', value: warm } } }
   })
 
   await $.session.start(START)
@@ -307,12 +307,12 @@ test("every counted compaction makes the cache cold, Claude Code's own included"
 
   await mainStep($)
   await $.session.compact({ trigger: 'auto', messages })
-  expect(state.get('cache')).toMatchObject({ lastAt: null, last: null })
+  expect(state.get('cache')).toMatchObject({ lastRequestAt: null, lastRequest: null })
   expect((state.get('session') as Session).compactions).toBe(1)
 
   await mainStep($)
   await $.session.compact({ trigger: 'precompute', messages })
-  expect((state.get('cache') as Cache).lastAt).toBe(0)
+  expect((state.get('cache') as Cache).lastRequestAt).toBe(0)
 })
 
 test('a resumed session prices the rewrite from its start', async ($, on) => {

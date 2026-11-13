@@ -29,8 +29,8 @@ import { planLines } from '../plan/planlines'
 import { mask } from '../rec/mask'
 import { runwayOf } from '../stack/stack'
 
-const INITIAL_VIEW: View = { tab: 'now', shown: [], planSlug: null }
-const viewAtom = atom({ plugin: 'alfred-mods', key: 'view' } as const, INITIAL_VIEW, { shape: 'view-3' })
+const INITIAL_VIEW: View = { tab: 'now', expandedIds: [], pinnedPlan: null }
+const viewAtom = atom({ plugin: 'alfred-mods', key: 'view' } as const, INITIAL_VIEW, { shape: 'view-4' })
 export function readView($: EngineInterface) {
   return read($, viewAtom)
 }
@@ -114,7 +114,7 @@ export async function runReportCommand($: EngineInterface, word: string | undefi
 
 // Show and Hide as one toggle, as the button: shown, the pane comes up on a tab that lists it
 export async function runToggleCommand($: EngineInterface, id: string, name: string, tab: Tab, tabs: Tab[]): Promise<string> {
-  const isShown = (await readView($)).shown.includes(id)
+  const isShown = (await readView($)).expandedIds.includes(id)
   await toggleExpanded($, id)
   if (isShown) return `Hid ${name}.`
   return `Showing ${name} in the inspect pane.${await showPaneOn($, tab, tabs)}`
@@ -127,7 +127,7 @@ export async function openInspectFromBand($: EngineInterface): Promise<void> {
 }
 
 export async function toggleExpanded($: EngineInterface, id: string): Promise<void> {
-  await updateView($, view => ({ ...view, shown: view.shown.includes(id) ? view.shown.filter(x => x !== id) : [...view.shown, id] }))
+  await updateView($, view => ({ ...view, expandedIds: view.expandedIds.includes(id) ? view.expandedIds.filter(x => x !== id) : [...view.expandedIds, id] }))
 }
 
 export async function runInspectCommand($: EngineInterface, e: MatchedInput<'command.run', { command: 'inspect' }>) {
@@ -142,12 +142,12 @@ export async function runInspectCommand($: EngineInterface, e: MatchedInput<'com
   if (tab === undefined) return { text: INSPECT_HELP }
   if (tab === 'plan') {
     const name = words[1] ?? null
-    const good = (await readPlans($)).plans.filter(w => w.value !== null).map(w => w.name).sort()
+    const good = (await readPlans($)).planFiles.filter(w => w.value !== null).map(w => w.name).sort()
     if (name !== null && !good.includes(name)) {
       const asked = oneLine(printable(name), 40)
       return { text: good.length === 0 ? `No plan named ${asked}. No plan file in ${PLANS_DIR}/.` : `No plan named ${asked}. Plans: ${good.join(', ')}.` }
     }
-    await updateView($, view => (view.planSlug === name ? view : { ...view, planSlug: name }))
+    await updateView($, view => (view.pinnedPlan === name ? view : { ...view, pinnedPlan: name }))
   }
   const opened = await openInspect($, tab)
   return { text: opened.isPlaced ? 'Opened the inspect pane.' : `The inspect pane is open but not drawn: ${opened.reason}.` }

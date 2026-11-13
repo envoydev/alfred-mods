@@ -36,19 +36,19 @@ test('the folder the status file names is read: its status.json as a plan, its s
   const { p } = await start($, on, {
     [STATUS]: session(`${FOLDER}/`), [PLAN_STATUS]: { text: STATUS_JSON, mtimeMs: 2 }, [PLAN_SCORING]: { text: SCORING_JSON, mtimeMs: 2 },
   })
-  const plan = p().plans.find(w => w.name === 'waste-bin')
+  const plan = p().planFiles.find(w => w.name === 'waste-bin')
   expect(plan).toMatchObject({ isInvalid: false, value: { title: 'Waste bin (plannings)' } })
   expect(plan?.value?.steps.map(s => s.status)).toEqual(['blocked', 'done', 'in_progress', 'pending'])
-  expect(p().scores.find(w => w.name === 'waste-bin')?.value).toMatchObject({ subject: { kind: 'plan', ref: 'waste-bin' }, released: 2 })
-  expect(p().alfred).toEqual({ name: 'waste-bin', folder: FOLDER })
+  expect(p().scoreFiles.find(w => w.name === 'waste-bin')?.value).toMatchObject({ subject: { kind: 'plan', ref: 'waste-bin' }, released: 2 })
+  expect(p().alfredFolder).toEqual({ name: 'waste-bin', folder: FOLDER })
 })
 
 test('without the status file\'s plan the folder is never touched, and the project\'s own plans read as before', async ($, on) => {
   const { p, files } = await start($, on, {
     [STATUS]: session(null), [PLAN_STATUS]: { text: STATUS_JSON, mtimeMs: 2 }, [JSON_PLAN]: { text: PLAN_JSON, mtimeMs: 2 },
   })
-  expect(p().plans.map(w => w.name)).toEqual(['token-refresh'])
-  expect(p().alfred).toBeNull()
+  expect(p().planFiles.map(w => w.name)).toEqual(['token-refresh'])
+  expect(p().alfredFolder).toBeNull()
   expect([...files.lists, ...files.reads].some(path => path.includes('.alfred'))).toBe(false)
 })
 
@@ -66,17 +66,17 @@ test('the named plan is shown first, over a running plan of the project\'s own f
 
 test('a change Alfred Code writes is read on the 30-second poll; a file that will not parse keeps the last good read', async ($, on) => {
   const { p, files, clock } = await start($, on, { [STATUS]: session(FOLDER), [PLAN_STATUS]: { text: STATUS_JSON, mtimeMs: 2 } })
-  const third = () => p().plans.find(w => w.name === 'waste-bin')?.value?.steps[2]?.status
+  const third = () => p().planFiles.find(w => w.name === 'waste-bin')?.value?.steps[2]?.status
   files.current[PLAN_STATUS] = statusWith({ tasks: JSON.parse(STATUS_JSON).tasks.map((t: { id: string }) => (t.id === '3' ? { ...t, status: 'done', doneAt: '2026-11-13T12:00Z' } : t)) }, 3)
   await clock.advance(30_000)
   expect(third()).toBe('done')
   files.current[PLAN_STATUS] = { text: '{"schema":1,"tit', mtimeMs: 4 }
   await clock.advance(30_000)
-  expect(p().plans.find(w => w.name === 'waste-bin')).toMatchObject({ isInvalid: true })
+  expect(p().planFiles.find(w => w.name === 'waste-bin')).toMatchObject({ isInvalid: true })
   expect(third()).toBe('done')
   files.current[PLAN_STATUS] = statusWith({ schema: 2 }, 5)
   await clock.advance(30_000)
-  expect(p().plans.find(w => w.name === 'waste-bin')).toMatchObject({ isInvalid: true })
+  expect(p().planFiles.find(w => w.name === 'waste-bin')).toMatchObject({ isInvalid: true })
 })
 
 test('a plan completed as the status file lets it go stays for 10 minutes, then leaves; one let go unfinished leaves at once', async ($, on) => {
@@ -84,11 +84,11 @@ test('a plan completed as the status file lets it go stays for 10 minutes, then 
   files.current[PLAN_STATUS] = statusWith({ completedAt: '2026-11-13T12:00Z' }, 3)
   files.current[STATUS] = session(null)
   await clock.advance(30_000)
-  expect(p().alfred).toEqual({ name: 'waste-bin', folder: FOLDER })
-  expect(p().finished['waste-bin']).toBeDefined()
+  expect(p().alfredFolder).toEqual({ name: 'waste-bin', folder: FOLDER })
+  expect(p().finishedAt['waste-bin']).toBeDefined()
   await clock.advance(10 * MIN)
-  expect(p().alfred).toBeNull()
-  expect(p().plans.some(w => w.name === 'waste-bin')).toBe(false)
+  expect(p().alfredFolder).toBeNull()
+  expect(p().planFiles.some(w => w.name === 'waste-bin')).toBe(false)
 })
 
 test('a plan the status file lets go unfinished leaves at the next read', async ($, on) => {
@@ -96,8 +96,8 @@ test('a plan the status file lets go unfinished leaves at the next read', async 
   files.current[STATUS] = session(null)
   await clock.advance(30_000)
   await clock.advance(30_000)
-  expect(p().alfred).toBeNull()
-  expect(p().plans.some(w => w.name === 'waste-bin')).toBe(false)
+  expect(p().alfredFolder).toBeNull()
+  expect(p().planFiles.some(w => w.name === 'waste-bin')).toBe(false)
 })
 
 test('a status file that will not read keeps the named plan; only a readable file letting it go drops it', async ($, on) => {
@@ -105,11 +105,11 @@ test('a status file that will not read keeps the named plan; only a readable fil
   files.current[STATUS] = { text: '{"schema":1,"sess', mtimeMs: 3 }
   await clock.advance(30_000)
   await clock.advance(30_000)
-  expect(p().alfred).toEqual({ name: 'waste-bin', folder: FOLDER })
+  expect(p().alfredFolder).toEqual({ name: 'waste-bin', folder: FOLDER })
   files.current[STATUS] = { text: JSON.stringify({ ...JSON.parse(session(FOLDER).text), plan: '../x' }), mtimeMs: 4 }
   await clock.advance(30_000)
   await clock.advance(30_000)
-  expect(p().alfred).toEqual({ name: 'waste-bin', folder: FOLDER })
+  expect(p().alfredFolder).toEqual({ name: 'waste-bin', folder: FOLDER })
 })
 
 test('a switch to another plan folder never shows the old plan under the new name', async ($, on) => {
@@ -119,7 +119,7 @@ test('a switch to another plan folder never shows the old plan under the new nam
   files.current[`${OTHER}/status.json`] = { text: '{"schema":1,"tit', mtimeMs: 5 }
   await clock.advance(30_000)
   await clock.advance(30_000)
-  const other = p().plans.find(w => w.name === 'other')
+  const other = p().planFiles.find(w => w.name === 'other')
   expect(other === undefined || other.value === null).toBe(true)
 })
 
@@ -131,8 +131,8 @@ const ownSame = (status: string): FileStub => ({
 
 test('a plan of the project\'s own folder with the same name stays while the named folder has no status.json', async ($, on) => {
   const { p } = await start($, on, { [STATUS]: session(FOLDER), [OWN_SAME]: ownSame('in_progress') })
-  expect(p().plans.find(w => w.name === 'waste-bin')?.value?.title).toBe('Own plan')
-  expect(p().alfred).toBeNull()
+  expect(p().planFiles.find(w => w.name === 'waste-bin')?.value?.title).toBe('Own plan')
+  expect(p().alfredFolder).toBeNull()
 })
 
 test('the first read of a named folder never takes the same-named own plan as its last state', async ($, on) => {
@@ -141,6 +141,6 @@ test('the first read of a named folder never takes the same-named own plan as it
   files.current[PLAN_STATUS] = statusWith({ completedAt: '2026-11-13T12:00Z' }, 3)
   await clock.advance(30_000)
   await clock.advance(30_000)
-  expect(p().plans.find(w => w.name === 'waste-bin')?.value?.title).toBe('Waste bin (plannings)')
+  expect(p().planFiles.find(w => w.name === 'waste-bin')?.value?.title).toBe('Waste bin (plannings)')
   expect(toasts.some(t => t.startsWith('Plan done'))).toBe(false)
 })

@@ -24,8 +24,8 @@ export function targetsOf(name: string, plan: Plan, loop: NamedStep | null, isAg
 // A slice's working time: its age less the waits settled in it and the part of each open wait (`waits`, by call id,
 // with its start) that falls inside it
 export function sliceMs(slice: Slice, now: number): number {
-  const open = Object.values(slice.waits ?? {}).reduce((n, start) => n + Math.max(0, now - Math.max(start, slice.at)), 0)
-  return Math.max(0, now - slice.at - slice.waitMs - open)
+  const open = Object.values(slice.openWaits ?? {}).reduce((n, start) => n + Math.max(0, now - Math.max(start, slice.openedAt)), 0)
+  return Math.max(0, now - slice.openedAt - slice.waitMs - open)
 }
 
 // A call that is all wait: AskUserQuestion, and an Agent call the main loop waits inside, whose agent's own turns
@@ -35,17 +35,17 @@ export const isAllWait = (tool: string, isMain: boolean): boolean => tool === 'A
 // For `update`: an all-wait call opens on its loop's slice, so a close while it runs leaves it out
 export function openWait(credit: Credit, loop: string, id: string, at: number): Credit {
   const slice = credit.slices[loop]
-  return slice === undefined ? credit : { ...credit, slices: { ...credit.slices, [loop]: { ...slice, waits: { ...slice.waits, [id]: at } } } }
+  return slice === undefined ? credit : { ...credit, slices: { ...credit.slices, [loop]: { ...slice, openWaits: { ...slice.openWaits, [id]: at } } } }
 }
 
 // For `update`: the call settles, and the part of it inside the slice now open becomes settled wait; null when its
 // slice holds no such open wait, as when the slice opened after the call began
 export function closeWait(credit: Credit, loop: string, id: string, now: number): Credit | null {
   const slice = credit.slices[loop]
-  const start = slice?.waits?.[id]
+  const start = slice?.openWaits?.[id]
   if (slice === undefined || start === undefined) return null
-  const waits = Object.fromEntries(Object.entries(slice.waits ?? {}).filter(([key]) => key !== id))
-  return { ...credit, slices: { ...credit.slices, [loop]: { ...slice, waits, waitMs: slice.waitMs + Math.max(0, now - Math.max(start, slice.at)) } } }
+  const waits = Object.fromEntries(Object.entries(slice.openWaits ?? {}).filter(([key]) => key !== id))
+  return { ...credit, slices: { ...credit.slices, [loop]: { ...slice, openWaits: waits, waitMs: slice.waitMs + Math.max(0, now - Math.max(start, slice.openedAt)) } } }
 }
 
 export const stepKey = (name: string, step: string, session: string): string => `step:${name}:${step}:${session}`
@@ -88,7 +88,7 @@ export function staleKeys(entries: CostEntries, now: number): string[] {
 // closer took first gives nothing, so a span is never counted twice.
 export function closeSlices(c: Credit, closes: SliceClose[], now: number, reopen: boolean): { credit: Credit; spans: Record<string, number> } {
   const slices = { ...c.slices }
-  const mine = { ...c.mine }
+  const mine = { ...c.sessionTimes }
   const spans: Record<string, number> = {}
   for (const close of closes) {
     const slice = slices[close.loop]
@@ -99,10 +99,10 @@ export function closeSlices(c: Credit, closes: SliceClose[], now: number, reopen
       const had = mine[key]
       mine[key] = { ms: (had?.ms ?? 0) + ms / close.keys.length, isShared: (had?.isShared ?? false) || close.isShared }
     }
-    if (reopen) slices[close.loop] = { at: now, waitMs: 0, named: slice.named, ...(slice.waits === undefined ? {} : { waits: slice.waits }) }
+    if (reopen) slices[close.loop] = { openedAt: now, waitMs: 0, namedSteps: slice.namedSteps, ...(slice.openWaits === undefined ? {} : { openWaits: slice.openWaits }) }
     else delete slices[close.loop]
   }
-  return { credit: { slices, mine }, spans }
+  return { credit: { slices, sessionTimes: mine }, spans }
 }
 
 // What each key would take if every open slice closed now, for a drawing; no slice closes
@@ -152,7 +152,7 @@ export function closeTargetOf(loop: string, slice: Slice, lines: NamedStep | nul
   }
   if (shown === null || shown.value === null || !isPlanRunning(shown, since)) return none
   const plan = shown.value
-  const isAgentBuilt = slice.named.some(m => plan.steps.some(s => m === `${shown.name}:${s.id}`))
+  const isAgentBuilt = slice.namedSteps.some(m => plan.steps.some(s => m === `${shown.name}:${s.id}`))
   const target = targetsOf(shown.name, plan, lines, isAgentBuilt)
   if (target === null) return none
   if (target === 'overhead') return { loop, keys: [overheadKey(shown.name, session)], isShared: false }

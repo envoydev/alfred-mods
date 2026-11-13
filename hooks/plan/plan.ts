@@ -110,15 +110,15 @@ export function isPlanRunning(file: Watched<Plan>, since: number | null): boolea
 // Which plan the Plan tab shows (Decision 5): the pinned one while it parses; else Alfred Code's named plan; else the
 // newest that runs; else the task list when it has items, so a plan an earlier session left never hides this session's; else the newest good plan
 export function shownPlan(plans: Plans, pinned: string | null, hasTasks: boolean): Watched<Plan> | 'tasks' | null {
-  const good = plans.plans.filter(w => w.value !== null)
+  const good = plans.planFiles.filter(w => w.value !== null)
   const newest = (list: Watched<Plan>[]): Watched<Plan> | null =>
     list.reduce<Watched<Plan> | null>((a, w) => (a === null || w.mtimeMs > a.mtimeMs ? w : a), null)
   const pin = pinned === null ? undefined : good.find(w => w.name === pinned)
   if (pin !== undefined) return pin
   // The plan Alfred Code's status file names comes before the rest, begun or not
-  const named = plans.alfred === null || plans.alfred === undefined ? undefined : good.find(w => w.name === plans.alfred?.name)
+  const named = plans.alfredFolder === null || plans.alfredFolder === undefined ? undefined : good.find(w => w.name === plans.alfredFolder?.name)
   if (named !== undefined) return named
-  const running = newest(good.filter(w => isPlanRunning(w, plans.since)))
+  const running = newest(good.filter(w => isPlanRunning(w, plans.watchedSince)))
   if (running !== null) return running
   if (hasTasks) return 'tasks'
   return newest(good)
@@ -128,7 +128,7 @@ export function shownPlan(plans: Plans, pinned: string | null, hasTasks: boolean
 // read it never moves the time, or the band, away from the plan that runs
 export function creditedPlan(plans: Plans, pinned: string | null, hasTasks: boolean): Watched<Plan> | 'tasks' | null {
   const pin = shownPlan(plans, pinned, hasTasks)
-  return pinned === null || (pin !== null && pin !== 'tasks' && pin.name === pinned && isPlanRunning(pin, plans.since)) ? pin : shownPlan(plans, null, hasTasks)
+  return pinned === null || (pin !== null && pin !== 'tasks' && pin.name === pinned && isPlanRunning(pin, plans.watchedSince)) ? pin : shownPlan(plans, null, hasTasks)
 }
 
 // The brief's 'Time for the plan': finished steps' time, plus each other step's forecast (its estimate times this
@@ -207,7 +207,7 @@ export function tasksAfter(items: TaskItem[], tool: string, input: Record<string
     const task = isObj(result) && isObj(result.task) ? result.task : null
     const id = task === null ? null : str(task.id)
     const subject = str(task?.subject) ?? str(input.subject)
-    return id === null || subject === null ? items : [...items, { id, subject, status: 'pending', ms: 0 }]
+    return id === null || subject === null ? items : [...items, { id, subject, status: 'pending', workedMs: 0 }]
   }
   if (tool === 'TaskUpdate') {
     const id = str(input.taskId)
@@ -221,7 +221,7 @@ export function tasksAfter(items: TaskItem[], tool: string, input: Record<string
     return input.todos.filter(isObj).map((todo, i) => {
       const subject = str(todo.content) ?? ''
       const status = typeof todo.status === 'string' && TASK_STATUSES.includes(todo.status) ? (todo.status as TaskItem['status']) : 'pending'
-      return { id: String(i), subject, status, ms: items.find(t => t.subject === subject)?.ms ?? 0 }
+      return { id: String(i), subject, status, workedMs: items.find(t => t.subject === subject)?.workedMs ?? 0 }
     })
   }
   return null
@@ -232,7 +232,7 @@ export function tasksAfter(items: TaskItem[], tool: string, input: Record<string
 export function taskView(items: TaskItem[], liveMs: Record<string, number>): PlanView {
   const rows: StepRow[] = items.map(task => ({
     step: { id: task.id, title: task.subject, status: task.status === 'completed' ? 'done' : task.status, estimateMin: null, startedAt: null, doneAt: null },
-    actualMs: task.ms + (liveMs[task.id] ?? 0), forecastMs: null, isShared: false, notes: [],
+    actualMs: task.workedMs + (liveMs[task.id] ?? 0), forecastMs: null, isShared: false, notes: [],
   }))
   const done = rows.filter(r => r.step.status === 'done')
   const open = rows.filter(r => r.step.status !== 'done')

@@ -120,7 +120,7 @@ export function agentsLines(b: TabInput): Line[] {
     if (isLive(row.status) && row.action !== null) out.push([{ text: indent, tone: 'dim' }, { text: `▸ ${row.action}` }])
     if (!isLive(row.status) && row.report !== null) {
       reportN++
-      const isShown = b.view.shown.includes(`report:${row.id}`)
+      const isShown = b.view.expandedIds.includes(`report:${row.id}`)
       out.push([
         { text: indent, tone: 'dim' }, { text: `result${isCut ? ' (cut off)' : ''}: ${fitLine(reportLine(printable(row.report)), Math.max(40, b.columns - [...indent].length - 30))}` }, { text: ' ' },
         { button: { key: `report-${row.id}`, label: `${isShown ? 'Hide' : 'Show'} report ${reportN}` } },
@@ -149,7 +149,7 @@ export function cacheLines(b: TabInput): Line[] {
   const c = b.cache
   const billing = billingOf(b.usage.rateWindows)
   const cacheState = cacheView(c, billing, b.now)
-  const s = c.session
+  const s = c.sessionCounts
   const head: Line = s.read + s.write + s.input === 0
     ? [{ text: 'Cache', tone: 'dim', width: LABEL }, { text: 'no main-loop request yet', tone: 'dim' }]
     : [{ text: 'Cache', width: LABEL }, ...cacheLine(cacheState)]
@@ -167,9 +167,9 @@ export function cacheLines(b: TabInput): Line[] {
   const priced = c.ratePerToken !== null && c.rateModel !== null ? ` · rewrite priced on ${modelText(c.rateModel, true)}` : ''
   out.push([{ text: 'Tier', width: LABEL }, { text: `${source}${priced}` }])
   const warnAt = toastAt(c, billing, b.usage.contextTokens)
-  if (c.lastAt !== null && selfCompacts(c, billing, b.usage.contextTokens)) {
+  if (c.lastRequestAt !== null && selfCompacts(c, billing, b.usage.contextTokens)) {
     const warn = warnAt === null ? '' : `, else a warning at ≈${clockText(warnAt)}`
-    out.push([{ text: 'Idle', width: LABEL }, { text: `Claude Code should compact it itself at ≈${clockText(c.lastAt + IDLE_COMPACT_MS)}${warn}` }])
+    out.push([{ text: 'Idle', width: LABEL }, { text: `Claude Code should compact it itself at ≈${clockText(c.lastRequestAt + IDLE_COMPACT_MS)}${warn}` }])
   }
   return out
 }
@@ -205,7 +205,7 @@ const parse = (iso: string | null): number | null => {
 function numberedFailures(b: TabInput): Line[] {
   const listed = b.failures.map((failure, i) => ({ f: failure, n: failureNumberOf(failure, i) })).reverse()
   const width = Math.max(0, ...listed.map(x => String(x.n).length))
-  return listed.flatMap(x => failureRows(x.f, b.view.shown, x.n, width))
+  return listed.flatMap(x => failureRows(x.f, b.view.expandedIds, x.n, width))
 }
 
 // The finished agents with a report, in the Agents tab's order: report n is '/inspect report <n>'

@@ -103,7 +103,7 @@ export async function readBandInput(
     live: await readLive($), usage: u, session: m, turns: await readTurns($),
     newFailures: (await readFailures($)).filter(failure => failure.isNew).length, pace: await readPace($), agents: await readAgents($),
     cache: await readCache($), plan: drawing.band, isPlanInvalid: drawing.invalid, score: drawing.score, isPlanScore: drawing.isPlanScore, scoreLevel: await readScoreLevel($), rec: recSummary(await readRec($)),
-    forecast: forecastTargetOf(h, u, runway), handoffAskStep: h.isAskUp ? h.handled : null, runway, banner: bannerSegs(st),
+    forecast: forecastTargetOf(h, u, runway), handoffAskStep: h.isAskUp ? h.handledStep : null, runway, banner: bannerSegs(st),
     mode: setting.mode, totals: await readTotals($), stats: await readStats($),
     isToolsOpen: setting.isToolsOpen === true, skillListing: parts.skills ?? null,
     rules: { always: parts.rules ?? [], byPath: m.pathRules ?? [], isTracked: !at.isLeftOut },

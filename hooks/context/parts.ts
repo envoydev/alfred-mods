@@ -8,7 +8,7 @@ import { baseName } from '../place/place'
 import type { Parts, SkillListing } from './types'
 import type { Line } from '../core/types'
 
-export const NO_PARTS: Parts = { at: null, categories: [], plugins: [], memory: { files: 0, tokens: 0, top: [] } }
+export const NO_PARTS: Parts = { breakdownAt: null, categories: [], plugins: [], memory: { files: 0, tokens: 0, top: [] } }
 
 export const slashed = (p: string): string => p.replace(/\\/g, '/')
 const isDrive = (p: string): boolean => /^[A-Za-z]:\//.test(p)
@@ -68,7 +68,7 @@ export function partsOf(b: SessionContextBreakdown, cwd: string, at: number, lin
   return {
     ...listing,
     ...(rules.length === 0 ? {} : { rules }),
-    at,
+    breakdownAt: at,
     categories: (b.categories ?? []).filter(c => c.kind === 'used').map(c => ({ name: c.name, tokens: c.tokens })),
     plugins: [...plugins.values()].sort((x, y) => y.agentTokens + y.skillTokens - (x.agentTokens + x.skillTokens) || x.name.localeCompare(y.name)),
     memory: {
@@ -85,10 +85,10 @@ const LABEL = PARTS_LABEL
 
 // The Usage tab's rows after Tokens; none before a breakdown
 export function partsLines(parts: Parts): Line[] {
-  if (parts.at === null) return []
+  if (parts.breakdownAt === null) return []
   const out: Line[] = []
   const used = parts.categories.map(c => `${c.name} ${tokensText(c.tokens)}`)
-  out.push([{ text: 'In context', width: LABEL }, { text: [`est. ${clockText(parts.at)}`, ...used].join(' · ') }])
+  out.push([{ text: 'In context', width: LABEL }, { text: [`est. ${clockText(parts.breakdownAt)}`, ...used].join(' · ') }])
   if (parts.plugins.length > 0) {
     const named = parts.plugins.map(x => {
       const what = [x.agents > 0 ? `${x.agents} agents` : null, x.skills > 0 ? `${x.skills} skills` : null].filter((s): s is string => s !== null)

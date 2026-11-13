@@ -7,13 +7,13 @@ import type { Line } from '../../hooks/core/types'
 // INITIAL.cache in register.ts, which does not export it
 const C0: Cache = {
   tier: null, tierAt: null, tierBilling: null,
-  config: { pin: null, idleOff: false, idleMinTokens: 200_000, isTerminal: false },
-  ratePerToken: null, rateModel: null, lastAt: null, last: null, session: { read: 0, write: 0, input: 0 }, toastedFor: null,
+  config: { pin: null, isIdleCompactOff: false, idleMinTokens: 200_000, isTerminal: false },
+  ratePerToken: null, rateModel: null, lastRequestAt: null, lastRequest: null, sessionCounts: { read: 0, write: 0, input: 0 }, toastedForRequestAt: null,
 }
 // The deck's slide: a 1h cache from a switch, 180k cached, 94% of the last request read from it
 const SLIDE: Cache = {
-  ...C0, tier: '1h', tierBilling: 'plan', config: { ...C0.config, isTerminal: true }, lastAt: 0,
-  last: { read: 169_200, write: 10_800, input: 0 }, session: { read: 169_200, write: 10_800, input: 0 }, ratePerToken: 0.000008,
+  ...C0, tier: '1h', tierBilling: 'plan', config: { ...C0.config, isTerminal: true }, lastRequestAt: 0,
+  lastRequest: { read: 169_200, write: 10_800, input: 0 }, sessionCounts: { read: 169_200, write: 10_800, input: 0 }, ratePerToken: 0.000008,
 }
 const FIVE: Cache = { ...SLIDE, tier: '5m' }
 const usage = (read: number, write: number, input: number) =>
@@ -103,8 +103,8 @@ test('a request that reads and writes nothing from the cache does not warm it', 
   const off = addRequest(C0, usage(0, 0, 40_000), 0)
   expect(cacheView(off, 'other', 250_000)).toMatchObject({ state: 'cold', isClosing: false })
   expect(toastAt(off, 'plan', null)).toBe(null)
-  expect(off.session.input).toBe(40_000)
-  expect(addRequest(SLIDE, usage(0, 0, 500), 100_000).lastAt).toBe(0)
+  expect(off.sessionCounts.input).toBe(40_000)
+  expect(addRequest(SLIDE, usage(0, 0, 500), 100_000).lastRequestAt).toBe(0)
 })
 
 test('a request with no tokens changes nothing', () => {
@@ -132,11 +132,11 @@ test("the warning's window is per tier", () => {
 
 // The user's ruling (2026-10-28): under 100k cached a rewrite is cheap, and a compaction would lose more than it saves
 test('a cache under 100k gets no warning on either tier', () => {
-  const small: Cache = { ...SLIDE, last: { read: 90_000, write: 9_999, input: 0 } }
+  const small: Cache = { ...SLIDE, lastRequest: { read: 90_000, write: 9_999, input: 0 } }
   expect(cacheView(small, 'plan', 3_400_000).isClosing).toBe(false)
   expect(toastAt(small, 'plan', null)).toBe(null)
   expect(cacheView({ ...small, tier: '5m' }, 'plan', 250_000).isClosing).toBe(false)
-  const floor: Cache = { ...SLIDE, last: { read: 90_000, write: 10_000, input: 0 } }
+  const floor: Cache = { ...SLIDE, lastRequest: { read: 90_000, write: 10_000, input: 0 } }
   expect(cacheView({ ...floor, tier: '5m' }, 'plan', 250_000).isClosing).toBe(true)
   expect(toastAt(floor, 'plan', null)).toBe(3_300_000)
 })
@@ -157,10 +157,10 @@ test('the clock ticks once a minute while warm and each second near cold', () =>
 })
 
 test('idle compaction is read from its settings', () => {
-  expect(idleOf({})).toEqual({ idleOff: false, idleMinTokens: 200_000 })
-  expect(idleOf({ idleCompaction: false }).idleOff).toBe(true)
-  expect(idleOf({ autoCompactEnabled: false }).idleOff).toBe(true)
-  expect(idleOf({ disableAutoCompact: '1' }).idleOff).toBe(true)
+  expect(idleOf({})).toEqual({ isIdleCompactOff: false, idleMinTokens: 200_000 })
+  expect(idleOf({ idleCompaction: false }).isIdleCompactOff).toBe(true)
+  expect(idleOf({ autoCompactEnabled: false }).isIdleCompactOff).toBe(true)
+  expect(idleOf({ disableAutoCompact: '1' }).isIdleCompactOff).toBe(true)
   expect(idleOf({ minTokens: '50000' }).idleMinTokens).toBe(100_000)
   expect(idleOf({ minTokens: '150000' }).idleMinTokens).toBe(150_000)
   expect(idleOf({ minTokens: 'x' }).idleMinTokens).toBe(200_000)
@@ -171,7 +171,7 @@ test('Claude Code compacts a large idle 1h conversation itself', () => {
   expect(selfCompacts(SLIDE, 'plan', 210_000)).toBe(true)
   expect(selfCompacts(SLIDE, 'plan', 190_000)).toBe(false)
   expect(selfCompacts(FIVE, 'plan', 210_000)).toBe(false)
-  expect(selfCompacts({ ...SLIDE, config: { ...SLIDE.config, idleOff: true } }, 'plan', 210_000)).toBe(false)
+  expect(selfCompacts({ ...SLIDE, config: { ...SLIDE.config, isIdleCompactOff: true } }, 'plan', 210_000)).toBe(false)
   expect(selfCompacts({ ...SLIDE, config: { ...SLIDE.config, isTerminal: false } }, 'plan', 210_000)).toBe(false)
   expect(selfCompacts(SLIDE, 'plan', null)).toBe(false)
 })

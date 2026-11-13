@@ -39,10 +39,10 @@ export function pinOf(sources: { force5m?: string; ttl?: string; setting?: unkno
 }
 
 // Idle compaction is off with either setting false or DISABLE_AUTO_COMPACT set; its threshold is raised to 100,000
-export function idleOf(sources: { idleCompaction?: unknown; autoCompactEnabled?: unknown; disableAutoCompact?: string; minTokens?: string }): Pick<CacheConfig, 'idleOff' | 'idleMinTokens'> {
+export function idleOf(sources: { idleCompaction?: unknown; autoCompactEnabled?: unknown; disableAutoCompact?: string; minTokens?: string }): Pick<CacheConfig, 'isIdleCompactOff' | 'idleMinTokens'> {
   const idleOff = sources.idleCompaction === false || sources.autoCompactEnabled === false || (sources.disableAutoCompact ?? '') !== ''
   const n = /^\d+$/.test(sources.minTokens ?? '') ? Number(sources.minTokens) : 0
-  return { idleOff, idleMinTokens: n > 0 ? Math.max(100_000, n) : 200_000 }
+  return { isIdleCompactOff: idleOff, idleMinTokens: n > 0 ? Math.max(100_000, n) : 200_000 }
 }
 
 
@@ -57,9 +57,9 @@ export function tierOf(cache: Cache, billing: Billing): TierOf {
 export function addRequest(cache: Cache, u: Pick<ModelUsage, 'input_tokens' | 'cache_read_input_tokens' | 'cache_creation_input_tokens'>, at: number): Cache {
   const last = { read: u.cache_read_input_tokens, write: u.cache_creation_input_tokens, input: u.input_tokens }
   if (last.read === 0 && last.write === 0 && last.input === 0) return cache
-  const s = cache.session
-  const lastAt = last.read + last.write > 0 ? at : cache.lastAt
-  return { ...cache, lastAt, last, session: { read: s.read + last.read, write: s.write + last.write, input: s.input + last.input } }
+  const s = cache.sessionCounts
+  const lastAt = last.read + last.write > 0 ? at : cache.lastRequestAt
+  return { ...cache, lastRequestAt: lastAt, lastRequest: last, sessionCounts: { read: s.read + last.read, write: s.write + last.write, input: s.input + last.input } }
 }
 
 const rateOf = (usdCost: number, contextTokens: number): number | null => (contextTokens > 0 ? usdCost / contextTokens : null)
@@ -70,7 +70,7 @@ export function takeSwitch(cache: Cache, s: { ttl: CacheTier; contextTokens: num
   const out: Cache = {
     ...cache, tier: s.ttl, tierAt: at, tierBilling: s.billing, rateModel: s.model, ratePerToken: rateOf(s.usd, s.contextTokens),
   }
-  return hasSwitched ? { ...out, lastAt: null } : out
+  return hasSwitched ? { ...out, lastRequestAt: null } : out
 }
 
 // A resume's or fork's estimate gives the rate alone
@@ -80,11 +80,11 @@ export function takeRate(cache: Cache, usdCost: number, contextTokens: number, m
 
 // The cached prefix is gone: the next request writes only the summary
 export function afterCompact(cache: Cache): Cache {
-  return { ...cache, lastAt: null, last: null }
+  return { ...cache, lastRequestAt: null, lastRequest: null }
 }
 
 
-const cachedOf = (cache: Cache): number => (cache.last === null ? 0 : cache.last.read + cache.last.write)
+const cachedOf = (cache: Cache): number => (cache.lastRequest === null ? 0 : cache.lastRequest.read + cache.lastRequest.write)
 
 const reuseOf = (n: { read: number; write: number; input: number } | null): number | null => {
   const all = n === null ? 0 : n.read + n.write + n.input
@@ -94,11 +94,11 @@ const reuseOf = (n: { read: number; write: number; input: number } | null): numb
 // With the context's tokens, the warning's window allows for Claude Code's own idle compaction
 export function cacheView(cache: Cache, billing: Billing, now: number, contextTokens: number | null = null): CacheView {
   const tier = tierOf(cache, billing)
-  const endsAt = cache.lastAt === null ? null : cache.lastAt + TTL_MS[tier.tier]
+  const endsAt = cache.lastRequestAt === null ? null : cache.lastRequestAt + TTL_MS[tier.tier]
   const leftMs = endsAt === null || now >= endsAt ? null : endsAt - now
   const cached = cachedOf(cache)
   return {
-    tier, state: leftMs === null ? 'cold' : 'warm', leftMs, reuseLast: reuseOf(cache.last), reuseSession: reuseOf(cache.session), cached,
+    tier, state: leftMs === null ? 'cold' : 'warm', leftMs, reuseLast: reuseOf(cache.lastRequest), reuseSession: reuseOf(cache.sessionCounts), cached,
     rewriteUsd: cache.ratePerToken !== null && cached > 0 ? cached * cache.ratePerToken : null,
     isClosing: leftMs !== null && cached >= WARN_MIN_TOKENS && leftMs <= closeMs(cache, billing, contextTokens),
   }
@@ -108,7 +108,7 @@ export function cacheView(cache: Cache, billing: Billing, now: number, contextTo
 // compaction not turned off, and a context at its threshold. A feature flag it fetches gates it too, which the mod
 // cannot see, so this delays the warning and never withholds it.
 export function selfCompacts(cache: Cache, billing: Billing, contextTokens: number | null): boolean {
-  return cache.config.isTerminal && tierOf(cache, billing).tier === '1h' && !cache.config.idleOff && contextTokens !== null
+  return cache.config.isTerminal && tierOf(cache, billing).tier === '1h' && !cache.config.isIdleCompactOff && contextTokens !== null
     && contextTokens >= cache.config.idleMinTokens
 }
 
@@ -121,15 +121,15 @@ export function closeMs(cache: Cache, billing: Billing, contextTokens: number | 
 
 // When a 1h cache's toast is due; a 5m cache, or one under the floor, gets none
 export function toastAt(cache: Cache, billing: Billing, contextTokens: number | null): number | null {
-  return cache.lastAt !== null && tierOf(cache, billing).tier === '1h' && cachedOf(cache) >= WARN_MIN_TOKENS ? cache.lastAt + TTL_MS['1h'] - closeMs(cache, billing, contextTokens) : null
+  return cache.lastRequestAt !== null && tierOf(cache, billing).tier === '1h' && cachedOf(cache) >= WARN_MIN_TOKENS ? cache.lastRequestAt + TTL_MS['1h'] - closeMs(cache, billing, contextTokens) : null
 }
 
 // The clocks on screen redraw once a minute while warm, every second in the warning's window, and once as it goes cold
 export function needsTick(cache: Cache, billing: Billing, now: number): boolean {
-  if (cache.lastAt === null) return false
-  const endsAt = cache.lastAt + TTL_MS[tierOf(cache, billing).tier]
+  if (cache.lastRequestAt === null) return false
+  const endsAt = cache.lastRequestAt + TTL_MS[tierOf(cache, billing).tier]
   if (now >= endsAt) return now < endsAt + 1000
-  return (now - cache.lastAt) % 60_000 < 1000 || endsAt - now <= CLOSE_MS[tierOf(cache, billing).tier]
+  return (now - cache.lastRequestAt) % 60_000 < 1000 || endsAt - now <= CLOSE_MS[tierOf(cache, billing).tier]
 }
 
 export function minutesLeftText(ms: number): string {

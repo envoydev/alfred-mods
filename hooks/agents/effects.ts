@@ -22,7 +22,7 @@ export function resetAgents($: EngineInterface) {
 }
 
 const INITIAL_LOOPS: Loop[] = []
-const loopsAtom = atom({ plugin: 'alfred-mods', key: 'loops' } as const, INITIAL_LOOPS, { shape: 'loops-1' })
+const loopsAtom = atom({ plugin: 'alfred-mods', key: 'loops' } as const, INITIAL_LOOPS, { shape: 'loops-2' })
 export function readLoops($: EngineInterface) {
   return read($, loopsAtom)
 }

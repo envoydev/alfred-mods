@@ -253,4 +253,4 @@ export function recTest(level: RecLevel, words: string[], home: string | null): 
   return [...out, ...failed].join('\n')
 }
 
-export const recSummary = (rec: RecState): { level: RecState['level']; words: number } => ({ level: rec.level, words: rec.count })
+export const recSummary = (rec: RecState): { level: RecState['level']; words: number } => ({ level: rec.level, words: rec.wordCount })

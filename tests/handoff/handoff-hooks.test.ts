@@ -49,7 +49,7 @@ test('readings of 70 then 88 ask once, at 85', async ($, on) => {
   await at($, 70)
   expect(h()?.isAskUp ?? false).toBe(false)
   await at($, 88)
-  expect(h()).toMatchObject({ isAskUp: true, handled: 85, lastSave: null })
+  expect(h()).toMatchObject({ isAskUp: true, handledStep: 85, lastSave: null })
   await at($, 89)
   expect(toasts.filter(t => t.startsWith('Context past'))).toEqual([ASK(85)])
 })
@@ -112,7 +112,7 @@ test('on a 1M window with autoCompactThreshold 390,000, 312k tokens asks at the 
   await measure($, 311_000, 1_000_000)
   expect(h().isAskUp).toBe(false)
   await measure($, 312_000, 1_000_000)
-  expect(h()).toMatchObject({ isAskUp: true, point: 390_000, handled: 80 })
+  expect(h()).toMatchObject({ isAskUp: true, compactPoint: 390_000, handledStep: 80 })
   expect(toasts).toEqual([ASK(80)])
 })
 
@@ -121,7 +121,7 @@ test('with auto-compaction off a 200k window asks at 160k', async ($, on) => {
   await measure($, 159_000)
   expect(h().isAskUp).toBe(false)
   await measure($, 160_000)
-  expect(h()).toMatchObject({ isAskUp: true, point: 200_000 })
+  expect(h()).toMatchObject({ isAskUp: true, compactPoint: 200_000 })
 })
 
 // A main-loop step on a model, which the mod keeps as the session's model; the test registers stepEngine first
@@ -133,10 +133,10 @@ async function onModel($: Engine, model: string, turnId: string): Promise<void> 
 test('a first read with no breakdown reads against the window, the second against the point', async ($, on) => {
   const { usage, h } = await start($, on)
   await measure($, 150_000)
-  expect(h()).toMatchObject({ isAskUp: false, point: null })
+  expect(h()).toMatchObject({ isAskUp: false, compactPoint: null })
   usage.current = withPoint(200_000, 160_000)
   await measure($, 130_000)
-  expect(h()).toMatchObject({ isAskUp: true, point: 160_000, handled: 80 })
+  expect(h()).toMatchObject({ isAskUp: true, compactPoint: 160_000, handledStep: 80 })
   expect(usage.breakdowns).toBe(2)
 })
 
@@ -144,14 +144,14 @@ test('three misses keep the window and a fourth measurement asks nothing', async
   const { usage, h } = await start($, on)
   for (let i = 0; i < 4; i++) await measure($, 100_000)
   expect(usage.breakdowns).toBe(3)
-  expect(h().point).toBe(200_000)
+  expect(h().compactPoint).toBe(200_000)
 })
 
 test('a read that throws gives the window and counts a miss', async ($, on) => {
   const { usage, toasts, h } = await start($, on)
   usage.refuse = true
   await measure($, 162_000)
-  expect(h()).toMatchObject({ isAskUp: true, handled: 80, point: null })
+  expect(h()).toMatchObject({ isAskUp: true, handledStep: 80, compactPoint: null })
   expect(toasts).toEqual([ASK(80)])
   expect(usage.breakdowns).toBe(1)
 })
@@ -172,13 +172,13 @@ test('a good read on one model never serves another', async ($, on) => {
   const { usage, h } = await start($, on, { usage: withPoint(200_000, 160_000) })
   await onModel($, 'claude-opus-5-5', 't1')
   await measure($, 100_000)
-  expect(h().point).toBe(160_000)
+  expect(h().compactPoint).toBe(160_000)
   await onModel($, 'claude-sonnet-5-5', 't2')
   usage.current = NO_READING
   const points: (number | null)[] = []
   for (let i = 0; i < 4; i++) {
     await measure($, 150_000)
-    points.push(h().point)
+    points.push(h().compactPoint)
     expect(h().isAskUp).toBe(false)
   }
   expect(points).toEqual([null, null, 200_000, 200_000])
@@ -187,7 +187,7 @@ test('a good read on one model never serves another', async ($, on) => {
 
 test('a host with no breakdown asks three times only', async ($, on) => {
   const { usage, h } = await start($, on)
-  expect(h().point).toBe(null)
+  expect(h().compactPoint).toBe(null)
   const asks: number[] = []
   for (let i = 0; i < 4; i++) {
     await measure($, 100_000)
@@ -199,7 +199,7 @@ test('a host with no breakdown asks three times only', async ($, on) => {
 test('a valid status file with fullContext fresh-session stands F8 down', async ($, on) => {
   const { clock, toasts, h } = await start($, on, { files: { [STATUS]: status() } })
   await at($, 88)
-  expect(h()).toMatchObject({ isAskUp: false, alfred: { state: 'stood-down', reason: null } })
+  expect(h()).toMatchObject({ isAskUp: false, stackStatus: { state: 'stood-down', reason: null } })
   expect(toasts).toEqual([])
   expect(await handoff($, '')).toBe(`ctx 88% · handoff by Alfred Code\n${USAGE}`)
   // An explicit save still runs
@@ -210,14 +210,14 @@ test('a valid status file with fullContext fresh-session stands F8 down', async 
 
 test('off, another session, schema 2 and bad JSON each leave F8 running, the last three with their reason', async ($, on) => {
   const { files, clock, h } = await start($, on, { files: { [STATUS]: status({ fullContext: 'off' }) } })
-  expect(h().alfred).toEqual({ state: 'none', reason: null })
+  expect(h().stackStatus).toEqual({ state: 'none', reason: null })
   const cases: [FileStub, string][] = [
     [status({ session: 's9' }), 'another session'], [status({ schema: 2 }), 'schema 2'], [{ text: '{oops', mtimeMs: 1 }, 'not JSON'],
   ]
   for (const [file, reason] of cases) {
     files.current[STATUS] = file
     await clock.advance(30_000)
-    expect(h().alfred).toEqual({ state: 'ignored', reason })
+    expect(h().stackStatus).toEqual({ state: 'ignored', reason })
   }
   await at($, 88)
   expect(h().isAskUp).toBe(true)
@@ -226,7 +226,7 @@ test('off, another session, schema 2 and bad JSON each leave F8 running, the las
 test('no file draws no such row', async ($, on) => {
   const { h } = await start($, on)
   await at($, 50)
-  expect(h()?.alfred ?? { state: 'none', reason: null }).toEqual({ state: 'none', reason: null })
+  expect(h()?.stackStatus ?? { state: 'none', reason: null }).toEqual({ state: 'none', reason: null })
 })
 
 test('a file removed mid-session brings the ask back on the next poll, at the last reading', async ($, on) => {
@@ -248,7 +248,7 @@ test('a file that appears mid-session takes an ask down', async ($, on) => {
   expect(h().isAskUp).toBe(true)
   files.current[STATUS] = status()
   await clock.advance(30_000)
-  expect(h()).toMatchObject({ isAskUp: false, alfred: { state: 'stood-down' } })
+  expect(h()).toMatchObject({ isAskUp: false, stackStatus: { state: 'stood-down' } })
 })
 
 test('a session that has not read a file change yet: bare /auto-handoff reads it first', async ($, on) => {
@@ -264,7 +264,7 @@ test('a new session after /auto-handoff auto saves at its first step', async ($,
   await at($, 86)
   await until(clock, () => h().lastSave !== null)
   expect(h().lastSave).toMatchObject({ isOk: true })
-  expect(h().handled).toBe(85)
+  expect(h().handledStep).toBe(85)
 })
 
 test('"handoff": "auto", then /clear: the next reading past the threshold saves', async ($, on) => {
@@ -272,7 +272,7 @@ test('"handoff": "auto", then /clear: the next reading past the threshold saves'
   const { clock, h } = kit
   await setUser($, kit, { handoff: 'auto' })
   await $.classic.SessionStart({ source: 'clear' })
-  expect(h()).toMatchObject({ mode: 'auto', handled: null, lastSave: null })
+  expect(h()).toMatchObject({ mode: 'auto', handledStep: null, lastSave: null })
   await at($, 81)
   await until(clock, () => h().lastSave !== null)
   expect(h().lastSave).toMatchObject({ isOk: true })
@@ -291,9 +291,9 @@ test("a stood-down session, then /clear before the new id's file exists: no ask 
   session.id = 's2'
   await $.classic.SessionStart({ source: 'clear' })
   await at($, 88)
-  expect(h()).toMatchObject({ isAskUp: false, alfred: { state: 'stood-down' } })
+  expect(h()).toMatchObject({ isAskUp: false, stackStatus: { state: 'stood-down' } })
   await clock.advance(30_000)
-  expect(h().alfred).toEqual({ state: 'none', reason: null })
+  expect(h().stackStatus).toEqual({ state: 'none', reason: null })
   await at($, 89)
   expect(toasts).toEqual([ASK(85)])
 })
@@ -414,7 +414,7 @@ test('a compaction, then /resume before any reading: the resumed session asks at
   await $.session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'summary', toolUses: [] }] })
   await $.classic.SessionStart({ source: 'resume' })
   await at($, 86)
-  expect(h()).toMatchObject({ isAskUp: true, handled: 85 })
+  expect(h()).toMatchObject({ isAskUp: true, handledStep: 85 })
   expect(toasts.at(-1)).toBe(ASK(85))
 })
 

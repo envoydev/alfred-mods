@@ -34,8 +34,8 @@ test('a valid file fills the stack atom at session start', async ($, on) => {
   const { s } = await start($, on, { files: { [STATUS]: status() }, now: 5000 })
   expect(s()).toEqual({
     state: 'used', reason: null, fullContext: 'fresh-session', model: 'claude-opus-5-5', window: 1000000, resumeAt: 150000,
-    noOffer: false, autoRun: true, scorer: { on: true, level: 80, rounds: 3 }, autoCompact: null, plan: null, hasPrompt: true,
-    updatedAt: Date.parse('2026-10-29T14:03:00Z'), readAt: 5000, ignored: [],
+    hasNoOffer: false, autoRun: true, scorer: { on: true, level: 80, rounds: 3 }, autoCompact: null, plan: null, hasPrompt: true,
+    updatedAt: Date.parse('2026-10-29T14:03:00Z'), readAt: 5000, ignoredFields: [],
   })
 })
 
@@ -164,14 +164,14 @@ test('an ignored file, then /clear with no new file, stays ignored through the w
 
 test("the keep window holds Phase 4's stand-down too", async ($, on) => {
   const { h, clock, session } = await start($, on, { files: { [STATUS]: status() } })
-  expect(h().alfred.state).toBe('stood-down')
+  expect(h().stackStatus.state).toBe('stood-down')
   await clock.advance(29_000)
   session.id = 's2'
   await $.classic.SessionStart({ source: 'clear' })
   await clock.advance(1000)
-  expect(h().alfred.state).toBe('stood-down')
+  expect(h().stackStatus.state).toBe('stood-down')
   await clock.advance(30_000)
-  expect(h().alfred).toEqual({ state: 'none', reason: null })
+  expect(h().stackStatus).toEqual({ state: 'none', reason: null })
 })
 
 test('a throwing read after a used one clears the prompt and names unreadable', async ($, on) => {

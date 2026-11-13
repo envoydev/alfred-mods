@@ -185,30 +185,30 @@ const SEP: Seg = { text: ' · ' }
 // CODE section's (Phase 5).
 export function handoffLines(h: HandoffView, _columns: number): Line[] {
   if (h.mode === 'off') return []
-  const of = h.point !== null && h.window !== null && h.point !== h.window ? ` of ${tokensText(h.point)}` : ''
+  const of = h.compactPoint !== null && h.window !== null && h.compactPoint !== h.window ? ` of ${tokensText(h.compactPoint)}` : ''
   const plain = h.percent === null ? 'ctx –' : `ctx ${h.percent}%${of}`
   const gauge = (p: number): Seg[] => [{ text: 'ctx ' }, ...barSegs(p), percentSeg(p), { text: of }]
   const steps = stepsOf(h.threshold)
   const after = (step: number | null): number | null => steps.find(s => step === null || s > step) ?? null
   let row: Line
-  if (h.alfred.state === 'stood-down') {
+  if (h.stackStatus.state === 'stood-down') {
     const ctx = h.runway === null ? plain : `ctx ${h.runway.percent}% of ${tokensText(h.runway.resumeAt)}`
     row = [{ text: `${ctx} · handoff by Alfred Code` }]
   }
   else if (h.mode === 'auto') {
-    const next = after(h.handled)
+    const next = after(h.handledStep)
     const saved = h.lastSave?.isOk === true
-      ? ` · saved${h.handled === null ? '' : ` at ${h.handled}%`} (${clockText(h.lastSave.at)})${next === null ? '' : ` · next save at ${next}%`}`
+      ? ` · saved${h.handledStep === null ? '' : ` at ${h.handledStep}%`} (${clockText(h.lastSave.at)})${next === null ? '' : ` · next save at ${next}%`}`
       : ` · saves at ${h.threshold}%`
     row = [{ text: plain + saved }]
   } else if (h.percent === null) row = [{ text: `ctx – · asks at ${h.threshold}%` }]
   else if (!h.isAskUp) {
-    const next = after(h.handled)
+    const next = after(h.handledStep)
     row = [...gauge(h.percent), { text: next === null ? ' · ' : ` · asks at ${next}% · ` }, button('handoff-save', 'h', 'save now')]
   } else {
-    const next = after(h.handled)
+    const next = after(h.handledStep)
     row = [
-      { text: '⚠ ', tone: 'warn' }, ...gauge(h.percent), { text: ` · past ${h.handled ?? h.threshold}% · ` }, button('handoff-save', 'h', 'save handoff'),
+      { text: '⚠ ', tone: 'warn' }, ...gauge(h.percent), { text: ` · past ${h.handledStep ?? h.threshold}% · ` }, button('handoff-save', 'h', 'save handoff'),
       ...(h.isWorking ? [] : [SEP, button('handoff-compact', 'c', 'compact')]),
       SEP, button('handoff-dismiss', 'r', next === null ? 'dismiss' : `remind at ${next}%`),
     ]
@@ -224,7 +224,7 @@ export const RESUME_WINDOW_MS = 2 * 60 * 60_000
 
 // The Now tab's HANDOFF section reads the atom with F8's percent and the runway
 export function handoffViewOf(h: Handoff, usage: Usage, isWorking: boolean, runway: Runway | null): HandoffView {
-  const point = h.point ?? usage.contextWindow
+  const point = h.compactPoint ?? usage.contextWindow
   return { ...h, percent: usage.contextTokens === null || point === null ? null : percentOf(usage.contextTokens, point), window: usage.contextWindow, isWorking, runway }
 }
 
@@ -232,5 +232,5 @@ export function handoffViewOf(h: Handoff, usage: Usage, isWorking: boolean, runw
 // known, else F8's threshold over the window, to the compaction point's moment
 export function forecastTargetOf(h: Handoff, usage: Usage, runway: Runway | null): { at: number; label: string } {
   if (runway !== null && runway.at !== null) return { at: runway.at, label: tokensText(runway.resumeAt) }
-  return { at: h.point !== null && usage.contextWindow !== null ? windowThreshold(h.threshold, h.point, usage.contextWindow) : h.threshold, label: `${h.threshold}%` }
+  return { at: h.compactPoint !== null && usage.contextWindow !== null ? windowThreshold(h.threshold, h.compactPoint, usage.contextWindow) : h.threshold, label: `${h.threshold}%` }
 }

@@ -10,7 +10,7 @@ import type { HookInput, HookNext } from '../core/types'
 import { addPathRule } from '../session/effects'
 
 const INITIAL_PARTS: Parts = NO_PARTS
-const partsAtom = atom({ plugin: 'alfred-mods', key: 'parts' } as const, INITIAL_PARTS, { shape: 'parts-1' })
+const partsAtom = atom({ plugin: 'alfred-mods', key: 'parts' } as const, INITIAL_PARTS, { shape: 'parts-2' })
 export function readParts($: EngineInterface) {
   return read($, partsAtom)
 }

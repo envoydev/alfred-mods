@@ -37,7 +37,7 @@ export function resetStats($: EngineInterface) {
 }
 
 const INITIAL_FAILURES: Failure[] = []
-const failuresAtom = atom({ plugin: 'alfred-mods', key: 'failures' } as const, INITIAL_FAILURES, { shape: 'failures-1' })
+const failuresAtom = atom({ plugin: 'alfred-mods', key: 'failures' } as const, INITIAL_FAILURES, { shape: 'failures-2' })
 export function readFailures($: EngineInterface) {
   return read($, failuresAtom)
 }
@@ -94,7 +94,7 @@ export async function addFailureRow($: EngineInterface, id: string, call: ToolCa
   const result = call.facts.result
   const row: Failure = {
     id, at: await $.clock.now(), tool: call.tool, target: call.target, outcome, reason,
-    detail: (result?.deny ?? result?.text ?? '').slice(0, 4000), count: 1, isNew: isNew && !isSeen, by,
+    detail: (result?.deny ?? result?.text ?? '').slice(0, 4000), count: 1, isNew: isNew && !isSeen, blockedBy: by,
   }
   await updateFailures($, list => {
     const i = drop === null ? -1 : list.findIndex(f => f.id === drop)
@@ -103,7 +103,7 @@ export async function addFailureRow($: EngineInterface, id: string, call: ToolCa
       : old.count > 1 ? list.map(f => (f === old ? { ...f, count: f.count - 1 } : f))
       : list.filter(failure => failure !== old)
     // A call settled again keeps its row's number
-    const out = foldFailure(rest, old !== undefined && old.count === 1 && old.n !== undefined ? { ...row, n: old.n } : row)
+    const out = foldFailure(rest, old !== undefined && old.count === 1 && old.failureNumber !== undefined ? { ...row, failureNumber: old.failureNumber } : row)
     call.failureId = out[out.length - 1]?.id ?? null
     return out
   })
