@@ -5,7 +5,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 import type { Handoff, PlanPart, SaveBy, SaveInput, SaveResult, ScoresPart } from './types'
 import { PLANS_DIR, creditedPlan, scoresView } from '../plan/plan'
-import { FOREIGN, HANDOFF_PATH, MARKER, RESUME_MS, RESUME_PROMPT, TOASTS, gitPart, handoffText, nextStep, percentOf, stepUnder, stepsOf } from './handoff'
+import { FOREIGN, HANDOFF_PATH, MARKER, RESUME_MS, RESUME_PROMPT, TOASTS, gitPart, handoffText, nextStep, parseStatus, percentOf, stepUnder, stepsOf } from './handoff'
 import { readBreakdown } from '../context/effects'
 import { readLive, readMeta, readUsage } from '../session/effects'
 import { readStack } from '../stack/effects'
@@ -248,4 +248,23 @@ export async function handoffState($: EngineInterface): Promise<string> {
   if (h.mode === 'off') return `Handoff: off · ${ctx}`
   const saved = h.lastSave?.isOk === true ? ` · last save ${clock(h.lastSave.at)} (${HANDOFF_PATH})` : ''
   return `Handoff: ${h.mode} at ${h.threshold}% · ${ctx}${saved}`
+}
+
+// The handoff's side of a status file read (F8's stand-down, Decision 13): Alfred Code's state, and a stand-down lifted
+// steps at the last reading
+export async function followStatusFile($: EngineInterface, text: string | null, id: string, inWindow: boolean): Promise<void> {
+  let found: ReturnType<typeof parseStatus> | null = text === null ? null : parseStatus(text, id)
+  if (found === null && inWindow && handoffMem.stoodDown) found = { state: 'stood-down', reason: null }
+  const wasStoodDown = handoffMem.stoodDown
+  handoffMem.stoodDown = found?.state === 'stood-down'
+  const alfred: Handoff['alfred'] = found === null || found.state === 'runs' ? { state: 'none', reason: null } : { state: found.state, reason: found.reason }
+  await updateHandoff($, h => {
+    if (h.alfred.state === alfred.state && h.alfred.reason === alfred.reason) return h
+    return { ...h, alfred, isAskUp: alfred.state === 'stood-down' ? false : h.isAskUp }
+  })
+  // A stand-down lifted by this read steps at the last reading, so the ask returns without waiting for a turn; a
+  // compaction's re-arm waits for a fresh reading instead
+  if (!wasStoodDown || handoffMem.stoodDown || handoffMem.rearm) return
+  const u = await readUsage($)
+  if (u.tokens !== null && u.window !== null) await stepHandoff($, u.tokens, u.window)
 }

@@ -17,8 +17,8 @@ import { clock, fingerprint, oneLine, printable, tokens, usd, when } from './cor
 import { mask, maskSpans, recLevel, setRec } from './rec/mask'
 import { maskDeep, maskDialog, maskResult, neutralDialog, resultLines } from './rec/sites'
 import { DROPS_RESULT, callLine, groupLines } from './tools/compact'
-import { HANDOFF_PATH, HANDOFF_USAGE, MODES, forecastOf, handoffView, parseStatus, statusPath } from './handoff/handoff'
-import { NO_FILE, STACK_TOASTS, UNREADABLE, bannerSegs, fillReady, fillToast, parseStack, runwayOf } from './stack/stack'
+import { HANDOFF_PATH, HANDOFF_USAGE, MODES, forecastOf, handoffView } from './handoff/handoff'
+import { bannerSegs, runwayOf } from './stack/stack'
 import { PLANS_DIR, runs, statusesOfTasks, tasksAfter } from './plan/plan'
 import { planLines } from './plan/planlines'
 import { closeWait, isAllWait, openWait, staleKeys, waitOf } from './plan/steptime'
@@ -32,20 +32,18 @@ import { FRESH_EVERY_MS, freshMem, readLive, readMeta, readPace, readTick, readT
 import { agentStep, isCounted, readAgents, readLoops, resetAgents, resetLoops, trackSpawn, updateAgents, updateLoops, updateRow } from './agents/effects'
 import { afterModelSwitch, armCacheClose, beforeModelSwitch, compactNow, followCompaction, readCache, readCacheConfig, resetCache, updateCache } from './cache/effects'
 import { addMark, addWait, closeLoops, openSlice, planDraw, queueReload, readPlans, readTasks, resetCredit, resetPlans, resetTasks, scheduleReload, seedMine, storedTimes, updateCredit, updatePlans, updateTasks } from './plan/effects'
-import { INITIAL_STACK, readStack, resetStack, stackMem, updateStack } from './stack/effects'
-import { dismissAsk, fillResume, handoffMem, handoffState, loadHandoff, readHandoff, resetHandoff, saveNow, saveThenCompact, stepHandoff, updateHandoff } from './handoff/effects'
+import { fillStack, readStack, readStatus, resetStack, scoreLevel, stackMem } from './stack/effects'
+import { dismissAsk, fillResume, handoffMem, handoffState, loadHandoff, readHandoff, resetHandoff, saveNow, saveThenCompact, stepHandoff } from './handoff/effects'
 import { noteMem, readRec, recMem, resetRec, updateRec } from './rec/effects'
 import { bandMem, isPassingAbove, loadBand, readBandSetting, statusMem, syncStatus } from './band/effects'
 import { noteLoadedRule, partsMem, readBreakdownSoon, readParts, resetParts } from './context/effects'
 import { readView, resetView, updateView } from './inspect/effects'
 import type { BandInput } from './band/types'
-import type { Handoff } from './handoff/types'
 import type { Tab } from './inspect/types'
 import type { Plans } from './plan/types'
 import type { RecState } from './rec/types'
 import type { Turn, Usage, Window } from './session/types'
 import type { Field, From, Resolved, Source, Values } from './settings/types'
-import type { Stack } from './stack/types'
 import type { Call, CallFacts, CompactCall, Failure, Outcome, ToolStat } from './tools/types'
 import type { Held } from './core/types'
 import { editPlace, pollPlace, readPlace, rowsMem } from './place/effects'
@@ -310,12 +308,6 @@ async function resetAll($: EngineInterface): Promise<void> {
   await resetParts($)
   await resetLoops($)
   partsMem.lastAt = null
-}
-
-// Alfred Code's scoring level while its status file is in use and scoring is on, which colours the band's score
-async function scoreLevel($: EngineInterface): Promise<number | null> {
-  const s = await readStack($)
-  return s.state === 'used' && s.scorer !== null && s.scorer.on ? s.scorer.level : null
 }
 
 const LABEL: Record<string, string> = { five_hour: '5h', seven_day: '7d' }
@@ -687,68 +679,6 @@ async function addSkill($: EngineInterface, name: string): Promise<void> {
   await updateMeta($, m => ({ ...m, skills: { ...m.skills, [name]: (m.skills?.[name] ?? 0) + 1 } }))
 }
 
-// Reads run one at a time; each resolves to whether the session's status file exists
-function readStatus($: EngineInterface, keep = false): Promise<boolean> {
-  const next = stackMem.reading.then(() => readStatusNow($, keep))
-  stackMem.reading = next.catch(() => false)
-  return next
-}
-
-// The stack's status file for this session, one read for both atoms. F8's stand-down (Decision 13): a missing or
-// unreadable file is no file, unless `keep` or the window holds a stand-down across a /clear until a later read. The
-// `stack` atom (Phase 5): no file, unreadable, ignored with Phase 4's reason, or used field by field.
-async function readStatusNow($: EngineInterface, keep: boolean): Promise<boolean> {
-  const id = await $.session.id()
-  const path = statusPath(id)
-  const now = await $.clock.now()
-  const inWindow = keep || now < stackMem.keepUntil
-  let exists = false
-  let text: string | null = null
-  if (path !== null) {
-    try {
-      exists = await $.fs.exists(path)
-      if (exists) text = await $.fs.read(path)
-    } catch {
-      text = null
-    }
-  }
-  await writeStackFrom($, { exists, text, id, now, inWindow })
-  let found: ReturnType<typeof parseStatus> | null = text === null ? null : parseStatus(text, id)
-  if (found === null && inWindow && handoffMem.stoodDown) found = { state: 'stood-down', reason: null }
-  const wasStoodDown = handoffMem.stoodDown
-  handoffMem.stoodDown = found?.state === 'stood-down'
-  const alfred: Handoff['alfred'] = found === null || found.state === 'runs' ? { state: 'none', reason: null } : { state: found.state, reason: found.reason }
-  await updateHandoff($, h => {
-    if (h.alfred.state === alfred.state && h.alfred.reason === alfred.reason) return h
-    return { ...h, alfred, isAskUp: alfred.state === 'stood-down' ? false : h.isAskUp }
-  })
-  // A stand-down lifted by this read steps at the last reading, so the ask returns without waiting for a turn; a
-  // compaction's re-arm waits for a fresh reading instead
-  if (!wasStoodDown || handoffMem.stoodDown || handoffMem.rearm) return exists
-  const u = await readUsage($)
-  if (u.tokens !== null && u.window !== null) await stepHandoff($, u.tokens, u.window)
-  return exists
-}
-
-// The `stack` atom from one read: inside the window a missing file writes back the last value and keeps the prompt;
-// every other read writes its own value, and `last` with it
-async function writeStackFrom($: EngineInterface, r: { exists: boolean; text: string | null; id: string; now: number; inWindow: boolean }): Promise<void> {
-  if (!r.exists && r.inWindow) {
-    const last = stackMem.last
-    if (last !== null) await updateStack($, s => (JSON.stringify(s) === JSON.stringify(last) ? s : last))
-    return
-  }
-  const parsed = r.text === null ? null : parseStack(r.text, r.id)
-  const base: Stack = { ...INITIAL_STACK, readAt: r.now }
-  const next: Stack = !r.exists ? { ...base, reason: NO_FILE }
-    : parsed === null ? { ...base, state: 'ignored', reason: UNREADABLE }
-    : parsed.state === 'ignored' ? { ...base, state: 'ignored', reason: parsed.reason }
-    : { ...base, ...parsed.fields, state: 'used', hasPrompt: parsed.prompt !== null }
-  stackMem.prompt = parsed?.state === 'used' ? parsed.prompt : null
-  stackMem.last = next
-  await updateStack($, s => (JSON.stringify(s) === JSON.stringify(next) ? s : next))
-}
-
 // A /clear, a resume or a branch starts the session over under a new id: Claude Code resets $.state itself, and the
 // mod writes its own start values too, so the reset is the mod's and testable. Each runs after the one before. `source`
 // is classic.SessionStart's, 'prompt' where a prompt found the new id, or null where the tick did: then a transcript of
@@ -808,16 +738,6 @@ async function followConversation($: EngineInterface, by: 'prompt' | null, calls
   const id = await $.session.id()
   if (conversationMem.starting !== null) return conversationMem.starting
   if (id !== conversationMem.id) await startOver($, by, calls, held)
-}
-
-// `f` in the ALFRED CODE section: the stack's resume prompt into an empty draft, never sent. A press from a frame drawn
-// before the prompt went away or the file stopped owning the full context fills nothing (Decision 7).
-// f, or '/inspect fill': what it did, which the press toasts and the command answers
-async function fillStack($: EngineInterface): Promise<string> {
-  const text = stackMem.prompt
-  if (!fillReady(await readStack($), text)) return STACK_TOASTS.gone
-  if ((await $.prompt.read()).text.trim() !== '') return STACK_TOASTS.notEmpty
-  return fillToast(await $.prompt.fill({ text }))
 }
 
 export const register: Register = (on, options) => {
