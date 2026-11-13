@@ -5,14 +5,15 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 import type { Level, RecState } from './types'
 import { mask, maskSpans, recLevel, setRec } from './mask'
-import { recInForce, settingsMem } from '../settings/effects'
-import { addWord, parseWords, recPaneLines } from './rec'
+import { loadSettings, recInForce, setField } from '../settings/effects'
+import { LEVELS, REC_HELP, addWord, parseWords, recPaneLines, recStatus, recTest } from './rec'
 import { syncStatus } from '../band/effects'
 import type { MatchedInput, MatchedNext } from '../core/types'
 import { printable } from '../core/format'
 import { maskDialog } from './sites'
 import { drawWithInput } from '../core/draw'
-import { isNoColor } from '../core/effects'
+import { closePane, isNoColor } from '../core/effects'
+import { sourceName } from '../settings/settings'
 
 const INITIAL_REC: RecState = { level: 'off', count: 0, note: null }
 const recAtom = atom({ plugin: 'alfred-mods', key: 'rec' } as const, INITIAL_REC, { shape: 'rec-1' })
@@ -111,4 +112,25 @@ export async function drawRecPane($: EngineInterface, e: MatchedInput<'ui.render
   const note = r.note === null ? [] : [[{ text: r.note, tone: 'warn' as const }]]
   const input = { key: 'word', label: 'Add a word', submitLabel: 'Add', onSubmit: (value: string) => { void addRecWord($, value) } }
   return drawWithInput($, e, recPaneLines(r.level, words), input, note, { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
+}
+
+export async function runRecCommand($: EngineInterface, e: MatchedInput<'command.run', { command: 'rec' }>) {
+  const word = e.args.trim().toLowerCase()
+  const target = LEVELS.find(l => l === word)
+  if (target !== undefined) return { text: mask(await setField($, 'rec', target)) }
+  if (/^words\s+close$/.test(word)) return { text: await closePane($, 'rec', 'REC words pane') }
+  if (word === 'words') {
+    const opened = await $.ui.open({ id: 'rec', title: 'REC words', focus: true, closeOnEscape: true })
+    return { text: opened.isPlaced ? 'Opened the REC words pane.' : `The REC words pane is open but not drawn: ${opened.reason}.` }
+  }
+  await loadSettings($)
+  const level = recInForce()?.level ?? 'off'
+  if (word === 'test') return { text: mask(recTest(level === 'off' ? 'on' : level, recMem.words, recMem.home)) }
+  const from = sourceName(recInForce()?.from ?? 'default', '/rec')
+  return { text: mask(`${recStatus(level, recMem.words.length)} - from ${from}\n${REC_HELP}`) }
+}
+
+// How many private words REC holds
+export function recWordCount(): number {
+  return recMem.words.length
 }

@@ -8,7 +8,6 @@ import type { HandoffMode } from '../handoff/types'
 import type { Level } from '../rec/types'
 import type { Field, From, Resolved, Skip, Source, Values } from './types'
 
-
 export const FIELDS: readonly Field[] = ['band', 'bandPlace', 'bandRows', 'quiet', 'rec', 'handoff', 'handoffAt']
 export const SOURCES: readonly Source[] = ['policy', 'flag', 'local', 'project', 'user']
 export const DEFAULTS: Values = { band: 'full', bandPlace: 'above', bandRows: true, quiet: true, rec: 'off', handoff: 'ask', handoffAt: 80 }
@@ -145,3 +144,11 @@ export function writeField<F extends Field>(text: string | null, field: F, value
   const last = isBlank || /\n$/.test(text) ? '\n' : ''
   return { text: (out + last).replace(/\n/g, isCrlf ? '\r\n' : '\n') }
 }
+
+// The old commands' store keys, by the field each held (S7); `settings:handoff` holds two, retired field by field
+export const OLD_KEYS: Partial<Record<Field, string>> = {
+  band: 'settings:band', bandPlace: 'settings:band-place', bandRows: 'settings:band-tools', quiet: 'settings:quiet', rec: 'settings:rec',
+}
+
+// A source's name in the commands' answers: an earlier command's choice is named for its command (S7)
+export const sourceName = (from: From, command: '/rec' | '/auto-handoff' | '/band'): string => (from === 'legacy' ? `an earlier ${command}` : nameOf(from))

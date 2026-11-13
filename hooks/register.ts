@@ -17,36 +17,35 @@ import { clock, fingerprint, oneLine, printable, tokens, usd, when } from './cor
 import { mask, recLevel } from './rec/mask'
 import { neutralDialog } from './rec/sites'
 import { DROPS_RESULT } from './tools/compact'
-import { HANDOFF_PATH, HANDOFF_USAGE, MODES, forecastOf, handoffView } from './handoff/handoff'
+import { forecastOf, handoffView } from './handoff/handoff'
 import { bannerSegs, runwayOf } from './stack/stack'
 import { PLANS_DIR, runs } from './plan/plan'
 import { planLines } from './plan/planlines'
 import { staleKeys } from './plan/steptime'
 import { agentsLines, asCommands, cacheLines, nowLines, paneCommands, reportRows, tabBar, timelineLines, toolsLines, usageLines } from './inspect/tabs'
 import { numberOf } from './tools/outcome'
-import { LEVELS, REC_HELP, recNote, recOf, recStatus, recTest } from './rec/rec'
-import { BAND_MODES, DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast, writeField } from './settings/settings'
+import { recNote, recOf } from './rec/rec'
+import { BAND_MODES, DEFAULTS, sourceName } from './settings/settings'
 import { dropPassed, nextWindows, storedWindows } from './session/windows'
-import { countSkillPrompt, drawToolGroup, drawToolResult, drawToolUse, loadQuiet, mark, modeMem, notePermissionAsk, notePermissionDenied, notePromptMode, noteToolCheck, noteToolFailure, noteToolTime, readBlockers, readFailures, readStats, resetBlockers, resetFailures, resetQuiet, resetStats, trackToolCall, updateFailures } from './tools/effects'
+import { countSkillPrompt, drawToolGroup, drawToolResult, drawToolUse, modeMem, notePermissionAsk, notePermissionDenied, notePromptMode, noteToolCheck, noteToolFailure, noteToolTime, readBlockers, readFailures, readStats, resetBlockers, resetFailures, resetQuiet, resetStats, trackToolCall, updateFailures } from './tools/effects'
 import { FRESH_EVERY_MS, freshMem, readLive, readMeta, readPace, readTick, readTotals, readTurns, readUsage, resetLive, resetMeta, resetPace, resetTotals, resetTurns, resetUsage, spendMem, updateLive, updateMeta, updatePace, updateTick, updateTotals, updateTurns, updateUsage, windowsMem } from './session/effects'
 import { agentStep, readAgents, readLoops, resetAgents, resetLoops, trackSpawn, updateAgents, updateLoops, updateRow } from './agents/effects'
 import { afterModelSwitch, armCacheClose, beforeModelSwitch, compactNow, followCompaction, readCache, readCacheConfig, resetCache, updateCache } from './cache/effects'
 import { addMark, closeLoops, openSlice, planDraw, queueReload, readPlans, resetCredit, resetPlans, resetTasks, scheduleReload, seedMine, storedTimes, updatePlans } from './plan/effects'
 import { fillStack, readStack, readStatus, resetStack, scoreLevel, stackMem } from './stack/effects'
-import { dismissAsk, fillResume, handoffMem, handoffState, loadHandoff, readHandoff, resetHandoff, saveNow, saveThenCompact, stepHandoff } from './handoff/effects'
-import { drawRecPane, loadRec, maskAssistantMessage, maskCommandOutput, maskQuestionDialog, maskUserMessage, noteMem, readRec, recMem, resetRec } from './rec/effects'
-import { bandMem, isPassingAbove, loadBand, readBandSetting, statusMem, syncStatus } from './band/effects'
+import { dismissAsk, fillResume, handoffMem, readHandoff, resetHandoff, runAutoHandoffCommand, saveNow, saveThenCompact, stepHandoff } from './handoff/effects'
+import { drawRecPane, maskAssistantMessage, maskCommandOutput, maskQuestionDialog, maskUserMessage, noteMem, readRec, recMem, resetRec, runRecCommand } from './rec/effects'
+import { bandMem, isPassingAbove, readBandSetting, statusMem, syncStatus } from './band/effects'
 import { noteLoadedRule, partsMem, readBreakdownSoon, readParts, resetParts } from './context/effects'
 import { readView, resetView, updateView } from './inspect/effects'
 import type { BandInput } from './band/types'
 import type { Tab } from './inspect/types'
 import type { Plans } from './plan/types'
 import type { Turn, Usage, Window } from './session/types'
-import type { Field, From, Resolved, Source, Values } from './settings/types'
 import type { Call } from './tools/types'
 import type { Held } from './core/types'
 import { pollPlace, readPlace } from './place/effects'
-import { settingsMem } from './settings/effects'
+import { followConfigChange, loadSettings, setField, settingsMem } from './settings/effects'
 import { conversationMem, tickMem } from './lifecycle/effects'
 import { closePane, isNoColor, toast } from './core/effects'
 
@@ -351,129 +350,6 @@ async function toggleShown($: EngineInterface, id: string): Promise<void> {
 
 const TABS: Tab[] = ['now', 'usage', 'agents', 'tools', 'cache', 'timeline', 'plan']
 
-function loadSettings($: EngineInterface, isStart = false): Promise<void> {
-  const next = settingsMem.reading.then(() => loadSettingsNow($, isStart))
-  settingsMem.reading = next.catch(() => undefined)
-  return next
-}
-
-// Each source read on its own, so a file that does not parse falls to the files below rather than taking the rest
-// with it (S1); a refused read, or a store key that throws, counts as absent
-async function loadSettingsNow($: EngineInterface, isStart: boolean): Promise<void> {
-  if (isStart) {
-    settingsMem.rec = null
-    settingsMem.skippedKey = ''
-    settingsMem.isHoldTold = false
-  }
-  const layers: Partial<Record<Source, unknown>> = {}
-  for (const source of SOURCES) layers[source] = await $.settings.read({ key: 'alfred-mods', source }).catch(() => undefined)
-  const rawHandoff = await $.store.get('settings:handoff').catch(() => null)
-  const legacy = legacyOf({
-    band: await $.store.get('settings:band').catch(() => null),
-    place: await $.store.get('settings:band-place').catch(() => null),
-    tools: await $.store.get('settings:band-tools').catch(() => null),
-    quiet: await $.store.get('settings:quiet').catch(() => null),
-    rec: await $.store.get('settings:rec').catch(() => null),
-    handoff: rawHandoff,
-  })
-  const r = resolve(layers, legacy)
-  settingsMem.resolved = r
-  await retireOld($, r, legacy, rawHandoff)
-  if (isStart) await tellMoved($, r)
-  const before = settingsMem.rec
-  const held = holdRec(before, { level: r.values.rec, from: r.from.rec })
-  // A skipped value is told once (S3): each skip the last told set did not hold, when the set changes. While REC holds,
-  // its skip is the hold's to tell: a skip toast would name a level REC is not at
-  const skips = r.skipped.filter(k => !(held.isHeld && k.field === 'rec'))
-  const skippedKey = skips.map(k => `${k.field}@${k.source}`).sort().join(',')
-  if (skippedKey !== settingsMem.skippedKey) {
-    const told = new Set(settingsMem.skippedKey.split(','))
-    for (const skip of skips) if (!told.has(`${skip.field}@${skip.source}`)) toast($, skippedToast(skip, r))
-    settingsMem.skippedKey = skippedKey
-  }
-  // REC's hold (S3), told once per hold; a level that changes after the session's first read is told as /rec told it
-  settingsMem.rec = { level: held.level, from: held.from }
-  if (!held.isHeld) settingsMem.isHoldTold = false
-  else if (!settingsMem.isHoldTold) {
-    settingsMem.isHoldTold = true
-    toast($, holdToast(held.level, held.from))
-  }
-  await loadRec($)
-  if (before !== null && before.level !== held.level) toast($, recStatus(held.level, recMem.words.length))
-  await loadQuiet($)
-  await loadBand($)
-  await loadHandoff($)
-}
-
-// The old commands' store keys, by the field each held (S7); `settings:handoff` holds two, retired field by field
-const OLD_KEYS: Partial<Record<Field, string>> = {
-  band: 'settings:band', bandPlace: 'settings:band-place', bandRows: 'settings:band-tools', quiet: 'settings:quiet', rec: 'settings:rec',
-}
-
-// S7: a field the user's own file sets, machine-wide as the store is, drops its old value; a project or local value
-// overrides the old one without retiring it. A refused delete is tried at the next read.
-async function retireOld($: EngineInterface, r: Resolved, legacy: Partial<Values>, rawHandoff: unknown): Promise<void> {
-  for (const field of r.userFields) {
-    const key = OLD_KEYS[field]
-    if (key !== undefined && legacy[field] !== undefined) await $.store.delete(key).catch(() => undefined)
-  }
-  const isMode = r.userFields.includes('handoff') && legacy.handoff !== undefined
-  const isAt = r.userFields.includes('handoffAt') && legacy.handoffAt !== undefined
-  if ((!isMode && !isAt) || typeof rawHandoff !== 'object' || rawHandoff === null || Array.isArray(rawHandoff)) return
-  const left: Record<string, unknown> = { ...rawHandoff }
-  if (isMode) delete left.mode
-  if (isAt) delete left.threshold
-  if ('mode' in left || 'threshold' in left) await $.store.set('settings:handoff', left).catch(() => undefined)
-  else await $.store.delete('settings:handoff').catch(() => undefined)
-}
-
-// S7's toast, at a run's first read, once per machine: the earlier commands' choices still in force. A refused read of
-// the mark counts as told, so a failing store never repeats it.
-async function tellMoved($: EngineInterface, r: Resolved): Promise<void> {
-  const kept: Partial<Record<Field, unknown>> = {}
-  for (const field of FIELDS) if (r.from[field] === 'legacy' && r.values[field] !== DEFAULTS[field]) kept[field] = r.values[field]
-  if (Object.keys(kept).length === 0 || (await $.store.get('settings:moved').catch(() => true)) === true) return
-  // 30 s to copy the line (the review's #1)
-  toast($, movedToast(kept as Partial<Values>), 30_000)
-  await $.store.set('settings:moved', true).catch(() => undefined)
-}
-
-// A source's name in the commands' answers: an earlier command's choice is named for its command (S7)
-const sourceName = (from: From, command: '/rec' | '/auto-handoff' | '/band'): string => (from === 'legacy' ? `an earlier ${command}` : nameOf(from))
-
-// The user settings file Claude Code reads: settings.json in CLAUDE_CONFIG_DIR when set, else in ~/.claude; null with no
-// home to find it from
-async function userSettingsPath($: EngineInterface): Promise<string | null> {
-  const dir = (await $.env.get('CLAUDE_CONFIG_DIR')) ?? ''
-  if (dir !== '') return `${dir.replace(/[\\/]+$/, '')}/settings.json`
-  const home = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE')) ?? ''
-  return home === '' ? null : `${home.replace(/[\\/]+$/, '')}/.claude/settings.json`
-}
-
-// The one write of /rec on|strict|off and /auto-handoff ask|auto|off|at <percent> (the user's ruling, 2026-11-12): the
-// field into the user file, every other key kept. The files are read first, so the answer names a higher file that
-// still comes first; Claude Code's ConfigChange then brings the change in, as it does an edit by hand.
-async function setField<F extends Field>($: EngineInterface, field: F, value: Values[F]): Promise<string> {
-  const user = nameOf('user')
-  const shown = `"${field}": ${JSON.stringify(value)}`
-  const byHand = (why: string): string => `Nothing was written: ${why}. Set ${shown} under "alfred-mods" in ${user} by hand.`
-  await loadSettings($)
-  const path = await userSettingsPath($)
-  if (path === null) return byHand('no home folder was found')
-  // A refused check is no proof the file is missing: only a check that answers false makes the file
-  const isThere = await $.fs.exists(path).catch(() => undefined)
-  const text = isThere === false ? null : isThere === true ? await $.fs.read(path).catch(() => undefined) : undefined
-  if (text === undefined) return byHand(`${user} could not be read`)
-  const next = writeField(text, field, value)
-  if ('why' in next) return byHand(next.why === 'parse' ? `${user} does not parse as JSON` : `"alfred-mods" in ${user} is not an object`)
-  const isWritten = await $.fs.write(path, next.text).then(() => true, () => false)
-  if (!isWritten) return byHand(`${user} refused the write`)
-  const r = settingsMem.resolved
-  const from = r?.from[field]
-  const isFirst = r !== null && r !== undefined && (from === 'policy' || from === 'flag' || from === 'local' || from === 'project')
-  return `Set ${shown} in ${user}.${isFirst ? ` ${nameOf(from)} gives ${JSON.stringify(r.values[field])}, which comes first.` : ''}`
-}
-
 // The band's lines from the session's state, for the site above or the footer (spec band-under U2): the same reads, the
 // place's own width, rows and turn
 async function bandInputOf(
@@ -640,12 +516,7 @@ export const register: Register = (on, options) => {
 
     // An edit to a settings file (spec settings-values S4): a read inside this hook still answers the old value (F4),
     // so the files are read again at the clock's next tick; left out, the 30 s poll reads them
-    on('classic.ConfigChange', ($, e, next) => {
-      $.clock.after(0, () => {
-        loadSettings($).catch(() => undefined)
-      })
-      return next(e)
-    }).catch(($, e, next) => next(e))
+    on('classic.ConfigChange', ($, e, next) => followConfigChange($, e, next)).catch(($, e, next) => next(e))
   }
 
   on('session.start', async ($, e, next) => {
@@ -879,59 +750,12 @@ export const register: Register = (on, options) => {
   // '/rec [on|strict|off|test|words]': the level is a settings value (S5) that on, strict and off write into the user
   // file (the user's ruling, 2026-11-12); every form but words reads the files first, so a session that has not polled
   // answers with the level in force, never its own copy
-  on('command.run', { command: 'rec' }, async ($, e) => {
-    const word = e.args.trim().toLowerCase()
-    const target = LEVELS.find(l => l === word)
-    if (target !== undefined) return { text: mask(await setField($, 'rec', target)) }
-    if (/^words\s+close$/.test(word)) return { text: await closePane($, 'rec', 'REC words pane') }
-    if (word === 'words') {
-      const opened = await $.ui.open({ id: 'rec', title: 'REC words', focus: true, closeOnEscape: true })
-      return { text: opened.isPlaced ? 'Opened the REC words pane.' : `The REC words pane is open but not drawn: ${opened.reason}.` }
-    }
-    await loadSettings($)
-    const level = settingsMem.rec?.level ?? 'off'
-    if (word === 'test') return { text: mask(recTest(level === 'off' ? 'on' : level, recMem.words, recMem.home)) }
-    const from = sourceName(settingsMem.rec?.from ?? 'default', '/rec')
-    return { text: mask(`${recStatus(level, recMem.words.length)} - from ${from}\n${REC_HELP}`) }
-  })
+  on('command.run', { command: 'rec' }, ($, e) => runRecCommand($, e))
 
   // '/auto-handoff [ask|auto|off|at <percent>|now]': the mode and the first ask are settings values (S5) that ask, auto,
   // off and at <percent> write into the user file (the user's ruling, 2026-11-12); a bare form reads the files first
   // and prints the state with each value's source, and while Alfred Code owns the handoff, its state alone
-  on('command.run', { command: 'auto-handoff' }, async ($, e) => {
-    const args = e.args.trim().toLowerCase()
-    if (args === 'now') {
-      await saveNow($)
-      return { text: `Saving a handoff to ${HANDOFF_PATH}.` }
-    }
-    // The ask's c and r, for a screen where its keys and clicks do not reach the mod (the user, 2026-11-12)
-    if (args === 'compact') {
-      void saveThenCompact($, held)
-      return { text: `Saving a handoff to ${HANDOFF_PATH}, then compacting.` }
-    }
-    if (args === 'later') {
-      if (!(await readHandoff($)).isAskUp) return { text: 'No handoff ask is up.' }
-      await dismissAsk($)
-      return { text: 'The handoff ask is down until the next step.' }
-    }
-    const mode = MODES.find(m => m === args)
-    if (mode !== undefined) return { text: mask(await setField($, 'handoff', mode)) }
-    // 'at 70', as 0.7 took it, or a bare '70'
-    const at = /^(?:at(?:\s+(.*))?|(\d.*))$/.exec(args)
-    if (at !== null) {
-      const word = at[1] ?? at[2] ?? ''
-      const percent = /^\d+$/.test(word) ? Number(word) : NaN
-      if (!(percent >= 10 && percent <= 95)) return { text: `The first ask takes a whole number from 10 to 95.\n${HANDOFF_USAGE}` }
-      return { text: mask(await setField($, 'handoffAt', percent)) }
-    }
-    await loadSettings($)
-    const state = await handoffState($)
-    const from = settingsMem.resolved?.from
-    const sources = (await readHandoff($)).alfred.state === 'stood-down' || from === undefined
-      ? ''
-      : ` · mode from ${sourceName(from.handoff, '/auto-handoff')} · first ask from ${sourceName(from.handoffAt, '/auto-handoff')}`
-    return { text: mask(`${state}${sources}\n${HANDOFF_USAGE}`) }
-  })
+  on('command.run', { command: 'auto-handoff' }, ($, e) => runAutoHandoffCommand($, e, held))
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     // Decided on module memory, so a person above meets no new read before the survey's check; the read keeps this

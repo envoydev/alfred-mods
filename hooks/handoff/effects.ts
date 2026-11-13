@@ -5,21 +5,22 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 import type { Handoff, PlanPart, SaveBy, SaveInput, SaveResult, ScoresPart } from './types'
 import { PLANS_DIR, creditedPlan, scoresView } from '../plan/plan'
-import { FOREIGN, HANDOFF_PATH, MARKER, RESUME_MS, RESUME_PROMPT, TOASTS, gitPart, handoffText, nextStep, parseStatus, percentOf, stepUnder, stepsOf } from './handoff'
+import { FOREIGN, HANDOFF_PATH, HANDOFF_USAGE, MARKER, MODES, RESUME_MS, RESUME_PROMPT, TOASTS, gitPart, handoffText, nextStep, parseStatus, percentOf, stepUnder, stepsOf } from './handoff'
 import { readBreakdown } from '../context/effects'
 import { readLive, readMeta, readUsage } from '../session/effects'
 import { readStack } from '../stack/effects'
 import { readStats } from '../tools/effects'
 import { readAgents } from '../agents/effects'
-import { maskForFile } from '../rec/mask'
+import { mask, maskForFile } from '../rec/mask'
 import { compactNow } from '../cache/effects'
-import type { Held } from '../core/types'
+import type { Held, MatchedInput } from '../core/types'
 import { drawnPlan, readPlans, readTasks } from '../plan/effects'
 import { runwayOf } from '../stack/stack'
 import { clock, tokens } from '../core/format'
-import { settingsNow } from '../settings/effects'
+import { loadSettings, resolvedSettings, setField, settingsNow } from '../settings/effects'
 import { readView } from '../inspect/effects'
 import { toast } from '../core/effects'
+import { sourceName } from '../settings/settings'
 
 const INITIAL_HANDOFF: Handoff = {
   mode: 'ask', threshold: 80, point: null, handled: null, isAskUp: false, lastSave: null, alfred: { state: 'none', reason: null },
@@ -267,4 +268,39 @@ export async function followStatusFile($: EngineInterface, text: string | null, 
   if (!wasStoodDown || handoffMem.stoodDown || handoffMem.rearm) return
   const u = await readUsage($)
   if (u.tokens !== null && u.window !== null) await stepHandoff($, u.tokens, u.window)
+}
+
+export async function runAutoHandoffCommand($: EngineInterface, e: MatchedInput<'command.run', { command: 'auto-handoff' }>, held: Held) {
+  const args = e.args.trim().toLowerCase()
+  if (args === 'now') {
+    await saveNow($)
+    return { text: `Saving a handoff to ${HANDOFF_PATH}.` }
+  }
+  // The ask's c and r, for a screen where its keys and clicks do not reach the mod (the user, 2026-11-12)
+  if (args === 'compact') {
+    void saveThenCompact($, held)
+    return { text: `Saving a handoff to ${HANDOFF_PATH}, then compacting.` }
+  }
+  if (args === 'later') {
+    if (!(await readHandoff($)).isAskUp) return { text: 'No handoff ask is up.' }
+    await dismissAsk($)
+    return { text: 'The handoff ask is down until the next step.' }
+  }
+  const mode = MODES.find(m => m === args)
+  if (mode !== undefined) return { text: mask(await setField($, 'handoff', mode)) }
+  // 'at 70', as 0.7 took it, or a bare '70'
+  const at = /^(?:at(?:\s+(.*))?|(\d.*))$/.exec(args)
+  if (at !== null) {
+    const word = at[1] ?? at[2] ?? ''
+    const percent = /^\d+$/.test(word) ? Number(word) : NaN
+    if (!(percent >= 10 && percent <= 95)) return { text: `The first ask takes a whole number from 10 to 95.\n${HANDOFF_USAGE}` }
+    return { text: mask(await setField($, 'handoffAt', percent)) }
+  }
+  await loadSettings($)
+  const state = await handoffState($)
+  const from = resolvedSettings()?.from
+  const sources = (await readHandoff($)).alfred.state === 'stood-down' || from === undefined
+    ? ''
+    : ` · mode from ${sourceName(from.handoff, '/auto-handoff')} · first ask from ${sourceName(from.handoffAt, '/auto-handoff')}`
+  return { text: mask(`${state}${sources}\n${HANDOFF_USAGE}`) }
 }
