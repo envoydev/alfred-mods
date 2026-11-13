@@ -29,14 +29,14 @@ export function recordWrites(entries: CostEntries, sessionId: string, usd: numbe
 
 export function dayUsd(entries: CostEntries, now: number): number {
   const prefix = `cost:${localDate(now)}:`
-  return Object.entries(entries).reduce((sum, [key, v]) => (key.startsWith(prefix) ? sum + Number(v ?? 0) : sum), 0) / 1e6
+  return Object.entries(entries).reduce((sum, [key, value]) => (key.startsWith(prefix) ? sum + Number(value ?? 0) : sum), 0) / 1e6
 }
 
 // Day keys dated more than 7 days back, and last readings taken more than 7 days back
 export function staleKeys(entries: CostEntries, now: number): string[] {
   const oldest = localDate(now - 7 * DAY)
   return Object.entries(entries)
-    .filter(([key, v]) => key.startsWith('cost:') ? (key.split(':')[1] ?? '') < oldest
-      : key.startsWith('cost-last:') && ((v as Last | undefined)?.at ?? 0) < now - 7 * DAY)
+    .filter(([key, value]) => key.startsWith('cost:') ? (key.split(':')[1] ?? '') < oldest
+      : key.startsWith('cost-last:') && ((value as Last | undefined)?.at ?? 0) < now - 7 * DAY)
     .map(([key]) => key)
 }

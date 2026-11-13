@@ -125,7 +125,7 @@ const turnSpendMemory = new Map<string, number>()
 
 // One more agent of this type spawned this session
 export async function countAgentType($: EngineInterface, type: string): Promise<void> {
-  await updateMeta($, m => ({ ...m, agentTypes: { ...m.agentTypes, [type]: (m.agentTypes?.[type] ?? 0) + 1 } }))
+  await updateMeta($, session => ({ ...session, agentTypes: { ...session.agentTypes, [type]: (session.agentTypes?.[type] ?? 0) + 1 } }))
 }
 
 // The project row's place, its counts kept until the next count replaces them
@@ -135,13 +135,13 @@ export async function showPlace($: EngineInterface, place: Place): Promise<void>
 
 // The place's uncommitted lines and its distance from upstream, written only when they moved
 export async function showPlaceCounts($: EngineInterface, changes: { added: number; removed: number } | null, sync: { ahead: number; behind: number } | null): Promise<void> {
-  await updateMeta($, m => {
-    if (m.place === undefined) return m
-    const p = m.place
+  await updateMeta($, session => {
+    if (session.place === undefined) return session
+    const p = session.place
     const isSame = JSON.stringify(p.changes ?? null) === JSON.stringify(changes) && JSON.stringify(p.sync ?? null) === JSON.stringify(sync)
-    if (isSame) return m
+    if (isSame) return session
     return {
-      ...m,
+      ...session,
       place: {
         project: p.project, ...(p.folder === undefined ? {} : { folder: p.folder }), branch: p.branch,
         ...(changes === null ? {} : { changes }), ...(sync === null ? {} : { sync }),
@@ -152,42 +152,42 @@ export async function showPlaceCounts($: EngineInterface, changes: { added: numb
 
 // A rule the main context loaded by path, listed once
 export async function addPathRule($: EngineInterface, name: string): Promise<void> {
-  await updateMeta($, m => (m.pathRules?.includes(name) === true ? m : { ...m, pathRules: [...(m.pathRules ?? []), name] }))
+  await updateMeta($, session => (session.pathRules?.includes(name) === true ? session : { ...session, pathRules: [...(session.pathRules ?? []), name] }))
 }
 
 // A main-loop compaction that stands, counted
 export async function noteCompaction($: EngineInterface, at: number): Promise<void> {
-  await updateMeta($, m => ({ ...m, compactions: m.compactions + 1, lastCompactAt: at }))
+  await updateMeta($, session => ({ ...session, compactions: session.compactions + 1, lastCompactAt: at }))
 }
 
 // The model a switch moved to, before its first step names it
 export async function setModel($: EngineInterface, model: string): Promise<void> {
-  await updateMeta($, m => ({ ...m, model }))
+  await updateMeta($, session => ({ ...session, model }))
 }
 
 // A skill the main loop loaded: in its context from then on, until the conversation starts over
 export async function addLoadedSkill($: EngineInterface, name: string): Promise<void> {
-  await updateMeta($, m => ({ ...m, skills: { ...m.skills, [name]: (m.skills?.[name] ?? 0) + 1 } }))
+  await updateMeta($, session => ({ ...session, skills: { ...session.skills, [name]: (session.skills?.[name] ?? 0) + 1 } }))
 }
 
 // A settled call off the running list, and the turn's tool and failure counts moved by it
 export async function settleRunningCall($: EngineInterface, callId: string, counts: { isMain: boolean; isFirstSettle: boolean; failuresDelta: number }): Promise<void> {
-  await updateLive($, l => ({
-    ...l,
-    tools: counts.isMain && l.turnId !== null && counts.isFirstSettle ? l.tools + 1 : l.tools,
-    failures: counts.isMain && l.turnId !== null ? l.failures + counts.failuresDelta : l.failures,
-    running: l.running.filter(r => r.id !== callId),
+  await updateLive($, live => ({
+    ...live,
+    tools: counts.isMain && live.turnId !== null && counts.isFirstSettle ? live.tools + 1 : live.tools,
+    failures: counts.isMain && live.turnId !== null ? live.failures + counts.failuresDelta : live.failures,
+    running: live.running.filter(r => r.id !== callId),
   }))
 }
 
 // One more call of the main loop
 export async function countMainCall($: EngineInterface): Promise<void> {
-  await updateMeta($, m => ({ ...m, mainCalls: m.mainCalls + 1 }))
+  await updateMeta($, session => ({ ...session, mainCalls: session.mainCalls + 1 }))
 }
 
 // A main-loop call on the running list until it settles
 export async function addRunningCall($: EngineInterface, call: RunningCall): Promise<void> {
-  await updateLive($, l => ({ ...l, running: [...l.running, call] }))
+  await updateLive($, live => ({ ...live, running: [...live.running, call] }))
 }
 
 // The cost keys `keep` names, with their values; no other value is read, as the store holds 7 days of sessions
@@ -245,15 +245,15 @@ export async function writeUsageReading($: EngineInterface, reading: SessionUsag
   const at = await $.clock.now()
   if (typeof today === 'number') todayCostMemory = reading.cost === undefined ? null : { cost: reading.cost.usd, today, date: localDate(at) }
   const fresh = rateWindowsOf(reading.rateLimits)
-  await updateUsage($, u => ({
+  await updateUsage($, usage => ({
     tokens: reading.context.tokens ?? null, window: reading.context.window, percent: reading.context.percent ?? null,
-    startedAt: reading.startedAt, ...nextWindows(u, fresh, reading.context.tokens !== undefined), costUsd: reading.cost?.usd ?? null,
-    todayUsd: today === undefined ? u.todayUsd : today, at,
+    startedAt: reading.startedAt, ...nextWindows(usage, fresh, reading.context.tokens !== undefined), costUsd: reading.cost?.usd ?? null,
+    todayUsd: today === undefined ? usage.todayUsd : today, at,
   }))
 }
 
 export async function storeRateWindows($: EngineInterface, windows: RateWindow[], at: number): Promise<void> {
-  const json = JSON.stringify(windows.map(w => [w.kind, Math.round(w.percentUsed), w.resetsAt]))
+  const json = JSON.stringify(windows.map(rateWindow => [rateWindow.kind, Math.round(rateWindow.percentUsed), rateWindow.resetsAt]))
   if (windows.length === 0 || json === storedWindowsMemory.stored) return
   storedWindowsMemory.stored = json
   await $.store.set('usage:windows', { at, windows })
@@ -289,12 +289,12 @@ export const PACE_LABEL: Record<string, string> = { five_hour: '5h', seven_day: 
 // the highest of 75 and 90 that the 5h or weekly window crossed upward since its last reading, once per window.
 export async function trackPace($: EngineInterface, limits: readonly SessionRateLimit[], now: number): Promise<string[]> {
   let due: string[] = []
-  await updatePace($, p => {
+  await updatePace($, pace => {
     due = []
-    const out = { ...p }
+    const out = { ...pace }
     for (const w of limits) {
       const resetsAt = w.resetsAt ?? null
-      const prev = p[w.kind]
+      const prev = pace[w.kind]
       const same = prev !== undefined && prev.resetsAt === resetsAt
       const points = same ? prev.points : []
       const toasted = same ? prev.toasted : []
@@ -331,7 +331,7 @@ export async function endMainTurn($: EngineInterface, turnId: string, durationMs
     }
     return [...list, turn].slice(-50)
   })
-  await updateMeta($, m => ({ ...m, lastReplyAt: now, turnCount: m.turnCount + 1 }))
+  await updateMeta($, session => ({ ...session, lastReplyAt: now, turnCount: session.turnCount + 1 }))
   await resetLive($)
   if (reading.cost !== undefined) await recordCost($, await $.session.id(), reading.cost.usd, now)
   await refreshUsage($, reading.cost !== undefined ? await readTodayUsd($, now) : undefined)
@@ -353,9 +353,9 @@ export async function trackTurnStart($: EngineInterface, e: HookInput<'turn.star
     const waiting = (await readMeta($)).waiting
     const promptAt = waiting.find(w => w.key === key)?.at ?? null
     if (promptAt !== null) {
-      await updateMeta($, m => {
-        const i = m.waiting.findIndex(w => w.key === key)
-        return { ...m, lastPromptAt: promptAt, waiting: i < 0 ? m.waiting : m.waiting.slice(i + 1) }
+      await updateMeta($, session => {
+        const i = session.waiting.findIndex(w => w.key === key)
+        return { ...session, lastPromptAt: promptAt, waiting: i < 0 ? session.waiting : session.waiting.slice(i + 1) }
       })
     }
     await updateLive($, () => ({ turnId: e.turnId, startedAt, tools: 0, failures: 0, running: [], promptAt }))
@@ -388,11 +388,11 @@ export async function* trackTurnStep($: EngineInterface, e: HookInput<'turn.step
   }
   const step = yield* next(e)
   try {
-    await updateMeta($, m => ({ ...m, model: e.model, effort: e.effort === undefined ? m.effort : String(e.effort) }))
+    await updateMeta($, session => ({ ...session, model: e.model, effort: e.effort === undefined ? session.effort : String(e.effort) }))
     const output = step.usage?.output_tokens
     if (output !== undefined && startedAt !== null) {
       const ms = (await $.clock.now()) - startedAt
-      await updateTotals($, t => ({ ...t, stepOutput: t.stepOutput + output, stepMs: t.stepMs + ms }))
+      await updateTotals($, totals => ({ ...totals, stepOutput: totals.stepOutput + output, stepMs: totals.stepMs + ms }))
     }
     const u = step.usage
     const at = startedAt
@@ -416,25 +416,25 @@ export async function trackTurnEnd($: EngineInterface, e: HookInput<'turn.comple
   await closeLoopSlices($, pending, [e.agentId ?? 'main'], await $.clock.now(), false)
   if (e.agentId !== undefined && !(await readAgents($)).some(r => r.id === e.agentId)) {
     const id = e.agentId
-    if ((await readLoops($)).some(l => l.id === id)) await finishLoop($, id)
+    if ((await readLoops($)).some(loop => loop.id === id)) await finishLoop($, id)
     return done
   }
   if (e.agentId !== undefined) {
     const now = await $.clock.now()
     const reason = e.reason
     const answer = e.answer
-    await updateAgentRow($, e.agentId, r => ({
-      ...r, status: statusAt(reason, r.isTeammate), endedAt: now, report: answer === '' ? r.report : answer.slice(0, 4000),
+    await updateAgentRow($, e.agentId, row => ({
+      ...row, status: statusAt(reason, row.isTeammate), endedAt: now, report: answer === '' ? row.report : answer.slice(0, 4000),
     }))
   }
   const u = e.usage
   if (u !== undefined) {
-    await updateTotals($, t => ({
-      ...t,
-      input: t.input + u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens,
-      output: t.output + u.output_tokens,
-      cacheRead: t.cacheRead + u.cache_read_input_tokens,
-      cacheWrite: t.cacheWrite + u.cache_creation_input_tokens,
+    await updateTotals($, totals => ({
+      ...totals,
+      input: totals.input + u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens,
+      output: totals.output + u.output_tokens,
+      cacheRead: totals.cacheRead + u.cache_read_input_tokens,
+      cacheWrite: totals.cacheWrite + u.cache_creation_input_tokens,
     }))
   }
   if (e.agentId === undefined) {
@@ -451,11 +451,11 @@ export async function trackMeasure($: EngineInterface, e: HookInput<'session.mea
   const measured = await next(e)
   const at = await $.clock.now()
   const fresh = rateWindowsOf(e.rateLimits)
-  await updateUsage($, u => {
-    const { windowsAt: _stored, ...rest } = u
+  await updateUsage($, usage => {
+    const { windowsAt: _stored, ...rest } = usage
     return {
       ...rest, tokens: e.context.tokens ?? null, window: e.context.window, percent: e.context.percent ?? null,
-      ...nextWindows(u, fresh, e.context.tokens !== undefined), costUsd: e.cost?.usd ?? u.costUsd, at,
+      ...nextWindows(usage, fresh, e.context.tokens !== undefined), costUsd: e.cost?.usd ?? usage.costUsd, at,
     }
   })
   await storeRateWindows($, fresh, at)
@@ -477,10 +477,10 @@ export async function trackPrompt($: EngineInterface, e: HookInput<'prompt.submi
   const entered = await next(note === null ? e : { ...e, context: [...(e.context ?? []), note] })
   const settled = entered.drop === undefined ? fingerprint(entered.text) : null
   if (settled !== key) {
-    await updateMeta($, m => ({
-      ...m,
-      waiting: settled === null ? m.waiting.filter(w => w.at !== at || w.key !== key)
-        : m.waiting.map(w => (w.at === at && w.key === key ? { at, key: settled } : w)),
+    await updateMeta($, session => ({
+      ...session,
+      waiting: settled === null ? session.waiting.filter(w => w.at !== at || w.key !== key)
+        : session.waiting.map(w => (w.at === at && w.key === key ? { at, key: settled } : w)),
     }))
   }
   return entered
@@ -496,7 +496,7 @@ export async function readModelAndVersion($: EngineInterface): Promise<void> {
   }
   try {
     const engine = await $.session.version()
-    await updateMeta($, m => ({ ...m, version: engine.version }))
+    await updateMeta($, session => ({ ...session, version: engine.version }))
   } catch {
     // No version item
   }
@@ -505,7 +505,7 @@ export async function readModelAndVersion($: EngineInterface): Promise<void> {
 // A rate window whose reset has passed, dropped
 export async function dropPassedWindows($: EngineInterface, now: number): Promise<void> {
   const u = await readUsage($)
-  if (dropPassed(u, now) !== null) await updateUsage($, x => dropPassed(x, now) ?? x)
+  if (dropPassed(u, now) !== null) await updateUsage($, usage => dropPassed(usage, now) ?? usage)
 }
 
 // Past local midnight, today's cost is the new date's
@@ -544,5 +544,5 @@ export function forgetTurnSpend(): void {
 
 // The conversation was resumed, not started
 export async function markResumed($: EngineInterface): Promise<void> {
-  await updateMeta($, m => ({ ...m, isResumed: true }))
+  await updateMeta($, session => ({ ...session, isResumed: true }))
 }
