@@ -1,7 +1,5 @@
-import type { EngineInterface } from 'claude-code'
-
 import { compile, maskHits, maskText } from './rec'
-import { printable, setMasker } from '../core/format'
+import { setMasker } from '../core/format'
 import type { Compiled, Hit, Level } from './types'
 
 // REC's level, words and compiled classes live here in module memory, which /clear does not reset; the `rec` atom
@@ -66,11 +64,3 @@ export function maskForFile(text: string): string {
 }
 
 setMasker(mask)
-
-// Every toast of the mod goes through here, so it is filtered and masked like any drawn string: a toast can carry
-// text read from a file. `timeoutMs` keeps it up longer than the default 4 s.
-export function toast($: EngineInterface, text: string, timeoutMs?: number): void {
-  const shown = mask(printable(text))
-  if (timeoutMs === undefined) $.ui.toast(shown)
-  else $.ui.toast(shown, { timeoutMs })
-}

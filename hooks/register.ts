@@ -5,7 +5,7 @@ import type {
   EngineInterface, Register, SessionContextBreakdown, SessionRateLimit, SessionUsage, Timer, TurnStepInput, TurnStepResult, UiOpenResult,
 } from 'claude-code'
 
-import { actionOf, addLoopStep, agentTree, isLive, newRow, refreshAgents, statusAt, upsertSpawn } from './agents/agents'
+import { actionOf, addLoopStep, isLive, newRow, refreshAgents, statusAt, upsertSpawn } from './agents/agents'
 import { spinnerSuffix } from './band/working'
 import { bandLines, statusText, underRows } from './band/band'
 import { addRequest, afterCompact, billingOf, cacheView, idleOf, minutes, needsTick, pinOf, takeRate, takeSwitch, toastAt } from './cache/cache'
@@ -13,15 +13,15 @@ import { baseCost, pruneCost, recordCost, todayUsd } from './session/cost'
 import { drawLines, drawNote, drawUnder, drawUnderNote, drawWithInput } from './core/draw'
 import { localDate } from './core/forecast'
 import { REC_HIDDEN, SPINNER_WORD, bandFailed, paneFailed } from './core/failsafe'
-import { NO_PARTS, linkedRules, partsOf, ruleName } from './context/parts'
+import { linkedRules, partsOf, ruleName } from './context/parts'
 import { clock, fingerprint, mins, oneLine, printable, tokens, usd, when } from './core/format'
-import { mask, maskForFile, maskSpans, recLevel, setRec, toast } from './rec/mask'
+import { mask, maskForFile, maskSpans, recLevel, setRec } from './rec/mask'
 import { maskDeep, maskDialog, maskResult, neutralDialog, resultLines } from './rec/sites'
 import { DROPS_RESULT, callLine, groupLines } from './tools/compact'
 import { aheadBehind, numstatTotals, textLines, untrackedNames } from './place/changes'
 import { FOREIGN, HANDOFF_PATH, HANDOFF_USAGE, MARKER, MODES, RESUME_PROMPT, TOASTS, gitPart, handoffText, nextStep, parseStatus, percentOf, statusPath, stepUnder, stepsOf, windowThreshold } from './handoff/handoff'
 import { NO_FILE, STACK_TOASTS, UNREADABLE, bannerSegs, fillReady, fillToast, parseStack, runwayOf } from './stack/stack'
-import { creditedPlan, isFinishedStep, isPlanDone, parsePlan, parseScores, planView, runs, scoresView, shownPlan, taskView, tasksAfter } from './plan/plan'
+import { creditedPlan, isPlanDone, parsePlan, parseScores, planView, runs, scoresView, shownPlan, taskView, tasksAfter } from './plan/plan'
 import { PLANS_DIR, SCORES_DIR, readFolder, readPlanFolder } from './plan/planfiles'
 import { parseAlfredScoring, parseAlfredStatus } from './plan/alfredplan'
 import { planLines, scoresLabel } from './plan/planlines'
@@ -43,21 +43,23 @@ import { noteMem, readRec, recMem, resetRec, updateRec } from './rec/effects'
 import { bandMem, readBandSetting, statusMem, updateBandSetting } from './band/effects'
 import { partsMem, readParts, resetParts, updateParts } from './context/effects'
 import { readView, resetView, updateView } from './inspect/effects'
-import type { AgentRow, Loop } from './agents/types'
+import type { AgentRow } from './agents/types'
 import type { BandInput, BandMode, BandSetting } from './band/types'
 import type { Cache, CacheConfig } from './cache/types'
 import type { Handoff, HandoffView, PlanPart, SaveBy, SaveInput, SaveResult, ScoresPart } from './handoff/types'
-import type { Tab, View } from './inspect/types'
-import type { Close, Credit, Plan, PlanChange, PlanDraw, PlanView, Plans, Scores, ScoresView, TaskItem, Watched } from './plan/types'
-import type { Level, RecState } from './rec/types'
-import type { Live, Meta, Pace, Totals, Turn, Usage, Window } from './session/types'
+import type { Tab } from './inspect/types'
+import type { Close, Credit, Plan, PlanChange, PlanDraw, PlanView, Plans, Scores, TaskItem, Watched } from './plan/types'
+import type { RecState } from './rec/types'
+import type { Meta, Turn, Usage, Window } from './session/types'
 import type { Field, From, Resolved, Source, Values } from './settings/types'
 import type { Runway, Stack } from './stack/types'
-import type { Call, CallFacts, CompactCall, Failure, Outcome, Quiet, ToolStat } from './tools/types'
+import type { Call, CallFacts, CompactCall, Failure, Outcome, ToolStat } from './tools/types'
 import type { Held } from './core/types'
 import { changesMem, placeMem, rowsMem } from './place/effects'
 import { settingsMem, settingsNow } from './settings/effects'
 import { conversationMem, tickMem } from './lifecycle/effects'
+import { keepLast } from './core/collections'
+import { closePane, isNoColor, readText, toast } from './core/effects'
 
 
 
@@ -115,13 +117,6 @@ async function addRow($: EngineInterface, id: string, call: Call, outcome: Exclu
     call.rowId = out[out.length - 1]?.id ?? null
     return out
   })
-}
-
-function keepLast<K>(items: Map<K, unknown> | Set<K>, limit = 500): void {
-  for (const k of items.keys()) {
-    if (items.size <= limit) return
-    items.delete(k)
-  }
 }
 
 function mark(ids: string[]): void {
@@ -229,14 +224,6 @@ async function seedWindows($: EngineInterface): Promise<void> {
   if ((await readUsage($)).windows.length > 0) return
   const stored = storedWindows(await $.store.get('usage:windows'), await $.clock.now())
   if (stored !== null) await updateUsage($, u => ({ ...u, windows: stored.windows, windowsAt: stored.at }))
-}
-
-async function readText($: EngineInterface, path: string): Promise<string | null> {
-  try {
-    return await $.fs.read(path)
-  } catch {
-    return null
-  }
 }
 
 const joinPath = (dir: string, name: string): string => (/[\\/]$/.test(dir) ? `${dir}${name}` : `${dir}/${name}`)
@@ -910,14 +897,6 @@ async function openInspect($: EngineInterface, tab: Tab): Promise<UiOpenResult> 
     await updateFailures($, list => (list.some(f => f.isNew) ? list.map(f => ({ ...f, isNew: false })) : list))
   }
   return opened
-}
-
-// '/inspect close' and '/rec words close': a pane closes from the prompt, as the main screen takes no click on its mark
-async function closePane($: EngineInterface, id: 'inspect' | 'rec', name: string): Promise<string> {
-  const panes = await $.ui.panes().catch(() => [])
-  if (!panes.some(p => p.id === id)) return `The ${name} is not open.`
-  await $.ui.close({ id })
-  return `Closed the ${name}.`
 }
 
 // The commands for what a click or a key does in the pane (the user, 2026-11-12: in iTerm's main screen, with tabs,
@@ -1641,10 +1620,6 @@ function forecastOf(h: Handoff, u: Usage, runway: Runway | null): { at: number; 
   return { at: h.point !== null && u.window !== null ? windowThreshold(h.threshold, h.point, u.window) : h.threshold, label: `${h.threshold}%` }
 }
 
-
-async function isNoColor($: EngineInterface): Promise<boolean> {
-  return ((await $.env.get('NO_COLOR')) ?? '') !== ''
-}
 
 export const register: Register = (on, options) => {
   // The person's word that a managed plugin sends these events on past the mod: Claude Code then tells the model, once
