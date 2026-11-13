@@ -30,3 +30,10 @@ export const handoffMem = {
   // The reads of the compaction point that gave no breakdown, for one model and window
   pointMiss: { key: null as string | null, count: 0 },
 }
+
+// After a compaction that stands
+export async function rearmAfterCompaction($: EngineInterface): Promise<void> {
+  // F8's next reading sets the handled step to the highest at or under it, so a compaction under the threshold re-arms
+  handoffMem.rearm = true
+  await updateHandoff($, h => (h.isAskUp ? { ...h, isAskUp: false } : h))
+}

@@ -4,6 +4,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 import type { Level, RecState } from './types'
+import { recLevel } from './mask'
 
 const INITIAL_REC: RecState = { level: 'off', count: 0, note: null }
 const recAtom = atom({ plugin: 'alfred-mods', key: 'rec' } as const, INITIAL_REC, { shape: 'rec-1' })
@@ -24,3 +25,8 @@ export const noteMem = { told: 'off' as Level }
 // REC's private words and the home folder, in module memory only: never in $.state, a log or a file
 // `compiled` names the level, words and home mask.ts holds, which a reload starts over at off
 export const recMem = { words: [] as string[], home: null as string | null, compiled: JSON.stringify(['off', [], null]) }
+
+// A compaction can drop REC's note from the history, so the next prompt carries it again
+export function retellRecNote(): void {
+  if (recLevel() !== 'off') noteMem.told = 'off'
+}

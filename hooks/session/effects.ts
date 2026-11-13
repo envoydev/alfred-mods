@@ -137,3 +137,13 @@ export async function showPlaceCounts($: EngineInterface, changes: { added: numb
 export async function addPathRule($: EngineInterface, name: string): Promise<void> {
   await updateMeta($, m => (m.pathRules?.includes(name) === true ? m : { ...m, pathRules: [...(m.pathRules ?? []), name] }))
 }
+
+// A main-loop compaction that stands, counted
+export async function noteCompaction($: EngineInterface, at: number): Promise<void> {
+  await updateMeta($, m => ({ ...m, compactions: m.compactions + 1, lastCompactAt: at }))
+}
+
+// The model a switch moved to, before its first step names it
+export async function setModel($: EngineInterface, model: string): Promise<void> {
+  await updateMeta($, m => ({ ...m, model }))
+}

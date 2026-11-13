@@ -8,7 +8,7 @@ import type {
 import { actionOf, isLive, markOf, refreshAgents, statusAt } from './agents/agents'
 import { spinnerSuffix } from './band/working'
 import { bandLines, underRows } from './band/band'
-import { addRequest, afterCompact, billingOf, cacheView, idleOf, minutes, needsTick, pinOf, takeRate, takeSwitch, toastAt } from './cache/cache'
+import { addRequest, billingOf, needsTick, takeRate } from './cache/cache'
 import { baseCost, pruneCost, recordCost, todayUsd } from './session/cost'
 import { drawLines, drawNote, drawUnder, drawUnderNote, drawWithInput } from './core/draw'
 import { localDate } from './core/forecast'
@@ -30,7 +30,7 @@ import { dropPassed, nextWindows, storedWindows } from './session/windows'
 import { compactMem, errorMem, errorRows, modeMem, readBlockers, readFailures, readQuiet, readStats, resetBlockers, resetFailures, resetQuiet, resetStats, updateBlockers, updateFailures, updateQuiet, updateStats } from './tools/effects'
 import { FRESH_EVERY_MS, freshMem, readLive, readMeta, readPace, readTick, readTotals, readTurns, readUsage, resetLive, resetMeta, resetPace, resetTotals, resetTurns, resetUsage, spendMem, updateLive, updateMeta, updatePace, updateTick, updateTotals, updateTurns, updateUsage, windowsMem } from './session/effects'
 import { agentStep, isCounted, readAgents, readLoops, resetAgents, resetLoops, trackSpawn, updateAgents, updateLoops, updateRow } from './agents/effects'
-import { readCache, resetCache, updateCache } from './cache/effects'
+import { afterModelSwitch, armCacheClose, beforeModelSwitch, compactNow, followCompaction, readCache, readCacheConfig, resetCache, updateCache } from './cache/effects'
 import { addMark, addWait, closeLoops, drawnPlan, openSlice, planDraw, queueReload, readPlans, readTasks, resetCredit, resetPlans, resetTasks, scheduleReload, seedMine, storedTimes, updateCredit, updatePlans, updateTasks } from './plan/effects'
 import { INITIAL_STACK, readStack, resetStack, stackMem, updateStack } from './stack/effects'
 import { handoffMem, readHandoff, resetHandoff, updateHandoff } from './handoff/effects'
@@ -39,7 +39,6 @@ import { bandMem, isPassingAbove, loadBand, readBandSetting, statusMem, syncStat
 import { noteLoadedRule, partsMem, readBreakdown, readBreakdownSoon, readParts, resetParts } from './context/effects'
 import { readView, resetView, updateView } from './inspect/effects'
 import type { BandInput } from './band/types'
-import type { Cache, CacheConfig } from './cache/types'
 import type { Handoff, HandoffView, PlanPart, SaveBy, SaveInput, SaveResult, ScoresPart } from './handoff/types'
 import type { Tab } from './inspect/types'
 import type { Plans } from './plan/types'
@@ -286,55 +285,6 @@ async function tickOnce($: EngineInterface): Promise<void> {
   await syncStatus($)
 }
 
-// The variables and settings that pin the cache's tier or turn idle compaction off, written only on a change
-async function readCacheConfig($: EngineInterface, held: Held): Promise<void> {
-  const config: CacheConfig = {
-    pin: pinOf({
-      force5m: await $.env.get('FORCE_PROMPT_CACHING_5M'),
-      ttl: await $.env.get('CLAUDE_CODE_PROMPT_CACHE_TTL'),
-      setting: await $.settings.read({ key: 'promptCacheTtl' }),
-      enable1h: await $.env.get('ENABLE_PROMPT_CACHING_1H'),
-    }),
-    ...idleOf({
-      idleCompaction: await $.settings.read({ key: 'idleCompaction' }),
-      autoCompactEnabled: await $.settings.read({ key: 'autoCompactEnabled' }),
-      disableAutoCompact: await $.env.get('DISABLE_AUTO_COMPACT'),
-      minTokens: await $.env.get('CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS'),
-    }),
-    isTerminal: held.isTerminal,
-  }
-  if (JSON.stringify((await readCache($)).config) !== JSON.stringify(config)) await updateCache($, c => ({ ...c, config }))
-}
-
-// Sets the toast's timer afresh: due 5 minutes before a 1h cache goes cold, or 3 where Claude Code should compact it
-// itself first
-async function armCacheClose($: EngineInterface, held: Held): Promise<void> {
-  held.close?.cancel()
-  held.close = null
-  const c = await readCache($)
-  const u = await readUsage($)
-  const at = toastAt(c, billingOf(u.windows), u.tokens)
-  if (at === null) return
-  const now = await $.clock.now()
-  held.close = $.clock.after(Math.max(0, at - now), () => {
-    cacheClose($).catch(() => undefined)
-  })
-}
-
-// The toast, once per warm stretch, while the main loop is idle and the cache is still 1h and warm by then; a
-// compaction of Claude Code's own has made it cold
-async function cacheClose($: EngineInterface): Promise<void> {
-  const c = await readCache($)
-  const u = await readUsage($)
-  const v = cacheView(c, billingOf(u.windows), await $.clock.now(), u.tokens)
-  if (v.tier.tier !== '1h' || !v.isClosing || c.toastedFor === c.lastAt) return
-  if ((await readLive($)).turnId !== null) return
-  const rewrite = v.rewriteUsd === null ? '' : ` (rewrite ≈ ${usd(v.rewriteUsd)})`
-  toast($, `Cache cold in ${v.tier.isEstimate ? '≈' : ''}${minutes(v.leftMs ?? 0)}${rewrite}: press 3 to compact, or /inspect cache`)
-  const lastAt = c.lastAt
-  await updateCache($, x => ({ ...x, toastedFor: lastAt }))
-}
-
 async function resetAll($: EngineInterface): Promise<void> {
   spendMem.clear()
   await resetStats($)
@@ -519,41 +469,6 @@ async function toggleShown($: EngineInterface, id: string): Promise<void> {
 }
 
 const TABS: Tab[] = ['now', 'usage', 'agents', 'tools', 'cache', 'timeline', 'plan']
-
-// A main-loop compaction that stands: counted, and the cache cold, as its cached prefix is gone; a compaction can drop
-// REC's note from the history, so the next prompt carries it again
-async function countCompaction($: EngineInterface, held: Held): Promise<void> {
-  held.counted++
-  if (recLevel() !== 'off') noteMem.told = 'off'
-  // F8's next reading sets the handled step to the highest at or under it, so a compaction under the threshold re-arms
-  handoffMem.rearm = true
-  await updateHandoff($, h => (h.isAskUp ? { ...h, isAskUp: false } : h))
-  const at = await $.clock.now()
-  await updateMeta($, m => ({ ...m, compactions: m.compactions + 1, lastCompactAt: at }))
-  await updateCache($, afterCompact)
-  await armCacheClose($, held)
-}
-
-// [Compact]: the call comes first, so the press counts as the person's. The compaction is counted once: by the mod's
-// own session.compact hook when the call passes through it, else here, as a host may skip the calling plugin whole.
-// A skip or a failure is said, and a second press while one runs starts none.
-async function compactNow($: EngineInterface, held: Held): Promise<void> {
-  if (held.compacting) {
-    toast($, 'Compact is already running.')
-    return
-  }
-  held.compacting = true
-  const seen = held.counted
-  try {
-    const done = await $.session.compact()
-    if (done.skip !== undefined) toast($, `Compact skipped: ${done.skip}`)
-    else if (held.counted === seen) await countCompaction($, held)
-  } catch (err) {
-    toast($, `Compact did not run: ${err instanceof Error ? err.message : String(err)}`)
-  } finally {
-    held.compacting = false
-  }
-}
 
 function keepError(id: string, text: string): void {
   errorMem.delete(id)
@@ -1519,39 +1434,13 @@ export const register: Register = (on, options) => {
     return measured
   }).catch(($, e, next) => next(e))
 
-  on('session.compact', async ($, e, next) => {
-    const compacted = await next(e)
-    if (e.agentId === undefined && e.trigger !== 'precompute' && compacted.skip === undefined) {
-      await countCompaction($, held)
-      readBreakdownSoon($)
-    }
-    return compacted
-  }).catch(($, e, next) => next(e))
+  on('session.compact', ($, e, next) => followCompaction($, e, next, held)).catch(($, e, next) => next(e))
 
   // A switch forfeits the cache; its report gives the tier under the billing now and prices the rewrite
-  on('classic.PostModelSwitch', async ($, e, next) => {
-    const done = await next(e)
-    // The band names the model before the first step does (the review, 2026-11-11)
-    await updateMeta($, m => ({ ...m, model: e.to_model }))
-    const billing = billingOf((await readUsage($)).windows)
-    const now = await $.clock.now()
-    const s = { ttl: e.cache_ttl, contextTokens: e.context_tokens, usd: e.estimated_cache_write_usd, model: e.to_model, billing }
-    await updateCache($, c => takeSwitch(c, s, now, true))
-    await armCacheClose($, held)
-    return done
-  }).catch(($, e, next) => next(e))
+  on('classic.PostModelSwitch', ($, e, next) => afterModelSwitch($, e, next, held)).catch(($, e, next) => next(e))
 
   // Claude Code may still ask to confirm the switch, so the cache stays warm; a switch a hook stops reports nothing
-  on('classic.PreModelSwitch', async ($, e, next) => {
-    const done = await next(e)
-    if (done.block !== undefined || done.permissionDecision === 'deny' || done.permissionDecision === 'ask') return done
-    const billing = billingOf((await readUsage($)).windows)
-    const now = await $.clock.now()
-    const s = { ttl: e.cache_ttl, contextTokens: e.context_tokens, usd: e.estimated_cache_write_usd, model: e.to_model, billing }
-    await updateCache($, c => takeSwitch(c, s, now, false))
-    await armCacheClose($, held)
-    return done
-  }).catch(($, e, next) => next(e))
+  on('classic.PreModelSwitch', ($, e, next) => beforeModelSwitch($, e, next, held)).catch(($, e, next) => next(e))
 
   // '/inspect [tab]': opens the pane, never on its own. '/inspect plan <name>' pins that plan; 'plan' alone clears it.
   on('command.run', { command: 'inspect' }, async ($, e) => {
