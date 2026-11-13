@@ -84,20 +84,20 @@ export const PARTS_LABEL = 12
 const LABEL = PARTS_LABEL
 
 // The Usage tab's rows after Tokens; none before a breakdown
-export function partsLines(p: Parts): Line[] {
-  if (p.at === null) return []
+export function partsLines(parts: Parts): Line[] {
+  if (parts.at === null) return []
   const out: Line[] = []
-  const used = p.categories.map(c => `${c.name} ${tokensText(c.tokens)}`)
-  out.push([{ text: 'In context', width: LABEL }, { text: [`est. ${clockText(p.at)}`, ...used].join(' · ') }])
-  if (p.plugins.length > 0) {
-    const named = p.plugins.map(x => {
+  const used = parts.categories.map(c => `${c.name} ${tokensText(c.tokens)}`)
+  out.push([{ text: 'In context', width: LABEL }, { text: [`est. ${clockText(parts.at)}`, ...used].join(' · ') }])
+  if (parts.plugins.length > 0) {
+    const named = parts.plugins.map(x => {
       const what = [x.agents > 0 ? `${x.agents} agents` : null, x.skills > 0 ? `${x.skills} skills` : null].filter((s): s is string => s !== null)
       return `${x.name} ${tokensText(x.agentTokens + x.skillTokens)}: ${what.join(', ')}`
     })
     out.push([{ text: 'Plugins', width: LABEL }, { text: named.join(' · ') }])
   }
-  if (p.memory.files > 0) {
-    const m = p.memory
+  if (parts.memory.files > 0) {
+    const m = parts.memory
     const rest = m.files - m.top.length
     const shown = [`${m.files} ${m.files === 1 ? 'file' : 'files'} ${tokensText(m.tokens)}`, ...m.top.map(t => `${t.name} ${tokensText(t.tokens)}`), ...(rest > 0 ? [`+${rest}`] : [])]
     out.push([{ text: 'Memory', width: LABEL }, { text: shown.join(' · ') }])
