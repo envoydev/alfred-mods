@@ -42,7 +42,7 @@ export async function readStartFacts($: EngineInterface): Promise<void> {
 // clocks on screen redraw while anything runs, and the clocks redraw once a minute while the band is full
 export async function runTick($: EngineInterface): Promise<void> {
   const rows = await readAgents($)
-  const anyLive = rows.some(r => isLive(r.status))
+  const anyLive = rows.some(row => isLive(row.status))
   const now = await $.clock.now()
   if (anyLive) await refreshLiveAgents($, rows, now)
   await dropPassedWindows($, now)
