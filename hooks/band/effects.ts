@@ -54,10 +54,10 @@ const statusLineMemory = { last: null as string | undefined | null }
 const bandMemory = { isShown: false, isUnder: false, columns: null as number | null, hasFooter: false, hasStatusLine: false }
 
 export async function syncStatusLine($: EngineInterface): Promise<void> {
-  const u = await readUsage($)
-  const runway = runwayOf(await readStack($), u, (await readMeta($)).model)
+  const usage = await readUsage($)
+  const runway = runwayOf(await readStack($), usage, (await readMeta($)).model)
   const raw = statusText({
-    percent: runway?.percent ?? u.percent, newFailures: (await readFailures($)).filter(f => f.isNew).length,
+    percent: runway?.percent ?? usage.percent, newFailures: (await readFailures($)).filter(failure => failure.isNew).length,
     recLevel: (await readRec($)).level, isBandShown: bandMemory.isShown,
   })
   const text = raw === null ? undefined : mask(raw)
@@ -68,14 +68,14 @@ export async function syncStatusLine($: EngineInterface): Promise<void> {
 
 // "band", "bandRows" and "bandPlace" into the band's setting
 export async function applyBandSetting($: EngineInterface): Promise<BandMode> {
-  const v = settingsInForce()
-  const mode: BandMode = v.band
-  const isOpen = v.bandRows
-  const isUnder = v.bandPlace === 'under'
+  const values = settingsInForce()
+  const mode: BandMode = values.band
+  const isOpen = values.bandRows
+  const isUnder = values.bandPlace === 'under'
   bandMemory.isUnder = isUnder
   const next: BandSetting = { mode, ...(isOpen ? { isToolsOpen: true } : {}), ...(isUnder ? { isUnder: true } : {}) }
-  await updateBandSetting($, b =>
-    (b.mode === mode && (b.isToolsOpen === true) === isOpen && (b.isUnder === true) === isUnder ? b : next))
+  await updateBandSetting($, setting =>
+    (setting.mode === mode && (setting.isToolsOpen === true) === isOpen && (setting.isUnder === true) === isUnder ? setting : next))
   return mode
 }
 
@@ -90,23 +90,23 @@ export async function readBandInput(
   // Read so the running times redraw each second while a turn runs
   await readTick($)
   const now = await $.clock.now()
-  const d = await readPlanDrawing($, now)
+  const drawing = await readPlanDrawing($, now)
   const u = await readUsage($)
   const h = await readHandoff($)
   const st = await readStack($)
   const m = await readMeta($)
   const runway = runwayOf(st, u, m.model)
   const setting = await readBandSetting($)
-  const p = await readParts($)
+  const parts = await readParts($)
   return {
     now, columns: at.columns, ...(at.maxRows === undefined ? {} : { maxRows: at.maxRows }), isWorking: at.isWorking,
     live: await readLive($), usage: u, session: m, turns: await readTurns($),
-    newFailures: (await readFailures($)).filter(f => f.isNew).length, pace: await readPace($), agents: await readAgents($),
-    cache: await readCache($), plan: d.band, isPlanInvalid: d.invalid, score: d.score, isPlanScore: d.isPlanScore, scoreLevel: await readScoreLevel($), rec: recSummary(await readRec($)),
+    newFailures: (await readFailures($)).filter(failure => failure.isNew).length, pace: await readPace($), agents: await readAgents($),
+    cache: await readCache($), plan: drawing.band, isPlanInvalid: drawing.invalid, score: drawing.score, isPlanScore: drawing.isPlanScore, scoreLevel: await readScoreLevel($), rec: recSummary(await readRec($)),
     forecast: forecastTargetOf(h, u, runway), handoffAskStep: h.isAskUp ? h.handled : null, runway, banner: bannerSegs(st),
     mode: setting.mode, totals: await readTotals($), stats: await readStats($),
-    isToolsOpen: setting.isToolsOpen === true, skillListing: p.skills ?? null,
-    rules: { always: p.rules ?? [], byPath: m.pathRules ?? [], isTracked: !at.isLeftOut },
+    isToolsOpen: setting.isToolsOpen === true, skillListing: parts.skills ?? null,
+    rules: { always: parts.rules ?? [], byPath: m.pathRules ?? [], isTracked: !at.isLeftOut },
     ...(at.under === undefined ? {} : { under: at.under }),
   }
 }
@@ -139,16 +139,16 @@ export async function drawBandAbove($: EngineInterface, e: MatchedInput<'ui.rend
 
 export async function drawBandUnder($: EngineInterface, e: MatchedInput<'ui.render', { component: 'PromptHint' }>, next: MatchedNext<'ui.render', { component: 'PromptHint' }>, pending: Pending, isLeftOut: boolean) {
   const setting = await readBandSetting($)
-  const v = e.viewport
-  if (setting.isUnder !== true || e.surface !== 'terminal' || v === undefined) return next(e)
+  const viewport = e.viewport
+  if (setting.isUnder !== true || e.surface !== 'terminal' || viewport === undefined) return next(e)
   if (!bandMemory.hasFooter) {
     bandMemory.hasFooter = true
     $.ui.invalidate('ui.render')
   }
-  const columns = Math.min(v.columns - 5, bandMemory.columns ?? Infinity)
+  const columns = Math.min(viewport.columns - 5, bandMemory.columns ?? Infinity)
   const isPinned = typeof statusLineMemory.last === 'string' && statusLineMemory.last !== ''
-  const maxRows = underRows(v, { hasStatusLine: bandMemory.hasStatusLine, isPinned })
-  const under = { buttons: v.isFullscreen === true ? 'click' as const : 'text' as const }
+  const maxRows = underRows(viewport, { hasStatusLine: bandMemory.hasStatusLine, isPinned })
+  const under = { buttons: viewport.isFullscreen === true ? 'click' as const : 'text' as const }
   const lines = bandLines(await readBandInput($, { columns, maxRows, isWorking: e.props.isWorking, under, isLeftOut }))
   bandMemory.isShown = lines.length > 0
   const beneath = await next(e)

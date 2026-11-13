@@ -23,10 +23,10 @@ function fitFolder(folder: string, max: number): string {
 const lastPart = (folder: string): string => (folder.includes('/') ? `…/${folder.split('/').pop() ?? ''}` : folder)
 
 // The full band's plan row, under the project row (the user, 2026-11-11): none in calm mode or with no plan
-export function planRow(b: BandInput): Line[] {
-  if (b.mode !== 'full' || b.plan === null) return []
-  const score: Line = b.score === null || b.isPlanScore === false ? [] : [{ text: ' · ' }, ...scoreSeg(b.score, b.scoreLevel ?? null)]
-  return [[{ text: 'plan:'.padEnd(ROW_LABEL), tone: 'dim' }, ...planRowParts(b.plan, b.columns - ROW_LABEL, score)]]
+export function planRow(input: BandInput): Line[] {
+  if (input.mode !== 'full' || input.plan === null) return []
+  const score: Line = input.score === null || input.isPlanScore === false ? [] : [{ text: ' · ' }, ...scoreSeg(input.score, input.scoreLevel ?? null)]
+  return [[{ text: 'plan:'.padEnd(ROW_LABEL), tone: 'dim' }, ...planRowParts(input.plan, input.columns - ROW_LABEL, score)]]
 }
 
 const dimSeg = (text: string): Seg => ({ text, tone: 'dim' })
@@ -34,8 +34,8 @@ const dimSeg = (text: string): Seg => ({ text, tone: 'dim' })
 // The project row (the user, 2026-11-11): 'project: my-app │ git:(develop) +12 −3 │ folder: .claude' - the session's
 // project, the branch of the repository holding the folder Claude works in, and that folder when it is not the
 // project's root, past 40 cells its last parts after '…/'; short of width the folder takes its last part, then goes
-export function placeRow(b: BandInput): Line[] {
-  const place = b.session.place
+export function placeRow(input: BandInput): Line[] {
+  const place = input.session.place
   if (place === undefined) return []
   const sep = dimSeg(ROW_JOIN)
   // The uncommitted changes after the branch, added in the OK colour and removed in the failure one; none when clean
@@ -60,16 +60,16 @@ export function placeRow(b: BandInput): Line[] {
   const folder = place.folder
   // Short of width the folder goes first, then the changes, then the commits ahead and behind
   const forms = [...(folder === undefined ? [] : [line(fitFolder(folder, 40)), line(lastPart(folder))]), line(null), line(null, false), line(null, false, false)]
-  const form = forms.find(f => widthOf(f) <= b.columns - ROW_LABEL) ?? forms[forms.length - 1] ?? []
+  const form = forms.find(f => widthOf(f) <= input.columns - ROW_LABEL) ?? forms[forms.length - 1] ?? []
   return [[rowLabel('project:'), ...form]]
 }
 
 // The usage row (the user, 2026-11-11): 'usage:   [ 45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ]', the counts of
 // what the detail rows under it list, as text: `bandRows` opens and closes those rows, not a click (spec
 // settings-values, S6); short of width its forms drop the rules, then the agents, then the skills
-export function usageRow(b: BandInput): Line[] {
-  const texts = toggleForms(b).flatMap(l => l.flatMap(s => ('text' in s ? [`[ ${s.text} ]`] : [])))
-  const text = texts.find(t => widthOf([{ text: t }]) <= b.columns - ROW_LABEL) ?? texts[texts.length - 1]
+export function usageRow(input: BandInput): Line[] {
+  const texts = toggleForms(input).flatMap(line => line.flatMap(seg => ('text' in seg ? [`[ ${seg.text} ]`] : [])))
+  const text = texts.find(t => widthOf([{ text: t }]) <= input.columns - ROW_LABEL) ?? texts[texts.length - 1]
   // Aqua, as the toggle's button was drawn (the user, 2026-11-11)
   return text === undefined ? [] : [[rowLabel('usage:'), { text, tone: 'counts' }]]
 }

@@ -30,9 +30,9 @@ export function statusText(o: { percent: number | null; newFailures: number; rec
 // The rows the band takes under the input (spec 2026-11-11 band-under, U2, F7): the main screen's whole height, as the
 // site above reports there; in fullscreen, half the screen less the prompt and the engine's footer line, less a status
 // line's two rows (claude-hud's default; the setting says nothing of the height) and the mod's pinned line
-export function underRows(v: { rows: number; isFullscreen?: boolean }, o: { hasStatusLine: boolean; isPinned: boolean }): number {
-  if (v.isFullscreen !== true) return v.rows
-  return Math.max(2, Math.floor(v.rows / 2) - 6 - (o.hasStatusLine ? 2 : 0) - (o.isPinned ? 1 : 0))
+export function underRows(viewport: { rows: number; isFullscreen?: boolean }, o: { hasStatusLine: boolean; isPinned: boolean }): number {
+  if (viewport.isFullscreen !== true) return viewport.rows
+  return Math.max(2, Math.floor(viewport.rows / 2) - 6 - (o.hasStatusLine ? 2 : 0) - (o.isPinned ? 1 : 0))
 }
 
 // What the full band keeps under its info line: the rows the info line may take (none for 0), the project row, the open
@@ -44,40 +44,40 @@ const KEEP_ALL: Keep = { infoUpTo: 2, isPlaceKept: true, toolRowsKept: Infinity,
 // A red '● REC' while REC is on, then Alfred Code's mode banner, lead line 1 in every state, never dropped for width:
 // the body's first line follows them while it fits what is left, else they take line 1 alone and the body keeps the
 // full width, so no gauge, reset or the cost drops for them
-export function bandLines(b: BandInput): Line[] {
+export function bandLines(input: BandInput): Line[] {
   // "band": "off" draws none, above or under, and the pinned line counts it as out of view
-  if (b.mode === 'off') return []
-  const max = b.maxRows
-  if (max === undefined) return bandRows(b, KEEP_ALL)
+  if (input.mode === 'off') return []
+  const max = input.maxRows
+  if (max === undefined) return bandRows(input, KEEP_ALL)
   // Short of rows, the project row gives way first, then the info line's second row, then the open detail rows from
   // the last, then the usage row, then the plan row, then the info line: the line under them holds the buttons, and a
   // digit arms only those in view
   for (const k of [KEEP_ALL, { ...KEEP_ALL, isPlaceKept: false }, { ...KEEP_ALL, isPlaceKept: false, infoUpTo: 1 }]) {
-    const lines = bandRows(b, k)
+    const lines = bandRows(input, k)
     if (lines.length <= max) return lines
   }
   const core: Keep = { infoUpTo: 1, isPlaceKept: false, toolRowsKept: 0, isUsageKept: true, isPlanKept: true }
-  const coreLines = bandRows(b, core)
-  if (coreLines.length <= max) return bandRows(b, { ...core, toolRowsKept: max - coreLines.length })
+  const coreLines = bandRows(input, core)
+  if (coreLines.length <= max) return bandRows(input, { ...core, toolRowsKept: max - coreLines.length })
   for (const k of [{ ...core, isUsageKept: false }, { ...core, isUsageKept: false, isPlanKept: false }]) {
-    const lines = bandRows(b, k)
+    const lines = bandRows(input, k)
     if (lines.length <= max) return lines
   }
-  return bandRows(b, { infoUpTo: 0, isPlaceKept: false, toolRowsKept: 0, isUsageKept: false, isPlanKept: false })
+  return bandRows(input, { infoUpTo: 0, isPlaceKept: false, toolRowsKept: 0, isUsageKept: false, isPlanKept: false })
 }
 
-function bandRows(b: BandInput, k: Keep): Line[] {
-  const isNarrow = b.columns < 100
-  const marks: Line[] = [b.rec !== undefined && b.rec.level !== 'off' ? [REC_MARK] : [], b.banner ?? []].filter(m => m.length > 0)
-  if (marks.length === 0) return bandBody(b, isNarrow, k)
+function bandRows(input: BandInput, k: Keep): Line[] {
+  const isNarrow = input.columns < 100
+  const marks: Line[] = [input.rec !== undefined && input.rec.level !== 'off' ? [REC_MARK] : [], input.banner ?? []].filter(segs => segs.length > 0)
+  if (marks.length === 0) return bandBody(input, isNarrow, k)
   const sep: Seg = { text: ' │ ', tone: 'dim' }
   const alone: Line = marks.flatMap((m, i) => (i === 0 ? m : [sep, ...m]))
   const lead: Line = [...alone, sep]
   // Only line 1 shares its row with the marks: the lines under it are fitted to the band's whole width
-  const [first] = bandBody({ ...b, columns: b.columns - widthOf(lead) }, isNarrow, k)
+  const [first] = bandBody({ ...input, columns: input.columns - widthOf(lead) }, isNarrow, k)
   if (first === undefined) return [alone]
-  const body = bandBody(b, isNarrow, k)
-  return widthOf(lead) + widthOf(first) <= b.columns ? [[...lead, ...first], ...body.slice(1)] : [alone, ...body]
+  const body = bandBody(input, isNarrow, k)
+  return widthOf(lead) + widthOf(first) <= input.columns ? [[...lead, ...first], ...body.slice(1)] : [alone, ...body]
 }
 
 function bandBody(b: BandInput, isNarrow: boolean, k: Keep): Line[] {
@@ -97,7 +97,7 @@ function bandBody(b: BandInput, isNarrow: boolean, k: Keep): Line[] {
     ...head, ...place, ...(k.isPlanKept ? planRow(b) : []), ...counts, ...(b.isToolsOpen === true ? toolRows(b).slice(0, k.toolRowsKept) : []),
   ]
   const p = fiveHourPace(b)
-  const isHot = (b.runway?.percent ?? u.percent ?? 0) >= 60 || u.windows.some(w => w.percentUsed >= 60) || (p !== null && p !== 'on-pace')
+  const isHot = (b.runway?.percent ?? u.percent ?? 0) >= 60 || u.windows.some(rateWindow => rateWindow.percentUsed >= 60) || (p !== null && p !== 'on-pace')
   const agentsRun = b.agents.some(r => isLive(r.status))
   const warning = cacheWarning(b, true)
   const ask = handoffAsk(b)
@@ -106,7 +106,7 @@ function bandBody(b: BandInput, isNarrow: boolean, k: Keep): Line[] {
     // not only when active work'); the calm band stays one dim line until something needs you
     if (b.mode === 'full') return [[...gaugeLine, ...invalid], ...info]
     const calm = isNarrow ? gaugeLine : withTimes(b, gaugeLine)
-    const dim = (l: Line): Line => l.map(s => ('text' in s ? { text: s.text, tone: 'dim' as const } : s))
+    const dim = (l: Line): Line => l.map(seg => ('text' in seg ? { text: seg.text, tone: 'dim' as const } : seg))
     return [[...dim(calm), ...invalid], ...info.map(dim)]
   }
   if (b.isWorking) return [workingLine(b, isNarrow), line2, ...info]
@@ -121,5 +121,5 @@ function bandBody(b: BandInput, isNarrow: boolean, k: Keep): Line[] {
   const action: Line[] = items.length === 0 ? [] : b.under !== undefined && cellsOf(joined) > b.columns ? items : [joined]
   const first = agentsRun ? workingLine(b, isNarrow) : withPlanTail(b, lastTurn(b, isNarrow), head.length > 0 && k.isPlanKept)
   const out = b.under === undefined ? [first, line2, ...info, ...action] : [...action, first, line2, ...info]
-  return out.filter(l => l.length > 0)
+  return out.filter(segs => segs.length > 0)
 }

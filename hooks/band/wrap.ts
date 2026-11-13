@@ -4,10 +4,10 @@ import type { Line, Seg } from '../core/types'
 
 // A line's cells as the terminal draws it: its text, and each button `[ label ]`, or `1: label` when plain
 export function cellsOf(line: Line): number {
-  return line.reduce((n, s) => {
-    if ('text' in s && s.width !== undefined) return n + s.width
-    if (!('button' in s)) return n + widthOf([s])
-    const b = s.button
+  return line.reduce((n, seg) => {
+    if ('text' in seg && seg.width !== undefined) return n + seg.width
+    if (!('button' in seg)) return n + widthOf([seg])
+    const b = seg.button
     const label = widthOf([{ text: b.label }])
     return n + (b.plain === true || /^\d$/.test(b.hotkey ?? '') ? (b.hotkey === undefined ? 0 : b.hotkey.length + 2) + label : label + 4)
   }, 0)
