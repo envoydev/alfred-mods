@@ -52,19 +52,19 @@ export async function readSettingsNow($: EngineInterface, isStart: boolean): Pro
     rec: await $.store.get('settings:rec').catch(() => null),
     handoff: rawHandoff,
   })
-  const r = resolveSettings(layers, legacy)
-  settingsMemory.resolved = r
-  await retireLegacyKeys($, r, legacy, rawHandoff)
-  if (isStart) await toastMovedOnce($, r)
+  const resolved = resolveSettings(layers, legacy)
+  settingsMemory.resolved = resolved
+  await retireLegacyKeys($, resolved, legacy, rawHandoff)
+  if (isStart) await toastMovedOnce($, resolved)
   const before = settingsMemory.rec
-  const pending = holdRec(before, { level: r.values.rec, from: r.from.rec })
+  const pending = holdRec(before, { level: resolved.values.rec, from: resolved.from.rec })
   // A skipped value is told once (S3): each skip the last told set did not hold, when the set changes. While REC holds,
   // its skip is the hold's to tell: a skip toast would name a level REC is not at
-  const skips = r.skipped.filter(k => !(pending.isHeld && k.field === 'rec'))
+  const skips = resolved.skipped.filter(k => !(pending.isHeld && k.field === 'rec'))
   const skippedKey = skips.map(k => `${k.field}@${k.source}`).sort().join(',')
   if (skippedKey !== settingsMemory.skippedKey) {
     const told = new Set(settingsMemory.skippedKey.split(','))
-    for (const skip of skips) if (!told.has(`${skip.field}@${skip.source}`)) toast($, skippedToast(skip, r))
+    for (const skip of skips) if (!told.has(`${skip.field}@${skip.source}`)) toast($, skippedToast(skip, resolved))
     settingsMemory.skippedKey = skippedKey
   }
   // REC's hold (S3), told once per hold; a level that changes after the session's first read is told as /rec told it
@@ -83,13 +83,13 @@ export async function readSettingsNow($: EngineInterface, isStart: boolean): Pro
 
 // S7: a field the user's own file sets, machine-wide as the store is, drops its old value; a project or local value
 // overrides the old one without retiring it. A refused delete is tried at the next read.
-export async function retireLegacyKeys($: EngineInterface, r: ResolvedSettings, legacy: Partial<SettingsValues>, rawHandoff: unknown): Promise<void> {
-  for (const field of r.userFields) {
+export async function retireLegacyKeys($: EngineInterface, resolved: ResolvedSettings, legacy: Partial<SettingsValues>, rawHandoff: unknown): Promise<void> {
+  for (const field of resolved.userFields) {
     const key = LEGACY_KEYS[field]
     if (key !== undefined && legacy[field] !== undefined) await $.store.delete(key).catch(() => undefined)
   }
-  const isMode = r.userFields.includes('handoff') && legacy.handoff !== undefined
-  const isAt = r.userFields.includes('handoffAt') && legacy.handoffAt !== undefined
+  const isMode = resolved.userFields.includes('handoff') && legacy.handoff !== undefined
+  const isAt = resolved.userFields.includes('handoffAt') && legacy.handoffAt !== undefined
   if ((!isMode && !isAt) || typeof rawHandoff !== 'object' || rawHandoff === null || Array.isArray(rawHandoff)) return
   const left: Record<string, unknown> = { ...rawHandoff }
   if (isMode) delete left.mode
@@ -100,9 +100,9 @@ export async function retireLegacyKeys($: EngineInterface, r: ResolvedSettings, 
 
 // S7's toast, at a run's first read, once per machine: the earlier commands' choices still in force. A refused read of
 // the mark counts as told, so a failing store never repeats it.
-export async function toastMovedOnce($: EngineInterface, r: ResolvedSettings): Promise<void> {
+export async function toastMovedOnce($: EngineInterface, resolved: ResolvedSettings): Promise<void> {
   const kept: Partial<Record<Field, unknown>> = {}
-  for (const field of FIELDS) if (r.from[field] === 'legacy' && r.values[field] !== DEFAULTS[field]) kept[field] = r.values[field]
+  for (const field of FIELDS) if (resolved.from[field] === 'legacy' && resolved.values[field] !== DEFAULTS[field]) kept[field] = resolved.values[field]
   if (Object.keys(kept).length === 0 || (await $.store.get('settings:moved').catch(() => true)) === true) return
   // 30 s to copy the line (the review's #1)
   toast($, movedToast(kept as Partial<SettingsValues>), 30_000)
@@ -136,10 +136,10 @@ export async function writeUserField<F extends Field>($: EngineInterface, field:
   if ('why' in next) return byHand(next.why === 'parse' ? `${user} does not parse as JSON` : `"alfred-mods" in ${user} is not an object`)
   const isWritten = await $.fs.write(path, next.text).then(() => true, () => false)
   if (!isWritten) return byHand(`${user} refused the write`)
-  const r = settingsMemory.resolved
-  const from = r?.from[field]
-  const isFirst = r !== null && r !== undefined && (from === 'policy' || from === 'flag' || from === 'local' || from === 'project')
-  return `Set ${shown} in ${user}.${isFirst ? ` ${sourceFileName(from)} gives ${JSON.stringify(r.values[field])}, which comes first.` : ''}`
+  const resolved = settingsMemory.resolved
+  const from = resolved?.from[field]
+  const isFirst = resolved !== null && resolved !== undefined && (from === 'policy' || from === 'flag' || from === 'local' || from === 'project')
+  return `Set ${shown} in ${user}.${isFirst ? ` ${sourceFileName(from)} gives ${JSON.stringify(resolved.values[field])}, which comes first.` : ''}`
 }
 
 export function reloadSettingsSoon($: EngineInterface, e: HookInput<'classic.ConfigChange'>, next: HookNext<'classic.ConfigChange'>) {

@@ -15,8 +15,8 @@ export const DEFAULTS: SettingsValues = { band: 'full', bandPlace: 'above', band
 // "off" draws no band, above or under (the user, 2026-11-12: '/inspect band off' hides it where nothing takes a key)
 export const BAND_MODES: readonly BandMode[] = ['full', 'calm', 'off']
 
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
-const isBool = (v: unknown): v is boolean => typeof v === 'boolean'
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
+const isBool = (value: unknown): value is boolean => typeof value === 'boolean'
 
 // Each field's test and the words its toast uses for the values it takes
 const RULES: Record<Field, { isValid: (v: unknown) => boolean; takes: string }> = {
@@ -25,7 +25,7 @@ const RULES: Record<Field, { isValid: (v: unknown) => boolean; takes: string }> 
   bandRows: { isValid: isBool, takes: 'true or false' },
   quiet: { isValid: isBool, takes: 'true or false' },
   rec: { isValid: v => LEVELS.some(l => l === v), takes: '"off", "on" or "strict"' },
-  handoff: { isValid: v => MODES.some(m => m === v), takes: '"ask", "auto" or "off"' },
+  handoff: { isValid: value => MODES.some(m => m === value), takes: '"ask", "auto" or "off"' },
   handoffAt: { isValid: isThreshold, takes: 'a whole number from 10 to 95' }
 }
 
@@ -52,14 +52,14 @@ export function resolveSettings(layers: Partial<Record<Source, unknown>>, legacy
     for (const source of SOURCES) {
       const layer = layers[source]
       if (!isRecord(layer) || !Object.prototype.hasOwnProperty.call(layer, field)) continue
-      const v = layer[field]
-      if (!rule.isValid(v)) {
+      const value = layer[field]
+      if (!rule.isValid(value)) {
         if (!isSet) skipped.push({ field, source })
         continue
       }
       if (source === 'user') userFields.push(field)
       if (isSet) continue
-      values[field] = v
+      values[field] = value
       from[field] = source
       isSet = true
     }
@@ -72,9 +72,9 @@ export function resolveSettings(layers: Partial<Record<Source, unknown>>, legacy
 }
 
 // S3's toast for a skipped value: it names the file, the values the field takes and the value in use, never the bad one
-export function skippedToast(skip: Skip, r: ResolvedSettings): string {
-  const using = JSON.stringify(r.values[skip.field])
-  return `"${skip.field}" in ${sourceFileName(skip.source)} takes ${RULES[skip.field].takes} - using ${using} from ${sourceFileName(r.from[skip.field])}`
+export function skippedToast(skip: Skip, resolved: ResolvedSettings): string {
+  const using = JSON.stringify(resolved.values[skip.field])
+  return `"${skip.field}" in ${sourceFileName(skip.source)} takes ${RULES[skip.field].takes} - using ${using} from ${sourceFileName(resolved.from[skip.field])}`
 }
 
 // The old commands' store keys as an earlier command's choices (S7): only the values those commands wrote, so a fresh
@@ -117,7 +117,7 @@ export function holdToast(level: RecLevel, from: From): string {
 // S7's toast, once per machine: the earlier commands' choices still in force, as the line to paste, in S2's order. The
 // line comes first, so the box's three lines show it before the why (the review's #1)
 export function movedToast(kept: Partial<SettingsValues>): string {
-  const fields = FIELDS.filter(f => kept[f] !== undefined).map(f => `"${f}": ${JSON.stringify(kept[f])}`).join(', ')
+  const fields = FIELDS.filter(f => kept[f] !== undefined).map(field => `"${field}": ${JSON.stringify(kept[field])}`).join(', ')
   return `Add "alfred-mods": { ${fields} } to ~/.claude/settings.json - the choices your earlier commands made`
 }
 
