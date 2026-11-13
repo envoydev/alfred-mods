@@ -194,16 +194,17 @@ table.settings select:focus-visible { outline: 2px solid var(--accent); outline-
 </div>
 
 <script>
-// alfred-mods band code, bundled from hooks/ (format.ts, agents.ts, cache.ts, forecast.ts, startup.ts, parts.ts, planlines.ts, band.ts, compact.ts, plan.ts)
+// alfred-mods band code, bundled from hooks/ (core/format.ts, agents/agents.ts, cache/cache.ts, core/forecast.ts, session/windows.ts, place/place.ts, context/parts.ts, plan/planlines.ts, band/gauges.ts, band/wrap.ts, band/detail.ts, band/project.ts, band/info.ts, band/working.ts, band/band.ts, tools/compact.ts, plan/plan.ts)
 const BandCore = (() => {
 const __m = {};
-// ---- hooks/format.ts
-__m['format.ts'] = (() => {
+// ---- hooks/core/format.ts
+__m['core/format.ts'] = (() => {
 // Plain values to the strings the band and the pane draw: bars, token counts, times, money, one-line cuts.
+                                     
 
 // The one bar, in the band and the pane: 5 cells of 20%, ▰ filled and ▱ empty; a cell fills only when its share is
 // reached. The two parts joined are the whole bar, so the filled part can take its own colour.
-function bar(percent        )                                  {
+function barText(percent        )                                  {
   const filled = Math.max(0, Math.min(5, Math.floor(percent / 20)))
   return ['▰'.repeat(filled), '▱'.repeat(5 - filled)]
 }
@@ -213,14 +214,14 @@ function toneOf(percent        )                         {
   return percent < 60 ? 'ok' : percent <= 85 ? 'warn' : 'fail'
 }
 
-function tokens(n        )         {
-  if (n < 100) return String(n)
-  if (n < 10_000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k`
-  if (n < 999_500) return `${Math.round(n / 1000)}k`
-  return `${(n / 1_000_000).toFixed(1)}M`
+function tokensText(tokens        )         {
+  if (tokens < 100) return String(tokens)
+  if (tokens < 10_000) return `${(tokens / 1000).toFixed(1).replace(/\.0$/, '')}k`
+  if (tokens < 999_500) return `${Math.round(tokens / 1000)}k`
+  return `${(tokens / 1_000_000).toFixed(1)}M`
 }
 
-function duration(ms        )         {
+function durationText(ms        )         {
   const s = Math.round(ms / 1000)
   if (s < 60) return `${s}s`
   if (s < 3600) return s % 60 === 0 ? `${s / 60}m` : `${Math.floor(s / 60)}m ${s % 60}s`
@@ -229,31 +230,31 @@ function duration(ms        )         {
 }
 
 // A plan time in whole minutes: '<1m', '12m', '1h 37m', '2h'
-function mins(ms        )         {
+function minutesText(ms        )         {
   const m = Math.round(ms / 60_000)
   if (ms < 60_000 || m < 1) return '<1m'
   if (m < 60) return `${m}m`
   return m % 60 === 0 ? `${m / 60}h` : `${Math.floor(m / 60)}h ${m % 60}m`
 }
 
-function elapsed(ms        )         {
+function elapsedText(ms        )         {
   const s = Math.max(0, Math.floor(ms / 1000))
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 }
 
-function clock(ms        )         {
+function clockText(ms        )         {
   const d = new Date(ms)
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
 // A reset as its day, month and clock: '31.10 11:00'
-function when(resetsAt        )         {
+function whenText(resetsAt        )         {
   const d = new Date(resetsAt)
-  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')} ${clock(resetsAt)}`
+  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')} ${clockText(resetsAt)}`
 }
 
-function usd(n        )         {
-  return `$${n.toFixed(2)}`
+function usdText(amount        )         {
+  return `$${amount.toFixed(2)}`
 }
 
 // Text a surface will draw: colour and cursor codes dropped, a CRLF or a lone CR as a newline, and no control
@@ -302,26 +303,25 @@ function fitLine(text        , max        )         {
 function cutMasked(line        , max        )         {
   if (line.length <= max) return line
   let at = max - 1
-  for (const m of line.matchAll(/‹[^›\n]*›/g)) {
-    if (m.index >= at) break
-    if (m.index + m[0].length > at) at = m.index
+  for (const match of line.matchAll(/‹[^›\n]*›/g)) {
+    if (match.index >= at) break
+    if (match.index + match[0].length > at) at = match.index
   }
   return `${line.slice(0, at).trimEnd()}…`
 }
 
 // A line's width in columns: its texts' lengths as drawn, masked, as buttons, code and charts stand beside it
 function widthOf(line                   )         {
-  return line.reduce        ((n, s) => n + ('text' in s && typeof s.text === 'string' ? masker(s.text).length : 0), 0)
+  return line.reduce        ((width, s) => width + ('text' in s && typeof s.text === 'string' ? masker(s.text).length : 0), 0)
 }
 
-                                                          
 
 // A model id's family and version: 'claude-opus-5-5' is opus 5.5; an id with no known family has none
 function modelParts(model        )                                                    {
-  const m = /(opus|sonnet|haiku|fable)(?:-(\d+)(?:-(\d+))?)?/.exec(model)
-  if (m === null) return null
-  const version = m[2] === undefined ? null : m[3] === undefined ? m[2] : `${m[2]}.${m[3]}`
-  return { family: m[1]          , version }
+  const match = /(opus|sonnet|haiku|fable)(?:-(\d+)(?:-(\d+))?)?/.exec(model)
+  if (match === null) return null
+  const version = match[2] === undefined ? null : match[3] === undefined ? match[2] : `${match[2]}.${match[3]}`
+  return { family: match[1]          , version }
 }
 
 // 'opus 5.5', or 'Opus 5.5' as a title; the id as given when no family matches
@@ -332,23 +332,25 @@ function modelText(model        , title = false)         {
   return parts.version === null ? name : `${name} ${parts.version}`
 }
 
-return { bar, toneOf, tokens, duration, mins, elapsed, clock, when, usd, printable, fingerprint, setMasker, oneLine, fitLine, cutMasked, widthOf, modelParts, modelText };
+return { barText, toneOf, tokensText, durationText, minutesText, elapsedText, clockText, whenText, usdText, printable, fingerprint, setMasker, oneLine, fitLine, cutMasked, widthOf, modelParts, modelText };
 })();
-// ---- hooks/agents.ts
-__m['agents.ts'] = (() => {
+// ---- hooks/agents/agents.ts
+__m['agents/agents.ts'] = (() => {
 // Agents as rows: what a spawn says, how a run ends, which rows are kept, the tree they draw and their tool counts.
                                             
 
-const { duration, oneLine, tokens } = __m['format.ts'];
-                                                
-                                                                              
+const { durationText, oneLine, tokensText } = __m['core/format.ts'];
+                                                                            
+                                                    
+                                               
+                                              
 
 // The first word of a prompt's first `plan:` and `task:` lines; nothing else of the prompt is kept, the rest of either
 // line included, as a model may write its brief on it
 function promptLines(prompt        )                                               {
   const value = (name        )                => {
-    const m = new RegExp(`^[ \\t]*${name}:[ \\t]*(\\S+)`, 'm').exec(prompt.replace(/\r\n?/g, '\n'))
-    return m?.[1] === undefined ? null : oneLine(m[1], 60)
+    const match = new RegExp(`^[ \\t]*${name}:[ \\t]*(\\S+)`, 'm').exec(prompt.replace(/\r\n?/g, '\n'))
+    return match?.[1] === undefined ? null : oneLine(match[1], 60)
   }
   return { plan: value('plan'), task: value('task') }
 }
@@ -381,24 +383,24 @@ function keepRows(rows            , limit = 50)             {
   const over = rows.length - limit
   if (over <= 0) return rows
   const drop = new Set(rows.filter(r => !isLive(r.status)).sort((a, b) => a.startedAt - b.startedAt).slice(0, over))
-  return rows.filter(r => !drop.has(r))
+  return rows.filter(row => !drop.has(row))
 }
 
 // What the engine's list says of the live rows: its status and parent for a row it names, and the end of one it named
 // before and names no longer. A row it never named, such as a workflow's agent, and an ended row stay as they are.
 function refreshAgents(rows            , listed                      , now        )             {
-  return rows.map(r => {
-    if (!isLive(r.status)) return r
-    const l = listed.find(x => x.id === r.id)
-    if (l === undefined) return r.isListed ? { ...r, status: 'completed'         , endedAt: now } : r
-    return { ...r, isListed: true, status: l.status, endedAt: isLive(l.status) ? null : now, parentId: r.parentId ?? l.parentId ?? null }
+  return rows.map(row => {
+    if (!isLive(row.status)) return row
+    const l = listed.find(x => x.id === row.id)
+    if (l === undefined) return row.isListed ? { ...row, status: 'completed'         , endedAt: now } : row
+    return { ...row, isListed: true, status: l.status, endedAt: isLive(l.status) ? null : now, parentId: row.parentId ?? l.parentId ?? null }
   })
 }
 
 // How long the agent has run, or how it ended and after how long
-function agentTime(r          , now        )         {
-  const took = duration((r.endedAt ?? now) - r.startedAt)
-  switch (r.status) {
+function agentTime(row          , now        )         {
+  const took = durationText((row.endedAt ?? now) - row.startedAt)
+  switch (row.status) {
     case 'running': return took
     case 'waiting': return `waiting · ${took}`
     case 'pending': return 'pending'
@@ -417,30 +419,25 @@ function statusGlyph(status             )                                 {
 
 // The time axis's lanes (spec C2): the 8 newest rows that have a start, oldest first; a live row has no end yet
 function lanesOf(rows            , now        )         {
-  return rows.filter(r => r.startedAt > 0).sort((a, b) => a.startedAt - b.startedAt).slice(-8).map(r => ({
-    label: laneLabel(r), startAt: r.startedAt,
-    endAt: isLive(r.status) ? null : r.endedAt ?? now, status: r.status, time: agentTime(r, now),
+  return rows.filter(r => r.startedAt > 0).sort((a, b) => a.startedAt - b.startedAt).slice(-8).map(row => ({
+    label: laneLabel(row), startAt: row.startedAt,
+    endAt: isLive(row.status) ? null : row.endedAt ?? now, status: row.status, time: agentTime(row, now),
   }))
 }
 
 // A lane's label: what the agent was asked, its task id first, or its type when it was asked nothing (the user,
 // 2026-11-12: 'I want to see what agents are doing or did'; the type alone left eight lanes all 'general-purpo…')
-function laneLabel(r          )         {
-  const asked = oneLine(r.description, 200)
-  const what = asked === '' ? r.type : asked
-  return r.task === null ? what : `task ${r.task} · ${what}`
+function laneLabel(row          )         {
+  const asked = oneLine(row.description, 200)
+  const what = asked === '' ? row.type : asked
+  return row.task === null ? what : `task ${row.task} · ${what}`
 }
 
-// A lane's text widths at `columns` (spec C2): a glyph and a space, the label and a space, the bar, a space and the time. The time
-// cell is as wide as the longest lane's, never cut; the label as wide as the longest, from 6 to 40 cells, giving way
-// down to 6 so the bar keeps 10; the bar takes the rest up to 40, so a wide pane is not a row of dots (the user,
-// 2026-11-12). Null where even that does not fit: the pane draws no lanes.
-                                                                  
 const LANE_MAX = 40
 function laneFit(lanes        , columns        )                 {
   const time = Math.max(0, ...lanes.map(l => [...l.time].length))
   const room = columns - 4 - time
-  const longest = Math.min(LANE_MAX, Math.max(6, ...lanes.map(l => [...l.label].length)))
+  const longest = Math.min(LANE_MAX, Math.max(6, ...lanes.map(lane => [...lane.label].length)))
   const label = Math.min(longest, room - 10)
   return label < 6 ? null : { label, bar: Math.min(LANE_MAX, room - label), time }
 }
@@ -455,8 +452,8 @@ function reportLine(report        )         {
 // Loops no spawn announced (spec C3): a step adds to its loop, or starts one; the newest 60 are kept
 function addLoopStep(loops        , id        , output        , now        )         {
   const known = loops.find(l => l.id === id)
-  if (known !== undefined) return loops.map(l => (l === known ? { ...l, steps: l.steps + 1, output: l.output + output, lastAt: now } : l))
-  return [...loops, { id, steps: 1, output, firstAt: now, lastAt: now, isDone: false }].slice(-60)
+  if (known !== undefined) return loops.map(loop => (loop === known ? { ...loop, steps: loop.steps + 1, outputTokens: loop.outputTokens + output, lastAt: now } : loop))
+  return [...loops, { id, steps: 1, outputTokens: output, firstAt: now, lastAt: now, isDone: false }].slice(-60)
 }
 
 // D3 found workflow agents raise agent.spawn, so what is left is a compaction's or a fork's loop
@@ -467,8 +464,8 @@ const LOOPS_NOTE = '(no spawn: compactions, forks)'
 function loopsLine(loops        , now        , note        )         {
   if (loops.length === 0) return []
   const active = loops.filter(l => !l.isDone && now - l.lastAt < 15_000).length
-  const output = loops.reduce((sum, l) => sum + l.output, 0)
-  return [[{ text: `Other loops ${loops.length} · ${active} active · out ${tokens(output)}` }], [{ text: note, tone: 'dim' }]]
+  const output = loops.reduce((sum, loop) => sum + loop.outputTokens, 0)
+  return [[{ text: `Other loops ${loops.length} · ${active} active · out ${tokensText(output)}` }], [{ text: note, tone: 'dim' }]]
 }
 
 // A teammate waits for its next message; any other agent's run ends
@@ -481,7 +478,6 @@ function actionOf(tool        , target        )         {
   return target === '' ? tool : `${tool} ${target}`
 }
 
-                                                                                       
 
 // Depth first, siblings oldest first, under the main loop as the root. A row sits under its parent only when that is
 // a row and its parents never lead back to it; else under the root.
@@ -517,27 +513,30 @@ function agentTree(rows            )            {
 // Each tool as '<name> ×<calls>' with ✓ when all were ok, else ✗ and ⊘ with their counts unless all calls; skills apart
 function toolSummary(tools                          )                                        {
   const out = { tools: []            , skills: []             }
-  for (const [key, t] of Object.entries(tools)) {
-    const count = (glyph        , n        )         => (n === 0 ? '' : n === t.calls ? ` ${glyph}` : ` ${glyph}${n}`)
-    const marks = t.failed === 0 && t.stopped === 0 ? ' ✓' : `${count('✗', t.failed)}${count('⊘', t.stopped)}`
-    if (key.startsWith('Skill: ')) out.skills.push(`${key.slice(7)} ×${t.calls}`)
-    else out.tools.push(`${key} ×${t.calls}${marks}`)
+  for (const [key, stat] of Object.entries(tools)) {
+    const count = (glyph        , n        )         => (n === 0 ? '' : n === stat.calls ? ` ${glyph}` : ` ${glyph}${n}`)
+    const marks = stat.failed === 0 && stat.stopped === 0 ? ' ✓' : `${count('✗', stat.failed)}${count('⊘', stat.stopped)}`
+    if (key.startsWith('Skill: ')) out.skills.push(`${key.slice(7)} ×${stat.calls}`)
+    else out.tools.push(`${key} ×${stat.calls}${marks}`)
   }
   return out
 }
 
-return { promptLines, newRow, upsertSpawn, isLive, keepRows, refreshAgents, agentTime, statusGlyph, lanesOf, laneLabel, laneFit, reportLine, addLoopStep, LOOPS_NOTE, loopsLine, statusAt, actionOf, agentTree, toolSummary };
+const stepMarkOf = (row          )                => (row.plan !== null && row.task !== null ? `${row.plan}:${row.task}` : null)
+
+return { promptLines, newRow, upsertSpawn, isLive, keepRows, refreshAgents, agentTime, statusGlyph, lanesOf, laneLabel, laneFit, reportLine, addLoopStep, LOOPS_NOTE, loopsLine, statusAt, actionOf, agentTree, toolSummary, stepMarkOf };
 })();
-// ---- hooks/cache.ts
-__m['cache.ts'] = (() => {
+// ---- hooks/cache/cache.ts
+__m['cache/cache.ts'] = (() => {
 // The prompt cache (F4): its tier by Claude Code's own rule, its warmth, reuse and rewrite cost, the line the band and
 // the Cache tab draw, the warning's window and whether Claude Code compacts an idle conversation itself.
 // The rule: https://code.claude.com/docs/en/prompt-caching.md; idle compaction: settings-reference, `idleCompaction`.
                                              
 
-                                           
-const { bar, toneOf, tokens, usd } = __m['format.ts'];
-                                                                              
+const { barText, toneOf, tokensText, usdText } = __m['core/format.ts'];
+                                                                                        
+                                               
+                                                  
 
 const TTL_MS                            = { '5m': 300_000, '1h': 3_600_000 }
 // The warning's window: a 1h cache's last 5 minutes, a 5m cache's last minute
@@ -551,76 +550,71 @@ const SELF_CLOSE_MS = 180_000
 const WARN_MIN_TOKENS = 100_000
 
 // Within the plan's usage while a 5h or 7d window reads under 100; on usage credits once one reads 100 or more
-function billingOf(windows          )          {
+function billingOf(windows              )          {
   const plan = windows.filter(w => w.kind === 'five_hour' || w.kind === 'seven_day')
   if (plan.length === 0) return 'other'
-  return plan.some(w => w.percentUsed >= 100) ? 'credits' : 'plan'
+  return plan.some(rateWindow => rateWindow.percentUsed >= 100) ? 'credits' : 'plan'
 }
 
 // The first pin in Claude Code's order: FORCE_PROMPT_CACHING_5M, the variable, the setting, ENABLE_PROMPT_CACHING_1H
-function pinOf(v                                                                          )                     {
+function pinOf(sources                                                                          )                     {
   const tier = (x         )                   => (x === '5m' || x === '1h' ? x : null)
-  if (v.force5m === '1') return { tier: '5m', from: 'FORCE_PROMPT_CACHING_5M' }
-  const ttl = tier(v.ttl)
+  if (sources.force5m === '1') return { tier: '5m', from: 'FORCE_PROMPT_CACHING_5M' }
+  const ttl = tier(sources.ttl)
   if (ttl !== null) return { tier: ttl, from: 'CLAUDE_CODE_PROMPT_CACHE_TTL' }
-  const setting = tier(v.setting)
+  const setting = tier(sources.setting)
   if (setting !== null) return { tier: setting, from: 'promptCacheTtl' }
-  if (v.enable1h === '1') return { tier: '1h', from: 'ENABLE_PROMPT_CACHING_1H' }
+  if (sources.enable1h === '1') return { tier: '1h', from: 'ENABLE_PROMPT_CACHING_1H' }
   return null
 }
 
 // Idle compaction is off with either setting false or DISABLE_AUTO_COMPACT set; its threshold is raised to 100,000
-function idleOf(v                                                                                                             )                                                 {
-  const idleOff = v.idleCompaction === false || v.autoCompactEnabled === false || (v.disableAutoCompact ?? '') !== ''
-  const n = /^\d+$/.test(v.minTokens ?? '') ? Number(v.minTokens) : 0
-  return { idleOff, idleMinTokens: n > 0 ? Math.max(100_000, n) : 200_000 }
+function idleOf(sources                                                                                                             )                                                          {
+  const idleOff = sources.idleCompaction === false || sources.autoCompactEnabled === false || (sources.disableAutoCompact ?? '') !== ''
+  const n = /^\d+$/.test(sources.minTokens ?? '') ? Number(sources.minTokens) : 0
+  return { isIdleCompactOff: idleOff, idleMinTokens: n > 0 ? Math.max(100_000, n) : 200_000 }
 }
 
-                                                                                                 
 
 // A pin, else the last switch's report while the billing it was made under holds, else the default as an estimate
-function tierOf(c       , billing         )         {
-  if (c.config.pin !== null) return { tier: c.config.pin.tier, from: 'pin', isEstimate: false }
-  if (c.tier !== null && c.tierBilling === billing) return { tier: c.tier, from: 'switch', isEstimate: false }
+function tierOf(cache       , billing         )         {
+  if (cache.config.pin !== null) return { tier: cache.config.pin.tier, from: 'pin', isEstimate: false }
+  if (cache.tier !== null && cache.tierBilling === billing) return { tier: cache.tier, from: 'switch', isEstimate: false }
   return { tier: billing === 'plan' ? '1h' : '5m', from: 'default', isEstimate: true }
 }
 
 // A main-loop request: the cache's time runs from its start, if it read or wrote the cache at all (caching can be off)
-function addRequest(c       , u                                                                                              , at        )        {
+function addRequest(cache       , u                                                                                              , at        )        {
   const last = { read: u.cache_read_input_tokens, write: u.cache_creation_input_tokens, input: u.input_tokens }
-  if (last.read === 0 && last.write === 0 && last.input === 0) return c
-  const s = c.session
-  const lastAt = last.read + last.write > 0 ? at : c.lastAt
-  return { ...c, lastAt, last, session: { read: s.read + last.read, write: s.write + last.write, input: s.input + last.input } }
+  if (last.read === 0 && last.write === 0 && last.input === 0) return cache
+  const s = cache.sessionCounts
+  const lastAt = last.read + last.write > 0 ? at : cache.lastRequestAt
+  return { ...cache, lastRequestAt: lastAt, lastRequest: last, sessionCounts: { read: s.read + last.read, write: s.write + last.write, input: s.input + last.input } }
 }
 
 const rateOf = (usdCost        , contextTokens        )                => (contextTokens > 0 ? usdCost / contextTokens : null)
 
 // A model switch's report: its tier under the billing now, and the rate its own estimate gives. Only a switch that
 // happened (PostModelSwitch) forfeits the cache; one Claude Code may still ask to confirm leaves it warm.
-function takeSwitch(c       , s                                                                                         , at        , hasSwitched         )        {
+function takeSwitch(cache       , s                                                                                         , at        , hasSwitched         )        {
   const out        = {
-    ...c, tier: s.ttl, tierAt: at, tierBilling: s.billing, rateModel: s.model, ratePerToken: rateOf(s.usd, s.contextTokens),
+    ...cache, tier: s.ttl, tierAt: at, tierBilling: s.billing, rateModel: s.model, ratePerToken: rateOf(s.usd, s.contextTokens),
   }
-  return hasSwitched ? { ...out, lastAt: null } : out
+  return hasSwitched ? { ...out, lastRequestAt: null } : out
 }
 
 // A resume's or fork's estimate gives the rate alone
-function takeRate(c       , usdCost        , contextTokens        , model               )        {
-  return { ...c, ratePerToken: rateOf(usdCost, contextTokens), rateModel: model }
+function takeRate(cache       , usdCost        , contextTokens        , model               )        {
+  return { ...cache, ratePerToken: rateOf(usdCost, contextTokens), rateModel: model }
 }
 
 // The cached prefix is gone: the next request writes only the summary
-function afterCompact(c       )        {
-  return { ...c, lastAt: null, last: null }
+function afterCompact(cache       )        {
+  return { ...cache, lastRequestAt: null, lastRequest: null }
 }
 
-                         
-                                                                                                                    
-                                                               
- 
 
-const cachedOf = (c       )         => (c.last === null ? 0 : c.last.read + c.last.write)
+const cachedOf = (cache       )         => (cache.lastRequest === null ? 0 : cache.lastRequest.read + cache.lastRequest.write)
 
 const reuseOf = (n                                                       )                => {
   const all = n === null ? 0 : n.read + n.write + n.input
@@ -628,47 +622,47 @@ const reuseOf = (n                                                       )      
 }
 
 // With the context's tokens, the warning's window allows for Claude Code's own idle compaction
-function cacheView(c       , billing         , now        , contextTokens                = null)            {
-  const tier = tierOf(c, billing)
-  const endsAt = c.lastAt === null ? null : c.lastAt + TTL_MS[tier.tier]
+function cacheView(cache       , billing         , now        , contextTokens                = null)            {
+  const tier = tierOf(cache, billing)
+  const endsAt = cache.lastRequestAt === null ? null : cache.lastRequestAt + TTL_MS[tier.tier]
   const leftMs = endsAt === null || now >= endsAt ? null : endsAt - now
-  const cached = cachedOf(c)
+  const cached = cachedOf(cache)
   return {
-    tier, state: leftMs === null ? 'cold' : 'warm', leftMs, reuseLast: reuseOf(c.last), reuseSession: reuseOf(c.session), cached,
-    rewriteUsd: c.ratePerToken !== null && cached > 0 ? cached * c.ratePerToken : null,
-    isClosing: leftMs !== null && cached >= WARN_MIN_TOKENS && leftMs <= closeMs(c, billing, contextTokens),
+    tier, state: leftMs === null ? 'cold' : 'warm', leftMs, reuseLast: reuseOf(cache.lastRequest), reuseSession: reuseOf(cache.sessionCounts), cached,
+    rewriteUsd: cache.ratePerToken !== null && cached > 0 ? cached * cache.ratePerToken : null,
+    isClosing: leftMs !== null && cached >= WARN_MIN_TOKENS && leftMs <= closeMs(cache, billing, contextTokens),
   }
 }
 
 // Claude Code should compact the conversation itself at about 54 minutes idle: the terminal's REPL, the 1h tier, idle
 // compaction not turned off, and a context at its threshold. A feature flag it fetches gates it too, which the mod
 // cannot see, so this delays the warning and never withholds it.
-function selfCompacts(c       , billing         , contextTokens               )          {
-  return c.config.isTerminal && tierOf(c, billing).tier === '1h' && !c.config.idleOff && contextTokens !== null
-    && contextTokens >= c.config.idleMinTokens
+function selfCompacts(cache       , billing         , contextTokens               )          {
+  return cache.config.isTerminal && tierOf(cache, billing).tier === '1h' && !cache.config.isIdleCompactOff && contextTokens !== null
+    && contextTokens >= cache.config.idleMinTokens
 }
 
 // How long before cold the warning comes: a 1h cache's last 5 minutes, or 3 where Claude Code should compact it first;
 // a 5m cache's last minute
-function closeMs(c       , billing         , contextTokens               )         {
-  const tier = tierOf(c, billing).tier
-  return tier === '1h' && selfCompacts(c, billing, contextTokens) ? SELF_CLOSE_MS : CLOSE_MS[tier]
+function closeMs(cache       , billing         , contextTokens               )         {
+  const tier = tierOf(cache, billing).tier
+  return tier === '1h' && selfCompacts(cache, billing, contextTokens) ? SELF_CLOSE_MS : CLOSE_MS[tier]
 }
 
 // When a 1h cache's toast is due; a 5m cache, or one under the floor, gets none
-function toastAt(c       , billing         , contextTokens               )                {
-  return c.lastAt !== null && tierOf(c, billing).tier === '1h' && cachedOf(c) >= WARN_MIN_TOKENS ? c.lastAt + TTL_MS['1h'] - closeMs(c, billing, contextTokens) : null
+function toastAt(cache       , billing         , contextTokens               )                {
+  return cache.lastRequestAt !== null && tierOf(cache, billing).tier === '1h' && cachedOf(cache) >= WARN_MIN_TOKENS ? cache.lastRequestAt + TTL_MS['1h'] - closeMs(cache, billing, contextTokens) : null
 }
 
 // The clocks on screen redraw once a minute while warm, every second in the warning's window, and once as it goes cold
-function needsTick(c       , billing         , now        )          {
-  if (c.lastAt === null) return false
-  const endsAt = c.lastAt + TTL_MS[tierOf(c, billing).tier]
+function needsTick(cache       , billing         , now        )          {
+  if (cache.lastRequestAt === null) return false
+  const endsAt = cache.lastRequestAt + TTL_MS[tierOf(cache, billing).tier]
   if (now >= endsAt) return now < endsAt + 1000
-  return (now - c.lastAt) % 60_000 < 1000 || endsAt - now <= CLOSE_MS[tierOf(c, billing).tier]
+  return (now - cache.lastRequestAt) % 60_000 < 1000 || endsAt - now <= CLOSE_MS[tierOf(cache, billing).tier]
 }
 
-function minutes(ms        )         {
+function minutesLeftText(ms        )         {
   return `${Math.ceil(ms / 60_000)}m`
 }
 
@@ -678,26 +672,26 @@ function reuseTone(percent        )       {
 }
 
 // 'warm 52m ▰▰▰▰▱ 94% reused · 180k cached · rewrite ≈ $1.44', each part only when known
-function cacheLine(v           )       {
-  const line       = v.state === 'warm'
-    ? [{ text: `warm ${v.tier.isEstimate ? '≈' : ''}${minutes(v.leftMs ?? 0)}`, tone: 'ok' }]
+function cacheLine(cacheState           )       {
+  const line       = cacheState.state === 'warm'
+    ? [{ text: `warm ${cacheState.tier.isEstimate ? '≈' : ''}${minutesLeftText(cacheState.leftMs ?? 0)}`, tone: 'ok' }]
     : [{ text: 'cold', tone: 'warn' }]
-  if (v.reuseLast !== null) {
-    const [filled, empty] = bar(v.reuseLast)
-    const tone = reuseTone(v.reuseLast)
-    line.push({ text: ' ' }, { text: filled, tone }, { text: empty, tone: 'dim' }, { text: ` ${Math.round(v.reuseLast)}% reused`, tone })
+  if (cacheState.reuseLast !== null) {
+    const [filled, empty] = barText(cacheState.reuseLast)
+    const tone = reuseTone(cacheState.reuseLast)
+    line.push({ text: ' ' }, { text: filled, tone }, { text: empty, tone: 'dim' }, { text: ` ${Math.round(cacheState.reuseLast)}% reused`, tone })
   }
-  if (v.cached > 0) line.push({ text: ` · ${tokens(v.cached)} cached` })
-  if (v.rewriteUsd !== null) line.push({ text: ` · rewrite ≈ ${usd(v.rewriteUsd)}` })
+  if (cacheState.cached > 0) line.push({ text: ` · ${tokensText(cacheState.cached)} cached` })
+  if (cacheState.rewriteUsd !== null) line.push({ text: ` · rewrite ≈ ${usdText(cacheState.rewriteUsd)}` })
   return line
 }
 
-return { TTL_MS, CLOSE_MS, IDLE_COMPACT_MS, SELF_CLOSE_MS, WARN_MIN_TOKENS, billingOf, pinOf, idleOf, tierOf, addRequest, takeSwitch, takeRate, afterCompact, cacheView, selfCompacts, closeMs, toastAt, needsTick, minutes, reuseTone, cacheLine };
+return { TTL_MS, CLOSE_MS, IDLE_COMPACT_MS, SELF_CLOSE_MS, WARN_MIN_TOKENS, billingOf, pinOf, idleOf, tierOf, addRequest, takeSwitch, takeRate, afterCompact, cacheView, selfCompacts, closeMs, toastAt, needsTick, minutesLeftText, reuseTone, cacheLine };
 })();
-// ---- hooks/forecast.ts
-__m['forecast.ts'] = (() => {
+// ---- hooks/core/forecast.ts
+__m['core/forecast.ts'] = (() => {
 // Forecasts from the readings so far: turns left before the context reaches 80%, a window's pace, a sparkline.
-                                         
+                                                 
 
 const BLOCKS = '▁▂▃▄▅▆▇'
 
@@ -717,7 +711,7 @@ const LENGTH                         = { five_hour: 5 * 3_600_000, seven_day: 7 
 // When a window reaches 100% at the rate from its first point to its last, if that comes before it resets. Null under
 // 3 points, or while they span under 5% of the window's length (15 minutes of 5h, 8.4 hours of a week), as one
 // whole-point step over a few minutes reads as a steep rise; null too for a window of unknown length.
-function pace(kind        , points             , resetsAt               , now        )                                         {
+function paceForecast(kind        , points             , resetsAt               , now        )                                         {
   const first = points[0]
   const last = points[points.length - 1]
   const length = LENGTH[kind]
@@ -738,22 +732,23 @@ function localDate(ms        )         {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-return { turnsLeft, pace, spark, localDate };
+return { turnsLeft, paceForecast, spark, localDate };
 })();
-// ---- hooks/startup.ts
-__m['startup.ts'] = (() => {
+// ---- hooks/session/windows.ts
+__m['session/windows.ts'] = (() => {
 // What the band shows from the session's first second (the user, 2026-11-11): the 5h and 7d windows the last reading
+                                                
+                                                   
 // on this machine stored, until this session's own, and the project and branch read from git's own files, with no git
 // process.
-                                             
 
 // The stored windows still ahead of their reset, with the time they were read; null for a value of any other shape, or
 // with none left
-function storedWindows(value         , now        )                                           {
+function storedWindows(value         , now        )                                               {
   if (typeof value !== 'object' || value === null) return null
   const v = value                                       
   if (typeof v.at !== 'number' || !Array.isArray(v.windows)) return null
-  const windows           = []
+  const windows               = []
   for (const w of v.windows             ) {
     if (typeof w !== 'object' || w === null) return null
     const x = w                           
@@ -768,20 +763,34 @@ function storedWindows(value         , now        )                             
 // The 5h and 7d windows a reading leaves: its own when it has some or a request has been made (`isRead`: off a
 // subscription a reading never has any), else the ones an earlier session stored (the user, 2026-11-11: the band from
 // the first second), else none
-function nextWindows(u       , fresh          , isRead         )                                       {
-  if (fresh.length > 0 || isRead || u.windowsAt === undefined) return { windows: fresh }
-  return { windows: u.windows, windowsAt: u.windowsAt }
+function nextWindows(usage       , fresh              , isRead         )                                               {
+  if (fresh.length > 0 || isRead || usage.rateWindowsAt === undefined) return { rateWindows: fresh }
+  return { rateWindows: usage.rateWindows, rateWindowsAt: usage.rateWindowsAt }
 }
 
 // The figures with each stored window whose reset has passed taken out, and the mark with the last of them; null when
 // none has passed. No reading runs while idle, so the tick asks this.
-function dropPassed(u       , now        )               {
-  if (u.windowsAt === undefined) return null
-  const left = u.windows.filter(w => w.resetsAt === null || !(Date.parse(w.resetsAt) <= now))
-  if (left.length === u.windows.length) return null
-  const { windowsAt, ...rest } = u
-  return left.length === 0 ? { ...rest, windows: [] } : { ...rest, windows: left, windowsAt }
+function dropPassed(usage       , now        )               {
+  if (usage.rateWindowsAt === undefined) return null
+  const left = usage.rateWindows.filter(rateWindow => rateWindow.resetsAt === null || !(Date.parse(rateWindow.resetsAt) <= now))
+  if (left.length === usage.rateWindows.length) return null
+  const { rateWindowsAt, ...rest } = usage
+  return left.length === 0 ? { ...rest, rateWindows: [] } : { ...rest, rateWindows: left, rateWindowsAt }
 }
+
+// '≈' before a window's percent while it is a stored one
+const storedMark = (windowsAt                           )         => (windowsAt === undefined || windowsAt === null ? '' : '≈')
+
+const rateWindowsOf = (limits                             )               =>
+  limits.map(w => ({ kind: w.kind, percentUsed: w.percentUsed, resetsAt: w.resetsAt ?? null }))
+
+return { storedWindows, nextWindows, dropPassed, storedMark, rateWindowsOf };
+})();
+// ---- hooks/place/place.ts
+__m['place/place.ts'] = (() => {
+// The project and branch read from git's own files, with no git process, and the folder Claude works in (the user,
+// 2026-11-11)
+                                               
 
 // The branch a HEAD file names, or a detached commit's first 7 characters; null for anything else
 function headBranch(text        )                {
@@ -793,8 +802,8 @@ function headBranch(text        )                {
 
 // A worktree's `.git` file names its git folder, absolute or relative to the folder the file sits in
 function gitDirOf(text        , dir        )                {
-  const m = /^gitdir:\s*(.+)$/m.exec(text)
-  const to = m?.[1]?.trim()
+  const match = /^gitdir:\s*(.+)$/m.exec(text)
+  const to = match?.[1]?.trim()
   if (to === undefined || to === '') return null
   return /^([A-Za-z]:)?[\\/]/.test(to) ? to : `${dir}/${to}`
 }
@@ -822,24 +831,28 @@ function parentOf(path        )                {
   return cut === 0 ? '/' : trimmed.slice(0, cut)
 }
 
-// '≈' before a window's percent while it is a stored one
-const storedMark = (windowsAt                           )         => (windowsAt === undefined || windowsAt === null ? '' : '≈')
+const joinPath = (dir        , name        )         => (/[\\/]$/.test(dir) ? `${dir}${name}` : `${dir}/${name}`)
 
-return { storedWindows, nextWindows, dropPassed, headBranch, gitDirOf, baseName, folderOf, parentOf, storedMark };
+// The counts stay until the next count replaces them
+const withPlace = (place                               ) => (session         )          =>
+  session.place?.project === place.project && session.place.folder === place.folder && session.place.branch === place.branch ? session
+    : { ...session, place: { ...place, ...(session.place?.changes === undefined ? {} : { changes: session.place.changes }), ...(session.place?.sync === undefined ? {} : { sync: session.place.sync }) } }
+
+return { headBranch, gitDirOf, baseName, folderOf, parentOf, joinPath, withPlace };
 })();
-// ---- hooks/parts.ts
-__m['parts.ts'] = (() => {
+// ---- hooks/context/parts.ts
+__m['context/parts.ts'] = (() => {
 // What fills the context (spec C1): the breakdown Claude Code gives, as categories, plugins and memory files, and the
 // Usage tab's three rows. No path is kept but one inside the project: a memory file elsewhere is named by its type and
 // base name, so no home folder or user name reaches the atom.
-                                                                           
+                                                          
 
-const { clock, tokens } = __m['format.ts'];
-const { baseName } = __m['startup.ts'];
-                                     
-                                                   
+const { clockText, tokensText } = __m['core/format.ts'];
+const { baseName } = __m['place/place.ts'];
+                                                  
+                                         
 
-const NO_PARTS        = { at: null, categories: [], plugins: [], memory: { files: 0, tokens: 0, top: [] } }
+const NO_PARTS        = { breakdownAt: null, categories: [], plugins: [], memory: { files: 0, tokens: 0, top: [] } }
 
 const slashed = (p        )         => p.replace(/\\/g, '/')
 const isDrive = (p        )          => /^[A-Za-z]:\//.test(p)
@@ -866,34 +879,6 @@ function ruleName(path        , type        )                {
   const file = slashed(path)
   const isRule = /\/\.claude\/rules\//.test(file) || (type === 'User' && /\/rules\//.test(file))
   return isRule ? baseName(file) : null
-}
-
-// The memory files a link under the project's `.claude/rules/` reaches: the breakdown names such a rule by where the
-// link lands (live, 2026-11-11), so an import there looks the same until both sides are resolved. Asked only of a file
-// that is no CLAUDE.md, no rule by its folder and no auto memory, so a session with none lists no folder.
-async function linkedRules($                 , b                         , cwd        )                       {
-  const unplaced = (b.memoryFiles ?? []).filter(f => f.type !== 'AutoMem' && ruleName(f.path, f.type) === null && !/^CLAUDE(\.local)?\.md$/.test(baseName(f.path)))
-  if (unplaced.length === 0) return new Set()
-  const ends           = []
-  const walk = async (dir        , depth        )                => {
-    const entries = await $.fs.list(dir).catch(() => [])
-    for (const entry of entries) {
-      const path = `${dir}/${entry.name}`
-      if (entry.isLink) {
-        const real = (await $.fs.stat(path, { resolve: true }).catch(() => undefined))?.realPath
-        if (real !== undefined) ends.push(slashed(real).replace(/\/+$/, ''))
-      } else if (entry.kind === 'dir' && depth < 3) await walk(path, depth + 1)
-    }
-  }
-  await walk(`${slashed(cwd).replace(/\/+$/, '')}/.claude/rules`, 0)
-  const found = new Set        ()
-  if (ends.length === 0) return found
-  for (const f of unplaced) {
-    const real = (await $.fs.stat(f.path, { resolve: true }).catch(() => undefined))?.realPath
-    const file = real === undefined ? null : slashed(real)
-    if (file !== null && ends.some(end => file === end || file.startsWith(`${end}/`))) found.add(f.path)
-  }
-  return found
 }
 
 // The breakdown as the atom keeps it: `used` categories in Claude Code's order; agents by the plugin before the `:` of
@@ -927,7 +912,7 @@ function partsOf(b                         , cwd        , at        , linked    
   return {
     ...listing,
     ...(rules.length === 0 ? {} : { rules }),
-    at,
+    breakdownAt: at,
     categories: (b.categories ?? []).filter(c => c.kind === 'used').map(c => ({ name: c.name, tokens: c.tokens })),
     plugins: [...plugins.values()].sort((x, y) => y.agentTokens + y.skillTokens - (x.agentTokens + x.skillTokens) || x.name.localeCompare(y.name)),
     memory: {
@@ -943,22 +928,22 @@ const PARTS_LABEL = 12
 const LABEL = PARTS_LABEL
 
 // The Usage tab's rows after Tokens; none before a breakdown
-function partsLines(p       )         {
-  if (p.at === null) return []
+function partsLines(parts       )         {
+  if (parts.breakdownAt === null) return []
   const out         = []
-  const used = p.categories.map(c => `${c.name} ${tokens(c.tokens)}`)
-  out.push([{ text: 'In context', width: LABEL }, { text: [`est. ${clock(p.at)}`, ...used].join(' · ') }])
-  if (p.plugins.length > 0) {
-    const named = p.plugins.map(x => {
+  const used = parts.categories.map(c => `${c.name} ${tokensText(c.tokens)}`)
+  out.push([{ text: 'In context', width: LABEL }, { text: [`est. ${clockText(parts.breakdownAt)}`, ...used].join(' · ') }])
+  if (parts.plugins.length > 0) {
+    const named = parts.plugins.map(x => {
       const what = [x.agents > 0 ? `${x.agents} agents` : null, x.skills > 0 ? `${x.skills} skills` : null].filter((s)              => s !== null)
-      return `${x.name} ${tokens(x.agentTokens + x.skillTokens)}: ${what.join(', ')}`
+      return `${x.name} ${tokensText(x.agentTokens + x.skillTokens)}: ${what.join(', ')}`
     })
     out.push([{ text: 'Plugins', width: LABEL }, { text: named.join(' · ') }])
   }
-  if (p.memory.files > 0) {
-    const m = p.memory
+  if (parts.memory.files > 0) {
+    const m = parts.memory
     const rest = m.files - m.top.length
-    const shown = [`${m.files} ${m.files === 1 ? 'file' : 'files'} ${tokens(m.tokens)}`, ...m.top.map(t => `${t.name} ${tokens(t.tokens)}`), ...(rest > 0 ? [`+${rest}`] : [])]
+    const shown = [`${m.files} ${m.files === 1 ? 'file' : 'files'} ${tokensText(m.tokens)}`, ...m.top.map(t => `${t.name} ${tokensText(t.tokens)}`), ...(rest > 0 ? [`+${rest}`] : [])]
     out.push([{ text: 'Memory', width: LABEL }, { text: shown.join(' · ') }])
   }
   return out
@@ -971,16 +956,15 @@ const listedText = (l              )         => (l.listed === l.total ? `${l.tot
 const loadedTexts = (skills                                    )           =>
   Object.entries(skills ?? {}).map(([name, n]) => `${name} ×${n}`)
 
-return { NO_PARTS, memoryName, ruleName, linkedRules, partsOf, PARTS_LABEL, partsLines, listedText, loadedTexts };
+return { NO_PARTS, slashed, memoryName, ruleName, partsOf, PARTS_LABEL, partsLines, listedText, loadedTexts };
 })();
-// ---- hooks/planlines.ts
-__m['planlines.ts'] = (() => {
+// ---- hooks/plan/planlines.ts
+__m['plan/planlines.ts'] = (() => {
 // The Plan tab, the Now tab's PLAN section and the band's plan line, from the plan and scores views to lines of
 // styled segments. Every title, note and finding is file content: draw.tsx makes each printable and masks it.
-const { bar, fitLine, mins, widthOf } = __m['format.ts'];
-                                          
-                                                              
-                                                           
+const { barText, fitLine, minutesText, widthOf } = __m['core/format.ts'];
+                                              
+                                                                                         
 
 const MIN = 60_000
 const NOTE = '✎ your note integrated'
@@ -999,28 +983,28 @@ const cut = (text        , max        )         => fitLine(text, Math.max(2, max
 const agentCount = (k        )         => `${k} ${k === 1 ? 'agent' : 'agents'}`
 
 // Some open step has an estimate, or the task list has its 3 completed: the time left is known
-const hasLeft = (v          )          => v.total - v.finished > v.unestimated
+const hasLeft = (view          )          => view.total - view.finished > view.unestimated
 // The task list: no step has an estimate, and it never calibrates
-const isTasks = (v          )          => v.isCalibrated && v.rows.every(r => r.step.estimateMin === null)
+const isTasks = (view          )          => view.isCalibrated && view.rows.every(r => r.step.estimateMin === null)
 
 function planBar(percent        )       {
-  const [filled, empty] = bar(percent)
+  const [filled, empty] = barText(percent)
   return [{ text: filled, tone: 'plan' }, { text: empty, tone: 'dim' }]
 }
 
 // 'Token refresh ▰▰▰▱▱ 3/5 · 60% · 1h 12m · ≈30m left │ ▶ Update interceptor', or 'Token refresh ▰▰▰▰▰ done ✓ in 1h 19m'
 // once every step is finished. Past `columns` the step part goes, then the title is cut.
-function planLine(v          , columns        )       {
-  const title = fitLine(v.title, 80)
-  const rest       = v.isFinished
-    ? [...planBar(100), { text: ` done ✓ in ${mins(v.workedMs)}` }]
+function planLine(view          , columns        )       {
+  const title = fitLine(view.title, 80)
+  const rest       = view.isFinished
+    ? [...planBar(100), { text: ` done ✓ in ${minutesText(view.workedMs)}` }]
     : [
-      ...planBar(v.percent), { text: ` ${v.finished}/${v.total} · ` }, { text: `${v.percent}%`, tone: 'plan' },
-      { text: ` · ${mins(v.workedMs)}${hasLeft(v) ? ` · ≈${mins(v.leftMs)} left` : ''}` },
+      ...planBar(view.percent), { text: ` ${view.finished}/${view.total} · ` }, { text: `${view.percent}%`, tone: 'plan' },
+      { text: ` · ${minutesText(view.workedMs)}${hasLeft(view) ? ` · ≈${minutesText(view.leftMs)} left` : ''}` },
     ]
-  const first = v.running[0]
+  const first = view.running[0]
   const step       = first === undefined ? [] : [{ text: ` │ ▶ ${fitLine(first.step.title, 80)}` }]
-  if (v.running.length > 1) step.push({ text: ` +${v.running.length - 1}`, tone: 'dim' })
+  if (view.running.length > 1) step.push({ text: ` +${view.running.length - 1}`, tone: 'dim' })
   const full       = [{ text: `${title} ` }, ...rest, ...step]
   if (widthOf(full) <= columns) return full
   return [{ text: `${cut(title, columns - widthOf(rest) - 1)} ` }, ...rest]
@@ -1030,34 +1014,34 @@ function planLine(v          , columns        )       {
 // interceptor', a dim ' +1' for each further running step, ' · done ✓' once finished, ' · awaiting approval' for
 // Alfred Code's plan before its approval, the count alone with none running; then `tail`, the plan's score. Past
 // `columns` the step's title is cut, then the step goes, then the plan's title is cut; the score goes last.
-function planRowParts(v          , columns        , tail       = [])       {
-  const count       = [{ text: ' ' }, ...planBar(v.percent), { text: ` ${v.finished}/${v.total}` }]
+function planRowParts(view          , columns        , tail       = [])       {
+  const count       = [{ text: ' ' }, ...planBar(view.percent), { text: ` ${view.finished}/${view.total}` }]
   // The score stays while the plan's title keeps 4 cells beside it and the count, or the count and ' · done ✓'
-  const after = v.isFinished ? widthOf(count) + widthOf([{ text: ' · done ✓' }]) : widthOf(count)
+  const after = view.isFinished ? widthOf(count) + widthOf([{ text: ' · done ✓' }]) : widthOf(count)
   const keepsTail = tail.length > 0 && columns - widthOf(tail) - after >= 4
-  const body = planBody(v, keepsTail ? columns - widthOf(tail) : columns, count)
+  const body = planBody(view, keepsTail ? columns - widthOf(tail) : columns, count)
   return keepsTail ? [...body, ...tail] : body
 }
 
-function planBody(v          , columns        , count      )       {
-  const title = fitLine(v.title, 80)
-  const first = v.running[0]
+function planBody(view          , columns        , count      )       {
+  const title = fitLine(view.title, 80)
+  const first = view.running[0]
   // The title with `after`, the title cut to fit; with no room for 4 cells of title, the title alone, cut
   const titled = (after      )       =>
     widthOf([{ text: title }, ...after]) <= columns ? [{ text: title }, ...after]
       : columns - widthOf(after) >= 4 ? [{ text: cut(title, columns - widthOf(after)) }, ...after]
       : [{ text: cut(title, Math.max(1, columns)) }]
-  if (v.isFinished) {
+  if (view.isFinished) {
     const done       = [...count, { text: ' · done ' }, { text: '✓', tone: 'ok' }]
     return columns - widthOf(done) >= 4 ? titled(done) : titled(count)
   }
   const bare       = [{ text: title }, ...count]
-  if (v.isAwaiting) {
+  if (view.isAwaiting) {
     const awaiting       = [...bare, { text: ' · awaiting approval', tone: 'warn' }]
     if (widthOf(awaiting) <= columns) return awaiting
   }
-  if (first === undefined || v.isAwaiting) return titled(count)
-  const more       = v.running.length > 1 ? [{ text: ` +${v.running.length - 1}`, tone: 'dim' }] : []
+  if (first === undefined || view.isAwaiting) return titled(count)
+  const more       = view.running.length > 1 ? [{ text: ` +${view.running.length - 1}`, tone: 'dim' }] : []
   const lead = ` · ▸ ${fitLine(first.step.id, 12)} `
   const stepTitle = fitLine(first.step.title, 80)
   const full       = [...bare, { text: `${lead}${stepTitle}` }, ...more]
@@ -1068,21 +1052,21 @@ function planBody(v          , columns        , count      )       {
 }
 
 // Under 100 columns: '⟳ S4 12m · 2 agents', the first running step's id and its time
-function narrowPlan(v          , agents        )       {
-  const first = v.running[0]
-  const head      = v.isFinished ? { text: `✓ done in ${mins(v.workedMs)}`, bold: true }
-    : first !== undefined ? { text: `⟳ ${fitLine(first.step.id, 12)} ${mins(first.actualMs)}`, bold: true }
-    : { text: `⟳ ${v.finished}/${v.total}`, bold: true }
+function narrowPlan(view          , agents        )       {
+  const first = view.running[0]
+  const head      = view.isFinished ? { text: `✓ done in ${minutesText(view.workedMs)}`, bold: true }
+    : first !== undefined ? { text: `⟳ ${fitLine(first.step.id, 12)} ${minutesText(first.actualMs)}`, bold: true }
+    : { text: `⟳ ${view.finished}/${view.total}`, bold: true }
   return agents > 0 ? [head, { text: ` · ${agentCount(agents)}` }] : [head]
 }
 
 // 'done in 24m', '12m of ≈24m', '≈18m', with 'shared' after a shared step's time
 function timeOf(r         )         {
   const s = r.step
-  const forecast = r.forecastMs === null ? null : `≈${mins(r.forecastMs)}`
-  const time = s.status === 'done' ? (r.actualMs > 0 ? `done in ${mins(r.actualMs)}` : 'done')
+  const forecast = r.forecastMs === null ? null : `≈${minutesText(r.forecastMs)}`
+  const time = s.status === 'done' ? (r.actualMs > 0 ? `done in ${minutesText(r.actualMs)}` : 'done')
     : s.status === 'skipped' ? 'skipped'
-    : s.status === 'in_progress' || r.actualMs > 0 ? `${mins(r.actualMs)}${forecast === null ? '' : ` of ${forecast}`}`
+    : s.status === 'in_progress' || r.actualMs > 0 ? `${minutesText(r.actualMs)}${forecast === null ? '' : ` of ${forecast}`}`
     : forecast ?? ''
   return r.isShared && time !== '' ? `${time} shared` : time
 }
@@ -1092,7 +1076,7 @@ function timeOf(r         )         {
 function stepRows(rows           , indent        , withEstimate         , columns        )         {
   const times = rows.map(timeOf)
   const timeWidth = Math.max(0, ...times.map(t => t.length))
-  const ests = rows.map(r => (withEstimate && r.step.estimateMin !== null ? `est ${mins(r.step.estimateMin * MIN)}` : ''))
+  const ests = rows.map(r => (withEstimate && r.step.estimateMin !== null ? `est ${minutesText(r.step.estimateMin * MIN)}` : ''))
   const rights = rows.map((_, i) => (ests[i] === '' ? times[i] ?? '' : `${(times[i] ?? '').padEnd(timeWidth)}   ${ests[i] ?? ''}`))
   const rightWidth = Math.max(0, ...rights.map(t => t.length))
   const natural = rows.map(r => `${fitLine(r.step.id, 12)} ${fitLine(r.step.title, 60)}`.length + (r.notes.length > 0 ? NOTE.length + 3 : 0))
@@ -1127,11 +1111,11 @@ function stepRows(rows           , indent        , withEstimate         , column
 
 // The Now tab's section, first: 'PLAN   Token refresh · 3/5 · ≈30m left of ≈1h 37m', then the last finished step,
 // each running step and the next one, without the estimates
-function planSection(v          , columns        )         {
-  const head       = [{ text: 'PLAN', bold: true, tone: 'plan' }, { text: `   ${fitLine(v.title, 60)} · ${v.finished}/${v.total}` }]
-  if (v.isFinished) head.push({ text: ` · done in ${mins(v.workedMs)}` })
-  else if (hasLeft(v)) head.push({ text: ` · ≈${mins(v.leftMs)} left of ≈${mins(v.totalMs)}` })
-  const shown = [v.lastFinished, ...v.running, v.next].filter((r, i, all)               => r !== null && all.indexOf(r) === i)
+function planSection(view          , columns        )         {
+  const head       = [{ text: 'PLAN', bold: true, tone: 'plan' }, { text: `   ${fitLine(view.title, 60)} · ${view.finished}/${view.total}` }]
+  if (view.isFinished) head.push({ text: ` · done in ${minutesText(view.workedMs)}` })
+  else if (hasLeft(view)) head.push({ text: ` · ≈${minutesText(view.leftMs)} left of ≈${minutesText(view.totalMs)}` })
+  const shown = [view.lastFinished, ...view.running, view.next].filter((r, i, all)               => r !== null && all.indexOf(r) === i)
   return [head, ...stepRows(shown, '  ', false, columns)]
 }
 
@@ -1146,16 +1130,16 @@ const arrow = (d        )      => (d > 0 ? { text: ' ▲', tone: 'ok' } : d < 0 
 // The band's 'score 81 ▲13': the shown round's total (Alfred Code's released round, else the last), a dim 'grading'
 // while Alfred Code's grading runs, and the change from the round before; against `level`, Alfred Code's scoring
 // level, green at or above it and amber under it, no colour without one
-function scoreSeg(s            , level                = null)       {
-  const total = s.shown.total
-  const score      = level === null ? { text: `score ${num(total)}` } : { text: `score ${num(total)}`, tone: (total * 100) / s.scale >= level ? 'ok' : 'warn' }
-  return [score, ...(s.isGrading ? [{ text: ' grading', tone: 'dim' }       ] : []), ...deltaSegs(s.delta)]
+function scoreSeg(scoresView            , level                = null)       {
+  const total = scoresView.shown.total
+  const score      = level === null ? { text: `score ${num(total)}` } : { text: `score ${num(total)}`, tone: (total * 100) / scoresView.scale >= level ? 'ok' : 'warn' }
+  return [score, ...(scoresView.isGrading ? [{ text: ' grading', tone: 'dim' }       ] : []), ...deltaSegs(scoresView.delta)]
 }
 
 // '<name> (<kind>) R3 88', for a scores file listed on one line
-function scoresLabel(name        , s        )         {
-  const last = s.rounds[s.rounds.length - 1]
-  return `${name} (${s.subject.kind})${last === undefined ? '' : ` R${last.round} ${num(last.total)}`}`
+function scoresLabel(name        , scores        )         {
+  const last = scores.rounds[scores.rounds.length - 1]
+  return `${name} (${scores.subject.kind})${last === undefined ? '' : ` R${last.round} ${num(last.total)}`}`
 }
 
 const findingText = (f         )         => `${f.id === null ? '' : `${fitLine(f.id, 12)} `}${fitLine(f.text, 80)}${f.by === null ? '' : ` (${fitLine(f.by, 12)})`}`
@@ -1167,29 +1151,29 @@ function findingRows(label        , texts          )         {
 
 // Scorer rule 4: the last 4 totals, the change per criterion, the count per severity, and the fixed, improved and
 // open findings
-function scoreLines(s            )         {
+function scoreLines(scoresView            )         {
   const out         = [[
-    { text: 'Scores', bold: true }, { text: `   ${s.totals.map(t => `R${t.round} ${num(t.total)}`).join(' → ')}` },
-    ...deltaSegs(s.delta), { text: `   (scale ${num(s.scale)})`, tone: 'dim' },
+    { text: 'Scores', bold: true }, { text: `   ${scoresView.totals.map(t => `R${t.round} ${num(t.total)}`).join(' → ')}` },
+    ...deltaSegs(scoresView.delta), { text: `   (scale ${num(scoresView.scale)})`, tone: 'dim' },
   ]]
-  if (s.criteria.length > 0) {
+  if (scoresView.criteria.length > 0) {
     const line       = []
-    for (const c of s.criteria) {
+    for (const c of scoresView.criteria) {
       line.push({ text: `${line.length === 0 ? '  ' : '   '}${c.name} ` })
-      if (s.delta === null) line.push({ text: num(c.last) })
+      if (scoresView.delta === null) line.push({ text: num(c.last) })
       else if (c.prev === null) line.push({ text: `${num(c.last)} new`, tone: 'dim' })
       else line.push({ text: `${num(c.prev)}→${num(c.last)}` }, arrow(c.last - c.prev))
     }
     out.push(line)
   }
   // A first round has nothing to change from
-  const count = (v                                  )         => (s.delta === null ? `${v.severity} ${v.last}` : `${v.severity} ${v.prev}→${v.last}`)
-  if (s.severities.length > 0) out.push([{ text: `  ${s.severities.map(count).join('   ')}` }])
-  if (s.hasStatus) {
-    out.push(...findingRows('fixed:', s.fixed.map(findingText)), ...findingRows('improved:', s.improved.map(findingText)))
+  const count = (severityRow                                  )         => (scoresView.delta === null ? `${severityRow.severity} ${severityRow.last}` : `${severityRow.severity} ${severityRow.prev}→${severityRow.last}`)
+  if (scoresView.severities.length > 0) out.push([{ text: `  ${scoresView.severities.map(count).join('   ')}` }])
+  if (scoresView.hasStatus) {
+    out.push(...findingRows('fixed:', scoresView.fixed.map(findingText)), ...findingRows('improved:', scoresView.improved.map(findingText)))
   }
-  const open = s.open.slice(0, 3).map(findingText)
-  if (s.open.length > 3) open.push(`+${s.open.length - 3} more`)
+  const open = scoresView.open.slice(0, 3).map(findingText)
+  if (scoresView.open.length > 3) open.push(`+${scoresView.open.length - 3} more`)
   out.push(...findingRows('open:', open))
   return out
 }
@@ -1197,29 +1181,29 @@ function scoreLines(s            )         {
 // The Plan tab (Decision 20): the header, a row per step with your notes beneath, the overhead, the scores, the age of
 // the last update (amber when stale) and the other plans
 function planLines(
-  v                 , s                   ,
+  view                 , scoresView                   ,
   o                                                                                                                       ,
 )         {
   const out         = []
-  if (v === null) out.push([{ text: 'No plan file in .claude/session-inspector/plans/, and no task list this session.', tone: 'dim' }])
+  if (view === null) out.push([{ text: 'No plan file in .claude/session-inspector/plans/, and no task list this session.', tone: 'dim' }])
   else {
-    const head       = [{ text: 'Plan', bold: true, tone: 'plan' }, { text: ` · ${fitLine(v.title, 60)}`, bold: true }, { text: `   ${v.finished}/${v.total}` }]
-    if (v.isFinished) head.push({ text: ` · done in ${mins(v.workedMs)}` })
-    else if (hasLeft(v)) {
-      head.push({ text: ` · ≈${mins(v.totalMs)} total · ≈${mins(v.leftMs)} left` })
-      if (!isTasks(v)) head.push(v.isCalibrated ? { text: ` (×${ratioText(v.ratio)})` } : { text: ' (uncalibrated)', tone: 'dim' })
+    const head       = [{ text: 'Plan', bold: true, tone: 'plan' }, { text: ` · ${fitLine(view.title, 60)}`, bold: true }, { text: `   ${view.finished}/${view.total}` }]
+    if (view.isFinished) head.push({ text: ` · done in ${minutesText(view.workedMs)}` })
+    else if (hasLeft(view)) {
+      head.push({ text: ` · ≈${minutesText(view.totalMs)} total · ≈${minutesText(view.leftMs)} left` })
+      if (!isTasks(view)) head.push(view.isCalibrated ? { text: ` (×${ratioText(view.ratio)})` } : { text: ' (uncalibrated)', tone: 'dim' })
     }
-    if (!isTasks(v) && v.unestimated > 0) head.push({ text: ` · ${v.unestimated} without an estimate`, tone: 'dim' })
+    if (!isTasks(view) && view.unestimated > 0) head.push({ text: ` · ${view.unestimated} without an estimate`, tone: 'dim' })
     out.push(head)
     if (o.invalid) out.push([{ text: 'plan file invalid: showing the last good read', tone: 'warn' }])
-    out.push(...stepRows(v.rows, '', true, o.columns))
-    for (const note of v.planNotes) out.push([{ text: '✎ ', tone: 'plan' }, { text: `'${fitLine(note, 200)}'` }])
-    if (v.overheadMs > 0) out.push([{ text: `Overhead  ${mins(v.overheadMs)}` }])
+    out.push(...stepRows(view.rows, '', true, o.columns))
+    for (const note of view.planNotes) out.push([{ text: '✎ ', tone: 'plan' }, { text: `'${fitLine(note, 200)}'` }])
+    if (view.overheadMs > 0) out.push([{ text: `Overhead  ${minutesText(view.overheadMs)}` }])
   }
-  if (s !== null) out.push(...scoreLines(s))
+  if (scoresView !== null) out.push(...scoreLines(scoresView))
   for (const label of o.otherScores.slice(0, 3)) out.push([{ text: label, tone: 'dim' }])
-  if (v !== null && o.updatedAt !== null) {
-    out.push([{ text: `last update ${mins(Math.max(0, o.now - o.updatedAt))} ago`, tone: v.staleMs === null ? 'dim' : 'warn' }])
+  if (view !== null && o.updatedAt !== null) {
+    out.push([{ text: `last update ${minutesText(Math.max(0, o.now - o.updatedAt))} ago`, tone: view.staleMs === null ? 'dim' : 'warn' }])
   }
   if (o.others.length > 0) out.push([{ text: `Other plans: ${o.others.join(', ')}   /inspect plan <name>`, tone: 'dim' }])
   return out
@@ -1227,143 +1211,86 @@ function planLines(
 
 return { planLine, planRowParts, narrowPlan, planSection, scoreSeg, scoresLabel, planLines };
 })();
-// ---- hooks/band.ts
-__m['band.ts'] = (() => {
-// The band above the prompt, from the session's values to lines of styled segments. Calm by default: colour
-// appears only when a threshold is crossed, something failed or a turn runs.
-const { actionOf, isLive } = __m['agents.ts'];
-const { billingOf, cacheView, minutes } = __m['cache.ts'];
-const { bar, clock, duration, elapsed, fitLine, mins, modelParts, modelText, toneOf, tokens, usd, when, widthOf } = __m['format.ts'];
-const { pace, turnsLeft } = __m['forecast.ts'];
-const { listedText, loadedTexts } = __m['parts.ts'];
-const { narrowPlan, planLine, planRowParts, scoreSeg } = __m['planlines.ts'];
-const { storedMark } = __m['startup.ts'];
-                                                     
+// ---- hooks/band/gauges.ts
+__m['band/gauges.ts'] = (() => {
+// The band's gauges: ctx, the 5h and 7d windows with their resets and pace, and the session's times
+const { isLive } = __m['agents/agents.ts'];
+const { barText, clockText, toneOf, tokensText, usdText, whenText } = __m['core/format.ts'];
+const { paceForecast, turnsLeft } = __m['core/forecast.ts'];
+const { storedMark } = __m['session/windows.ts'];
                                         
-
-                                                                                                                                                    
-
-                                                                                                                                                                                     
-                 
-                                                                                                                          
-                                                                                          
-                                                                                                                        
-                                                                                                            
-                                                                                                               
-                    
-                       
-                                                                                                                   
-                                  
-                        
-// One agent on the axis: its label (`task <id>` or its type), when it started, when it ended (null while it runs), its
-// status and its time as the tree shows it
-                                                                                                              
-// `plan`: the shown plan or task list while it runs, or for 10 minutes after it finished; `planInvalid`: the shown
-// plan's file failed its last read; `score`: the shown plan's scores, else the newest scores file's; `rec`: REC's level
-// and how many private words it hides
-                         
-                                                                                                       
-                                                                   
-                                                                                                              
-                                                                                                        
-                            
-                                                                                                                   
-                       
-                                                                                                                   
-                                                   
-                                          
-                                         
-                            
-                                                                                                                      
-                        
-                
-                                                                                                                         
-                                                                                  
-                 
-                                                                                               
-                  
-                 
-                                  
-                                                                                                                    
-                                                     
-                       
-                               
-                                                                                                                      
-                                                                                                      
-                    
-                                                                                                                     
-                                                                                                          
-                                       
- 
-                                                                                   
+                                                         
+                                            
+                                              
 
 const ORDER = ['five_hour', 'seven_day']
+
 const LABEL                         = { five_hour: '5h', seven_day: '7d' }
 
-const pct = (n        )         => `${Math.round(n)}%`
+const percentText = (n        )         => `${Math.round(n)}%`
 
 // ' 45%' in its bar's threshold colour; ' ≈45%' with `mark` for a window an earlier session read
-const pctSeg = (n        , mark = '')      => ({ text: ` ${mark}${pct(n)}`, tone: toneOf(n) })
+const percentSeg = (n        , mark = '')      => ({ text: ` ${mark}${percentText(n)}`, tone: toneOf(n) })
 
 function barSegs(percent        )        {
-  const [filled, empty] = bar(percent)
+  const [filled, empty] = barText(percent)
   return [{ text: filled, tone: toneOf(percent) }, { text: empty, tone: 'dim' }]
 }
 
-function windowsInOrder(windows          )           {
-  const rank = (w        )         => (ORDER.includes(w.kind) ? ORDER.indexOf(w.kind) : ORDER.length)
+function windowsInOrder(windows              )               {
+  const rank = (rateWindow            )         => (ORDER.includes(rateWindow.kind) ? ORDER.indexOf(rateWindow.kind) : ORDER.length)
   return [...windows].sort((a, b) => rank(a) - rank(b))
 }
 
 // The 5h window's pace: null until there are 3 readings
-function fiveHourPace(b                                           )                          {
-  const w = b.usage.windows.find(x => x.kind === 'five_hour')
+function fiveHourPace(b                                           )                                  {
+  const w = b.usage.rateWindows.find(rateWindow => rateWindow.kind === 'five_hour')
   if (w === undefined) return null
   const reset = w.resetsAt === null ? NaN : Date.parse(w.resetsAt)
-  return pace('five_hour', b.pace.five_hour?.points ?? [], Number.isNaN(reset) ? null : reset, b.now)
+  return paceForecast('five_hour', b.pace.five_hour?.points ?? [], Number.isNaN(reset) ? null : reset, b.now)
 }
 
 // ' (02.11 16:15)': when the window resets, or nothing while it reports none
-function resetSegs(w        )       {
-  const reset = w.resetsAt === null ? NaN : Date.parse(w.resetsAt)
-  return Number.isNaN(reset) ? [] : [{ text: ` (${when(reset)})`, tone: 'dim' }]
+function resetSegs(rateWindow            )       {
+  const reset = rateWindow.resetsAt === null ? NaN : Date.parse(rateWindow.resetsAt)
+  return Number.isNaN(reset) ? [] : [{ text: ` (${whenText(reset)})`, tone: 'dim' }]
 }
 
-function gauges(b           )       {
-  const u = b.usage
+function gauges(input           )       {
+  const u = input.usage
   const out       = []
   const sep = ()       => {
     if (out.length > 0) out.push({ text: ' │ ', tone: 'dim' })
   }
-  out.push(...ctxSegs(u, b.runway))
-  if (u.percent !== null || (b.runway ?? null) !== null) {
-    const left = turnsLeft(b.turns.flatMap(t => (t.contextPercent === null ? [] : [t.contextPercent])), b.forecast?.at)
+  out.push(...contextSegs(u, input.runway))
+  if (u.contextPercent !== null || (input.runway ?? null) !== null) {
+    const left = turnsLeft(input.turns.flatMap(turn => (turn.contextPercent === null ? [] : [turn.contextPercent])), input.forecast?.at)
     if (left !== null) out.push({ text: ` ≈${left} turns`, tone: 'dim' })
   }
-  const mark = storedMark(u.windowsAt)
-  for (const w of windowsInOrder(u.windows)) {
+  const mark = storedMark(u.rateWindowsAt)
+  for (const rateWindow of windowsInOrder(u.rateWindows)) {
     sep()
-    const label = LABEL[w.kind] ?? w.kind
-    if (w.kind === 'five_hour') {
-      out.push({ text: `${label} `, tone: 'usage' }, ...barSegs(w.percentUsed), pctSeg(w.percentUsed, mark), ...resetSegs(w))
-      const p = fiveHourPace(b)
+    const label = LABEL[rateWindow.kind] ?? rateWindow.kind
+    if (rateWindow.kind === 'five_hour') {
+      out.push({ text: `${label} `, tone: 'usage' }, ...barSegs(rateWindow.percentUsed), percentSeg(rateWindow.percentUsed, mark), ...resetSegs(rateWindow))
+      const p = fiveHourPace(input)
       if (p === 'on-pace') out.push({ text: ' on pace', tone: 'ok' })
-      else if (p !== null) out.push({ text: ` full ≈${clock(p.limitAt)}`, tone: 'warn' })
-    } else out.push({ text: `${label} `, tone: 'usage' }, { text: `${mark}${pct(w.percentUsed)}`, tone: toneOf(w.percentUsed) }, ...resetSegs(w))
+      else if (p !== null) out.push({ text: ` full ≈${clockText(p.limitAt)}`, tone: 'warn' })
+    } else out.push({ text: `${label} `, tone: 'usage' }, { text: `${mark}${percentText(rateWindow.percentUsed)}`, tone: toneOf(rateWindow.percentUsed) }, ...resetSegs(rateWindow))
   }
   if (u.costUsd !== null) {
     sep()
-    out.push({ text: usd(u.costUsd) })
+    out.push({ text: usdText(u.costUsd) })
   }
   return out
 }
 
 // The ctx item: against the stack's resume trigger while the runway applies (`ctx ▰▰▰▱▱ 62% of 150k`), else the window
-function ctxSegs(u       , runway                           )       {
+function contextSegs(u       , runway                           )       {
   if (runway !== undefined && runway !== null) {
-    return [{ text: 'ctx ', tone: 'usage' }, ...barSegs(runway.percent), pctSeg(runway.percent), { text: ` of ${tokens(runway.resumeAt)}`, tone: 'usage' }]
+    return [{ text: 'ctx ', tone: 'usage' }, ...barSegs(runway.percent), percentSeg(runway.percent), { text: ` of ${tokensText(runway.resumeAt)}`, tone: 'usage' }]
   }
-  return u.percent === null ? [{ text: 'ctx —', tone: 'usage' }] : [{ text: 'ctx ', tone: 'usage' }, ...barSegs(u.percent), pctSeg(u.percent)]
+  return u.contextPercent === null ? [{ text: 'ctx —', tone: 'usage' }] : [{ text: 'ctx ', tone: 'usage' }, ...barSegs(u.contextPercent), percentSeg(u.contextPercent)]
 }
 
 function narrowGauges(u       , runway                           )       {
@@ -1371,39 +1298,106 @@ function narrowGauges(u       , runway                           )       {
   const sep = ()       => {
     if (out.length > 0) out.push({ text: ' · ', tone: 'dim' })
   }
-  out.push(...ctxSegs(u, runway))
-  for (const w of windowsInOrder(u.windows)) {
+  out.push(...contextSegs(u, runway))
+  for (const rateWindow of windowsInOrder(u.rateWindows)) {
     sep()
-    out.push({ text: `${LABEL[w.kind] ?? w.kind} `, tone: 'usage' }, ...barSegs(w.percentUsed), pctSeg(w.percentUsed, storedMark(u.windowsAt)), ...resetSegs(w))
+    out.push({ text: `${LABEL[rateWindow.kind] ?? rateWindow.kind} `, tone: 'usage' }, ...barSegs(rateWindow.percentUsed), percentSeg(rateWindow.percentUsed, storedMark(u.rateWindowsAt)), ...resetSegs(rateWindow))
   }
   return out
 }
 
 // 'you 14:02', 'Claude 14:05': the person's last prompt and Claude's last reply, the first `upTo` of them; with
 // `isLive`, the prompt is a running turn's while one runs
-function timeParts(b           , upTo = 2, isLive = false)           {
-  const you = (isLive ? b.live.promptAt : null) ?? b.turns[b.turns.length - 1]?.promptAt ?? b.meta.lastPromptAt
-  return [you === null ? null : `you ${clock(you)}`, b.meta.lastReplyAt === null ? null : `Claude ${clock(b.meta.lastReplyAt)}`]
+function timeParts(input           , upTo = 2, isLive = false)           {
+  const you = (isLive ? input.live.promptAt : null) ?? input.turns[input.turns.length - 1]?.promptAt ?? input.session.lastPromptAt
+  return [you === null ? null : `you ${clockText(you)}`, input.session.lastReplyAt === null ? null : `Claude ${clockText(input.session.lastReplyAt)}`]
     .filter((p)              => p !== null)
     .slice(0, upTo)
 }
 
 // ' │ you 14:02 · Claude 14:05'
-function times(b           , upTo = 2)       {
-  const parts = timeParts(b, upTo)
+function times(input           , upTo = 2)       {
+  const parts = timeParts(input, upTo)
   return parts.length === 0 ? [] : [{ text: ` │ ${parts.join(' · ')}`, tone: 'dim' }]
 }
 
+return { percentText, percentSeg, barSegs, windowsInOrder, fiveHourPace, gauges, narrowGauges, timeParts, times };
+})();
+// ---- hooks/band/wrap.ts
+__m['band/wrap.ts'] = (() => {
+// Fitting a band row to the width: cells, wrapped rows and rows packed to the band's height
+const { widthOf } = __m['core/format.ts'];
+                                              
+
 // A line's cells as the terminal draws it: its text, and each button `[ label ]`, or `1: label` when plain
 function cellsOf(line      )         {
-  return line.reduce((n, s) => {
-    if ('text' in s && s.width !== undefined) return n + s.width
-    if (!('button' in s)) return n + widthOf([s])
-    const b = s.button
+  return line.reduce((n, seg) => {
+    if ('text' in seg && seg.width !== undefined) return n + seg.width
+    if (!('button' in seg)) return n + widthOf([seg])
+    const b = seg.button
     const label = widthOf([{ text: b.label }])
     return n + (b.plain === true || /^\d$/.test(b.hotkey ?? '') ? (b.hotkey === undefined ? 0 : b.hotkey.length + 2) + label : label + 4)
   }, 0)
 }
+
+// Items after a label, joined by `joiner` (dim) while they fit; a row that wraps starts with `under`, as wide as the
+// label, so its items line up under the first. An item is a line of its own segments, so a glyph can carry a tone its
+// name does not; one wider than a row has the row to itself, and the draw cuts it.
+function wrapRows(label     , under     , items        , columns        , joiner        )         {
+  const lead = cellsOf([label])
+  const gap = widthOf([{ text: joiner }])
+  const rows         = []
+  let row       = [label]
+  let used = lead
+  let count = 0
+  for (const item of items) {
+    const w = widthOf(item)
+    if (count > 0 && used + gap + w > columns) {
+      rows.push(row)
+      row = [under]
+      used = lead
+      count = 0
+    }
+    if (count > 0) {
+      row.push({ text: joiner, tone: 'dim' })
+      used += gap
+    }
+    row.push(...item)
+    used += w
+    count++
+  }
+  rows.push(row)
+  return rows
+}
+
+// Items in rows of `columns`, joined by ' │ ' while the next fits, else on a row of its own; null when one is wider
+function packRows(items        , columns        )                {
+  const rows         = []
+  let row       = []
+  for (const item of items) {
+    if (cellsOf(item) > columns) return null
+    const joined       = row.length === 0 ? item : [...row, { text: ' │ ', tone: 'dim' }, ...item]
+    if (cellsOf(joined) <= columns) row = joined
+    else {
+      rows.push(row)
+      row = item
+    }
+  }
+  return row.length === 0 ? rows : [...rows, row]
+}
+
+return { cellsOf, wrapRows, packRows };
+})();
+// ---- hooks/band/detail.ts
+__m['band/detail.ts'] = (() => {
+// The band's detail rows: tools, skills, rules and agents, each with its label
+const { isLive } = __m['agents/agents.ts'];
+const { listedText, loadedTexts } = __m['context/parts.ts'];
+                                               
+                                                    
+                                              
+                                              
+const { wrapRows } = __m['band/wrap.ts'];
 
 const isSkill = (key        )          => key.startsWith('Skill: ')
 
@@ -1411,20 +1405,20 @@ const isSkill = (key        )          => key.startsWith('Skill: ')
 function toolsByCalls(stats                                      )                       {
   return Object.entries(stats ?? {})
     .filter(([key, s]) => s.calls > 0 && !isSkill(key))
-    .sort(([ka, a], [kb, z]) => z.calls - a.calls || (ka < kb ? -1 : ka > kb ? 1 : 0))
+    .sort(([ka, a], [kb, stat]) => stat.calls - a.calls || (ka < kb ? -1 : ka > kb ? 1 : 0))
 }
 
 // The counts of what the detail rows list (spec 2026-11-11, D5; settings-values S6, once a toggle): the tool calls, the
 // main chat's skills, the agents dispatched (and how many run) and the rules, each only above 0; its forms drop the
 // rules, then the agents, then the skills. None with nothing counted.
-function toggleForms(b           )         {
+function toggleForms(input           )         {
   const count = (n        , one        )                => (n === 0 ? null : `${n} ${one}${n === 1 ? '' : 's'}`)
-  const calls = toolsByCalls(b.stats).reduce((n, [, s]) => n + s.calls, 0)
-  const dispatched = Object.values(b.meta.agentTypes ?? {}).reduce((n, k) => n + k, 0)
-  const running = b.agents.filter(r => isLive(r.status)).length
-  const drawn = rulesDrawn(b.rules ?? NO_RULES)
+  const calls = toolsByCalls(input.stats).reduce((n, [, stat]) => n + stat.calls, 0)
+  const dispatched = Object.values(input.session.agentTypes ?? {}).reduce((n, k) => n + k, 0)
+  const running = input.agents.filter(row => isLive(row.status)).length
+  const drawn = rulesDrawn(input.rules ?? NO_RULES)
   const tools = count(calls, 'tool')
-  const skills = count(Object.keys(b.meta.skills ?? {}).length, 'skill')
+  const skills = count(Object.keys(input.session.loadedSkills ?? {}).length, 'skill')
   const agents = count(dispatched, 'agent')
   const rules = count(drawn.always.length + drawn.byPath.length, 'rule')
   if (tools === null && skills === null && agents === null && rules === null) return []
@@ -1435,40 +1429,28 @@ function toggleForms(b           )         {
   return [...new Set(forms.map(f => f.join(' · ')))].map(text => [{ text, tone: 'dim'          }])
 }
 
-                                                            
-
-// A band button where it draws (spec 2026-11-11 band-under, U3): above, as it is; under in fullscreen, where a click
-// presses it, labelled with the command that does its job and with no hotkey; under on the main screen, where nothing
-// presses it, that command as dim text
-function underButton(b           , button           , command        )      {
-  if (b.under === undefined) return { button }
-  if (b.under.buttons === 'text') return { text: command, tone: 'dim' }
-  const { hotkey: _hotkey, plain: _plain, ...rest } = button
-  return { button: { ...rest, label: command } }
-}
-
 // The open rows (spec 2026-11-11, D2): every tool by name with its calls, then the skills the main chat loaded and how
 // many the listing carries, each under its label, as many to a row as the width holds, joined by ' │ '. Each row waits
 // for its category's first item (the user, 2026-11-12: 'leave empty until at least one of category is appeared'): a
 // skills listing alone is no skill, and with by path untracked, no always-on rule is no rule
-function toolRows(b           )         {
-  const used = toolsByCalls(b.stats)
-  const isResumed = b.meta.isResumed === true
-  const hasSkills = Object.keys(b.meta.skills ?? {}).length > 0
-  const hasAgents = Object.keys(b.meta.agentTypes ?? {}).length > 0
-  const drawn = rulesDrawn(b.rules ?? NO_RULES)
+function toolRows(input           )         {
+  const used = toolsByCalls(input.stats)
+  const isResumed = input.session.isResumed === true
+  const hasSkills = Object.keys(input.session.loadedSkills ?? {}).length > 0
+  const hasAgents = Object.keys(input.session.agentTypes ?? {}).length > 0
+  const drawn = rulesDrawn(input.rules ?? NO_RULES)
   const hasRules = drawn.always.length + drawn.byPath.length > 0
-  const skills = skillSegs(b.meta.skills, isResumed)
-  if (b.listing !== undefined && b.listing !== null) skills.push({ text: listedText(b.listing), tone: 'dim' })
+  const skills = skillSegs(input.session.loadedSkills, isResumed)
+  if (input.skillListing !== undefined && input.skillListing !== null) skills.push({ text: listedText(input.skillListing), tone: 'dim' })
   const label = (text        )      => ({ text: text.padEnd(ROW_LABEL), tone: 'dim' })
   const under      = { text: ' '.repeat(ROW_LABEL) }
-  const row = (name        , items        )         => wrapRows(label(name), under, items, b.columns, ROW_JOIN)
-  const one = (segs       )         => segs.map(s => [s])
+  const row = (name        , items        )         => wrapRows(label(name), under, items, input.columns, ROW_JOIN)
+  const one = (segs       )         => segs.map(seg => [seg])
   return [
-    ...(used.length === 0 ? [] : row('tools:', one(used.map(([key, s])      => ({ text: `${key} ×${s.calls}` }))))),
+    ...(used.length === 0 ? [] : row('tools:', one(used.map(([key, stat])      => ({ text: `${key} ×${stat.calls}` }))))),
     ...(hasSkills ? row('skills:', one(skills)) : []),
-    ...(hasAgents ? row('agents:', agentSegs(b.agents, b.meta.agentTypes, isResumed)) : []),
-    ...(hasRules ? row('rules:', ruleSegs(b.rules ?? NO_RULES, isResumed)) : []),
+    ...(hasAgents ? row('agents:', agentSegs(input.agents, input.session.agentTypes, isResumed)) : []),
+    ...(hasRules ? row('rules:', ruleSegs(input.rules ?? NO_RULES, isResumed)) : []),
   ]
 }
 
@@ -1507,10 +1489,36 @@ function agentSegs(rows            , types                                    , 
       : of.some(r => r.status === 'failed' || r.status === 'killed') ? { text: '✗ ', tone: 'fail' } : { text: '✓ ', tone: 'ok' }
     return [glyph, { text: `${type} ×${types?.[type] ?? 0}` }]
   })
-  const running = rows.filter(r => isLive(r.status)).length
+  const running = rows.filter(row => isLive(row.status)).length
   const since         = isResumed ? [[{ text: 'since resume', tone: 'dim' }]] : []
   return [...items, ...since, [{ text: `${running} running`, tone: running > 0 ? 'warn' : 'dim' }]]
 }
+
+const ROW_LABEL = 9
+
+const ROW_JOIN = ' │ '
+
+const rowLabel = (text        )      => ({ text: text.padEnd(ROW_LABEL), tone: 'dim' })
+
+// The skills loaded in the main chat; after a resume or a branch, counted from it, since the ones loaded before are in
+// the context but never seen (a side agent's note, 2026-11-11)
+function skillSegs(skills                                    , isResumed         )        {
+  const loaded = loadedTexts(skills)
+  if (loaded.length === 0) return [{ text: isResumed ? 'none seen since resume' : 'none loaded', tone: 'dim' }]
+  const since        = isResumed ? [{ text: 'since resume', tone: 'dim' }] : []
+  return [...loaded.map((text)      => ({ text, tone: 'skill' })), ...since]
+}
+
+return { toggleForms, toolRows, rulesDrawn, ruleSegs, agentSegs, ROW_LABEL, ROW_JOIN, rowLabel, skillSegs };
+})();
+// ---- hooks/band/project.ts
+__m['band/project.ts'] = (() => {
+// The band's project rows: the plan, the place (project, folder, branch) and the usage summary
+const { fitLine, widthOf } = __m['core/format.ts'];
+const { planRowParts, scoreSeg } = __m['plan/planlines.ts'];
+                                        
+                                              
+const { ROW_JOIN, ROW_LABEL, rowLabel, toggleForms } = __m['band/detail.ts'];
 
 // The labels' width, so the items of every row line up, and the band rows' joiner, as the owner's target draws them
 // A folder past `max` cells: its last parts that fit after '…/', or its last part cut
@@ -1529,24 +1537,20 @@ function fitFolder(folder        , max        )         {
 // '…/<last part>' for a folder of several parts, else the folder
 const lastPart = (folder        )         => (folder.includes('/') ? `…/${folder.split('/').pop() ?? ''}` : folder)
 
-const ROW_LABEL = 9
-const ROW_JOIN = ' │ '
-
 // The full band's plan row, under the project row (the user, 2026-11-11): none in calm mode or with no plan
-function planRow(b           )         {
-  if (b.mode !== 'full' || b.plan === null) return []
-  const score       = b.score === null || b.isPlanScore === false ? [] : [{ text: ' · ' }, ...scoreSeg(b.score, b.scoreLevel ?? null)]
-  return [[{ text: 'plan:'.padEnd(ROW_LABEL), tone: 'dim' }, ...planRowParts(b.plan, b.columns - ROW_LABEL, score)]]
+function planRow(input           )         {
+  if (input.mode !== 'full' || input.plan === null) return []
+  const score       = input.score === null || input.isPlanScore === false ? [] : [{ text: ' · ' }, ...scoreSeg(input.score, input.scoreLevel ?? null)]
+  return [[{ text: 'plan:'.padEnd(ROW_LABEL), tone: 'dim' }, ...planRowParts(input.plan, input.columns - ROW_LABEL, score)]]
 }
 
-const rowLabel = (text        )      => ({ text: text.padEnd(ROW_LABEL), tone: 'dim' })
 const dimSeg = (text        )      => ({ text, tone: 'dim' })
 
 // The project row (the user, 2026-11-11): 'project: my-app │ git:(develop) +12 −3 │ folder: .claude' - the session's
 // project, the branch of the repository holding the folder Claude works in, and that folder when it is not the
 // project's root, past 40 cells its last parts after '…/'; short of width the folder takes its last part, then goes
-function placeRow(b           )         {
-  const place = b.meta.place
+function placeRow(input           )         {
+  const place = input.session.place
   if (place === undefined) return []
   const sep = dimSeg(ROW_JOIN)
   // The uncommitted changes after the branch, added in the OK colour and removed in the failure one; none when clean
@@ -1571,58 +1575,31 @@ function placeRow(b           )         {
   const folder = place.folder
   // Short of width the folder goes first, then the changes, then the commits ahead and behind
   const forms = [...(folder === undefined ? [] : [line(fitFolder(folder, 40)), line(lastPart(folder))]), line(null), line(null, false), line(null, false, false)]
-  const form = forms.find(f => widthOf(f) <= b.columns - ROW_LABEL) ?? forms[forms.length - 1] ?? []
+  const form = forms.find(f => widthOf(f) <= input.columns - ROW_LABEL) ?? forms[forms.length - 1] ?? []
   return [[rowLabel('project:'), ...form]]
 }
 
 // The usage row (the user, 2026-11-11): 'usage:   [ 45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ]', the counts of
 // what the detail rows under it list, as text: `bandRows` opens and closes those rows, not a click (spec
 // settings-values, S6); short of width its forms drop the rules, then the agents, then the skills
-function usageRow(b           )         {
-  const texts = toggleForms(b).flatMap(l => l.flatMap(s => ('text' in s ? [`[ ${s.text} ]`] : [])))
-  const text = texts.find(t => widthOf([{ text: t }]) <= b.columns - ROW_LABEL) ?? texts[texts.length - 1]
+function usageRow(input           )         {
+  const texts = toggleForms(input).flatMap(line => line.flatMap(seg => ('text' in seg ? [`[ ${seg.text} ]`] : [])))
+  const text = texts.find(t => widthOf([{ text: t }]) <= input.columns - ROW_LABEL) ?? texts[texts.length - 1]
   // Aqua, as the toggle's button was drawn (the user, 2026-11-11)
   return text === undefined ? [] : [[rowLabel('usage:'), { text, tone: 'counts' }]]
 }
 
-// The skills loaded in the main chat; after a resume or a branch, counted from it, since the ones loaded before are in
-// the context but never seen (a side agent's note, 2026-11-11)
-function skillSegs(skills                                    , isResumed         )        {
-  const loaded = loadedTexts(skills)
-  if (loaded.length === 0) return [{ text: isResumed ? 'none seen since resume' : 'none loaded', tone: 'dim' }]
-  const since        = isResumed ? [{ text: 'since resume', tone: 'dim' }] : []
-  return [...loaded.map((text)      => ({ text, tone: 'skill' })), ...since]
-}
-
-// Items after a label, joined by `joiner` (dim) while they fit; a row that wraps starts with `under`, as wide as the
-// label, so its items line up under the first. An item is a line of its own segments, so a glyph can carry a tone its
-// name does not; one wider than a row has the row to itself, and the draw cuts it.
-function wrapRows(label     , under     , items        , columns        , joiner        )         {
-  const lead = cellsOf([label])
-  const gap = widthOf([{ text: joiner }])
-  const rows         = []
-  let row       = [label]
-  let used = lead
-  let count = 0
-  for (const item of items) {
-    const w = widthOf(item)
-    if (count > 0 && used + gap + w > columns) {
-      rows.push(row)
-      row = [under]
-      used = lead
-      count = 0
-    }
-    if (count > 0) {
-      row.push({ text: joiner, tone: 'dim' })
-      used += gap
-    }
-    row.push(...item)
-    used += w
-    count++
-  }
-  rows.push(row)
-  return rows
-}
+return { planRow, placeRow, usageRow };
+})();
+// ---- hooks/band/info.ts
+__m['band/info.ts'] = (() => {
+// The full band's info line: model, effort, speed, cache and times
+const { billingOf, cacheView, minutesLeftText } = __m['cache/cache.ts'];
+const { minutesText, modelParts, modelText, tokensText } = __m['core/format.ts'];
+                                        
+                                              
+const { timeParts } = __m['band/gauges.ts'];
+const { packRows } = __m['band/wrap.ts'];
 
 // One item of the info line: its forms, fullest first, and its keep rank, 1 going first when the width runs out
                                            
@@ -1631,44 +1608,44 @@ const dimText = (text        )       => [{ text, tone: 'dim' }]
 
 // The info line's items in the user's order (2026-11-11), each only when known: the model and effort, the session's
 // time, the average output speed, the cache, the last prompt and reply, Claude Code's version
-function infoItems(b           )         {
+function infoItems(input           )         {
   const items         = []
-  const model = b.meta.model
+  const model = input.session.model
   if (model !== null) {
     const family = modelParts(model)?.family
     const name      = family === undefined ? { text: modelText(model, true) } : { text: modelText(model, true), tone: family }
-    items.push({ keep: 6, forms: [b.meta.effort === null ? [name] : [name, { text: ` ◑ ${b.meta.effort}`, tone: 'dim' }]] })
+    items.push({ keep: 6, forms: [input.session.effort === null ? [name] : [name, { text: ` ◑ ${input.session.effort}`, tone: 'dim' }]] })
   }
-  if (b.usage.startedAt !== null) items.push({ keep: 5, forms: [dimText(mins(b.now - b.usage.startedAt))] })
-  const t = b.totals
-  if (t !== undefined && t.stepMs > 0) items.push({ keep: 3, forms: [dimText(`≈${Math.round(t.stepOutput / (t.stepMs / 1000))} tok/s avg`)] })
-  if (b.cache.session.read + b.cache.session.write > 0) {
-    const v = cacheView(b.cache, billingOf(b.usage.windows), b.now, b.usage.tokens)
-    items.push({ keep: 4, forms: [dimText(v.leftMs === null ? 'cache cold' : `cache warm ${v.tier.isEstimate ? '≈' : ''}${minutes(v.leftMs)}`)] })
+  if (input.usage.startedAt !== null) items.push({ keep: 5, forms: [dimText(minutesText(input.now - input.usage.startedAt))] })
+  const totals = input.totals
+  if (totals !== undefined && totals.stepMs > 0) items.push({ keep: 3, forms: [dimText(`≈${Math.round(totals.stepOutput / (totals.stepMs / 1000))} tok/s avg`)] })
+  if (input.cache.sessionCounts.read + input.cache.sessionCounts.write > 0) {
+    const cacheState = cacheView(input.cache, billingOf(input.usage.rateWindows), input.now, input.usage.contextTokens)
+    items.push({ keep: 4, forms: [dimText(cacheState.leftMs === null ? 'cache cold' : `cache warm ${cacheState.tier.isEstimate ? '≈' : ''}${minutesLeftText(cacheState.leftMs)}`)] })
   }
   // The running turn's prompt while one runs; the last turn's, as line 1 of the calm band shows it, otherwise
-  const parts = timeParts(b, 2, true)
+  const parts = timeParts(input, 2, true)
   if (parts.length > 0) items.push({ keep: 1, forms: parts.map((_, i) => dimText(parts.slice(0, parts.length - i).join(' · '))) })
   // Claude Code's version, from the first second; the first to go when the width runs out
-  if (b.meta.version !== undefined) items.push({ keep: 0.5, forms: [dimText(`CC ${b.meta.version}`)] })
+  if (input.session.version !== undefined) items.push({ keep: 0.5, forms: [dimText(`CC ${input.session.version}`)] })
   return items
 }
 
 // The info line fitted to one row of the width
-function infoLine(b           )       {
-  return infoRows(b, 1)[0] ?? []
+function infoLine(input           )       {
+  return infoRows(input, 1)[0] ?? []
 }
 
 // The info line in up to `upTo` rows of the width, a row breaking between two items (the user, 2026-11-11: every item,
 // as claude-hud shows them): while they need more rows, the present item with the lowest keep takes its next form or
 // goes; nothing fitting, or nothing known, draws no row
-function infoRows(b           , upTo        )         {
-  const items = infoItems(b)
+function infoRows(input           , upTo        )         {
+  const items = infoItems(input)
   const form = items.map(() => 0)
   const shown = items.map(() => true)
   for (;;) {
     const kept = items.flatMap((item, i) => (shown[i] ? [item.forms[form[i] ?? 0] ?? []] : []))
-    const rows = packRows(kept, b.columns)
+    const rows = packRows(kept, input.columns)
     if (rows !== null && rows.length <= upTo) return rows
     let lowest = -1
     items.forEach((item, i) => {
@@ -1681,84 +1658,95 @@ function infoRows(b           , upTo        )         {
   }
 }
 
-// Items in rows of `columns`, joined by ' │ ' while the next fits, else on a row of its own; null when one is wider
-function packRows(items        , columns        )                {
-  const rows         = []
-  let row       = []
-  for (const item of items) {
-    if (cellsOf(item) > columns) return null
-    const joined       = row.length === 0 ? item : [...row, { text: ' │ ', tone: 'dim' }, ...item]
-    if (cellsOf(joined) <= columns) row = joined
-    else {
-      rows.push(row)
-      row = item
-    }
-  }
-  return row.length === 0 ? rows : [...rows, row]
+return { infoLine, infoRows };
+})();
+// ---- hooks/band/working.ts
+__m['band/working.ts'] = (() => {
+// The band while a turn runs: the working line, its spinner suffix, the cache and handoff asks, the plan's tail
+const { actionOf, isLive } = __m['agents/agents.ts'];
+const { billingOf, cacheView, minutesLeftText } = __m['cache/cache.ts'];
+const { durationText, elapsedText, fitLine, tokensText, usdText, widthOf } = __m['core/format.ts'];
+const { narrowPlan, planLine, scoreSeg } = __m['plan/planlines.ts'];
+                                               
+                                        
+                                                  
+                                              
+const { percentText, times } = __m['band/gauges.ts'];
+
+                                                            
+
+// A band button where it draws (spec 2026-11-11 band-under, U3): above, as it is; under in fullscreen, where a click
+// presses it, labelled with the command that does its job and with no hotkey; under on the main screen, where nothing
+// presses it, that command as dim text
+function underButton(input           , button           , command        )      {
+  if (input.under === undefined) return { button }
+  if (input.under.buttons === 'text') return { text: command, tone: 'dim' }
+  const { hotkey: _hotkey, plain: _plain, ...rest } = button
+  return { button: { ...rest, label: command } }
 }
 
 // Line 2's cost with today's after it, `$1.29 · today $10.46`, in full mode while it fits beside what follows
-function withToday(b           , line      , after      )       {
-  const u = b.usage
-  if (b.mode !== 'full' || u.todayUsd === null || u.costUsd === null) return line
-  const full = [...line, { text: ` · today ${usd(u.todayUsd)}` }]
-  return widthOf([...full, ...after]) <= b.columns ? full : line
+function withToday(input           , line      , after      )       {
+  const usage = input.usage
+  if (input.mode !== 'full' || usage.todayUsd === null || usage.costUsd === null) return line
+  const full = [...line, { text: ` · today ${usdText(usage.todayUsd)}` }]
+  return widthOf([...full, ...after]) <= input.columns ? full : line
 }
 
 // The gauges and as many times as fit the width, each dropped whole: Claude's first, then yours
-function withTimes(b           , line      )       {
+function withTimes(input           , line      )       {
   for (const upTo of [2, 1]) {
-    const full = [...line, ...times(b, upTo)]
-    if (widthOf(full) <= b.columns) return full
+    const full = [...line, ...times(input, upTo)]
+    if (widthOf(full) <= input.columns) return full
   }
   return line
 }
 
-function lastTurn(b           , isNarrow         )       {
-  const t = b.turns[b.turns.length - 1]
-  if (t === undefined) return []
-  const ok = t.end === 'answer'
-  const line       = [{ text: ok ? '✓' : '✗', tone: ok ? 'ok' : 'fail' }, { text: ` Turn ${t.n} · ${duration(t.durationMs)}` }]
+function lastTurn(input           , isNarrow         )       {
+  const turn = input.turns[input.turns.length - 1]
+  if (turn === undefined) return []
+  const ok = turn.endReason === 'answer'
+  const line       = [{ text: ok ? '✓' : '✗', tone: ok ? 'ok' : 'fail' }, { text: ` Turn ${turn.turnNumber} · ${durationText(turn.durationMs)}` }]
   if (isNarrow) return line
-  line.push({ text: ` · ${t.tools} ${t.tools === 1 ? 'tool' : 'tools'}` })
-  if (t.failures > 0) line.push({ text: ` · ${t.failures} ✗`, tone: 'fail' })
+  line.push({ text: ` · ${turn.toolCalls} ${turn.toolCalls === 1 ? 'tool' : 'tools'}` })
+  if (turn.toolFailures > 0) line.push({ text: ` · ${turn.toolFailures} ✗`, tone: 'fail' })
   // In full mode the times are the info line's
-  return b.mode === 'full' ? line : [...line, ...times(b)]
+  return input.mode === 'full' ? line : [...line, ...times(input)]
 }
 
 const agentCount = (k        )         => `${k} ${k === 1 ? 'agent' : 'agents'}`
 
 // ' │ PLAN 3/5 · score 81 ▲13', each part only when known, for an idle line 1 that needs you; while the full band
 // draws the plan row, the row has the count and the plan's own score, so line 1 keeps only a score of another output
-function planTail(b           , isRowDrawn         )       {
+function planTail(input           , isRowDrawn         )       {
   const parts         = []
-  const hasRow = isRowDrawn && b.plan !== null
-  if (b.plan !== null && !hasRow) parts.push([{ text: 'PLAN', tone: 'plan' }, { text: ` ${b.plan.finished}/${b.plan.total}` }])
-  if (b.score !== null && !(hasRow && b.isPlanScore !== false)) parts.push(scoreSeg(b.score, b.scoreLevel ?? null))
+  const hasRow = isRowDrawn && input.plan !== null
+  if (input.plan !== null && !hasRow) parts.push([{ text: 'PLAN', tone: 'plan' }, { text: ` ${input.plan.finished}/${input.plan.total}` }])
+  if (input.score !== null && !(hasRow && input.isPlanScore !== false)) parts.push(scoreSeg(input.score, input.scoreLevel ?? null))
   if (parts.length === 0) return []
-  return [{ text: ' │ ', tone: 'dim' }, ...parts.flatMap((p, i) => (i === 0 ? p : [{ text: ' · ' }, ...p]))]
+  return [{ text: ' │ ', tone: 'dim' }, ...parts.flatMap((line, i) => (i === 0 ? line : [{ text: ' · ' }, ...line]))]
 }
 
 // The turn, or the agents while only they run, or the plan line while a plan runs; then each live agent's action and
 // the running Bash. Past the width the agent parts fold into ' +N agents', then the Bash part goes, then the plan's
 // step, then its title is cut.
-function working(b           , isNarrow         )       {
-  const running = b.agents.filter(r => isLive(r.status))
+function workingLine(input           , isNarrow         )       {
+  const running = input.agents.filter(r => isLive(r.status))
   // The full band's plan has its own row, so line 1 keeps the turn there
-  const plan = b.mode === 'full' ? null : b.plan
+  const plan = input.mode === 'full' ? null : input.plan
   if (plan !== null && isNarrow) return narrowPlan(plan, running.length)
-  const n = b.meta.turnCount + 1
-  const took = elapsed(b.now - (b.live.startedAt ?? b.now))
-  const count = b.mode === 'full' ? ` · ${b.live.tools} ${b.live.tools === 1 ? 'tool' : 'tools'}` : ''
-  const head      = b.isWorking
+  const n = input.session.turnCount + 1
+  const took = elapsedText(input.now - (input.live.startedAt ?? input.now))
+  const count = input.mode === 'full' ? ` · ${input.live.toolCalls} ${input.live.toolCalls === 1 ? 'tool' : 'tools'}` : ''
+  const head      = input.isWorking
     ? { text: isNarrow ? `⟳ Turn ${n} ${took}` : `⟳ Turn ${n} · ${took}${count}`, bold: true }
     : { text: `⟳ ${agentCount(running.length)}`, bold: true }
-  if (isNarrow) return b.isWorking && running.length > 0 ? [head, { text: ` · ${agentCount(running.length)}` }] : [head]
+  if (isNarrow) return input.isWorking && running.length > 0 ? [head, { text: ` · ${agentCount(running.length)}` }] : [head]
   const bash       = []
-  const calls = b.live.running.filter(r => r.tool === 'Bash')
+  const calls = input.live.runningCalls.filter(r => r.tool === 'Bash')
   const newest = calls[calls.length - 1]
   if (newest !== undefined) {
-    bash.push({ text: ` │ Bash ▸ ${newest.label} ${elapsed(b.now - newest.startedAt)}` })
+    bash.push({ text: ` │ Bash ▸ ${newest.label} ${elapsedText(input.now - newest.startedAt)}` })
     if (calls.length > 1) bash.push({ text: ` +${calls.length - 1}`, tone: 'dim' })
   }
   const parts       = running.map(r => ({ text: r.action === null ? ` │ ${r.type}` : ` │ ${r.type} ▸ ${r.action}` }))
@@ -1769,10 +1757,10 @@ function working(b           , isNarrow         )       {
   const lead       = plan === null ? [head] : planLine(plan, Infinity)
   for (let kept = parts.length; kept >= 0; kept--) {
     const line       = [...lead, ...folded(kept), ...bash]
-    if (widthOf(line) <= b.columns) return line
+    if (widthOf(line) <= input.columns) return line
   }
   if (plan === null) return [head, ...folded(0), ...bash]
-  return [...planLine(plan, b.columns - widthOf(folded(0))), ...folded(0)]
+  return [...planLine(plan, input.columns - widthOf(folded(0))), ...folded(0)]
 }
 
 // What the spinner adds after the engine's suffix: an agent's action and context on that agent's spinner; on the main
@@ -1782,11 +1770,11 @@ function spinnerSuffix(s                                                        
   const row = s.agents.find(r => r.id === s.requestId)
   if (row !== undefined) {
     if (row.action !== null) parts.push(fitLine(row.action, 40))
-    if (row.contextTokens !== null) parts.push(`ctx ${tokens(row.contextTokens)}`)
+    if (row.contextTokens !== null) parts.push(`ctx ${tokensText(row.contextTokens)}`)
   } else {
-    const newest = s.live.running[s.live.running.length - 1]
+    const newest = s.live.runningCalls[s.live.runningCalls.length - 1]
     if (newest !== undefined) parts.push(fitLine(actionOf(newest.tool, newest.label), 40))
-    if (s.percent !== null) parts.push(pct(s.percent))
+    if (s.percent !== null) parts.push(percentText(s.percent))
     const k = s.agents.filter(r => isLive(r.status)).length
     if (k > 0) parts.push(agentCount(k))
   }
@@ -1795,37 +1783,56 @@ function spinnerSuffix(s                                                        
 
 // The cache's warning while the main loop is idle: a 1h cache's last 5 minutes, or its last 3 where Claude Code should
 // compact the conversation first, and a 5m cache's last minute. The band's button takes hotkey 3.
-function cacheWarning(b           , hasHotkey         )              {
-  if (b.isWorking) return null
-  const v = cacheView(b.cache, billingOf(b.usage.windows), b.now, b.usage.tokens)
-  if (!v.isClosing) return null
+function cacheWarning(input           , hasHotkey         )              {
+  if (input.isWorking) return null
+  const cacheState = cacheView(input.cache, billingOf(input.usage.rateWindows), input.now, input.usage.contextTokens)
+  if (!cacheState.isClosing) return null
   const button = hasHotkey
     ? { key: 'compact', label: 'Compact', hotkey: '3', tone: 'cache'          }
     : { key: 'compact', label: 'Compact', tone: 'cache'          }
-  return [{ text: `⚠ cache cold in ${v.tier.isEstimate ? '≈' : ''}${minutes(v.leftMs ?? 0)} `, tone: 'warn' }, underButton(b, button, '/compact')]
+  return [{ text: `⚠ cache cold in ${cacheState.tier.isEstimate ? '≈' : ''}${minutesLeftText(cacheState.leftMs ?? 0)} `, tone: 'warn' }, underButton(input, button, '/compact')]
 }
 
 // F8's ask on line 3: the step the context passed, its violet button on hotkey 4
-function handoffAsk(b           )              {
-  if (b.handoffAsk === undefined || b.handoffAsk === null) return null
-  return [{ text: `⚠ ctx past ${b.handoffAsk}% `, tone: 'warn' }, underButton(b, { key: 'handoff', label: 'Handoff', hotkey: '4', tone: 'handoff' }, '/auto-handoff now')]
+function handoffAsk(input           )              {
+  if (input.handoffAskStep === undefined || input.handoffAskStep === null) return null
+  return [{ text: `⚠ ctx past ${input.handoffAskStep}% `, tone: 'warn' }, underButton(input, { key: 'handoff', label: 'Handoff', hotkey: '4', tone: 'handoff' }, '/auto-handoff now')]
 }
 
 // The idle line 1 with ' │ PLAN 3/5 · score 81 ▲13' while it fits
-function withPlanTail(b           , line      , isRowDrawn         )       {
-  const full = [...line, ...planTail(b, isRowDrawn)]
-  return line.length > 0 && widthOf(full) <= b.columns ? full : line
+function withPlanTail(input           , line      , isRowDrawn         )       {
+  const full = [...line, ...planTail(input, isRowDrawn)]
+  return line.length > 0 && widthOf(full) <= input.columns ? full : line
 }
+
+return { underButton, withToday, withTimes, lastTurn, workingLine, spinnerSuffix, cacheWarning, handoffAsk, withPlanTail };
+})();
+// ---- hooks/band/band.ts
+__m['band/band.ts'] = (() => {
+// The band above the prompt, from the session's values to lines of styled segments. Calm by default: colour
+// appears only when a threshold is crossed, something failed or a turn runs.
+const { isLive } = __m['agents/agents.ts'];
+const { widthOf } = __m['core/format.ts'];
+const { paceForecast } = __m['core/forecast.ts'];
+                                        
+                                            
+                                              
+const { fiveHourPace, gauges, narrowGauges, percentText } = __m['band/gauges.ts'];
+const { cellsOf } = __m['band/wrap.ts'];
+const { toolRows } = __m['band/detail.ts'];
+const { placeRow, planRow, usageRow } = __m['band/project.ts'];
+const { infoRows } = __m['band/info.ts'];
+const { cacheWarning, handoffAsk, lastTurn, underButton, withPlanTail, withTimes, withToday, workingLine } = __m['band/working.ts'];
 
 const REC_MARK      = { text: '● REC', tone: 'fail', bold: true }
 
 // The status line under the prompt (spec D2), which stays while the band is collapsed: what needs the person, short
 // and in the band's order - REC, the context once the band turns hot at 60, the new failures - or null for none. While
 // the band is in view it shows REC and the context itself, so the line leaves them out (spec 2026-11-11, D6).
-function statusText(o                                                                                        )                {
+function statusText(o                                                                                           )                {
   const parts = [
     o.recLevel === 'off' || o.isBandShown ? null : '● REC',
-    !o.isBandShown && o.percent !== null && Math.round(o.percent) >= 60 ? `ctx ${pct(o.percent)}` : null,
+    !o.isBandShown && o.percent !== null && Math.round(o.percent) >= 60 ? `ctx ${percentText(o.percent)}` : null,
     o.newFailures > 0 ? `✗ ${o.newFailures} new` : null,
   ].filter((p)              => p !== null)
   return parts.length === 0 ? null : parts.join(' · ')
@@ -1834,61 +1841,62 @@ function statusText(o                                                           
 // The rows the band takes under the input (spec 2026-11-11 band-under, U2, F7): the main screen's whole height, as the
 // site above reports there; in fullscreen, half the screen less the prompt and the engine's footer line, less a status
 // line's two rows (claude-hud's default; the setting says nothing of the height) and the mod's pinned line
-function underRows(v                                          , o                                               )         {
-  if (v.isFullscreen !== true) return v.rows
-  return Math.max(2, Math.floor(v.rows / 2) - 6 - (o.hasStatusLine ? 2 : 0) - (o.isPinned ? 1 : 0))
+function underRows(viewport                                          , o                                               )         {
+  if (viewport.isFullscreen !== true) return viewport.rows
+  return Math.max(2, Math.floor(viewport.rows / 2) - 6 - (o.hasStatusLine ? 2 : 0) - (o.isPinned ? 1 : 0))
 }
 
 // What the full band keeps under its info line: the rows the info line may take (none for 0), the project row, the open
 // detail rows (how many lines of them), the usage row and the plan row
                                                                                                                        
+
 const KEEP_ALL       = { infoUpTo: 2, isPlaceKept: true, toolRowsKept: Infinity, isUsageKept: true, isPlanKept: true }
 
 // A red '● REC' while REC is on, then Alfred Code's mode banner, lead line 1 in every state, never dropped for width:
 // the body's first line follows them while it fits what is left, else they take line 1 alone and the body keeps the
 // full width, so no gauge, reset or the cost drops for them
-function bandLines(b           )         {
+function bandLines(input           )         {
   // "band": "off" draws none, above or under, and the pinned line counts it as out of view
-  if (b.mode === 'off') return []
-  const max = b.maxRows
-  if (max === undefined) return bandRows(b, KEEP_ALL)
+  if (input.mode === 'off') return []
+  const max = input.maxRows
+  if (max === undefined) return bandRows(input, KEEP_ALL)
   // Short of rows, the project row gives way first, then the info line's second row, then the open detail rows from
   // the last, then the usage row, then the plan row, then the info line: the line under them holds the buttons, and a
   // digit arms only those in view
   for (const k of [KEEP_ALL, { ...KEEP_ALL, isPlaceKept: false }, { ...KEEP_ALL, isPlaceKept: false, infoUpTo: 1 }]) {
-    const lines = bandRows(b, k)
+    const lines = bandRows(input, k)
     if (lines.length <= max) return lines
   }
   const core       = { infoUpTo: 1, isPlaceKept: false, toolRowsKept: 0, isUsageKept: true, isPlanKept: true }
-  const coreLines = bandRows(b, core)
-  if (coreLines.length <= max) return bandRows(b, { ...core, toolRowsKept: max - coreLines.length })
+  const coreLines = bandRows(input, core)
+  if (coreLines.length <= max) return bandRows(input, { ...core, toolRowsKept: max - coreLines.length })
   for (const k of [{ ...core, isUsageKept: false }, { ...core, isUsageKept: false, isPlanKept: false }]) {
-    const lines = bandRows(b, k)
+    const lines = bandRows(input, k)
     if (lines.length <= max) return lines
   }
-  return bandRows(b, { infoUpTo: 0, isPlaceKept: false, toolRowsKept: 0, isUsageKept: false, isPlanKept: false })
+  return bandRows(input, { infoUpTo: 0, isPlaceKept: false, toolRowsKept: 0, isUsageKept: false, isPlanKept: false })
 }
 
-function bandRows(b           , k      )         {
-  const isNarrow = b.columns < 100
-  const marks         = [b.rec !== undefined && b.rec.level !== 'off' ? [REC_MARK] : [], b.banner ?? []].filter(m => m.length > 0)
-  if (marks.length === 0) return bandBody(b, isNarrow, k)
+function bandRows(input           , k      )         {
+  const isNarrow = input.columns < 100
+  const marks         = [input.rec !== undefined && input.rec.level !== 'off' ? [REC_MARK] : [], input.banner ?? []].filter(segs => segs.length > 0)
+  if (marks.length === 0) return bandBody(input, isNarrow, k)
   const sep      = { text: ' │ ', tone: 'dim' }
   const alone       = marks.flatMap((m, i) => (i === 0 ? m : [sep, ...m]))
   const lead       = [...alone, sep]
   // Only line 1 shares its row with the marks: the lines under it are fitted to the band's whole width
-  const [first] = bandBody({ ...b, columns: b.columns - widthOf(lead) }, isNarrow, k)
+  const [first] = bandBody({ ...input, columns: input.columns - widthOf(lead) }, isNarrow, k)
   if (first === undefined) return [alone]
-  const body = bandBody(b, isNarrow, k)
-  return widthOf(lead) + widthOf(first) <= b.columns ? [[...lead, ...first], ...body.slice(1)] : [alone, ...body]
+  const body = bandBody(input, isNarrow, k)
+  return widthOf(lead) + widthOf(first) <= input.columns ? [[...lead, ...first], ...body.slice(1)] : [alone, ...body]
 }
 
 function bandBody(b           , isNarrow         , k      )         {
   const u = b.usage
   // Before the first reading the calm band waits; the full band draws once the model or a stored window is known
-  const isFullKnown = b.mode === 'full' && (b.meta.model !== null || u.windows.length > 0)
-  if (b.turns.length === 0 && u.percent === null && !isFullKnown) return []
-  const invalid       = b.planInvalid ? [{ text: ' │ ', tone: 'dim' }, { text: 'plan file invalid', tone: 'warn' }] : []
+  const isFullKnown = b.mode === 'full' && (b.session.model !== null || u.rateWindows.length > 0)
+  if (b.turns.length === 0 && u.contextPercent === null && !isFullKnown) return []
+  const invalid       = b.isPlanInvalid ? [{ text: ' │ ', tone: 'dim' }, { text: 'plan file invalid', tone: 'warn' }] : []
   const gaugeLine = isNarrow ? narrowGauges(u, b.runway) : withToday(b, gauges(b), invalid)
   const line2 = [...gaugeLine, ...invalid]
   // The info line, then the project, plan and usage rows, then the detail rows while `bandRows` opens them; the full
@@ -1900,7 +1908,7 @@ function bandBody(b           , isNarrow         , k      )         {
     ...head, ...place, ...(k.isPlanKept ? planRow(b) : []), ...counts, ...(b.isToolsOpen === true ? toolRows(b).slice(0, k.toolRowsKept) : []),
   ]
   const p = fiveHourPace(b)
-  const isHot = (b.runway?.percent ?? u.percent ?? 0) >= 60 || u.windows.some(w => w.percentUsed >= 60) || (p !== null && p !== 'on-pace')
+  const isHot = (b.runway?.percent ?? u.contextPercent ?? 0) >= 60 || u.rateWindows.some(rateWindow => rateWindow.percentUsed >= 60) || (p !== null && p !== 'on-pace')
   const agentsRun = b.agents.some(r => isLive(r.status))
   const warning = cacheWarning(b, true)
   const ask = handoffAsk(b)
@@ -1909,10 +1917,10 @@ function bandBody(b           , isNarrow         , k      )         {
     // not only when active work'); the calm band stays one dim line until something needs you
     if (b.mode === 'full') return [[...gaugeLine, ...invalid], ...info]
     const calm = isNarrow ? gaugeLine : withTimes(b, gaugeLine)
-    const dim = (l      )       => l.map(s => ('text' in s ? { text: s.text, tone: 'dim'          } : s))
+    const dim = (l      )       => l.map(seg => ('text' in seg ? { text: seg.text, tone: 'dim'          } : seg))
     return [[...dim(calm), ...invalid], ...info.map(dim)]
   }
-  if (b.isWorking) return [working(b, isNarrow), line2, ...info]
+  if (b.isWorking) return [workingLine(b, isNarrow), line2, ...info]
   const failed       = b.newFailures > 0
     ? [{ text: `✗ ${b.newFailures} new `, tone: 'fail' }, underButton(b, { key: 'inspect', label: 'Inspect', hotkey: '1' }, '/inspect')]
     : []
@@ -1922,27 +1930,22 @@ function bandBody(b           , isNarrow         , k      )         {
   // band-under U2's place after the gauges), so a cut at the screen's edge takes the detail rows first; its commands are
   // longer than the digits above, so the items take a row each when one row cannot hold them
   const action         = items.length === 0 ? [] : b.under !== undefined && cellsOf(joined) > b.columns ? items : [joined]
-  const first = agentsRun ? working(b, isNarrow) : withPlanTail(b, lastTurn(b, isNarrow), head.length > 0 && k.isPlanKept)
+  const first = agentsRun ? workingLine(b, isNarrow) : withPlanTail(b, lastTurn(b, isNarrow), head.length > 0 && k.isPlanKept)
   const out = b.under === undefined ? [first, line2, ...info, ...action] : [...action, first, line2, ...info]
-  return out.filter(l => l.length > 0)
+  return out.filter(segs => segs.length > 0)
 }
 
-return { pct, pctSeg, barSegs, windowsInOrder, fiveHourPace, cellsOf, toggleForms, toolRows, rulesDrawn, ruleSegs, agentSegs, ROW_JOIN, skillSegs, wrapRows, infoLine, infoRows, working, spinnerSuffix, cacheWarning, REC_MARK, statusText, underRows, bandLines };
+return { REC_MARK, statusText, underRows, bandLines };
 })();
-// ---- hooks/compact.ts
-__m['compact.ts'] = (() => {
+// ---- hooks/tools/compact.ts
+__m['tools/compact.ts'] = (() => {
 // F10's compact tool rows (brief 'Compact tool rows', Decisions 4 to 8): one line per call, runs of reads folded into
 // one, and the result block's preview emptied. Every line is drawn through drawLines, so REC masks it after compacting.
-                                          
-const { reportLine } = __m['agents.ts'];
-const { duration, fitLine, tokens, widthOf } = __m['format.ts'];
+const { reportLine } = __m['agents/agents.ts'];
+const { durationText, fitLine, tokensText, widthOf } = __m['core/format.ts'];
+                                              
+                                                      
 
-// `outcome` and `reason`: a call the person denied or a rule, a hook or the classifier blocked, as Phase 1 settled it
-// `isAutoAllowed`: auto mode's classifier let the call run, no one asked
-                           
-                                                                                           
-                                                                                      
- 
 
 // Tools a group folds into one reads line (Decision 8)
 const READ_ONLY = ['Read', 'Grep', 'Glob', 'LS', 'NotebookRead']
@@ -1954,14 +1957,12 @@ const READ_ONLY = ['Read', 'Grep', 'Glob', 'LS', 'NotebookRead']
 // (live, 2026-11-12); the row carries that line and a background run as steps of its own
 const DROPS_RESULT                    = ['Bash', 'Edit', 'Write', 'WebFetch', 'WebSearch', 'Agent', 'AskUserQuestion']
 
-// What a row knows besides the call: the project folder, so a path reads from it, and how many times it ran in a row
-                                                                
 
 // Steps a run of reads draws before `+k more`
 const READ_STEPS = 4
 
-const isRecord = (v         )                               => typeof v === 'object' && v !== null && !Array.isArray(v)
-const str = (v         )         => (typeof v === 'string' ? v : '')
+const isRecord = (value         )                                   => typeof value === 'object' && value !== null && !Array.isArray(value)
+const str = (value         )         => (typeof value === 'string' ? value : '')
 const basename = (path        )         => path.split(/[\\/]/).filter(p => p !== '').pop() ?? path
 const lineCount = (text        )         => (text.trimEnd() === '' ? 0 : text.trimEnd().split('\n').length)
 
@@ -1971,18 +1972,18 @@ const hostOf = (url        )         => (site(url).split(/[/?#]/)[0] ?? '').toLo
 
 // What the row names: Bash's description, else its command's first 60 characters; a web call's page or query; another
 // tool's file, pattern or path
-function describe(c             )         {
-  const input = isRecord(c.input) ? c.input : {}
-  const out = isRecord(c.output) ? c.output : {}
-  if (c.tool === 'Agent') return str(out.agentType) || str(input.subagent_type) || 'general-purpose'
-  if (c.tool === 'Skill') return str(input.skill)
-  if (c.tool === 'Monitor') return fitLine(str(input.description), 120)
-  if (c.tool === 'TodoWrite') return todoCounts(input.todos)
-  if (c.tool === 'ToolSearch') return str(input.query).trim() === '' ? '' : `"${fitLine(str(input.query).trim(), 60)}"`
-  if (c.tool === 'AskUserQuestion' || c.tool.startsWith('mcp__')) return ''
-  if (c.tool === 'WebFetch') return site(str(input.url))
-  if (c.tool === 'WebSearch') return str(input.query).trim() === '' ? '' : `"${str(input.query).trim()}"`
-  if (c.tool === 'Bash') return str(input.description).trim() !== '' ? fitLine(str(input.description), 120) : fitLine(str(input.command), 60)
+function describe(call             )         {
+  const input = isRecord(call.input) ? call.input : {}
+  const out = isRecord(call.output) ? call.output : {}
+  if (call.tool === 'Agent') return str(out.agentType) || str(input.subagent_type) || 'general-purpose'
+  if (call.tool === 'Skill') return str(input.skill)
+  if (call.tool === 'Monitor') return fitLine(str(input.description), 120)
+  if (call.tool === 'TodoWrite') return todoCounts(input.todos)
+  if (call.tool === 'ToolSearch') return str(input.query).trim() === '' ? '' : `"${fitLine(str(input.query).trim(), 60)}"`
+  if (call.tool === 'AskUserQuestion' || call.tool.startsWith('mcp__')) return ''
+  if (call.tool === 'WebFetch') return site(str(input.url))
+  if (call.tool === 'WebSearch') return str(input.query).trim() === '' ? '' : `"${str(input.query).trim()}"`
+  if (call.tool === 'Bash') return str(input.description).trim() !== '' ? fitLine(str(input.description), 120) : fitLine(str(input.command), 60)
   const file = str(input.file_path) || str(input.notebook_path)
   return fitLine(file !== '' ? basename(file) : str(input.pattern) || str(input.path), 60)
 }
@@ -2011,13 +2012,13 @@ function patchCounts(patch         )                {
 }
 
 // Lines of Bash's stdout and stderr, or of a string output; any other output has no count
-function countOf(c             )                {
-  if (typeof c.output === 'string') return lineCount(c.output)
-  if (c.tool === 'Bash' && isRecord(c.output)) return lineCount(str(c.output.stdout)) + lineCount(str(c.output.stderr))
+function countOf(call             )                {
+  if (typeof call.output === 'string') return lineCount(call.output)
+  if (call.tool === 'Bash' && isRecord(call.output)) return lineCount(str(call.output.stdout)) + lineCount(str(call.output.stderr))
   return null
 }
 
-const errorText = (c             )         => (typeof c.output === 'string' ? c.output : isRecord(c.output) ? str(c.output.stderr) : '')
+const errorText = (call             )         => (typeof call.output === 'string' ? call.output : isRecord(call.output) ? str(call.output.stderr) : '')
 
 // The reason's first sentence, its closing stop dropped
 function firstSentence(text        )         {
@@ -2025,25 +2026,25 @@ function firstSentence(text        )         {
 }
 
 // ✓ with the line count; ✗, ✗ exit <n> or ✗ interrupted; ⊘ for a denied or blocked call
-function status(c             )        {
-  if (c.outcome === 'denied') return [{ text: '⊘ denied by you', tone: 'warn' }]
-  if (c.outcome === 'blocked') {
-    const reason = firstSentence((c.reason ?? '').replace(/^blocked:\s*/, ''))
+function status(call             )        {
+  if (call.outcome === 'denied') return [{ text: '⊘ denied by you', tone: 'warn' }]
+  if (call.outcome === 'blocked') {
+    const reason = firstSentence((call.reason ?? '').replace(/^blocked:\s*/, ''))
     return [{ text: reason === '' ? '⊘ blocked' : /^blocked\b/.test(reason) ? `⊘ ${reason}` : `⊘ blocked: ${reason}`, tone: 'warn' }]
   }
-  if (c.isInterrupted) return [{ text: '✗ interrupted', tone: 'fail' }]
-  if (c.isErrored) {
-    const exit = /^Exit code (\d+)/.exec(errorText(c))
+  if (call.isInterrupted) return [{ text: '✗ interrupted', tone: 'fail' }]
+  if (call.isErrored) {
+    const exit = /^Exit code (\d+)/.exec(errorText(call))
     return [{ text: exit === null ? '✗' : `✗ exit ${exit[1]}`, tone: 'fail' }]
   }
-  const n = countOf(c)
+  const n = countOf(call)
   return [...(n === null || n === 0 ? [] : [{ text: `${n} ${n === 1 ? 'line' : 'lines'} ` }]), { text: '✓', tone: 'ok' }]
 }
 
 // Up to 3 indented lines under a failure: the last non-empty lines of stderr, else of the error text past its exit code
-function errorLines(c             )         {
-  if (!c.isErrored || c.isInterrupted || c.outcome !== null) return []
-  const lines = errorText(c).split('\n').map(l => l.trimEnd()).filter(l => l.trim() !== '')
+function errorLines(call             )         {
+  if (!call.isErrored || call.isInterrupted || call.outcome !== null) return []
+  const lines = errorText(call).split('\n').map(l => l.trimEnd()).filter(l => l.trim() !== '')
   if (/^Exit code \d+$/.test(lines[0] ?? '')) lines.shift()
   return lines.slice(-3).map(l => [{ text: `    ${l}`, tone: 'dim' }])
 }
@@ -2059,11 +2060,11 @@ const stepOf = (text        , columns        )       => [{ text: `  ⎿ ${fitLin
 // Any other call's steps (the user, 2026-11-12: 'What agent ... what job is done; What skill; What and where writing;
 // What is asking and what is the responce; What doc mcp queryng; What monitoring'): what it was given, then what came
 // back once it has
-function stepLines(c             , columns        , cwd                )         {
+function stepLines(call             , columns        , cwd                )         {
   const step = (text        )       => stepOf(text, columns)
-  const input = isRecord(c.input) ? c.input : {}
-  const out = isRecord(c.output) && !c.isErrored && c.outcome === null ? c.output : null
-  if (c.tool === 'Agent') {
+  const input = isRecord(call.input) ? call.input : {}
+  const out = isRecord(call.output) && !call.isErrored && call.outcome === null ? call.output : null
+  if (call.tool === 'Agent') {
     const lines         = []
     if (str(input.description).trim() !== '') lines.push(step(`asked: ${str(input.description).trim()}`))
     if (out?.status === 'async_launched') lines.push(step('running in the background'))
@@ -2073,40 +2074,40 @@ function stepLines(c             , columns        , cwd                )        
       const found = reportLine(said)
       if (found !== '') lines.push(step(`result: ${found}`))
       const uses = typeof out.totalToolUseCount === 'number' ? [`${out.totalToolUseCount} tool ${out.totalToolUseCount === 1 ? 'use' : 'uses'}`] : []
-      const spent = typeof out.totalTokens === 'number' ? [`${tokens(out.totalTokens)} tokens`] : []
-      const took = typeof out.totalDurationMs === 'number' ? [duration(out.totalDurationMs)] : []
+      const spent = typeof out.totalTokens === 'number' ? [`${tokensText(out.totalTokens)} tokens`] : []
+      const took = typeof out.totalDurationMs === 'number' ? [durationText(out.totalDurationMs)] : []
       if (uses.length + spent.length + took.length > 0) lines.push(step([...uses, ...spent, ...took].join(' · ')))
     }
     return lines
   }
-  if (c.tool === 'Bash') {
+  if (call.tool === 'Bash') {
     if (out === null) return []
     return [
       ...(str(out.backgroundTaskId) !== '' ? [step('running in the background')] : []),
-      ...(typeof out.timedOutAfterMs === 'number' ? [step(`timed out after ${duration(out.timedOutAfterMs)}`)] : []),
+      ...(typeof out.timedOutAfterMs === 'number' ? [step(`timed out after ${durationText(out.timedOutAfterMs)}`)] : []),
       ...(str(out.returnCodeInterpretation).trim() !== '' ? [step(str(out.returnCodeInterpretation).trim())] : []),
     ]
   }
-  if (c.tool === 'Skill') return str(input.args).trim() === '' ? [] : [step(`with: ${str(input.args).trim()}`)]
-  if (c.tool === 'Write' && out !== null) {
+  if (call.tool === 'Skill') return str(input.args).trim() === '' ? [] : [step(`with: ${str(input.args).trim()}`)]
+  if (call.tool === 'Write' && out !== null) {
     const where = fromProject(str(out.filePath) || str(input.file_path), cwd)
     if (out.type === 'create') return [step(`created ${where} · ${lineCount(str(input.content))} lines`)]
     const counts = patchCounts(out.structuredPatch)
     return [step(`rewrote ${where}${counts === null ? '' : ` · ${counts}`}`)]
   }
-  if (c.tool === 'Edit' && out !== null) {
+  if (call.tool === 'Edit' && out !== null) {
     const counts = patchCounts(out.structuredPatch)
     return [step(`changed ${fromProject(str(out.filePath) || str(input.file_path), cwd)}${counts === null ? '' : ` · ${counts}`}${out.replaceAll === true ? ' · every match' : ''}`)]
   }
-  if (c.tool === 'TodoWrite') {
+  if (call.tool === 'TodoWrite') {
     const now = (Array.isArray(input.todos) ? input.todos : []).find(t => isRecord(t) && t.status === 'in_progress')
     return isRecord(now) && str(now.activeForm).trim() !== '' ? [step(`now: ${str(now.activeForm).trim()}`)] : []
   }
-  if (c.tool === 'ToolSearch' && out !== null && Array.isArray(out.matches)) {
+  if (call.tool === 'ToolSearch' && out !== null && Array.isArray(out.matches)) {
     const found = out.matches.map(str).filter(m => m !== '')
     return [step(found.length === 0 ? 'found nothing' : `found ${found.join(', ')}`)]
   }
-  if (c.tool === 'AskUserQuestion') {
+  if (call.tool === 'AskUserQuestion') {
     const answers = out !== null && isRecord(out.answers) ? out.answers : {}
     return (Array.isArray(input.questions) ? input.questions : []).filter(isRecord).flatMap(q => {
       const asked = str(q.question).trim()
@@ -2115,27 +2116,27 @@ function stepLines(c             , columns        , cwd                )        
       return [...(asked === '' ? [] : [step(asked)]), ...(said.trim() === '' ? [] : [step(`answered: ${said.trim()}`)])]
     })
   }
-  if (c.tool.startsWith('mcp__')) {
+  if (call.tool.startsWith('mcp__')) {
     const scalar = (v         )                                 => (typeof v === 'string' && v.trim() !== '') || typeof v === 'number' || typeof v === 'boolean'
-    return Object.entries(input).filter(([, v]) => scalar(v)).slice(0, 3).map(([k, v]) => step(`${k}: ${String(v).trim()}`))
+    return Object.entries(input).filter(([, v]) => scalar(v)).slice(0, 3).map(([k, value]) => step(`${k}: ${String(value).trim()}`))
   }
-  if (c.tool === 'Monitor') {
+  if (call.tool === 'Monitor') {
     const watched = str(input.command).trim() || (isRecord(input.ws) ? str(input.ws.url) : '')
     return watched === '' ? [] : [step(`watches: ${watched}`)]
   }
-  if (c.tool === 'WebFetch') {
+  if (call.tool === 'WebFetch') {
     const lines         = []
     if (out !== null && typeof out.bytes === 'number') {
       const moved = str(out.url) !== '' && site(str(out.url)) !== site(str(input.url)) ? ` from ${site(str(out.url))}` : ''
       const code = typeof out.code === 'number' ? ` · ${out.code}${str(out.codeText) === '' ? '' : ` ${str(out.codeText)}`}` : ''
-      const time = typeof out.durationMs === 'number' ? ` · ${duration(out.durationMs)}` : ''
+      const time = typeof out.durationMs === 'number' ? ` · ${durationText(out.durationMs)}` : ''
       lines.push(step(`fetched ${sizeOf(out.bytes)}${moved}${code}${time}`))
     }
     const asked = str(input.prompt).trim()
     if (asked !== '') lines.push(step(`took: ${asked}`))
     return lines
   }
-  if (c.tool === 'WebSearch' && out !== null && Array.isArray(out.results)) {
+  if (call.tool === 'WebSearch' && out !== null && Array.isArray(out.results)) {
     const urls = out.results.flatMap(r => (isRecord(r) && Array.isArray(r.content) ? r.content : []))
       .map(h => (isRecord(h) ? str(h.url) : '')).filter(u => u !== '')
     if (urls.length === 0) return [step('no results')]
@@ -2148,27 +2149,27 @@ function stepLines(c             , columns        , cwd                )        
 
 // `⏺ <tool> · <description> · <status>`, the description cut so the line fits `columns`, then the call's steps and any
 // error lines. A repeat says what its count means (the user, 2026-11-12: 'What is means x3?')
-function callLine(c             , columns        , at             = {})         {
+function callLine(call             , columns        , at             = {})         {
   const times = at.times ?? 1
-  const tail        = [{ text: ' · ' }, ...status(c), ...(times > 1 ? [{ text: ` · ${times} times in a row` }] : [])]
-  const head        = [{ text: '⏺ ' }, { text: c.tool, bold: true }]
-  const desc = describe(c)
+  const tail        = [{ text: ' · ' }, ...status(call), ...(times > 1 ? [{ text: ` · ${times} times in a row` }] : [])]
+  const head        = [{ text: '⏺ ' }, { text: call.tool, bold: true }]
+  const desc = describe(call)
   const room = columns - widthOf(head) - widthOf(tail) - 3
   const named        = desc === '' ? [] : [{ text: ` · ${fitLine(desc, Math.max(1, room))}` }]
   // Auto mode's line, on a row whose result block draws nothing; any other result block draws Claude Code's own
-  const allowed = c.isAutoAllowed === true && DROPS_RESULT.includes(c.tool) ? [stepOf('allowed by auto mode', columns)] : []
-  return [[...head, ...named, ...tail], ...stepLines(c, columns, at.cwd), ...allowed, ...errorLines(c)]
+  const allowed = call.isAutoAllowed === true && DROPS_RESULT.includes(call.tool) ? [stepOf('allowed by auto mode', columns)] : []
+  return [[...head, ...named, ...tail], ...stepLines(call, columns, at.cwd), ...allowed, ...errorLines(call)]
 }
 
 // What one read did, and where: `read src/a.ts`, `grep "x" in src`, `glob src/**/*.ts`
-function readStep(c             , cwd                           )         {
-  const input = isRecord(c.input) ? c.input : {}
+function readStep(call             , cwd                           )         {
+  const input = isRecord(call.input) ? call.input : {}
   const file = str(input.file_path) || str(input.notebook_path)
   if (file !== '') return `read ${fromProject(file, cwd)}`
   const where = str(input.path) === '' ? '' : ` in ${fromProject(str(input.path), cwd)}`
-  if (c.tool === 'Grep') return `grep "${str(input.pattern)}"${where}`
-  if (c.tool === 'Glob') return `glob ${str(input.pattern)}${where}`
-  return `${c.tool.toLowerCase()} ${fromProject(str(input.path) || str(input.pattern), cwd)}`.trimEnd()
+  if (call.tool === 'Grep') return `grep "${str(input.pattern)}"${where}`
+  if (call.tool === 'Glob') return `glob ${str(input.pattern)}${where}`
+  return `${call.tool.toLowerCase()} ${fromProject(str(input.path) || str(input.pattern), cwd)}`.trimEnd()
 }
 
 // `⏺ <n> reads · ✓`, then one step per thing read or searched (`· 2 times` when read more than once), 4 at most and
@@ -2177,7 +2178,7 @@ function readsLines(run               , columns        , cwd                    
   const counts = new Map                ()
   for (const c of run) counts.set(readStep(c, cwd), (counts.get(readStep(c, cwd)) ?? 0) + 1)
   const items = [...counts].map(([name, n]) => (n > 1 ? `${name} · ${n} times` : name))
-  const failed = run.filter(c => c.isErrored || c.outcome !== null).length
+  const failed = run.filter(call => call.isErrored || call.outcome !== null).length
   const head       = [{ text: '⏺ ' }, { text: `${run.length} ${run.length === 1 ? 'read' : 'reads'}`, bold: true }, { text: ' · ' },
     failed > 0 ? { text: `✗ ${failed}`, tone: 'fail' } : { text: '✓', tone: 'ok' }]
   const shown = items.length > READ_STEPS + 1 ? items.slice(0, READ_STEPS) : items
@@ -2196,14 +2197,14 @@ const sameAs = (a             , b             )          =>
 function groupLines(calls               , columns        , at             = {})         {
   const out         = []
   for (let i = 0; i < calls.length;) {
-    const c = calls[i] 
+    const call = calls[i] 
     let j = i + 1
-    if (READ_ONLY.includes(c.tool)) {
+    if (READ_ONLY.includes(call.tool)) {
       while (j < calls.length && READ_ONLY.includes(calls[j] .tool)) j++
       out.push(...readsLines(calls.slice(i, j), columns, at.cwd))
     } else {
-      while (j < calls.length && sameAs(calls[j] , c)) j++
-      out.push(...callLine(c, columns, { cwd: at.cwd, times: j - i }))
+      while (j < calls.length && sameAs(calls[j] , call)) j++
+      out.push(...callLine(call, columns, { cwd: at.cwd, times: j - i }))
     }
     i = j
   }
@@ -2212,12 +2213,12 @@ function groupLines(calls               , columns        , at             = {}) 
 
 return { DROPS_RESULT, callLine, groupLines };
 })();
-// ---- hooks/plan.ts
-__m['plan.ts'] = (() => {
+// ---- hooks/plan/plan.ts
+__m['plan/plan.ts'] = (() => {
 // Plan and scores files: their parse, the plan view and the scores view. The contract is the README's 'Plan and score
+                                                                                                                                                                               
 // files', from the brief's 'Data contracts for the plan and scorer skills'. What a file requires makes it invalid when
 // missing; an optional field that does not fit is dropped.
-                                                                                                                                                 
 
 const STATUSES                    = ['pending', 'in_progress', 'done', 'failed', 'blocked', 'skipped']
 const KINDS                    = ['created', 'step_added', 'step_changed', 'step_removed', 'integrated']
@@ -2228,94 +2229,85 @@ const FINDING_STATUSES                    = ['open', 'fixed', 'improved', 'wontf
 const NOTE_MAX = 200
 
                                   
-const isObj = (v         )           => typeof v === 'object' && v !== null && !Array.isArray(v)
-const str = (v         )                => (typeof v === 'string' ? v : null)
-const time = (v         )                => {
-  const t = typeof v === 'string' ? Date.parse(v) : NaN
+const isObj = (value         )               => typeof value === 'object' && value !== null && !Array.isArray(value)
+const str = (value         )                => (typeof value === 'string' ? value : null)
+const time = (value         )                => {
+  const t = typeof value === 'string' ? Date.parse(value) : NaN
   return Number.isFinite(t) ? t : null
 }
-const num = (v         )              => typeof v === 'number' && Number.isFinite(v)
+const num = (value         )                  => typeof value === 'number' && Number.isFinite(value)
 
 // JSON after a leading byte-order mark; CRLF is JSON whitespace
 function json(text        )             {
   try {
-    const v          = JSON.parse(text.replace(/^﻿/, ''))
-    return isObj(v) ? v : null
+    const value          = JSON.parse(text.replace(/^﻿/, ''))
+    return isObj(value) ? value : null
   } catch {
     return null
   }
 }
 
-function stepOf(v         )                  {
-  if (!isObj(v)) return null
-  const id = str(v.id)
-  const title = str(v.title)
-  if (id === null || id === '' || title === null || typeof v.status !== 'string' || !STATUSES.includes(v.status)) return null
-  const estimate = num(v.estimateMin) && v.estimateMin >= 0 ? v.estimateMin : null
-  return { id, title, status: v.status              , estimateMin: estimate, startedAt: time(v.startedAt), doneAt: time(v.doneAt) }
+function stepOf(value         )                  {
+  if (!isObj(value)) return null
+  const id = str(value.id)
+  const title = str(value.title)
+  if (id === null || id === '' || title === null || typeof value.status !== 'string' || !STATUSES.includes(value.status)) return null
+  const estimate = num(value.estimateMin) && value.estimateMin >= 0 ? value.estimateMin : null
+  return { id, title, status: value.status              , estimateMin: estimate, startedAt: time(value.startedAt), doneAt: time(value.doneAt) }
 }
 
-function changeOf(v         )                    {
-  if (!isObj(v) || typeof v.kind !== 'string' || !KINDS.includes(v.kind) || typeof v.source !== 'string' || !SOURCES.includes(v.source)) return null
-  const note = str(v.note)
+function changeOf(value         )                    {
+  if (!isObj(value) || typeof value.kind !== 'string' || !KINDS.includes(value.kind) || typeof value.source !== 'string' || !SOURCES.includes(value.source)) return null
+  const note = str(value.note)
   return {
-    at: time(v.at), kind: v.kind                      , source: v.source                        ,
-    step: str(v.step), note: note === null ? null : note.slice(0, NOTE_MAX),
+    at: time(value.at), kind: value.kind                      , source: value.source                        ,
+    step: str(value.step), note: note === null ? null : note.slice(0, NOTE_MAX),
   }
 }
 
 // null: the file breaks the contract
 function parsePlan(text        )              {
-  const v = json(text)
-  if (v === null || v.version !== 1 || str(v.title) === null || !Array.isArray(v.steps) || v.steps.length === 0) return null
-  const steps = v.steps.map(stepOf)
+  const value = json(text)
+  if (value === null || value.version !== 1 || str(value.title) === null || !Array.isArray(value.steps) || value.steps.length === 0) return null
+  const steps = value.steps.map(stepOf)
   if (steps.some(s => s === null)) return null
-  const changes = Array.isArray(v.changes) ? v.changes.map(changeOf).filter((c)                  => c !== null) : []
-  return { title: v.title          , updatedAt: time(v.updatedAt), steps: steps              , changes }
+  const changes = Array.isArray(value.changes) ? value.changes.map(changeOf).filter((change)                       => change !== null) : []
+  return { title: value.title          , updatedAt: time(value.updatedAt), steps: steps              , changes }
 }
 
-function findingOf(v         )                 {
-  if (!isObj(v)) return null
-  const text = str(v.text)
+function findingOf(value         )                 {
+  if (!isObj(value)) return null
+  const text = str(value.text)
   if (text === null) return null
   return {
-    id: str(v.id), text,
-    severity: typeof v.severity === 'string' && SEVERITIES.includes(v.severity) ? (v.severity            ) : null,
-    status: typeof v.status === 'string' && FINDING_STATUSES.includes(v.status) ? (v.status                     ) : null,
-    by: str(v.by),
+    id: str(value.id), text,
+    severity: typeof value.severity === 'string' && SEVERITIES.includes(value.severity) ? (value.severity            ) : null,
+    status: typeof value.status === 'string' && FINDING_STATUSES.includes(value.status) ? (value.status                     ) : null,
+    by: str(value.by),
   }
 }
 
-function roundOf(v         )                    {
-  if (!isObj(v) || !num(v.round) || !Number.isInteger(v.round) || !num(v.total)) return null
+function roundOf(value         )                    {
+  if (!isObj(value) || !num(value.round) || !Number.isInteger(value.round) || !num(value.total)) return null
   const criteria                         = {}
-  if (isObj(v.criteria)) for (const [name, score] of Object.entries(v.criteria)) if (num(score)) criteria[name] = score
-  const findings = Array.isArray(v.findings) ? v.findings.map(findingOf).filter((f)               => f !== null) : []
-  return { round: v.round, at: time(v.at), total: v.total, criteria, findings }
+  if (isObj(value.criteria)) for (const [name, score] of Object.entries(value.criteria)) if (num(score)) criteria[name] = score
+  const findings = Array.isArray(value.findings) ? value.findings.map(findingOf).filter((f)               => f !== null) : []
+  return { round: value.round, at: time(value.at), total: value.total, criteria, findings }
 }
 
 function parseScores(text        )                {
-  const v = json(text)
-  if (v === null || v.version !== 1 || !isObj(v.subject) || !num(v.scale) || v.scale <= 0 || !Array.isArray(v.rounds)) return null
-  const { kind, ref } = v.subject
+  const value = json(text)
+  if (value === null || value.version !== 1 || !isObj(value.subject) || !num(value.scale) || value.scale <= 0 || !Array.isArray(value.rounds)) return null
+  const { kind, ref } = value.subject
   if (typeof kind !== 'string' || !SUBJECTS.includes(kind) || typeof ref !== 'string') return null
-  const rounds = v.rounds.map(roundOf)
+  const rounds = value.rounds.map(roundOf)
   if (rounds.some(r => r === null)) return null
   return {
-    subject: { kind: kind                             , ref }, updatedAt: time(v.updatedAt), scale: v.scale,
+    subject: { kind: kind                             , ref }, updatedAt: time(value.updatedAt), scale: value.scale,
     rounds: (rounds                ).sort((a, b) => a.round - b.round),
   }
 }
 
-                                                                                                                         
-                        
-                                                                 
-                                                                                         
-                                                                       
-                                                                                                                             
-                                           
-                     
- 
 
 const MIN = 60_000
 const STALE_MS = 20 * MIN
@@ -2326,24 +2318,24 @@ const isPlanDone = (plan      )          => typeof plan.completedAt === 'number'
 // A plan runs while it is begun and not done, and its file was written since this session began: a plan an earlier
 // session left with a step in progress neither takes the band's line 1 nor this session's time. Alfred Code's named
 // plan needs no fresh write: its status file naming it this session is the evidence.
-function runs(w               , since               )          {
-  const plan = w.value
+function isPlanRunning(file               , since               )          {
+  const plan = file.value
   if (plan === null || !plan.steps.some(s => s.status !== 'pending') || isPlanDone(plan)) return false
-  return w.isNamed === true || (since !== null && w.mtimeMs >= since)
+  return file.isNamed === true || (since !== null && file.mtimeMs >= since)
 }
 
 // Which plan the Plan tab shows (Decision 5): the pinned one while it parses; else Alfred Code's named plan; else the
 // newest that runs; else the task list when it has items, so a plan an earlier session left never hides this session's; else the newest good plan
-function shownPlan(p       , pinned               , hasTasks         )                                 {
-  const good = p.plans.filter(w => w.value !== null)
+function shownPlan(plans       , pinned               , hasTasks         )                                 {
+  const good = plans.planFiles.filter(w => w.value !== null)
   const newest = (list                 )                       =>
     list.reduce                      ((a, w) => (a === null || w.mtimeMs > a.mtimeMs ? w : a), null)
   const pin = pinned === null ? undefined : good.find(w => w.name === pinned)
   if (pin !== undefined) return pin
   // The plan Alfred Code's status file names comes before the rest, begun or not
-  const named = p.alfred === null || p.alfred === undefined ? undefined : good.find(w => w.name === p.alfred?.name)
+  const named = plans.alfredFolder === null || plans.alfredFolder === undefined ? undefined : good.find(w => w.name === plans.alfredFolder?.name)
   if (named !== undefined) return named
-  const running = newest(good.filter(w => runs(w, p.since)))
+  const running = newest(good.filter(w => isPlanRunning(w, plans.watchedSince)))
   if (running !== null) return running
   if (hasTasks) return 'tasks'
   return newest(good)
@@ -2351,9 +2343,9 @@ function shownPlan(p       , pinned               , hasTasks         )          
 
 // Which plan this session's time goes to and the band draws: the pinned one only while it runs, so a plan pinned to
 // read it never moves the time, or the band, away from the plan that runs
-function creditedPlan(p       , pinned               , hasTasks         )                                 {
-  const pin = shownPlan(p, pinned, hasTasks)
-  return pinned === null || (pin !== null && pin !== 'tasks' && pin.name === pinned && runs(pin, p.since)) ? pin : shownPlan(p, null, hasTasks)
+function creditedPlan(plans       , pinned               , hasTasks         )                                 {
+  const pin = shownPlan(plans, pinned, hasTasks)
+  return pinned === null || (pin !== null && pin !== 'tasks' && pin.name === pinned && isPlanRunning(pin, plans.watchedSince)) ? pin : shownPlan(plans, null, hasTasks)
 }
 
 // The brief's 'Time for the plan': finished steps' time, plus each other step's forecast (its estimate times this
@@ -2361,7 +2353,7 @@ function creditedPlan(p       , pinned               , hasTasks         )       
 // main loop's overhead. A skipped step is finished, but says nothing of the estimates, so it never calibrates.
 function planView(plan      , times                          , overheadMs        , liveMs                        , now        )           {
   const notes = (step               )           =>
-    plan.changes.filter(c => c.kind === 'integrated' && c.source === 'user' && c.note !== null && c.step === step).map(c => c.note          )
+    plan.changes.filter(c => c.kind === 'integrated' && c.source === 'user' && c.note !== null && c.step === step).map(change => change.note          )
   const actual = (s          )         => (times[s.id]?.ms ?? 0) + (liveMs[s.id] ?? 0)
   const calibrating = plan.steps.filter(s => s.status === 'done' && s.estimateMin !== null && actual(s) > 0)
   const isCalibrated = calibrating.length >= 2
@@ -2393,38 +2385,29 @@ function planView(plan      , times                          , overheadMs       
   }
 }
 
-// `shown`: the round whose total is the score, the released one when the writer names it, else the newest;
-// `isGrading`: Alfred Code's grading still runs, so that total may change
-                          
-                                                                                 
-                                                             
-                                                                 
-                                                                  
-                                                                            
- 
 
 const SEVERITY_ORDER                      = ['BLOCKER', 'MATERIAL', 'MINOR']
 
 // Scorer rule 4: each round's total, the change per criterion and the count per severity, a fixed finding not
 // counted; the fixed and improved lists only when the writer recognised findings across rounds and set a status.
-function scoresView(s        )                    {
+function scoresView(scores        )                    {
   // Alfred Code's released round, else the newest; the arrow against the round graded just before it
-  const at = typeof s.released === 'number' ? s.rounds.findIndex(r => r.round === s.released) : -1
-  const i = at >= 0 ? at : s.rounds.length - 1
-  const last = s.rounds[i]
+  const at = typeof scores.released === 'number' ? scores.rounds.findIndex(r => r.round === scores.released) : -1
+  const i = at >= 0 ? at : scores.rounds.length - 1
+  const last = scores.rounds[i]
   if (last === undefined) return null
-  const prev = s.rounds[i - 1] ?? null
+  const prev = scores.rounds[i - 1] ?? null
   const count = (r                   , severity          )         =>
     r === null ? 0 : r.counts !== undefined ? r.counts[severity] ?? 0 : r.findings.filter(f => f.severity === severity && f.status !== 'fixed').length
   const present = (r                   , severity          )          =>
     r !== null && (r.counts !== undefined ? r.counts[severity] !== undefined : r.findings.some(f => f.severity === severity))
   return {
-    scale: s.scale,
-    totals: s.rounds.slice(-4).map(r => ({ round: r.round, total: r.total })),
-    shown: { round: last.round, total: last.total }, isGrading: s.released === null,
+    scale: scores.scale,
+    totals: scores.rounds.slice(-4).map(r => ({ round: r.round, total: r.total })),
+    shown: { round: last.round, total: last.total }, isGrading: scores.released === null,
     delta: prev === null ? null : last.total - prev.total,
     criteria: Object.entries(last.criteria).map(([name, score]) => ({ name, prev: prev?.criteria[name] ?? null, last: score })),
-    severities: SEVERITY_ORDER.filter(v => present(prev, v) || present(last, v)).map(v => ({ severity: v, prev: count(prev, v), last: count(last, v) })),
+    severities: SEVERITY_ORDER.filter(v => present(prev, v) || present(last, v)).map(value => ({ severity: value, prev: count(prev, value), last: count(last, value) })),
     fixed: last.findings.filter(f => f.status === 'fixed'),
     improved: last.findings.filter(f => f.status === 'improved'),
     open: last.findings.filter(f => f.status === null || f.status === 'open'),
@@ -2441,7 +2424,7 @@ function tasksAfter(items            , tool        , input                      
     const task = isObj(result) && isObj(result.task) ? result.task : null
     const id = task === null ? null : str(task.id)
     const subject = str(task?.subject) ?? str(input.subject)
-    return id === null || subject === null ? items : [...items, { id, subject, status: 'pending', ms: 0 }]
+    return id === null || subject === null ? items : [...items, { id, subject, status: 'pending', workedMs: 0 }]
   }
   if (tool === 'TaskUpdate') {
     const id = str(input.taskId)
@@ -2455,7 +2438,7 @@ function tasksAfter(items            , tool        , input                      
     return input.todos.filter(isObj).map((todo, i) => {
       const subject = str(todo.content) ?? ''
       const status = typeof todo.status === 'string' && TASK_STATUSES.includes(todo.status) ? (todo.status                      ) : 'pending'
-      return { id: String(i), subject, status, ms: items.find(t => t.subject === subject)?.ms ?? 0 }
+      return { id: String(i), subject, status, workedMs: items.find(t => t.subject === subject)?.workedMs ?? 0 }
     })
   }
   return null
@@ -2464,9 +2447,9 @@ function tasksAfter(items            , tool        , input                      
 // The task list as a plan titled 'Tasks', with no estimates: once 3 are completed, the time left is their mean time
 // times the items left (the brief's band row)
 function taskView(items            , liveMs                        )           {
-  const rows            = items.map(t => ({
-    step: { id: t.id, title: t.subject, status: t.status === 'completed' ? 'done' : t.status, estimateMin: null, startedAt: null, doneAt: null },
-    actualMs: t.ms + (liveMs[t.id] ?? 0), forecastMs: null, isShared: false, notes: [],
+  const rows            = items.map(task => ({
+    step: { id: task.id, title: task.subject, status: task.status === 'completed' ? 'done' : task.status, estimateMin: null, startedAt: null, doneAt: null },
+    actualMs: task.workedMs + (liveMs[task.id] ?? 0), forecastMs: null, isShared: false, notes: [],
   }))
   const done = rows.filter(r => r.step.status === 'done')
   const open = rows.filter(r => r.step.status !== 'done')
@@ -2481,12 +2464,36 @@ function taskView(items            , liveMs                        )           {
   }
 }
 
-return { parsePlan, parseScores, isFinishedStep, isPlanDone, runs, shownPlan, creditedPlan, planView, scoresView, tasksAfter, taskView };
+const taskStatusKey = (items            )         => JSON.stringify(items.map(task => [task.id, task.status]))
+
+const stepStatusKey = (files                 )         =>
+  JSON.stringify(files.map(file => [file.name, file.value?.steps.map(s => [s.id, s.status]) ?? null]))
+
+const FINISH_SHOWN_MS = 10 * 60_000
+
+// The user's notes in `after` that `before` lacks, each counted by its time, step and text, so two alike are two
+function newUserNotes(before              , after              )               {
+  const idOf = (c            )         => JSON.stringify([c.at, c.step, c.note])
+  const isNote = (c            )          => c.kind === 'integrated' && c.source === 'user' && c.note !== null
+  const left = new Map                ()
+  for (const c of before.filter(isNote)) left.set(idOf(c), (left.get(idOf(c)) ?? 0) + 1)
+  return after.filter(isNote).filter(change => {
+    const n = left.get(idOf(change)) ?? 0
+    if (n > 0) left.set(idOf(change), n - 1)
+    return n === 0
+  })
+}
+
+// The folders the stack writes plans and scores to
+const PLANS_DIR = '.claude/session-inspector/plans'
+const SCORES_DIR = '.claude/session-inspector/scores'
+
+return { parsePlan, parseScores, isFinishedStep, isPlanDone, isPlanRunning, shownPlan, creditedPlan, planView, scoresView, tasksAfter, taskView, taskStatusKey, stepStatusKey, FINISH_SHOWN_MS, newUserNotes, PLANS_DIR, SCORES_DIR };
 })();
-return { bandLines: __m['band.ts'].bandLines, statusText: __m['band.ts'].statusText, underRows: __m['band.ts'].underRows, cellsOf: __m['band.ts'].cellsOf, groupLines: __m['compact.ts'].groupLines, planView: __m['plan.ts'].planView, newRow: __m['agents.ts'].newRow };
+return { bandLines: __m['band/band.ts'].bandLines, statusText: __m['band/band.ts'].statusText, underRows: __m['band/band.ts'].underRows, cellsOf: __m['band/wrap.ts'].cellsOf, groupLines: __m['tools/compact.ts'].groupLines, planView: __m['plan/plan.ts'].planView, newRow: __m['agents/agents.ts'].newRow };
 })();
 
-// The explorer's numbers and switches as the band's input, the way hooks/register.ts' bandInputOf builds it, and the
+// The explorer's numbers and switches as the band's input, the way hooks/band/effects.ts' readBandInput builds it, and the
 // band's lines drawn as the terminal draws them. Needs BandCore (bundled from the mod's hooks/).
 const BandAdapter = (() => {
   const MIN = 60_000
@@ -2538,13 +2545,13 @@ const BandAdapter = (() => {
       ? { percent: Math.floor((tokens * 100) / (num(d.trigger) * 1000)), resumeAt: num(d.trigger) * 1000, at: window ? Math.round((num(d.trigger) * 1000 * 100) / window) : null }
       : null
     const ask = runway?.percent ?? (percent === null ? 0 : Math.round(percent))
-    // The handoff's threshold, then every 5 points up to 95 (hooks/handoff.ts stepsOf); only ask mode asks
+    // The handoff's threshold, then every 5 points up to 95 (hooks/handoff/handoff.ts stepsOf); only ask mode asks
     const askAt = Number.isInteger(m.handoffAt) ? m.handoffAt : 80, handoffMode = m.handoff || (m.handoffOff ? 'off' : 'ask')
     const tools = counted(d.tools), skills = counted(d.skills)
     const stats = Object.fromEntries(tools.map(t => [t.name, { calls: t.n, ok: t.n, failed: 0, stopped: 0 }]))
     const lastReply = at(youAt, d.claudeAt)
     const turnN = Math.max(1, num(d.turn))
-    const done = (n, end) => ({ n, turnId: 't' + n, promptAt: youAt, replyAt: end, durationMs: turnMs, tokensIn: 0, tokensOut: 0, tools: num(d.turnTools), failures: num(d.failures), contextPercent: percent, end: 'answer' })
+    const done = (n, end) => ({ turnNumber: n, turnId: 't' + n, promptAt: youAt, replyAt: end, durationMs: turnMs, tokensIn: 0, tokensOut: 0, toolCalls: num(d.turnTools), toolFailures: num(d.failures), contextPercent: percent, endReason: 'answer' })
     const turns = m.fresh ? [] : m.running ? (turnN > 1 ? [done(turnN - 1, youAt - MIN)] : []) : [done(turnN, lastReply ?? now - MIN)]
     const agentTypes = {}
     const agents = list(d.agents).flatMap((l, i) => {
@@ -2592,41 +2599,41 @@ const BandAdapter = (() => {
     return {
       now, columns: g.columns, maxRows: g.maxRows, isWorking: !!m.running && !m.fresh,
       live: m.running && !m.fresh
-        ? { turnId: 't' + turnN, startedAt: youAt, tools: num(d.turnTools), failures: 0, running: [], promptAt: youAt }
-        : { turnId: null, startedAt: null, tools: 0, failures: 0, running: [], promptAt: null },
+        ? { turnId: 't' + turnN, startedAt: youAt, toolCalls: num(d.turnTools), toolFailures: 0, runningCalls: [], promptAt: youAt }
+        : { turnId: null, startedAt: null, toolCalls: 0, toolFailures: 0, runningCalls: [], promptAt: null },
       usage: {
-        tokens: m.fresh ? null : tokens, window: window || null, percent, startedAt: now - span(d.sessionTime),
-        windows: [
+        contextTokens: m.fresh ? null : tokens, contextWindow: window || null, contextPercent: percent, startedAt: now - span(d.sessionTime),
+        rateWindows: [
           { kind: 'five_hour', percentUsed: num(d.h5), resetsAt: resets(now, d.h5Reset) },
           { kind: 'seven_day', percentUsed: num(d.d7), resetsAt: resets(now, d.d7Reset) },
         ],
-        costUsd: m.fresh ? 0 : num(d.cost), todayUsd: num(d.today), at: now, ...(m.fresh ? { windowsAt: now - 60 * MIN } : {}),
+        costUsd: m.fresh ? 0 : num(d.cost), todayUsd: num(d.today), readingAt: now, ...(m.fresh ? { rateWindowsAt: now - 60 * MIN } : {}),
       },
-      meta: {
+      session: {
         model: modelId(d.model), effort: m.fresh ? null : String(d.effort || '') || null, compactions: 0, lastCompactAt: null,
-        lastPromptAt: m.fresh ? null : youAt, lastReplyAt: m.fresh ? null : lastReply, turnCount: m.fresh ? 0 : m.running ? turnN - 1 : turnN, waiting: [],
-        mainCalls: tools.reduce((n, t) => n + t.n, 0), skills: Object.fromEntries(skills.map(s => [s.name, s.n])),
+        lastPromptAt: m.fresh ? null : youAt, lastReplyAt: m.fresh ? null : lastReply, turnCount: m.fresh ? 0 : m.running ? turnN - 1 : turnN, waitingPrompts: [],
+        mainToolCalls: tools.reduce((n, t) => n + t.n, 0), loadedSkills: Object.fromEntries(skills.map(s => [s.name, s.n])),
         ...(place ? { place } : {}), ...(String(d.cc || '') ? { version: String(d.cc) } : {}),
         ...(Object.keys(agentTypes).length > 0 ? { agentTypes } : {}),
       },
       turns, newFailures: num(d.failures), pace: {}, agents,
       cache: {
-        tier: '1h', tierAt: null, tierBilling: null, config: { pin: null, idleOff: false, idleMinTokens: 200_000, isTerminal: false },
-        ratePerToken: null, rateModel: null, lastAt: m.fresh ? null : now - Math.max(0, 60 - num(d.cacheMin)) * MIN,
-        last: { read: 1000, write: 0, input: 10 }, session: m.fresh ? { read: 0, write: 0, input: 0 } : { read: 1000, write: 0, input: 10 }, toastedFor: null,
+        tier: '1h', tierAt: null, tierBilling: null, config: { pin: null, isIdleCompactOff: false, idleMinTokens: 200_000, isTerminal: false },
+        ratePerToken: null, rateModel: null, lastRequestAt: m.fresh ? null : now - Math.max(0, 60 - num(d.cacheMin)) * MIN,
+        lastRequest: { read: 1000, write: 0, input: 10 }, sessionCounts: m.fresh ? { read: 0, write: 0, input: 0 } : { read: 1000, write: 0, input: 10 }, toastedForRequestAt: null,
       },
-      plan, planInvalid: false, score, scoreLevel: m.alfred && m.scorer ? num(d.scorerVal) : null, ...(m.recLevel && m.recLevel !== 'off' ? { rec: { level: m.recLevel, words: 0 } } : m.rec && !m.recLevel ? { rec: { level: 'on', words: 0 } } : {}),
+      plan, isPlanInvalid: false, score, scoreLevel: m.alfred && m.scorer ? num(d.scorerVal) : null, ...(m.recLevel && m.recLevel !== 'off' ? { rec: { level: m.recLevel, words: 0 } } : m.rec && !m.recLevel ? { rec: { level: 'on', words: 0 } } : {}),
       forecast: runway && runway.at !== null ? { at: runway.at, label: `${num(d.trigger)}k` } : { at: askAt, label: `${askAt}%` },
-      handoffAsk: !m.fresh && handoffMode === 'ask' && !runway && ask >= askAt ? Math.min(95, askAt + Math.floor((ask - askAt) / 5) * 5) : null,
+      handoffAskStep: !m.fresh && handoffMode === 'ask' && !runway && ask >= askAt ? Math.min(95, askAt + Math.floor((ask - askAt) / 5) * 5) : null,
       runway, banner, mode: m.off ? 'off' : m.calm ? 'calm' : 'full',
       totals: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, stepOutput: m.fresh ? 0 : num(d.tokS) * 100, stepMs: m.fresh ? 0 : 100_000 },
-      stats, isToolsOpen: !!m.rowsOpen, listing: { listed: num(d.listed), total: num(d.ofSkills), tokens: 3200 },
+      stats, isToolsOpen: !!m.rowsOpen, skillListing: { listed: num(d.listed), total: num(d.ofSkills), tokens: 3200 },
       rules: { always: rules.filter(r => !r.isPath).map(r => r.name), byPath: rules.filter(r => r.isPath).map(r => r.name), isTracked: true },
       ...(m.under ? { under: { buttons: m.fullscreen ? 'click' : 'text' } } : {}),
     }
   }
 
-  // The band as the mod draws it, and the pinned line under the prompt (statusText, as register.ts feeds it)
+  // The band as the mod draws it, and the pinned line under the prompt (statusText, as hooks/band/effects.ts feeds it)
   function draw(d, m) {
     const pinned = isPinned => {
       const input = toInput(d, m, isPinned)
@@ -2635,7 +2642,7 @@ const BandAdapter = (() => {
     }
     // The fullscreen room under leaves a row for the pinned line when it shows; it shows only what the band does not
     let r = pinned(false)
-    const pin = b => BandCore.statusText({ percent: b.input.runway?.percent ?? b.input.usage.percent, newFailures: b.input.newFailures, recLevel: b.input.rec?.level ?? 'off', isBandShown: b.lines.length > 0 })
+    const pin = b => BandCore.statusText({ percent: b.input.runway?.percent ?? b.input.usage.contextPercent, newFailures: b.input.newFailures, recLevel: b.input.rec?.level ?? 'off', isBandShown: b.lines.length > 0 })
     let text = pin(r)
     if (text !== null && m.under) { r = pinned(true); text = pin(r) }
     return { ...r, pinned: text }
