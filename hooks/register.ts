@@ -6,40 +6,35 @@ import type {
 } from 'claude-code'
 
 import { isLive, refreshAgents } from './agents/agents'
-import { spinnerSuffix } from './band/working'
-import { bandLines, underRows } from './band/band'
 import { billingOf, needsTick, takeRate } from './cache/cache'
-import { drawLines, drawNote, drawUnder, drawUnderNote } from './core/draw'
+import { drawNote } from './core/draw'
 import { localDate } from './core/forecast'
-import { REC_HIDDEN, SPINNER_WORD, bandFailed, paneFailed } from './core/failsafe'
-import { clock, fingerprint, printable, tokens, when } from './core/format'
-import { mask, recLevel } from './rec/mask'
+import { REC_HIDDEN, SPINNER_WORD, paneFailed } from './core/failsafe'
+import { clock, fingerprint, tokens, when } from './core/format'
+import { recLevel } from './rec/mask'
 import { neutralDialog } from './rec/sites'
 import { DROPS_RESULT } from './tools/compact'
-import { forecastOf } from './handoff/handoff'
-import { bannerSegs, runwayOf } from './stack/stack'
 import { runs } from './plan/plan'
 import { staleKeys } from './plan/steptime'
-import { recNote, recOf } from './rec/rec'
+import { recNote } from './rec/rec'
 import { dropPassed } from './session/windows'
-import { countSkillPrompt, drawToolGroup, drawToolResult, drawToolUse, modeMem, notePermissionAsk, notePermissionDenied, notePromptMode, noteToolCheck, noteToolFailure, noteToolTime, readFailures, readStats, resetBlockers, resetFailures, resetQuiet, resetStats, trackToolCall } from './tools/effects'
-import { FRESH_EVERY_MS, baseline, completeTurn, freshMem, freshUsage, pruneCost, readLive, readMeta, readPace, readTick, readTotals, readTurns, readUsage, resetLive, resetMeta, resetPace, resetTotals, resetTurns, resetUsage, seedWindows, spendMem, startTurn, takeMeasure, takeUsage, todayMem, todayUsd, trackTurnStep, updateMeta, updateTick, updateUsage, windowsMem } from './session/effects'
+import { countSkillPrompt, drawToolGroup, drawToolResult, drawToolUse, modeMem, notePermissionAsk, notePermissionDenied, notePromptMode, noteToolCheck, noteToolFailure, noteToolTime, resetBlockers, resetFailures, resetQuiet, resetStats, trackToolCall } from './tools/effects'
+import { FRESH_EVERY_MS, baseline, completeTurn, freshMem, freshUsage, pruneCost, readLive, readUsage, resetLive, resetMeta, resetPace, resetTotals, resetTurns, resetUsage, seedWindows, spendMem, startTurn, takeMeasure, takeUsage, todayMem, todayUsd, trackTurnStep, updateMeta, updateTick, updateUsage, windowsMem } from './session/effects'
 import { readAgents, resetAgents, resetLoops, trackSpawn, updateAgents } from './agents/effects'
-import { afterModelSwitch, armCacheClose, beforeModelSwitch, compactNow, followCompaction, readCache, readCacheConfig, resetCache, updateCache } from './cache/effects'
-import { planDraw, queueReload, resetCredit, resetPlans, resetTasks, scheduleReload, seedMine, storedTimes, updatePlans } from './plan/effects'
-import { readStack, readStatus, resetStack, scoreLevel, stackMem } from './stack/effects'
-import { fillResume, handoffMem, readHandoff, resetHandoff, runAutoHandoffCommand, saveNow } from './handoff/effects'
-import { drawRecPane, maskAssistantMessage, maskCommandOutput, maskQuestionDialog, maskUserMessage, noteMem, readRec, recMem, resetRec, runRecCommand } from './rec/effects'
-import { bandMem, isPassingAbove, readBandSetting, statusMem, syncStatus } from './band/effects'
-import { noteLoadedRule, partsMem, readBreakdownSoon, readParts, resetParts } from './context/effects'
-import { drawInspectPane, inspectFromBand, resetView, runInspectCommand } from './inspect/effects'
-import type { BandInput } from './band/types'
+import { afterModelSwitch, armCacheClose, beforeModelSwitch, followCompaction, readCache, readCacheConfig, resetCache, updateCache } from './cache/effects'
+import { queueReload, resetCredit, resetPlans, resetTasks, scheduleReload, seedMine, storedTimes, updatePlans } from './plan/effects'
+import { readStatus, resetStack, stackMem } from './stack/effects'
+import { fillResume, handoffMem, resetHandoff, runAutoHandoffCommand } from './handoff/effects'
+import { drawRecPane, maskAssistantMessage, maskCommandOutput, maskQuestionDialog, maskUserMessage, noteMem, recMem, resetRec, runRecCommand } from './rec/effects'
+import { bandMem, drawBandAbove, drawBandAboveFailed, drawBandUnder, drawBandUnderFailed, drawSpinner, readBandSetting, syncStatus } from './band/effects'
+import { noteLoadedRule, partsMem, readBreakdownSoon, resetParts } from './context/effects'
+import { drawInspectPane, resetView, runInspectCommand } from './inspect/effects'
 import type { Call } from './tools/types'
 import type { Held } from './core/types'
 import { pollPlace, readPlace } from './place/effects'
 import { followConfigChange, loadSettings } from './settings/effects'
 import { conversationMem, tickMem } from './lifecycle/effects'
-import { isNoColor, toast } from './core/effects'
+import { toast } from './core/effects'
 
 // What the band shows before the first reply: the model, Claude Code's version, the place, the stored windows and the
 // context's parts. Each read stands alone: a refusal leaves its value as it was.
@@ -131,40 +126,6 @@ async function resetAll($: EngineInterface): Promise<void> {
   await resetParts($)
   await resetLoops($)
   partsMem.lastAt = null
-}
-
-// The band's lines from the session's state, for the site above or the footer (spec band-under U2): the same reads, the
-// place's own width, rows and turn
-async function bandInputOf(
-  $: EngineInterface, at: { columns: number; maxRows: number | undefined; isWorking: boolean; under?: BandInput['under']; isLeftOut: boolean },
-): Promise<BandInput> {
-  // Read so the running times redraw each second while a turn runs
-  await readTick($)
-  const now = await $.clock.now()
-  const d = await planDraw($, now)
-  const u = await readUsage($)
-  const h = await readHandoff($)
-  const st = await readStack($)
-  const m = await readMeta($)
-  const runway = runwayOf(st, u, m.model)
-  const setting = await readBandSetting($)
-  const p = await readParts($)
-  return {
-    now, columns: at.columns, ...(at.maxRows === undefined ? {} : { maxRows: at.maxRows }), isWorking: at.isWorking,
-    live: await readLive($), usage: u, meta: m, turns: await readTurns($),
-    newFailures: (await readFailures($)).filter(f => f.isNew).length, pace: await readPace($), agents: await readAgents($),
-    cache: await readCache($), plan: d.band, planInvalid: d.invalid, score: d.score, isPlanScore: d.isPlanScore, scoreLevel: await scoreLevel($), rec: recOf(await readRec($)),
-    forecast: forecastOf(h, u, runway), handoffAsk: h.isAskUp ? h.handled : null, runway, banner: bannerSegs(st),
-    mode: setting.mode, totals: await readTotals($), stats: await readStats($),
-    isToolsOpen: setting.isToolsOpen === true, listing: p.skills ?? null,
-    rules: { always: p.rules ?? [], byPath: m.pathRules ?? [], isTracked: !at.isLeftOut },
-    ...(at.under === undefined ? {} : { under: at.under }),
-  }
-}
-
-// What the band's buttons do, above or under
-function bandPress($: EngineInterface, held: Held): Record<string, () => unknown> {
-  return { inspect: () => inspectFromBand($), compact: () => compactNow($, held), handoff: () => saveNow($) }
 }
 
 // A /clear, a resume or a branch starts the session over under a new id: Claude Code resets $.state itself, and the
@@ -401,68 +362,14 @@ export const register: Register = (on, options) => {
   // and prints the state with each value's source, and while Alfred Code owns the handoff, its state alone
   on('command.run', { command: 'auto-handoff' }, ($, e) => runAutoHandoffCommand($, e, held))
 
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    // Decided on module memory, so a person above meets no new read before the survey's check; the read keeps this
-    // hook drawn again on a later "bandPlace": "above". The width it lends the footer redraws it only on a change.
-    if (isPassingAbove(e.surface)) {
-      await readBandSetting($)
-      if (bandMem.columns !== e.props.bodyColumns) {
-        bandMem.columns = e.props.bodyColumns
-        $.ui.invalidate('ui.render')
-      }
-      return next(e)
-    }
-    if (e.props.hasSurvey) {
-      bandMem.isShown = false
-      return next(e)
-    }
-    const lines = bandLines(await bandInputOf($, { columns: e.props.bodyColumns, maxRows: e.props.maxRows, isWorking: e.props.isWorking, isLeftOut }))
-    bandMem.isShown = lines.length > 0 && e.props.isCollapsed === false
-    if (lines.length === 0) return next(e)
-    return drawLines($, e, lines, { noColor: await isNoColor($), press: bandPress($, held), columns: e.props.bodyColumns })
-  }).catch(($, e, next) => {
-    if (isPassingAbove(e.surface)) return next(e)
-    bandMem.isShown = false
-    return drawNote($, e, bandFailed(next.error.kind))
-  })
+  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => drawBandAbove($, e, next, held, isLeftOut)).catch(($, e, next) => drawBandAboveFailed($, e, next))
 
   // The band under the input, in Claude Code's footer on the terminal (spec band-under U2): Claude Code's own line first,
   // then the band, at the site above's width and the rows the screen leaves; above, or elsewhere, the footer as it was
-  on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
-    const setting = await readBandSetting($)
-    const v = e.viewport
-    if (setting.isUnder !== true || e.surface !== 'terminal' || v === undefined) return next(e)
-    if (!bandMem.hasFooter) {
-      bandMem.hasFooter = true
-      $.ui.invalidate('ui.render')
-    }
-    const columns = Math.min(v.columns - 5, bandMem.columns ?? Infinity)
-    const isPinned = typeof statusMem.last === 'string' && statusMem.last !== ''
-    const maxRows = underRows(v, { hasStatusLine: bandMem.hasStatusLine, isPinned })
-    const under = { buttons: v.isFullscreen === true ? 'click' as const : 'text' as const }
-    const lines = bandLines(await bandInputOf($, { columns, maxRows, isWorking: e.props.isWorking, under, isLeftOut }))
-    bandMem.isShown = lines.length > 0
-    const beneath = await next(e)
-    if (lines.length === 0) return beneath
-    return drawUnder($, e, beneath, lines, { noColor: await isNoColor($), press: bandPress($, held), columns })
-  }).catch(async ($, e, next) => {
-    if (!bandMem.isUnder || e.surface !== 'terminal') return next(e)
-    bandMem.isShown = false
-    return drawUnderNote($, e, await next(e), bandFailed(next.error.kind))
-  })
+  on('ui.render', { component: 'PromptHint' }, ($, e, next) => drawBandUnder($, e, next, held, isLeftOut)).catch(($, e, next) => drawBandUnderFailed($, e, next))
 
   // The main loop's spinner adds its action, context and the agents running; an agent's spinner, that agent's
-  on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
-    const text = spinnerSuffix({
-      requestId: e.requestId ?? '', live: await readLive($), percent: (await readUsage($)).percent, agents: await readAgents($),
-    })
-    // REC masks the engine's word and message as well as the mod's own suffix
-    const word = mask(e.props.word)
-    const message = e.props.message === null ? null : mask(e.props.message)
-    const props = word === e.props.word && message === e.props.message ? e.props : { ...e.props, word, message }
-    if (text === null) return props === e.props ? next(e) : next({ ...e, props })
-    return next({ ...e, props: { ...props, suffix: `${e.props.suffix} ${mask(printable(text))}` } })
-  }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : next({ ...e, props: { ...e.props, word: SPINNER_WORD, message: null } })))
+  on('ui.render', { component: 'Spinner' }, ($, e, next) => drawSpinner($, e, next)).catch(($, e, next) => (recLevel() === 'off' ? next(e) : next({ ...e, props: { ...e.props, word: SPINNER_WORD, message: null } })))
 
   // REC on Claude Code's rows: each site rewrites its props only while REC is on and masking changes something, else
   // passes next(e) as it came. The stored messages and what the model reads stay as they are.
