@@ -10,12 +10,12 @@ import { spinnerSuffix } from './band/working'
 import { bandLines, underRows } from './band/band'
 import { addRequest, billingOf, needsTick, takeRate } from './cache/cache'
 import { baseCost, pruneCost, recordCost, todayUsd } from './session/cost'
-import { drawLines, drawNote, drawUnder, drawUnderNote, drawWithInput } from './core/draw'
+import { drawLines, drawNote, drawUnder, drawUnderNote } from './core/draw'
 import { localDate } from './core/forecast'
 import { REC_HIDDEN, SPINNER_WORD, bandFailed, paneFailed } from './core/failsafe'
 import { clock, fingerprint, oneLine, printable, tokens, usd, when } from './core/format'
-import { mask, maskSpans, recLevel, setRec } from './rec/mask'
-import { maskDeep, maskDialog, maskResult, neutralDialog, resultLines } from './rec/sites'
+import { mask, recLevel } from './rec/mask'
+import { maskDeep, maskResult, neutralDialog, resultLines } from './rec/sites'
 import { DROPS_RESULT, callLine, groupLines } from './tools/compact'
 import { HANDOFF_PATH, HANDOFF_USAGE, MODES, forecastOf, handoffView } from './handoff/handoff'
 import { bannerSegs, runwayOf } from './stack/stack'
@@ -24,7 +24,7 @@ import { planLines } from './plan/planlines'
 import { closeWait, isAllWait, openWait, staleKeys, waitOf } from './plan/steptime'
 import { agentsLines, asCommands, cacheLines, nowLines, paneCommands, reportRows, tabBar, timelineLines, toolsLines, usageLines } from './inspect/tabs'
 import { classify, fold, numberOf, targetOf, toolKey } from './tools/outcome'
-import { LEVELS, REC_HELP, addWord, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec/rec'
+import { LEVELS, REC_HELP, recNote, recOf, recStatus, recTest } from './rec/rec'
 import { BAND_MODES, DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast, writeField } from './settings/settings'
 import { dropPassed, nextWindows, storedWindows } from './session/windows'
 import { compactMem, errorMem, errorRows, modeMem, readBlockers, readFailures, readQuiet, readStats, resetBlockers, resetFailures, resetQuiet, resetStats, updateBlockers, updateFailures, updateQuiet, updateStats } from './tools/effects'
@@ -34,14 +34,13 @@ import { afterModelSwitch, armCacheClose, beforeModelSwitch, compactNow, followC
 import { addMark, addWait, closeLoops, openSlice, planDraw, queueReload, readPlans, readTasks, resetCredit, resetPlans, resetTasks, scheduleReload, seedMine, storedTimes, updateCredit, updatePlans, updateTasks } from './plan/effects'
 import { fillStack, readStack, readStatus, resetStack, scoreLevel, stackMem } from './stack/effects'
 import { dismissAsk, fillResume, handoffMem, handoffState, loadHandoff, readHandoff, resetHandoff, saveNow, saveThenCompact, stepHandoff } from './handoff/effects'
-import { noteMem, readRec, recMem, resetRec, updateRec } from './rec/effects'
+import { drawRecPane, isRecOn, loadRec, maskAssistantMessage, maskCommandOutput, maskQuestionDialog, maskUserMessage, noteMem, readRec, recMem, resetRec } from './rec/effects'
 import { bandMem, isPassingAbove, loadBand, readBandSetting, statusMem, syncStatus } from './band/effects'
 import { noteLoadedRule, partsMem, readBreakdownSoon, readParts, resetParts } from './context/effects'
 import { readView, resetView, updateView } from './inspect/effects'
 import type { BandInput } from './band/types'
 import type { Tab } from './inspect/types'
 import type { Plans } from './plan/types'
-import type { RecState } from './rec/types'
 import type { Turn, Usage, Window } from './session/types'
 import type { Field, From, Resolved, Source, Values } from './settings/types'
 import type { Call, CallFacts, CompactCall, Failure, Outcome, ToolStat } from './tools/types'
@@ -554,48 +553,6 @@ async function tellMoved($: EngineInterface, r: Resolved): Promise<void> {
   toast($, movedToast(kept as Partial<Values>), 30_000)
   await $.store.set('settings:moved', true).catch(() => undefined)
 }
-
-// The level in force and the stored words into the masker and the rec atom: a word set in one session reaches every
-// session within 30 seconds
-async function loadRec($: EngineInterface, note: string | null = null): Promise<void> {
-  const level = settingsMem.rec?.level ?? 'off'
-  // A refused read keeps the words REC had, so the fields after REC still settle (the review's #4)
-  const words = await $.store.get('rec:words').then(parseWords, () => recMem.words)
-  recMem.words = words
-  // Recompiled and every site redrawn only on a change: a word swapped for another keeps the atom's count, and rows a
-  // reload drew before this read were drawn at off
-  const compiled = JSON.stringify([level, words, recMem.home])
-  if (compiled !== recMem.compiled) {
-    recMem.compiled = compiled
-    setRec(level, words, recMem.home)
-    $.ui.invalidate('ui.render')
-  }
-  await updateRec($, r => (r.level === level && r.count === words.length && r.note === note ? r : { level, count: words.length, note }))
-  await syncStatus($)
-}
-
-// Whether a site masks: mask.ts's level, which a /clear, a resume or a fork leaves as it was while the atom is reset;
-// the atom is read so the site redraws when REC changes
-async function isRecOn($: EngineInterface): Promise<boolean> {
-  await readRec($)
-  return recLevel() !== 'off'
-}
-
-// An add or a remove reads the stored words again, applies its one change and writes, so no stale copy is written back
-async function addRecWord($: EngineInterface, raw: string): Promise<void> {
-  const added = addWord(parseWords(await $.store.get('rec:words')), raw)
-  if ('reason' in added) return loadRec($, added.reason)
-  await $.store.set('rec:words', added.words)
-  await loadRec($)
-}
-
-async function removeRecWord($: EngineInterface, word: string): Promise<void> {
-  const words = parseWords(await $.store.get('rec:words'))
-  await $.store.set('rec:words', words.filter(w => w.toLowerCase() !== word.toLowerCase()))
-  await loadRec($)
-}
-
-const recOf = (r: RecState): { level: RecState['level']; words: number } => ({ level: r.level, words: r.count })
 
 // A source's name in the commands' answers: an earlier command's choice is named for its command (S7)
 const sourceName = (from: From, command: '/rec' | '/auto-handoff' | '/band'): string => (from === 'legacy' ? `an earlier ${command}` : nameOf(from))
@@ -1297,23 +1254,11 @@ export const register: Register = (on, options) => {
 
   // REC on Claude Code's rows: each site rewrites its props only while REC is on and masking changes something, else
   // passes next(e) as it came. The stored messages and what the model reads stay as they are.
-  on('ui.render', { component: 'UserMessage' }, async ($, e, next) => {
-    if (!(await isRecOn($))) return next(e)
-    const text = mask(e.props.text)
-    return text === e.props.text ? next(e) : next({ ...e, props: { ...e.props, text: printable(text) } })
-  }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
+  on('ui.render', { component: 'UserMessage' }, ($, e, next) => maskUserMessage($, e, next)).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
 
-  on('ui.render', { component: 'AssistantMessage' }, async ($, e, next) => {
-    if (!(await isRecOn($))) return next(e)
-    const text = mask(e.props.text)
-    return text === e.props.text ? next(e) : next({ ...e, props: { ...e.props, text: printable(text) } })
-  }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
+  on('ui.render', { component: 'AssistantMessage' }, ($, e, next) => maskAssistantMessage($, e, next)).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
 
-  on('ui.render', { component: 'CommandOutput' }, async ($, e, next) => {
-    if (!(await isRecOn($))) return next(e)
-    const text = mask(e.props.text)
-    return text === e.props.text ? next(e) : next({ ...e, props: { ...e.props, text: printable(text) } })
-  }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
+  on('ui.render', { component: 'CommandOutput' }, ($, e, next) => maskCommandOutput($, e, next)).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
 
   // The tool sites in two steps (Decision 14): "quiet"'s compact row or emptied result first, then REC over whatever
   // the first hands on. A settled row that is not expanded, or that a group unfolded, draws its compact line.
@@ -1388,11 +1333,7 @@ export const register: Register = (on, options) => {
     return next({ ...e, props: { ...e.props, isExpanded: true } })
   }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
 
-  on('ui.render', { component: 'AskUserQuestion' }, async ($, e, next) => {
-    if (!(await isRecOn($))) return next(e)
-    const questions = maskDialog(e.props.questions, maskSpans)
-    return questions === e.props.questions ? next(e) : next({ ...e, props: { ...e.props, questions } })
-  }).catch(($, e, next) => (recLevel() === 'off' ? next(e) : next({ ...e, props: { ...e.props, questions: neutralDialog(e.props.questions) } })))
+  on('ui.render', { component: 'AskUserQuestion' }, ($, e, next) => maskQuestionDialog($, e, next)).catch(($, e, next) => (recLevel() === 'off' ? next(e) : next({ ...e, props: { ...e.props, questions: neutralDialog(e.props.questions) } })))
 
   on('ui.render', { component: 'Pane', requestId: 'inspect' }, async ($, e) => {
     await readTick($)
@@ -1452,13 +1393,5 @@ export const register: Register = (on, options) => {
   }).catch(($, e, next) => drawNote($, e, paneFailed(next.error.kind, next.error.message, recLevel() !== 'off')))
 
   // The private-words pane: words are added only here, never through a command's arguments, which the transcript echoes
-  on('ui.render', { component: 'Pane', requestId: 'rec' }, async ($, e) => {
-    const r = await readRec($)
-    const words = recMem.words
-    const press: Record<string, () => unknown> = {}
-    if (r.level === 'off') words.forEach((w, i) => { press[`remove-${i}`] = () => removeRecWord($, w) })
-    const note = r.note === null ? [] : [[{ text: r.note, tone: 'warn' as const }]]
-    const input = { key: 'word', label: 'Add a word', submitLabel: 'Add', onSubmit: (value: string) => { void addRecWord($, value) } }
-    return drawWithInput($, e, recPaneLines(r.level, words), input, note, { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
-  }).catch(($, e, next) => drawNote($, e, paneFailed(next.error.kind, next.error.message, recLevel() !== 'off')))
+  on('ui.render', { component: 'Pane', requestId: 'rec' }, ($, e) => drawRecPane($, e)).catch(($, e, next) => drawNote($, e, paneFailed(next.error.kind, next.error.message, recLevel() !== 'off')))
 }

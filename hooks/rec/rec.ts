@@ -2,8 +2,7 @@
 // text that replaces each match with its token (spec 'What each class hides').
 import { AMOUNTS, EMAILS, KEYS, LEFT_ALONE, PHONES, strictSamples } from './samples'
 import type { Line } from '../core/types'
-import type { Compiled, Hit, Klass, Level } from './types'
-
+import type { Compiled, Hit, Klass, Level, RecState } from './types'
 
 const whole = (token: string) => (m: RegExpExecArray): Hit => ({ start: m.index, end: m.index + m[0].length, text: token })
 
@@ -253,3 +252,5 @@ export function recTest(level: Level, words: string[], home: string | null): str
   ].join(' · ')}`)
   return [...out, ...failed].join('\n')
 }
+
+export const recOf = (r: RecState): { level: RecState['level']; words: number } => ({ level: r.level, words: r.count })

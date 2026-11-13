@@ -13,3 +13,8 @@ export const settingsMem = {
 }
 
 export const settingsNow = (): Values => settingsMem.resolved?.values ?? DEFAULTS
+
+// REC's level in force and the source that set it, or null before the settings are read
+export function recInForce(): { level: Level; from: From } | null {
+  return settingsMem.rec
+}
