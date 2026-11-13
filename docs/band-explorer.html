@@ -2129,9 +2129,20 @@ function stepLines(call             , columns        , cwd                )     
     const answers = out !== null && isRecord(out.answers) ? out.answers : {}
     return (Array.isArray(input.questions) ? input.questions : []).filter(isRecord).flatMap(question => {
       const asked = str(question.question).trim()
+      // Each option by its number from 1, a label-less one left out but counted; an answer that is an option's label
+      // takes the first such option's number, one the person typed stays as typed (the user, 2026-11-14)
+      const labels = (Array.isArray(question.options) ? question.options : []).map(option => (isRecord(option) ? str(option.label).trim() : ''))
+      const numbered = labels.flatMap((label, index) => (label === '' ? [] : [`${index + 1}. ${label}`]))
+      const marked = (picked        )         => {
+        const index = labels.indexOf(picked.trim())
+        return index === -1 ? picked.trim() : `${index + 1}. ${picked.trim()}`
+      }
       const answer = answers[str(question.question)]
-      const said = Array.isArray(answer) ? answer.map(str).join(', ') : str(answer)
-      return [...(asked === '' ? [] : [step(asked)]), ...(said.trim() === '' ? [] : [step(`answered: ${said.trim()}`)])]
+      const said = (Array.isArray(answer) ? answer.map(str) : [str(answer)]).filter(picked => picked.trim() !== '').map(marked).join(', ')
+      return [
+        ...(asked === '' ? [] : [step(asked)]), ...(numbered.length === 0 ? [] : [step(`options: ${numbered.join('; ')}`)]),
+        ...(said === '' ? [] : [step(`answered: ${said}`)]),
+      ]
     })
   }
   if (call.tool.startsWith('mcp__')) {

@@ -69,12 +69,44 @@ test('a ToolSearch names its query and what it found', () => {
   expect(text(callLine(call('ToolSearch', { query: 'nothing', max_results: 5 }, { matches: [], query: 'q', total_deferred_tools: 9 }), 120))[1]).toBe('  ⎿ found nothing')
 })
 
-test('an AskUserQuestion draws each question and the answer it got', () => {
-  const questions = [{ question: 'Which band mode?', header: 'Band', options: [{ label: 'Full', description: '' }], multiSelect: false }]
-  const c = call('AskUserQuestion', { questions }, { questions, answers: { 'Which band mode?': 'Full' } })
-  expect(text(callLine(c, 120))).toEqual(['⏺ AskUserQuestion · ✓', '  ⎿ Which band mode?', '  ⎿ answered: Full'])
-  // Still open: the question alone
-  expect(text(callLine({ ...c, output: undefined }, 120))).toEqual(['⏺ AskUserQuestion · ✓', '  ⎿ Which band mode?'])
+test('an AskUserQuestion draws each question, its options numbered, and the answer it got with its number', () => {
+  const questions = [{ question: 'Which band mode?', header: 'Band', options: [{ label: 'Full', description: '' }, { label: 'Calm', description: '' }], multiSelect: false }]
+  const c = call('AskUserQuestion', { questions }, { questions, answers: { 'Which band mode?': 'Calm' } })
+  expect(text(callLine(c, 120))).toEqual(['⏺ AskUserQuestion · ✓', '  ⎿ Which band mode?', '  ⎿ options: 1. Full; 2. Calm', '  ⎿ answered: 2. Calm'])
+  // Still open: the question and its options
+  expect(text(callLine({ ...c, output: undefined }, 120))).toEqual(['⏺ AskUserQuestion · ✓', '  ⎿ Which band mode?', '  ⎿ options: 1. Full; 2. Calm'])
+})
+
+test('a multi-select answer numbers each option picked, in the answer\'s order', () => {
+  const questions = [{ question: 'Which checks?', header: 'Checks', options: [{ label: 'Partial restore' }, { label: 'NF/PP restore' }, { label: 'Both' }], multiSelect: true }]
+  const c = call('AskUserQuestion', { questions }, { questions, answers: { 'Which checks?': ['Partial restore', 'NF/PP restore'] } })
+  expect(text(callLine(c, 120))).toContain('  ⎿ answered: 1. Partial restore, 2. NF/PP restore')
+})
+
+test('an answer that matches no option is drawn as typed, and a question with no options draws no options step', () => {
+  const questions = [
+    { question: 'Which database?', header: 'DB', options: [{ label: 'Postgres (Recommended)' }, { label: 'SQLite' }], multiSelect: false },
+    { question: 'What name?', header: 'Name', multiSelect: false },
+  ]
+  const c = call('AskUserQuestion', { questions }, { questions, answers: { 'Which database?': 'MySQL', 'What name?': 'Alpha 2' } })
+  expect(text(callLine(c, 120))).toEqual([
+    '⏺ AskUserQuestion · ✓',
+    '  ⎿ Which database?', '  ⎿ options: 1. Postgres (Recommended); 2. SQLite', '  ⎿ answered: MySQL',
+    '  ⎿ What name?', '  ⎿ answered: Alpha 2',
+  ])
+})
+
+test('two options with one label take the first one\'s number; an option with no label is left out but keeps the count', () => {
+  const questions = [{ question: 'Pick', header: 'P', options: [{ label: 'Same' }, { description: 'no label' }, { label: 'Same' }], multiSelect: false }]
+  const c = call('AskUserQuestion', { questions }, { questions, answers: { Pick: 'Same' } })
+  expect(text(callLine(c, 120))).toEqual(['⏺ AskUserQuestion · ✓', '  ⎿ Pick', '  ⎿ options: 1. Same; 3. Same', '  ⎿ answered: 1. Same'])
+})
+
+test('a long options line is cut to the width', () => {
+  const questions = [{ question: 'Q', header: 'Q', options: [{ label: 'Restart Invoker, then alpha checks (Recommended)' }, { label: 'Something else entirely' }], multiSelect: false }]
+  const lines = text(callLine(call('AskUserQuestion', { questions }), 40))
+  expect(lines.every(l => [...l].length <= 40)).toBe(true)
+  expect(lines[2]?.startsWith('  ⎿ options: 1. Restart')).toBe(true)
 })
 
 test('an MCP call draws its arguments, one step each', () => {
