@@ -33,7 +33,7 @@ test('a valid file fills the stack atom at session start', async ($, on) => {
   const { s } = await start($, on, { files: { [STATUS]: status() }, now: 5000 })
   expect(s()).toEqual({
     state: 'used', reason: null, fullContext: 'fresh-session', model: 'claude-opus-5-5', window: 1000000, resumeAt: 150000,
-    noOffer: false, autoRun: true, scorer: { on: true, level: 80, rounds: 3 }, autoCompact: null, hasPrompt: true,
+    noOffer: false, autoRun: true, scorer: { on: true, level: 80, rounds: 3 }, autoCompact: null, plan: null, hasPrompt: true,
     updatedAt: Date.parse('2026-10-29T14:03:00Z'), readAt: 5000, ignored: [],
   })
 })

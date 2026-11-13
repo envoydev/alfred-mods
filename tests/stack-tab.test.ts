@@ -175,7 +175,7 @@ for (const surface of SURFACES) {
 
 const STACK: Stack = {
   state: 'used', reason: null, fullContext: 'fresh-session', model: 'claude-opus-5-5', window: 1000000, resumeAt: 150000, noOffer: false,
-  autoRun: true, scorer: { on: true, level: 80, rounds: 3 }, autoCompact: null, hasPrompt: true, updatedAt: null, readAt: NOW, ignored: [],
+  autoRun: true, scorer: { on: true, level: 80, rounds: 3 }, autoCompact: null, plan: null, hasPrompt: true, updatedAt: null, readAt: NOW, ignored: [],
 }
 
 test('the heading is bold violet, the reason line and line 6 dim, the model warning warn', () => {

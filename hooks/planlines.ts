@@ -50,18 +50,36 @@ export function planLine(v: PlanView, columns: number): Line {
 }
 
 // The full band's plan row after its label (the owner's target, 2026-11-11): 'Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update
-// interceptor', a dim ' +1' for each further running step, ' · done ✓' once finished, the count alone with none
-// running. Past `columns` the step's title is cut, then the step goes, then the plan's title is cut.
-export function planRowParts(v: PlanView, columns: number): Line {
-  const title = fitLine(v.title, 80)
+// interceptor', a dim ' +1' for each further running step, ' · done ✓' once finished, ' · awaiting approval' for
+// Alfred Code's plan before its approval, the count alone with none running; then `tail`, the plan's score. Past
+// `columns` the step's title is cut, then the step goes, then the plan's title is cut; the score goes last.
+export function planRowParts(v: PlanView, columns: number, tail: Line = []): Line {
   const count: Line = [{ text: ' ' }, ...planBar(v.percent), { text: ` ${v.finished}/${v.total}` }]
+  // The score stays while the plan's title keeps 4 cells beside it and the count, or the count and ' · done ✓'
+  const after = v.isFinished ? widthOf(count) + widthOf([{ text: ' · done ✓' }]) : widthOf(count)
+  const keepsTail = tail.length > 0 && columns - widthOf(tail) - after >= 4
+  const body = planBody(v, keepsTail ? columns - widthOf(tail) : columns, count)
+  return keepsTail ? [...body, ...tail] : body
+}
+
+function planBody(v: PlanView, columns: number, count: Line): Line {
+  const title = fitLine(v.title, 80)
   const first = v.running[0]
+  // The title with `after`, the title cut to fit; with no room for 4 cells of title, the title alone, cut
+  const titled = (after: Line): Line =>
+    widthOf([{ text: title }, ...after]) <= columns ? [{ text: title }, ...after]
+      : columns - widthOf(after) >= 4 ? [{ text: cut(title, columns - widthOf(after)) }, ...after]
+      : [{ text: cut(title, Math.max(1, columns)) }]
   if (v.isFinished) {
     const done: Line = [...count, { text: ' · done ' }, { text: '✓', tone: 'ok' }]
-    return widthOf([{ text: title }, ...done]) <= columns ? [{ text: title }, ...done] : [{ text: cut(title, columns - widthOf(done)) }, ...done]
+    return columns - widthOf(done) >= 4 ? titled(done) : titled(count)
   }
   const bare: Line = [{ text: title }, ...count]
-  if (first === undefined) return widthOf(bare) <= columns ? bare : [{ text: cut(title, columns - widthOf(count)) }, ...count]
+  if (v.isAwaiting) {
+    const awaiting: Line = [...bare, { text: ' · awaiting approval', tone: 'warn' }]
+    if (widthOf(awaiting) <= columns) return awaiting
+  }
+  if (first === undefined || v.isAwaiting) return titled(count)
   const more: Line = v.running.length > 1 ? [{ text: ` +${v.running.length - 1}`, tone: 'dim' }] : []
   const lead = ` · ▸ ${fitLine(first.step.id, 12)} `
   const stepTitle = fitLine(first.step.title, 80)
@@ -69,7 +87,7 @@ export function planRowParts(v: PlanView, columns: number): Line {
   if (widthOf(full) <= columns) return full
   const room = columns - widthOf(bare) - widthOf([{ text: lead }, ...more])
   if (room >= 4) return [...bare, { text: `${lead}${cut(stepTitle, room)}` }, ...more]
-  return widthOf(bare) <= columns ? bare : [{ text: cut(title, columns - widthOf(count)) }, ...count]
+  return titled(count)
 }
 
 // Under 100 columns: '⟳ S4 12m · 2 agents', the first running step's id and its time
@@ -148,10 +166,13 @@ function deltaSegs(delta: number | null): Line {
 
 const arrow = (d: number): Seg => (d > 0 ? { text: ' ▲', tone: 'ok' } : d < 0 ? { text: ' ▼', tone: 'fail' } : { text: ' =', tone: 'dim' })
 
-// The band's 'score 81 ▲13': the last total and the change from the round before
-export function scoreSeg(s: ScoresView): Line {
-  const last = s.totals[s.totals.length - 1]
-  return last === undefined ? [] : [{ text: `score ${num(last.total)}` }, ...deltaSegs(s.delta)]
+// The band's 'score 81 ▲13': the shown round's total (Alfred Code's released round, else the last), a dim 'grading'
+// while Alfred Code's grading runs, and the change from the round before; against `level`, Alfred Code's scoring
+// level, green at or above it and amber under it, no colour without one
+export function scoreSeg(s: ScoresView, level: number | null = null): Line {
+  const total = s.shown.total
+  const score: Seg = level === null ? { text: `score ${num(total)}` } : { text: `score ${num(total)}`, tone: (total * 100) / s.scale >= level ? 'ok' : 'warn' }
+  return [score, ...(s.isGrading ? [{ text: ' grading', tone: 'dim' } as Seg] : []), ...deltaSegs(s.delta)]
 }
 
 // '<name> (<kind>) R3 88', for a scores file listed on one line

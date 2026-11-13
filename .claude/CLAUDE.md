@@ -25,8 +25,10 @@ project names, no absolute local paths, no tokens, nothing from a user's machine
 
 - **Works without Alfred Code; Alfred Code adds data** (the user's ruling, 2026-10-28). The core runs on the Claude
   Code mods API alone and is built first. With Alfred Code installed, the mod shows more, read from the one versioned
-  per-session status file the stack publishes, and from nothing else in the stack. An absent file, an unknown schema
-  or another session's file leaves the core view as it is, never an error, with the reason in a dim diagnostics row.
+  per-session status file the stack publishes and, through its `plan` field, the plan folder it names (`status.json`
+  and `scoring.json`; the user's ruling, 2026-11-13: 'alfred mods must learn Alfred's code plans'), and from nothing
+  else in the stack. An absent file, an unknown schema or another session's file leaves the core view as it is, never
+  an error, with the reason in a dim diagnostics row.
   Every phase is checked in both: a project without Alfred Code and one with it.
 - **Standalone.** The mod does not depend on, require, install or remove Alfred Code or any other plugin; the manifest
   declares no `dependencies`.

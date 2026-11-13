@@ -1027,18 +1027,36 @@ function planLine(v          , columns        )       {
 }
 
 // The full band's plan row after its label (the owner's target, 2026-11-11): 'Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update
-// interceptor', a dim ' +1' for each further running step, ' · done ✓' once finished, the count alone with none
-// running. Past `columns` the step's title is cut, then the step goes, then the plan's title is cut.
-function planRowParts(v          , columns        )       {
-  const title = fitLine(v.title, 80)
+// interceptor', a dim ' +1' for each further running step, ' · done ✓' once finished, ' · awaiting approval' for
+// Alfred Code's plan before its approval, the count alone with none running; then `tail`, the plan's score. Past
+// `columns` the step's title is cut, then the step goes, then the plan's title is cut; the score goes last.
+function planRowParts(v          , columns        , tail       = [])       {
   const count       = [{ text: ' ' }, ...planBar(v.percent), { text: ` ${v.finished}/${v.total}` }]
+  // The score stays while the plan's title keeps 4 cells beside it and the count, or the count and ' · done ✓'
+  const after = v.isFinished ? widthOf(count) + widthOf([{ text: ' · done ✓' }]) : widthOf(count)
+  const keepsTail = tail.length > 0 && columns - widthOf(tail) - after >= 4
+  const body = planBody(v, keepsTail ? columns - widthOf(tail) : columns, count)
+  return keepsTail ? [...body, ...tail] : body
+}
+
+function planBody(v          , columns        , count      )       {
+  const title = fitLine(v.title, 80)
   const first = v.running[0]
+  // The title with `after`, the title cut to fit; with no room for 4 cells of title, the title alone, cut
+  const titled = (after      )       =>
+    widthOf([{ text: title }, ...after]) <= columns ? [{ text: title }, ...after]
+      : columns - widthOf(after) >= 4 ? [{ text: cut(title, columns - widthOf(after)) }, ...after]
+      : [{ text: cut(title, Math.max(1, columns)) }]
   if (v.isFinished) {
     const done       = [...count, { text: ' · done ' }, { text: '✓', tone: 'ok' }]
-    return widthOf([{ text: title }, ...done]) <= columns ? [{ text: title }, ...done] : [{ text: cut(title, columns - widthOf(done)) }, ...done]
+    return columns - widthOf(done) >= 4 ? titled(done) : titled(count)
   }
   const bare       = [{ text: title }, ...count]
-  if (first === undefined) return widthOf(bare) <= columns ? bare : [{ text: cut(title, columns - widthOf(count)) }, ...count]
+  if (v.isAwaiting) {
+    const awaiting       = [...bare, { text: ' · awaiting approval', tone: 'warn' }]
+    if (widthOf(awaiting) <= columns) return awaiting
+  }
+  if (first === undefined || v.isAwaiting) return titled(count)
   const more       = v.running.length > 1 ? [{ text: ` +${v.running.length - 1}`, tone: 'dim' }] : []
   const lead = ` · ▸ ${fitLine(first.step.id, 12)} `
   const stepTitle = fitLine(first.step.title, 80)
@@ -1046,7 +1064,7 @@ function planRowParts(v          , columns        )       {
   if (widthOf(full) <= columns) return full
   const room = columns - widthOf(bare) - widthOf([{ text: lead }, ...more])
   if (room >= 4) return [...bare, { text: `${lead}${cut(stepTitle, room)}` }, ...more]
-  return widthOf(bare) <= columns ? bare : [{ text: cut(title, columns - widthOf(count)) }, ...count]
+  return titled(count)
 }
 
 // Under 100 columns: '⟳ S4 12m · 2 agents', the first running step's id and its time
@@ -1125,10 +1143,13 @@ function deltaSegs(delta               )       {
 
 const arrow = (d        )      => (d > 0 ? { text: ' ▲', tone: 'ok' } : d < 0 ? { text: ' ▼', tone: 'fail' } : { text: ' =', tone: 'dim' })
 
-// The band's 'score 81 ▲13': the last total and the change from the round before
-function scoreSeg(s            )       {
-  const last = s.totals[s.totals.length - 1]
-  return last === undefined ? [] : [{ text: `score ${num(last.total)}` }, ...deltaSegs(s.delta)]
+// The band's 'score 81 ▲13': the shown round's total (Alfred Code's released round, else the last), a dim 'grading'
+// while Alfred Code's grading runs, and the change from the round before; against `level`, Alfred Code's scoring
+// level, green at or above it and amber under it, no colour without one
+function scoreSeg(s            , level                = null)       {
+  const total = s.shown.total
+  const score      = level === null ? { text: `score ${num(total)}` } : { text: `score ${num(total)}`, tone: (total * 100) / s.scale >= level ? 'ok' : 'warn' }
+  return [score, ...(s.isGrading ? [{ text: ' grading', tone: 'dim' }       ] : []), ...deltaSegs(s.delta)]
 }
 
 // '<name> (<kind>) R3 88', for a scores file listed on one line
@@ -1244,6 +1265,10 @@ const { storedMark } = __m['startup.ts'];
                                                                                                        
                                                                    
                                                                                                               
+                                                                                                        
+                            
+                                                                                                                   
+                       
                                                                                                                    
                                                    
                                           
@@ -1510,7 +1535,8 @@ const ROW_JOIN = ' │ '
 // The full band's plan row, under the project row (the user, 2026-11-11): none in calm mode or with no plan
 function planRow(b           )         {
   if (b.mode !== 'full' || b.plan === null) return []
-  return [[{ text: 'plan:'.padEnd(ROW_LABEL), tone: 'dim' }, ...planRowParts(b.plan, b.columns - ROW_LABEL)]]
+  const score       = b.score === null || b.isPlanScore === false ? [] : [{ text: ' · ' }, ...scoreSeg(b.score, b.scoreLevel ?? null)]
+  return [[{ text: 'plan:'.padEnd(ROW_LABEL), tone: 'dim' }, ...planRowParts(b.plan, b.columns - ROW_LABEL, score)]]
 }
 
 const rowLabel = (text        )      => ({ text: text.padEnd(ROW_LABEL), tone: 'dim' })
@@ -1703,11 +1729,12 @@ function lastTurn(b           , isNarrow         )       {
 const agentCount = (k        )         => `${k} ${k === 1 ? 'agent' : 'agents'}`
 
 // ' │ PLAN 3/5 · score 81 ▲13', each part only when known, for an idle line 1 that needs you; the full band's plan has
-// its own row, so there only the score
+// its own row, with its score, so there only a score with no plan drawn
 function planTail(b           )       {
   const parts         = []
   if (b.plan !== null && b.mode !== 'full') parts.push([{ text: 'PLAN', tone: 'plan' }, { text: ` ${b.plan.finished}/${b.plan.total}` }])
-  if (b.score !== null) parts.push(scoreSeg(b.score))
+  // The full band's plan row carries the plan's score
+  if (b.score !== null && !(b.mode === 'full' && b.plan !== null && b.isPlanScore !== false)) parts.push(scoreSeg(b.score, b.scoreLevel ?? null))
   if (parts.length === 0) return []
   return [{ text: ' │ ', tone: 'dim' }, ...parts.flatMap((p, i) => (i === 0 ? p : [{ text: ' · ' }, ...p]))]
 }
@@ -2286,28 +2313,36 @@ function parseScores(text        )                {
                                                                                          
                                                                        
                                                                                                                              
+                                           
+                     
  
 
 const MIN = 60_000
 const STALE_MS = 20 * MIN
 const isFinishedStep = (s          )          => s.status === 'done' || s.status === 'skipped'
+// A plan is done when every step is, or when Alfred Code closed it
+const isPlanDone = (plan      )          => typeof plan.completedAt === 'number' || plan.steps.every(isFinishedStep)
 
-// A plan runs while it is begun and not finished, and its file was written since this session began: a plan an
-// earlier session left with a step in progress neither takes the band's line 1 nor this session's time
+// A plan runs while it is begun and not done, and its file was written since this session began: a plan an earlier
+// session left with a step in progress neither takes the band's line 1 nor this session's time. Alfred Code's named
+// plan needs no fresh write: its status file naming it this session is the evidence.
 function runs(w               , since               )          {
   const plan = w.value
-  return plan !== null && since !== null && w.mtimeMs >= since
-    && plan.steps.some(s => s.status !== 'pending') && !plan.steps.every(isFinishedStep)
+  if (plan === null || !plan.steps.some(s => s.status !== 'pending') || isPlanDone(plan)) return false
+  return w.isNamed === true || (since !== null && w.mtimeMs >= since)
 }
 
-// Which plan the Plan tab shows (Decision 5): the pinned one while it parses; else the newest that runs; else the task
-// list when it has items, so a plan an earlier session left never hides this session's; else the newest good plan
+// Which plan the Plan tab shows (Decision 5): the pinned one while it parses; else Alfred Code's named plan; else the
+// newest that runs; else the task list when it has items, so a plan an earlier session left never hides this session's; else the newest good plan
 function shownPlan(p       , pinned               , hasTasks         )                                 {
   const good = p.plans.filter(w => w.value !== null)
   const newest = (list                 )                       =>
     list.reduce                      ((a, w) => (a === null || w.mtimeMs > a.mtimeMs ? w : a), null)
   const pin = pinned === null ? undefined : good.find(w => w.name === pinned)
   if (pin !== undefined) return pin
+  // The plan Alfred Code's status file names comes before the rest, begun or not
+  const named = p.alfred === null || p.alfred === undefined ? undefined : good.find(w => w.name === p.alfred?.name)
+  if (named !== undefined) return named
   const running = newest(good.filter(w => runs(w, p.since)))
   if (running !== null) return running
   if (hasTasks) return 'tasks'
@@ -2354,12 +2389,15 @@ function planView(plan      , times                          , overheadMs       
     leftMs: open.reduce((n, r) => n + Math.max(0, (r.forecastMs ?? 0) - r.actualMs), 0),
     totalMs: finishedRows.reduce((n, r) => n + r.actualMs, 0) + open.reduce((n, r) => n + Math.max(r.forecastMs ?? 0, r.actualMs), 0) + overheadMs,
     ratio, isCalibrated, unestimated: open.filter(r => r.step.estimateMin === null).length,
-    isFinished: open.length === 0, staleMs: isRunning && stale !== null && stale > STALE_MS ? stale : null, planNotes: notes(null),
+    isFinished: open.length === 0 || typeof plan.completedAt === 'number', isAwaiting: plan.approvedAt === null, staleMs: isRunning && stale !== null && stale > STALE_MS ? stale : null, planNotes: notes(null),
   }
 }
 
+// `shown`: the round whose total is the score, the released one when the writer names it, else the newest;
+// `isGrading`: Alfred Code's grading still runs, so that total may change
                           
                                                                                  
+                                                             
                                                                  
                                                                   
                                                                             
@@ -2370,15 +2408,20 @@ const SEVERITY_ORDER                      = ['BLOCKER', 'MATERIAL', 'MINOR']
 // Scorer rule 4: each round's total, the change per criterion and the count per severity, a fixed finding not
 // counted; the fixed and improved lists only when the writer recognised findings across rounds and set a status.
 function scoresView(s        )                    {
-  const last = s.rounds[s.rounds.length - 1]
+  // Alfred Code's released round, else the newest; the arrow against the round graded just before it
+  const at = typeof s.released === 'number' ? s.rounds.findIndex(r => r.round === s.released) : -1
+  const i = at >= 0 ? at : s.rounds.length - 1
+  const last = s.rounds[i]
   if (last === undefined) return null
-  const prev = s.rounds[s.rounds.length - 2] ?? null
+  const prev = s.rounds[i - 1] ?? null
   const count = (r                   , severity          )         =>
-    r === null ? 0 : r.findings.filter(f => f.severity === severity && f.status !== 'fixed').length
-  const present = (r                   , severity          )          => r !== null && r.findings.some(f => f.severity === severity)
+    r === null ? 0 : r.counts !== undefined ? r.counts[severity] ?? 0 : r.findings.filter(f => f.severity === severity && f.status !== 'fixed').length
+  const present = (r                   , severity          )          =>
+    r !== null && (r.counts !== undefined ? r.counts[severity] !== undefined : r.findings.some(f => f.severity === severity))
   return {
     scale: s.scale,
     totals: s.rounds.slice(-4).map(r => ({ round: r.round, total: r.total })),
+    shown: { round: last.round, total: last.total }, isGrading: s.released === null,
     delta: prev === null ? null : last.total - prev.total,
     criteria: Object.entries(last.criteria).map(([name, score]) => ({ name, prev: prev?.criteria[name] ?? null, last: score })),
     severities: SEVERITY_ORDER.filter(v => present(prev, v) || present(last, v)).map(v => ({ severity: v, prev: count(prev, v), last: count(last, v) })),
@@ -2434,11 +2477,11 @@ function taskView(items            , liveMs                        )           {
     running: rows.filter(r => r.step.status === 'in_progress'), next: rows.find(r => r.step.status === 'pending') ?? null,
     lastFinished: done[done.length - 1] ?? null, rows, workedMs, overheadMs: 0, leftMs, totalMs: workedMs + leftMs,
     ratio: 1, isCalibrated: true, unestimated: done.length >= 3 ? 0 : open.length,
-    isFinished: rows.length > 0 && open.length === 0, staleMs: null, planNotes: [],
+    isFinished: rows.length > 0 && open.length === 0, staleMs: null, planNotes: [], isAwaiting: false,
   }
 }
 
-return { parsePlan, parseScores, isFinishedStep, runs, shownPlan, creditedPlan, planView, scoresView, tasksAfter, taskView };
+return { parsePlan, parseScores, isFinishedStep, isPlanDone, runs, shownPlan, creditedPlan, planView, scoresView, tasksAfter, taskView };
 })();
 return { bandLines: __m['band.ts'].bandLines, statusText: __m['band.ts'].statusText, underRows: __m['band.ts'].underRows, cellsOf: __m['band.ts'].cellsOf, groupLines: __m['compact.ts'].groupLines, planView: __m['plan.ts'].planView, newRow: __m['agents.ts'].newRow };
 })();
@@ -2527,8 +2570,14 @@ const BandAdapter = (() => {
           startedAt: isDone || isCur ? now - (total - i) * 10 * MIN : null, doneAt: isDone ? now - (total - i - 1) * 10 * MIN : null,
         }
       })
-      plan = BandCore.planView({ title: String(d.planTitle || 'Plan'), updatedAt: now, steps, changes: [] }, {}, 0, {}, now)
+      plan = BandCore.planView({ title: String(d.planTitle || 'Plan'), updatedAt: now, steps, changes: [], approvedAt: m.planAwaiting ? null : now }, {}, 0, {}, now)
     }
+    // The plan's score as the band's ScoresView carries it: the kept round's total, its arrow against the round before
+    const total = num(d.planScore), prevTotal = num(d.planPrevScore)
+    const score = m.plan && total > 0
+      ? { scale: 100, totals: [], delta: prevTotal > 0 ? total - prevTotal : null, shown: { round: prevTotal > 0 ? 2 : 1, total }, isGrading: !!m.grading,
+        criteria: [], severities: [], fixed: [], improved: [], open: [], hasStatus: false }
+      : null
     const banner = m.alfred
       ? [m.autoRun && [{ text: 'auto-run', tone: 'warn' }], m.autoCompact && [{ text: num(d.compactAt) > 0 ? `auto-compact ${Math.round(num(d.compactAt))}k` : 'auto-compact' }],
         m.scorer && [{ text: `scoring ${num(d.scorerVal)}` }]].filter(Boolean)
@@ -2566,7 +2615,7 @@ const BandAdapter = (() => {
         ratePerToken: null, rateModel: null, lastAt: m.fresh ? null : now - Math.max(0, 60 - num(d.cacheMin)) * MIN,
         last: { read: 1000, write: 0, input: 10 }, session: m.fresh ? { read: 0, write: 0, input: 0 } : { read: 1000, write: 0, input: 10 }, toastedFor: null,
       },
-      plan, planInvalid: false, score: null, ...(m.recLevel && m.recLevel !== 'off' ? { rec: { level: m.recLevel, words: 0 } } : m.rec && !m.recLevel ? { rec: { level: 'on', words: 0 } } : {}),
+      plan, planInvalid: false, score, scoreLevel: m.alfred && m.scorer ? num(d.scorerVal) : null, ...(m.recLevel && m.recLevel !== 'off' ? { rec: { level: m.recLevel, words: 0 } } : m.rec && !m.recLevel ? { rec: { level: 'on', words: 0 } } : {}),
       forecast: runway && runway.at !== null ? { at: runway.at, label: `${num(d.trigger)}k` } : { at: askAt, label: `${askAt}%` },
       handoffAsk: !m.fresh && handoffMode === 'ask' && !runway && ask >= askAt ? Math.min(95, askAt + Math.floor((ask - askAt) / 5) * 5) : null,
       runway, banner, mode: m.off ? 'off' : m.calm ? 'calm' : 'full',
@@ -2707,6 +2756,7 @@ const BAND_DATA0 = {
   cost: 1.26, today: 18.62, turn: 2, turnTime: '5:37', turnTools: 41,
   youAt: '17:15', claudeAt: '17:13', project: 'my-app', folder: '.claude', branch: 'develop', ahead: 1, behind: 2, added: 41, removed: 30, cc: '2.1.322',
   compactAt: 490, scorerVal: 80, failures: 0, planTitle: 'Token refresh', planDone: 3, planTotal: 5, planStep: 'S4 Update interceptor',
+  planScore: 85, planPrevScore: 72,
   listed: 57, ofSkills: 60,
   tools: 'Bash 32\nAskUserQuestion 4\nRead 4\nWrite 4\nGrep 1',
   skills: 'superpowers:brainstorming 1\nsolve-task 2',
@@ -2716,11 +2766,11 @@ const BAND_DATA0 = {
 // The session's situation: what is happening, not what the settings say
 const BAND_MODES0 = {
   running: true, fullscreen: false, statusLine: false, alfred: true, autoRun: false, autoCompact: true, scorer: true, runway: false,
-  upstream: true, plan: false, fresh: false, collapsed: false, cols: 150, rows: 12, termRows: 40
+  upstream: true, plan: false, planAwaiting: false, grading: false, fresh: false, collapsed: false, cols: 150, rows: 12, termRows: 40
 }
 const BAND_BASE = {
   running: false, fullscreen: false, statusLine: false, alfred: false, autoRun: false, autoCompact: false, scorer: false, runway: false,
-  upstream: true, plan: false, fresh: false, collapsed: false, rows: 12, termRows: 40
+  upstream: true, plan: false, planAwaiting: false, grading: false, fresh: false, collapsed: false, rows: 12, termRows: 40
 }
 // No settings file sets anything: every field takes its default
 const BAND_CFG0 = { user: {}, project: {}, local: {}, legacy: {} }
@@ -2733,7 +2783,9 @@ const BAND_PRESETS = [
   ['A local file over the user\'s', 'The user file puts the band under the input with its rows closed in every project; this project\'s local file opens the rows again. Each other field falls through to the user file, then the default.', { running: true, fullscreen: true }, null, { user: { bandPlace: 'under', bandRows: false }, local: { bandRows: true } }],
   ['A bad value falls through', 'The local file says "compact", which "band" does not take, so the user file\'s "calm" applies, and the mod says so once in a toast that never quotes the bad value.', { running: true }, null, { user: { band: 'calm' }, local: { band: 'compact' } }],
   ['With Alfred Code: auto-run, auto-compact, scoring and the runway', "The mode banner leads line 1 from the session's start: auto-run, auto-compact with where Claude Code compacts for the session's model, and scoring. With the runway, ctx is measured against Alfred Code's trigger, not the window.", { running: true, alfred: true, autoRun: true, autoCompact: true, scorer: true, runway: true }],
-  ['A plan in progress', 'The plan row sits under the project row, above usage: - the title, the steps done and the step in progress.', { running: true, plan: true }],
+  ['A plan in progress', 'The plan row sits under the project row, above usage: - the title, the steps done, the step in progress and the plan\'s score with its change from the round before.', { running: true, plan: true }],
+  ['An Alfred Code plan and its score', "Alfred Code's status file names the plan's folder; the plan row reads its status.json and ends with the score from its scoring.json: the kept round's total, ▲ against the round before, green at or above the scoring bar and amber under it. While grading still runs, the newest total shows, marked grading.", { running: true, alfred: true, scorer: true, plan: true }, () => ({ planTitle: 'Waste bin (plannings)', planDone: 1, planTotal: 4, planStep: '3 Restore deleted plan books', planScore: 85, planPrevScore: 72 })],
+  ['An Alfred Code plan awaiting approval', 'Before you approve it, the plan row says awaiting approval in place of a step; its score shows once it was graded, amber here as 76 is under the scoring bar of 80.', { alfred: true, scorer: true, plan: true, planAwaiting: true }, d => ({ planTitle: 'Waste bin (plannings)', planDone: 0, planTotal: 4, planStep: '', planScore: 76, planPrevScore: 64, agents: noRun(d.agents) })],
   ['Context past 80%', 'Between turns the handoff ask takes the last row: 4, or a click, saves a handoff. It asks again every 5 points, up to 95.', {}, d => ({ ctxUsed: Math.ceil(Number(d.window) * 0.82), agents: noRun(d.agents) })],
   ['Handoff from 70%', 'The user file moves the first ask to 70%; it asks again every 5 points up to 95. "handoff": "auto" would save with no ask, "off" never.', {}, d => ({ ctxUsed: Math.ceil(Number(d.window) * 0.72), agents: noRun(d.agents) }), { user: { handoffAt: 70 } }],
   ['Recording', 'A red ● REC leads line 1. The pinned line under the prompt leaves REC and ctx out while the band shows them.', { running: true }, null, { user: { rec: 'on' } }],
@@ -2768,13 +2820,13 @@ const FIELDS = [
   ['branch','Branch'],['ahead','Commits ahead of the upstream',1],['behind','Commits behind the upstream',1],
   ['added','Lines added, uncommitted',1],['removed','Lines removed, uncommitted',1],['cc','Claude Code version'],
   ['compactAt','Auto-compact at, k (0: unknown)',1],['scorerVal','Scoring bar',1],['failures','New tool failures',1],['planTitle','Plan title'],['planDone','Plan steps done',1],
-  ['planTotal','Plan steps',1],['planStep','Step in progress'],['listed','Skills listed',1],['ofSkills','of session skills',1]
+  ['planTotal','Plan steps',1],['planStep','Step in progress'],['planScore','Plan score (0: not graded)',1],['planPrevScore','Score of the round before (0: none)',1],['listed','Skills listed',1],['ofSkills','of session skills',1]
 ];
 // What the session is doing; the mod's own switches are settings (BandSettings)
 const SWITCHES = [
   ['running','A turn is running'],['fullscreen','Fullscreen (CLAUDE_CODE_NO_FLICKER=1)'],
   ['alfred','Alfred Code is installed'],['autoRun','auto-run on'],['autoCompact','auto-compact on'],['scorer','scoring on'],['runway','Runway: fresh session at the trigger'],
-  ['upstream','The branch has an upstream (pushed with -u)'],['plan','A plan file exists'],['fresh','First second of the session'],['collapsed','Band collapsed (Ctrl+X Ctrl+A, above only)']
+  ['upstream','The branch has an upstream (pushed with -u)'],['plan','A plan file exists'],['planAwaiting','The plan awaits approval (Alfred Code)'],['grading','Grading still runs (Alfred Code)'],['fresh','First second of the session'],['collapsed','Band collapsed (Ctrl+X Ctrl+A, above only)']
 ];
 // The four sources the page edits, each the "alfred-mods" fields it sets
 const SOURCES = ['legacy', 'user', 'project', 'local'];

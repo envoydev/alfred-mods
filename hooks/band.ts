@@ -34,6 +34,10 @@ export type BandInput = {
   now: number; columns: number; isWorking: boolean; live: Live; usage: Usage; meta: Meta; turns: Turn[]
   newFailures: number; pace: Pace; agents: AgentRow[]; cache: Cache
   plan: PlanView | null; planInvalid: boolean; score: ScoresView | null; rec?: { level: Level; words: number }
+  // Alfred Code's scoring level while scoring is on, which colours the score; null or absent, no colour
+  scoreLevel?: number | null
+  // `score` is the drawn plan's own, so the plan row carries it; false, it is another output's and stays on line 1
+  isPlanScore?: boolean
   // What the forecast counts turns to: `at` over the window, and `label` as the Usage tab names it, F8's threshold
   // (`80%`) or the stack's resume trigger (`150k`)
   forecast?: { at: number; label: string }
@@ -300,7 +304,8 @@ export const ROW_JOIN = ' │ '
 // The full band's plan row, under the project row (the user, 2026-11-11): none in calm mode or with no plan
 function planRow(b: BandInput): Line[] {
   if (b.mode !== 'full' || b.plan === null) return []
-  return [[{ text: 'plan:'.padEnd(ROW_LABEL), tone: 'dim' }, ...planRowParts(b.plan, b.columns - ROW_LABEL)]]
+  const score: Line = b.score === null || b.isPlanScore === false ? [] : [{ text: ' · ' }, ...scoreSeg(b.score, b.scoreLevel ?? null)]
+  return [[{ text: 'plan:'.padEnd(ROW_LABEL), tone: 'dim' }, ...planRowParts(b.plan, b.columns - ROW_LABEL, score)]]
 }
 
 const rowLabel = (text: string): Seg => ({ text: text.padEnd(ROW_LABEL), tone: 'dim' })
@@ -493,11 +498,12 @@ function lastTurn(b: BandInput, isNarrow: boolean): Line {
 const agentCount = (k: number): string => `${k} ${k === 1 ? 'agent' : 'agents'}`
 
 // ' │ PLAN 3/5 · score 81 ▲13', each part only when known, for an idle line 1 that needs you; the full band's plan has
-// its own row, so there only the score
+// its own row, with its score, so there only a score with no plan drawn
 function planTail(b: BandInput): Line {
   const parts: Line[] = []
   if (b.plan !== null && b.mode !== 'full') parts.push([{ text: 'PLAN', tone: 'plan' }, { text: ` ${b.plan.finished}/${b.plan.total}` }])
-  if (b.score !== null) parts.push(scoreSeg(b.score))
+  // The full band's plan row carries the plan's score
+  if (b.score !== null && !(b.mode === 'full' && b.plan !== null && b.isPlanScore !== false)) parts.push(scoreSeg(b.score, b.scoreLevel ?? null))
   if (parts.length === 0) return []
   return [{ text: ' │ ', tone: 'dim' }, ...parts.flatMap((p, i) => (i === 0 ? p : [{ text: ' · ' }, ...p]))]
 }

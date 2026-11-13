@@ -10,8 +10,9 @@ import type { BandInput, Line } from '../hooks/band.ts'
 import { drawLines } from '../hooks/draw.tsx'
 import { widthOf } from '../hooks/format.ts'
 import { SPAWN, START, engine, rows, stubAll, watchState } from './kit.ts'
-import { FIVE, FIVE_OVERHEAD, FIVE_TIMES, NOW as PLAN_NOW, planOf } from './plans.ts'
-import { planView } from '../hooks/plan.ts'
+import { FIVE, FIVE_OVERHEAD, FIVE_TIMES, NOW as PLAN_NOW, SCORING_JSON, STATUS_JSON, planOf } from './plans.ts'
+import { planView, scoresView } from '../hooks/plan.ts'
+import { parseAlfredScoring, parseAlfredStatus } from '../hooks/alfredplan.ts'
 
 import type { AgentRow, AgentStatus, Cache, Meta, ToolStat, Turn } from '../types'
 
@@ -396,6 +397,62 @@ test('short of rows, the plan row goes after usage: and before the info line', (
   expect(planRowOf(b(3))).toBeUndefined()
   expect(b(3)).toHaveLength(3)
 })
+
+// The plan's score on its own row (the user, 2026-11-13: 'I want to show score for the plan if such provided'):
+// alfred-code's score rule, the released round's total and its arrow, green at or above the scoring level and amber
+// under it, no colour with no level; line 1 then carries no score in full mode
+const scored = (over: Record<string, unknown> = {}) => {
+  const s = parseAlfredScoring(JSON.stringify({ ...JSON.parse(SCORING_JSON), ...over }), 'waste-bin')
+  return s === null ? null : scoresView(s)
+}
+const alfredPlan = (over: Record<string, unknown> = {}) => {
+  const plan = parseAlfredStatus(JSON.stringify({ ...JSON.parse(STATUS_JSON), ...over }))
+  if (plan === null) throw new Error('fixture')
+  return planView(plan, {}, 0, {}, Date.parse('2026-11-13T11:45Z'))
+}
+const toneOf = (row: Line, prefix: string) => row.find(seg => 'text' in seg && seg.text.startsWith(prefix))
+
+test('the plan row ends with the plan\'s score and arrow, coloured against the scoring level', () => {
+  const row = (o: Partial<BandInput>) => bandLines(input({ columns: 160, plan: alfredPlan(), score: scored(), ...o })).find(l => text(l).startsWith('plan:')) ?? []
+  expect(text(row({ scoreLevel: 80 }))).toBe('plan:    Waste bin (plannings) ▰▱▱▱▱ 1/4 · ▸ 3 Restore deleted plan books · score 85 ▲13')
+  expect(toneOf(row({ scoreLevel: 80 }), 'score')).toMatchObject({ tone: 'ok' })
+  expect(toneOf(row({ scoreLevel: 90 }), 'score')).toMatchObject({ tone: 'warn' })
+  expect(toneOf(row({ scoreLevel: null }), 'score')).not.toHaveProperty('tone')
+  // In full mode the score is the plan row's alone
+  const lines = bandLines(input({ columns: 160, plan: alfredPlan(), score: scored(), scoreLevel: 80, newFailures: 1 }))
+  expect(text(lines[0] ?? [])).not.toContain('score')
+})
+
+test('while grading runs the plan row shows the newest total, marked as grading', () => {
+  const row = bandLines(input({ columns: 160, plan: alfredPlan(), score: scored({ released: null }), scoreLevel: 80 })).find(l => text(l).startsWith('plan:')) ?? []
+  expect(text(row)).toBe('plan:    Waste bin (plannings) ▰▱▱▱▱ 1/4 · ▸ 3 Restore deleted plan books · score 82 grading ▼3')
+})
+
+test('a plan not yet approved reads awaiting approval in place of its running step', () => {
+  const row = bandLines(input({ columns: 160, plan: alfredPlan({ approvedAt: null }), score: scored(), scoreLevel: 80 })).find(l => text(l).startsWith('plan:')) ?? []
+  expect(text(row)).toBe('plan:    Waste bin (plannings) ▰▱▱▱▱ 1/4 · awaiting approval · score 85 ▲13')
+})
+
+test('a finished plan with its score never overflows the row', () => {
+  for (let columns = 20; columns <= 80; columns++) {
+    const row = bandLines(input({ columns, plan: alfredPlan({ completedAt: '2026-11-13T12:00Z' }), score: scored({ released: null }), scoreLevel: 80 })).find(l => text(l).startsWith('plan:')) ?? []
+    expect(widthOf(row)).toBeLessThanOrEqual(columns)
+  }
+})
+
+test('a score that is not the plan\'s own stays off the plan row and on line 1', () => {
+  const lines = bandLines(input({ columns: 160, plan: alfredPlan(), score: scored(), scoreLevel: 80, isPlanScore: false, newFailures: 1 }))
+  expect(text(lines.find(l => text(l).startsWith('plan:')) ?? [])).not.toContain('score')
+  expect(text(lines[0] ?? [])).toContain('score 85')
+})
+
+for (const columns of [40, 60, 100]) {
+  test(`at ${columns} columns the score stays: the step goes first, then the plan's title is cut`, () => {
+    const row = bandLines(input({ columns, plan: alfredPlan(), score: scored(), scoreLevel: 80 })).find(l => text(l).startsWith('plan:')) ?? []
+    expect(widthOf(row)).toBeLessThanOrEqual(columns)
+    expect(text(row).endsWith('score 85 ▲13')).toBe(true)
+  })
+}
 
 for (const columns of [24, 48, 100]) {
   test(`at ${columns} columns the plan row fits: the step's title is cut, then the step goes, then the title`, () => {

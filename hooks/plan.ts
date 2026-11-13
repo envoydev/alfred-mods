@@ -97,28 +97,36 @@ export type PlanView = {
   running: StepRow[]; next: StepRow | null; lastFinished: StepRow | null; rows: StepRow[]
   workedMs: number; overheadMs: number; leftMs: number; totalMs: number
   ratio: number; isCalibrated: boolean; unestimated: number; isFinished: boolean; staleMs: number | null; planNotes: string[]
+  // Alfred Code's plan before its approval
+  isAwaiting: boolean
 }
 
 const MIN = 60_000
 const STALE_MS = 20 * MIN
 export const isFinishedStep = (s: PlanStep): boolean => s.status === 'done' || s.status === 'skipped'
+// A plan is done when every step is, or when Alfred Code closed it
+export const isPlanDone = (plan: Plan): boolean => typeof plan.completedAt === 'number' || plan.steps.every(isFinishedStep)
 
-// A plan runs while it is begun and not finished, and its file was written since this session began: a plan an
-// earlier session left with a step in progress neither takes the band's line 1 nor this session's time
+// A plan runs while it is begun and not done, and its file was written since this session began: a plan an earlier
+// session left with a step in progress neither takes the band's line 1 nor this session's time. Alfred Code's named
+// plan needs no fresh write: its status file naming it this session is the evidence.
 export function runs(w: Watched<Plan>, since: number | null): boolean {
   const plan = w.value
-  return plan !== null && since !== null && w.mtimeMs >= since
-    && plan.steps.some(s => s.status !== 'pending') && !plan.steps.every(isFinishedStep)
+  if (plan === null || !plan.steps.some(s => s.status !== 'pending') || isPlanDone(plan)) return false
+  return w.isNamed === true || (since !== null && w.mtimeMs >= since)
 }
 
-// Which plan the Plan tab shows (Decision 5): the pinned one while it parses; else the newest that runs; else the task
-// list when it has items, so a plan an earlier session left never hides this session's; else the newest good plan
+// Which plan the Plan tab shows (Decision 5): the pinned one while it parses; else Alfred Code's named plan; else the
+// newest that runs; else the task list when it has items, so a plan an earlier session left never hides this session's; else the newest good plan
 export function shownPlan(p: Plans, pinned: string | null, hasTasks: boolean): Watched<Plan> | 'tasks' | null {
   const good = p.plans.filter(w => w.value !== null)
   const newest = (list: Watched<Plan>[]): Watched<Plan> | null =>
     list.reduce<Watched<Plan> | null>((a, w) => (a === null || w.mtimeMs > a.mtimeMs ? w : a), null)
   const pin = pinned === null ? undefined : good.find(w => w.name === pinned)
   if (pin !== undefined) return pin
+  // The plan Alfred Code's status file names comes before the rest, begun or not
+  const named = p.alfred === null || p.alfred === undefined ? undefined : good.find(w => w.name === p.alfred?.name)
+  if (named !== undefined) return named
   const running = newest(good.filter(w => runs(w, p.since)))
   if (running !== null) return running
   if (hasTasks) return 'tasks'
@@ -165,12 +173,15 @@ export function planView(plan: Plan, times: Record<string, StepTime>, overheadMs
     leftMs: open.reduce((n, r) => n + Math.max(0, (r.forecastMs ?? 0) - r.actualMs), 0),
     totalMs: finishedRows.reduce((n, r) => n + r.actualMs, 0) + open.reduce((n, r) => n + Math.max(r.forecastMs ?? 0, r.actualMs), 0) + overheadMs,
     ratio, isCalibrated, unestimated: open.filter(r => r.step.estimateMin === null).length,
-    isFinished: open.length === 0, staleMs: isRunning && stale !== null && stale > STALE_MS ? stale : null, planNotes: notes(null),
+    isFinished: open.length === 0 || typeof plan.completedAt === 'number', isAwaiting: plan.approvedAt === null, staleMs: isRunning && stale !== null && stale > STALE_MS ? stale : null, planNotes: notes(null),
   }
 }
 
+// `shown`: the round whose total is the score, the released one when the writer names it, else the newest;
+// `isGrading`: Alfred Code's grading still runs, so that total may change
 export type ScoresView = {
   scale: number; totals: { round: number; total: number }[]; delta: number | null
+  shown: { round: number; total: number }; isGrading: boolean
   criteria: { name: string; prev: number | null; last: number }[]
   severities: { severity: Severity; prev: number; last: number }[]
   fixed: Finding[]; improved: Finding[]; open: Finding[]; hasStatus: boolean
@@ -181,15 +192,20 @@ const SEVERITY_ORDER: readonly Severity[] = ['BLOCKER', 'MATERIAL', 'MINOR']
 // Scorer rule 4: each round's total, the change per criterion and the count per severity, a fixed finding not
 // counted; the fixed and improved lists only when the writer recognised findings across rounds and set a status.
 export function scoresView(s: Scores): ScoresView | null {
-  const last = s.rounds[s.rounds.length - 1]
+  // Alfred Code's released round, else the newest; the arrow against the round graded just before it
+  const at = typeof s.released === 'number' ? s.rounds.findIndex(r => r.round === s.released) : -1
+  const i = at >= 0 ? at : s.rounds.length - 1
+  const last = s.rounds[i]
   if (last === undefined) return null
-  const prev = s.rounds[s.rounds.length - 2] ?? null
+  const prev = s.rounds[i - 1] ?? null
   const count = (r: ScoreRound | null, severity: Severity): number =>
-    r === null ? 0 : r.findings.filter(f => f.severity === severity && f.status !== 'fixed').length
-  const present = (r: ScoreRound | null, severity: Severity): boolean => r !== null && r.findings.some(f => f.severity === severity)
+    r === null ? 0 : r.counts !== undefined ? r.counts[severity] ?? 0 : r.findings.filter(f => f.severity === severity && f.status !== 'fixed').length
+  const present = (r: ScoreRound | null, severity: Severity): boolean =>
+    r !== null && (r.counts !== undefined ? r.counts[severity] !== undefined : r.findings.some(f => f.severity === severity))
   return {
     scale: s.scale,
     totals: s.rounds.slice(-4).map(r => ({ round: r.round, total: r.total })),
+    shown: { round: last.round, total: last.total }, isGrading: s.released === null,
     delta: prev === null ? null : last.total - prev.total,
     criteria: Object.entries(last.criteria).map(([name, score]) => ({ name, prev: prev?.criteria[name] ?? null, last: score })),
     severities: SEVERITY_ORDER.filter(v => present(prev, v) || present(last, v)).map(v => ({ severity: v, prev: count(prev, v), last: count(last, v) })),
@@ -245,6 +261,6 @@ export function taskView(items: TaskItem[], liveMs: Record<string, number>): Pla
     running: rows.filter(r => r.step.status === 'in_progress'), next: rows.find(r => r.step.status === 'pending') ?? null,
     lastFinished: done[done.length - 1] ?? null, rows, workedMs, overheadMs: 0, leftMs, totalMs: workedMs + leftMs,
     ratio: 1, isCalibrated: true, unestimated: done.length >= 3 ? 0 : open.length,
-    isFinished: rows.length > 0 && open.length === 0, staleMs: null, planNotes: [],
+    isFinished: rows.length > 0 && open.length === 0, staleMs: null, planNotes: [], isAwaiting: false,
   }
 }

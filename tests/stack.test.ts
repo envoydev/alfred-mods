@@ -23,7 +23,7 @@ test('a full valid file reads every field', () => {
     state: 'used',
     fields: {
       fullContext: 'fresh-session', model: 'claude-opus-5-5', window: 1000000, resumeAt: 150000, noOffer: false,
-      autoRun: true, scorer: { on: true, level: 80, rounds: 3 }, autoCompact: null, updatedAt: Date.parse('2026-10-29T14:03:00Z'), ignored: [],
+      autoRun: true, scorer: { on: true, level: 80, rounds: 3 }, autoCompact: null, plan: null, updatedAt: Date.parse('2026-10-29T14:03:00Z'), ignored: [],
     },
     prompt: PROMPT,
   })
@@ -57,7 +57,7 @@ test('a missing field is unknown and not listed', () => {
   const r = parseStack(JSON.stringify({ schema: 1, session: 's1', fullContext: 'compact' }), 's1')
   expect(r).toEqual({
     state: 'used',
-    fields: { fullContext: 'compact', model: null, window: null, resumeAt: null, noOffer: false, autoRun: null, scorer: null, autoCompact: null, updatedAt: null, ignored: [] },
+    fields: { fullContext: 'compact', model: null, window: null, resumeAt: null, noOffer: false, autoRun: null, scorer: null, autoCompact: null, plan: null, updatedAt: null, ignored: [] },
     prompt: null,
   })
 })
@@ -127,7 +127,7 @@ test("Phase 4's reasons come through", () => {
 // Task 4: the runway and the banner
 const STACK: Stack = {
   state: 'used', reason: null, fullContext: 'fresh-session', model: 'claude-opus-5-5', window: 1000000, resumeAt: 150000, noOffer: false,
-  autoRun: true, scorer: { on: true, level: 80, rounds: 3 }, autoCompact: null, hasPrompt: true, updatedAt: null, readAt: 0, ignored: [],
+  autoRun: true, scorer: { on: true, level: 80, rounds: 3 }, autoCompact: null, plan: null, hasPrompt: true, updatedAt: null, readAt: 0, ignored: [],
 }
 const USAGE: Usage = { tokens: 93_000, window: 1_000_000, percent: 9, startedAt: 0, windows: [], costUsd: null, todayUsd: null, at: 0 }
 const BASE: BandInput = {
@@ -318,4 +318,22 @@ test('the banner orders auto-run, auto-compact and the scorer; auto-compact show
   expect(text(bannerSegs({ ...on(490_000), autoRun: false, scorer: null }))).toBe('auto-compact 490k')
   // The existing tones: auto-run warn, the rest the text's own, the joiner dim
   expect(bannerSegs(on(490_000)).map(s => ('text' in s ? s.tone : undefined))).toEqual(['warn', 'dim', undefined, 'dim', undefined])
+})
+
+// The plan folder the session works on (alfred-code's plan folder contract, schema 1, add-only, the user's ruling of
+// 2026-11-13): relative to the project root with forward slashes, or null. The mod reads only what sits inside it.
+test('plan reads a relative folder, without its trailing slash, or null; a path that leaves the project is unknown', () => {
+  const at = (v: unknown) => {
+    const r = parseStack(file({ plan: v }), 's1')
+    if (r.state !== 'used') throw new Error('not used')
+    return r.fields
+  }
+  expect(at('.alfred/docs/work/plans/waste-bin/').plan).toBe('.alfred/docs/work/plans/waste-bin')
+  expect(at('.alfred/docs/work/plans/waste-bin').plan).toBe('.alfred/docs/work/plans/waste-bin')
+  expect(at(null)).toMatchObject({ plan: null, ignored: [] })
+  expect(parseStack(file(), 's1')).toMatchObject({ fields: { plan: null, ignored: [] } })
+  for (const bad of ['/abs/plans/x/', '../x/', 'a/../../x', 'a\\b', 'C:/x', '', '/', 'a//b', 'a/./b', 'a\nb', 42, {}, ['a']]) {
+    expect(at(bad)).toMatchObject({ plan: null, ignored: ['plan'], fullContext: 'fresh-session' })
+  }
+  expect(at('x'.repeat(301))).toMatchObject({ plan: null, ignored: ['plan'] })
 })

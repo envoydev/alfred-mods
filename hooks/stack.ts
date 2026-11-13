@@ -37,6 +37,14 @@ const autoCompactRule: Rule<StackAutoCompact | null> = v => {
   if (!isRecord(v) || typeof v.on !== 'boolean' || !(v.at === null || isWhole(v.at, 1, 10_000_000))) return 'bad'
   return { on: v.on, at: v.at }
 }
+// The plan folder (alfred-code's plan folder contract): relative to the project root, forward slashes, each segment a
+// plain name, so a read never leaves the project; the trailing slash dropped
+const planRule: Rule<string | null> = v => {
+  if (v === null) return null
+  if (typeof v !== 'string' || v.length > 300 || CONTROL.test(v) || v.includes('\\') || /^[A-Za-z]:/.test(v)) return 'bad'
+  const segs = v.replace(/\/$/, '').split('/')
+  return segs.every(x => x !== '' && x !== '.' && x !== '..') ? segs.join('/') : 'bad'
+}
 const promptRule: Rule<string | null> = v => v === null || (typeof v === 'string' && v.length >= 1 && v.length <= 1000 && !PROMPT_CONTROL.test(v)) ? v : 'bad'
 
 export function parseStack(text: string, session: string): StackRead {
@@ -61,11 +69,12 @@ export function parseStack(text: string, session: string): StackRead {
   const autoRun = field('autoRun', autoRunRule)
   const scorer = field('scorer', scorerRule)
   const autoCompact = field('autoCompact', autoCompactRule)
+  const plan = field('plan', planRule)
   const prompt = field('handoffPrompt', promptRule)
   const parsed = typeof v.updatedAt === 'string' ? Date.parse(v.updatedAt) : NaN
   return {
     state: 'used',
-    fields: { fullContext, model, window, resumeAt, noOffer, autoRun, scorer, autoCompact, updatedAt: Number.isNaN(parsed) ? null : parsed, ignored },
+    fields: { fullContext, model, window, resumeAt, noOffer, autoRun, scorer, autoCompact, plan, updatedAt: Number.isNaN(parsed) ? null : parsed, ignored },
     prompt,
   }
 }

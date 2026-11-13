@@ -111,19 +111,36 @@ export type StepTime = { ms: number; isShared: boolean }
 export type Slice = { at: number; waitMs: number; named: string[]; waits?: Record<string, number> }
 // The open slices, and this session's step and overhead totals by their $.store key
 export type Credit = { slices: Record<string, Slice>; mine: Record<string, StepTime> }
-export type Plan = { title: string; updatedAt: number | null; steps: PlanStep[]; changes: PlanChange[] }
+// `approvedAt` and `completedAt` come from Alfred Code's status.json only: null until approved, or while open
+export type Plan = {
+  title: string; updatedAt: number | null; steps: PlanStep[]; changes: PlanChange[]
+  approvedAt?: number | null; completedAt?: number | null
+}
 export type Severity = 'BLOCKER' | 'MATERIAL' | 'MINOR'
 export type Finding = { id: string | null; text: string; severity: Severity | null; status: 'open' | 'fixed' | 'improved' | 'wontfix' | null; by: string | null }
-export type ScoreRound = { round: number; at: number | null; total: number; criteria: Record<string, number>; findings: Finding[] }
-export type Scores = { subject: { kind: 'plan' | 'diagnosis' | 'reply'; ref: string }; updatedAt: number | null; scale: number; rounds: ScoreRound[] }
+// `counts`: the findings per severity as Alfred Code's scoring.json gives them, in place of the findings themselves
+export type ScoreRound = {
+  round: number; at: number | null; total: number; criteria: Record<string, number>; findings: Finding[]
+  counts?: Partial<Record<Severity, number>>
+}
+// `released`, from Alfred Code's scoring.json only: the round whose draft was kept, its total the score; null while
+// grading runs
+export type Scores = {
+  subject: { kind: 'plan' | 'diagnosis' | 'reply'; ref: string }; updatedAt: number | null; scale: number; rounds: ScoreRound[]
+  released?: number | null
+}
 // A file of the folder as last read: its last good parse, kept while a newer read fails
-export type Watched<T> = { name: string; mtimeMs: number; size: number; value: T | null; isInvalid: boolean }
+// `isNamed`: the plan Alfred Code's status file names this session
+export type Watched<T> = { name: string; mtimeMs: number; size: number; value: T | null; isInvalid: boolean; isNamed?: boolean }
 // The folder's plans and scores; every session's step times summed per plan; when each plan finished this session;
 // the notes and finishes already seen; and when this session began, which a plan's file must be written after to run
 export type Plans = {
   plans: Watched<Plan>[]; scores: Watched<Scores>[]
   times: Record<string, Record<string, StepTime>>; overhead: Record<string, number>
   finished: Record<string, number>; toasted: string[]; since: number | null
+  // The Alfred Code plan folder read with them, by its name: the one the status file names, or the one it let go
+  // finished, for 10 minutes (alfred-code's plan folder contract)
+  alfred: { name: string; folder: string } | null
 }
 // A main-loop task list item, from TaskCreate, TaskUpdate or TodoWrite: its subject is a tool input, kept in $.state
 // only; `ms`, the working time credited to it while in progress
@@ -160,6 +177,8 @@ export type Stack = {
   state: 'none' | 'used' | 'ignored'; reason: string | null
   fullContext: FullContext | null; model: string | null; window: number | null; resumeAt: number | null; noOffer: boolean
   autoRun: boolean | null; scorer: StackScorer | null; autoCompact: StackAutoCompact | null; hasPrompt: boolean
+  // The plan folder the session works on, relative to the project root, no trailing slash (alfred-code's plan folder contract)
+  plan: string | null
   updatedAt: number | null; readAt: number | null; ignored: string[]
 }
 

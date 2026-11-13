@@ -30,9 +30,10 @@ import {
 import type { HandoffView, PlanPart, SaveInput, ScoresPart } from './handoff.ts'
 import { NO_FILE, STACK_TOASTS, UNREADABLE, bannerSegs, fillReady, fillToast, parseStack, runwayOf } from './stack.ts'
 import type { Runway } from './stack.ts'
-import { creditedPlan, isFinishedStep, parsePlan, parseScores, planView, runs, scoresView, shownPlan, taskView, tasksAfter } from './plan.ts'
+import { creditedPlan, isFinishedStep, isPlanDone, parsePlan, parseScores, planView, runs, scoresView, shownPlan, taskView, tasksAfter } from './plan.ts'
 import type { PlanView, ScoresView } from './plan.ts'
-import { PLANS_DIR, SCORES_DIR, readFolder } from './planfiles.ts'
+import { PLANS_DIR, SCORES_DIR, readFolder, readPlanFolder } from './planfiles.ts'
+import { parseAlfredScoring, parseAlfredStatus } from './alfredplan.ts'
 import { planLines, scoresLabel } from './planlines.ts'
 import { closeOf, closeSlices, closeWait, isAllWait, liveSpans, mineOf, openWait, overheadKey, sliceMs, staleKeys, stepKey, sumTimes, waitOf } from './steptime.ts'
 import type { Close } from './steptime.ts'
@@ -89,7 +90,7 @@ const INITIAL = {
     config: { pin: null, idleOff: false, idleMinTokens: 200_000, isTerminal: false },
     ratePerToken: null, rateModel: null, lastAt: null, last: null, session: { read: 0, write: 0, input: 0 }, toastedFor: null,
   } as Cache,
-  plans: { plans: [], scores: [], times: {}, overhead: {}, finished: {}, toasted: [], since: null } as Plans,
+  plans: { plans: [], scores: [], times: {}, overhead: {}, finished: {}, toasted: [], since: null, alfred: null } as Plans,
   credit: { slices: {}, mine: {} } as Credit,
   tasks: [] as TaskItem[],
   rec: { level: 'off', count: 0, note: null } as RecState,
@@ -101,7 +102,7 @@ const INITIAL = {
     mode: 'ask', threshold: 80, point: null, handled: null, isAskUp: false, lastSave: null, alfred: { state: 'none', reason: null },
   } as Handoff,
   stack: {
-    state: 'none', reason: null, fullContext: null, model: null, window: null, resumeAt: null, noOffer: false, autoRun: null, scorer: null, autoCompact: null,
+    state: 'none', reason: null, fullContext: null, model: null, window: null, resumeAt: null, noOffer: false, autoRun: null, scorer: null, autoCompact: null, plan: null,
     hasPrompt: false, updatedAt: null, readAt: null, ignored: [],
   } as Stack,
   blockers: {} as Record<string, number>,
@@ -122,14 +123,14 @@ const pace = atom({ plugin: 'alfred-mods', key: 'pace' } as const, INITIAL.pace,
 const agents = atom({ plugin: 'alfred-mods', key: 'agents' } as const, INITIAL.agents, { shape: 'agents-2' })
 const cache = atom({ plugin: 'alfred-mods', key: 'cache' } as const, INITIAL.cache, { shape: 'cache-1' })
 const tick = atom({ plugin: 'alfred-mods', key: 'tick' } as const, 0)
-const plans = atom({ plugin: 'alfred-mods', key: 'plans' } as const, INITIAL.plans, { shape: 'plans-1' })
+const plans = atom({ plugin: 'alfred-mods', key: 'plans' } as const, INITIAL.plans, { shape: 'plans-2' })
 const credit = atom({ plugin: 'alfred-mods', key: 'credit' } as const, INITIAL.credit, { shape: 'credit-1' })
 const tasks = atom({ plugin: 'alfred-mods', key: 'tasks' } as const, INITIAL.tasks, { shape: 'tasks-1' })
 const rec = atom({ plugin: 'alfred-mods', key: 'rec' } as const, INITIAL.rec, { shape: 'rec-1' })
 const quiet = atom({ plugin: 'alfred-mods', key: 'quiet' } as const, INITIAL.quiet, { shape: 'quiet-1' })
 const bandSetting = atom({ plugin: 'alfred-mods', key: 'band' } as const, INITIAL.band, { shape: 'band-1' })
 const handoff = atom({ plugin: 'alfred-mods', key: 'handoff' } as const, INITIAL.handoff, { shape: 'handoff-1' })
-const stack = atom({ plugin: 'alfred-mods', key: 'stack' } as const, INITIAL.stack, { shape: 'stack-1' })
+const stack = atom({ plugin: 'alfred-mods', key: 'stack' } as const, INITIAL.stack, { shape: 'stack-2' })
 const blockers = atom({ plugin: 'alfred-mods', key: 'blockers' } as const, INITIAL.blockers, { shape: 'blockers-1' })
 const parts = atom({ plugin: 'alfred-mods', key: 'parts' } as const, INITIAL.parts, { shape: 'parts-1' })
 const loops = atom({ plugin: 'alfred-mods', key: 'loops' } as const, INITIAL.loops, { shape: 'loops-1' })
@@ -799,12 +800,18 @@ async function liveOf($: EngineInterface, p: Plans, shown: Watched<Plan> | 'task
 
 const FINISH_SHOWN_MS = 10 * 60_000
 
+// Alfred Code's scoring level while its status file is in use and scoring is on, which colours the band's score
+async function scoreLevel($: EngineInterface): Promise<number | null> {
+  const s = await read($, stack)
+  return s.state === 'used' && s.scorer !== null && s.scorer.on ? s.scorer.level : null
+}
+
 // What the band and the Plan tab draw of the plans (Decisions 5, 7, 18): the tab the shown plan or task list, the
 // band the one this session's time goes to, only while it runs or for 10 minutes after it finished this session;
 // their scores, else the newest; the rest
 type PlanDraw = {
   shown: PlanView | null; band: PlanView | null; invalid: boolean; scores: ScoresView | null; score: ScoresView | null
-  others: string[]; otherScores: string[]; updatedAt: number | null
+  isPlanScore: boolean; others: string[]; otherScores: string[]; updatedAt: number | null
 }
 
 async function planDraw($: EngineInterface, now: number): Promise<PlanDraw> {
@@ -820,10 +827,12 @@ async function planDraw($: EngineInterface, now: number): Promise<PlanDraw> {
   const scored = p.scores.filter((w): w is Watched<Scores> & { value: Scores } => w.value !== null).sort((a, b) => b.mtimeMs - a.mtimeMs)
   const ownOf = (n: string | null) => (n === null ? undefined : scored.find(w => w.value.subject.kind === 'plan' && w.value.subject.ref === n))
   const full = name === null ? scored[0] : ownOf(name)
-  const newest = ownOf(nameOf(credited)) ?? scored[0]
+  const own = ownOf(nameOf(credited))
+  const newest = own ?? scored[0]
   return {
     shown: tab.v, band: band.isRunning ? band.v : null, invalid: shown !== null && shown !== 'tasks' && shown.isInvalid,
     scores: full === undefined ? null : scoresView(full.value), score: newest === undefined ? null : scoresView(newest.value),
+    isPlanScore: own !== undefined,
     others: p.plans.filter(w => w.name !== name).map(w => (w.value === null ? `${w.name} (invalid)` : w.name)).sort(),
     otherScores: scored.filter(w => w !== full).slice(0, 3).map(w => scoresLabel(w.name, w.value)),
     updatedAt: shown === null || shown === 'tasks' ? null : shown.value?.updatedAt ?? null,
@@ -838,10 +847,10 @@ async function drawnPlan($: EngineInterface, p: Plans, items: TaskItem[], w: Wat
   }
   if (w === null || w.value === null) return { v: null, isRunning: false }
   const doneAt = p.finished[w.name]
-  return {
-    v: planView(w.value, p.times[w.name] ?? {}, (p.overhead[w.name] ?? 0) + live.overhead, live.steps, now),
-    isRunning: runs(w, p.since) || (doneAt !== undefined && now - doneAt < FINISH_SHOWN_MS),
-  }
+  const v = planView(w.value, p.times[w.name] ?? {}, (p.overhead[w.name] ?? 0) + live.overhead, live.steps, now)
+  // Alfred Code's named plan draws while open, begun or awaiting approval
+  const isNamed = p.alfred !== null && p.alfred !== undefined && p.alfred.name === w.name && !v.isFinished
+  return { v, isRunning: isNamed || runs(w, p.since) || (doneAt !== undefined && now - doneAt < FINISH_SHOWN_MS) }
 }
 
 // A loop's slice opens at its turn's start; the main slice marks each live agent that names a step
@@ -885,9 +894,26 @@ async function seedMine($: EngineInterface): Promise<void> {
 // session lacks, and a plan that finishes this session (its previous good parse unfinished), raise their toasts once.
 async function reloadPlans($: EngineInterface, held: Held): Promise<void> {
   const before = await read($, plans)
-  const planFiles = await readFolder($, PLANS_DIR, before.plans, parsePlan)
-  const scoreFiles = await readFolder($, SCORES_DIR, before.scores, parseScores)
   const now = await $.clock.now()
+  const ownPlans = await readFolder($, PLANS_DIR, before.plans, parsePlan)
+  const ownScores = await readFolder($, SCORES_DIR, before.scores, parseScores)
+  // Alfred Code's plan folder: the one its status file names, else the one it let go, read once more to see it
+  // finished, then kept 10 minutes after it finished
+  // A status file that will not read, or whose `plan` will not, says nothing: the plan it named stays named
+  const s = await read($, stack)
+  const isSaid = s.state === 'used' && !s.ignored.includes('plan')
+  const named = isSaid ? s.plan : before.alfred?.folder ?? null
+  const lingering = named === null ? before.alfred : null
+  const folder = named ?? lingering?.folder ?? null
+  // The last read is this folder's only when the folder is the same, so a new folder never shows the old plan
+  const isSame = before.alfred !== null && before.alfred !== undefined && before.alfred.folder === folder
+  const alfredRead = folder === null ? null : await readPlanFolder($, folder, {
+    plan: isSame ? before.plans.find(w => w.name === before.alfred?.name) : undefined,
+    scores: isSame ? before.scores.find(w => w.name === before.alfred?.name) : undefined,
+  }, parseAlfredStatus, parseAlfredScoring)
+  const without = <T>(list: Watched<T>[]): Watched<T>[] => (alfredRead === null ? list : list.filter(w => w.name !== alfredRead.name))
+  const planFiles = [...without(ownPlans), ...(alfredRead?.plan ? [{ ...alfredRead.plan, isNamed: named !== null }] : [])]
+  const scoreFiles = [...without(ownScores), ...(alfredRead?.scores ? [alfredRead.scores] : [])]
   if (statusesOf(before.plans) !== statusesOf(planFiles)) await closeLoops($, held, null, now, true, before)
   const { times, overhead } = await timesOf($, planFiles)
   const seen = new Set(before.toasted)
@@ -901,15 +927,22 @@ async function reloadPlans($: EngineInterface, held: Held): Promise<void> {
       for (const c of newNotes(had.changes, plan.changes)) due.push(`✎ Note folded into ${c.step ?? 'the plan'}: '${oneLine(c.note ?? '', 60)}'`)
     }
     const key = `done:${w.name}`
-    if (!plan.steps.every(isFinishedStep) || seen.has(key)) continue
+    if (!isPlanDone(plan) || seen.has(key)) continue
     seen.add(key)
-    if (had !== null && !had.steps.every(isFinishedStep)) {
+    if (had !== null && !isPlanDone(had)) {
       finished[w.name] = now
       due.push(`Plan done: ${plan.title} in ${mins(planView(plan, times[w.name] ?? {}, overhead[w.name] ?? 0, {}, now).workedMs)}`)
     }
   }
   const toasted = [...seen].slice(-100)
-  await update($, plans, p => ({ ...p, plans: planFiles, scores: scoreFiles, times, overhead, finished: { ...p.finished, ...finished }, toasted }))
+  const doneAt = alfredRead === null ? undefined : finished[alfredRead.name] ?? before.finished[alfredRead.name]
+  const keep = alfredRead !== null && alfredRead.plan !== null && (named !== null || (doneAt !== undefined && now - doneAt < FINISH_SHOWN_MS))
+  const alfred = keep && folder !== null ? { name: alfredRead.name, folder } : null
+  const gone = (w: Watched<unknown>): boolean => alfredRead !== null && !keep && w.name === alfredRead.name
+  await update($, plans, p => ({
+    ...p, plans: planFiles.filter(w => !gone(w)), scores: scoreFiles.filter(w => !gone(w)), times, overhead,
+    finished: { ...p.finished, ...finished }, toasted, alfred,
+  }))
   for (const text of due) toast($, text)
 }
 
@@ -1371,7 +1404,7 @@ async function bandInputOf(
     now, columns: at.columns, ...(at.maxRows === undefined ? {} : { maxRows: at.maxRows }), isWorking: at.isWorking,
     live: await read($, live), usage: u, meta: m, turns: await read($, turns),
     newFailures: (await read($, failures)).filter(f => f.isNew).length, pace: await read($, pace), agents: await read($, agents),
-    cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score, rec: recOf(await read($, rec)),
+    cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score, isPlanScore: d.isPlanScore, scoreLevel: await scoreLevel($), rec: recOf(await read($, rec)),
     forecast: forecastOf(h, u, runway), handoffAsk: h.isAskUp ? h.handled : null, runway, banner: bannerSegs(st),
     mode: setting.mode, totals: await read($, totals), stats: await read($, stats),
     isToolsOpen: setting.isToolsOpen === true, listing: p.skills ?? null,
@@ -2514,7 +2547,7 @@ export const register: Register = (on, options) => {
       now, columns: e.props.bodyColumns, isWorking: counts.turnId !== null, live: counts, usage: u,
       meta: m, turns: await read($, turns), newFailures: rows.filter(f => f.isNew).length,
       pace: await read($, pace), failures: rows, stats: await read($, stats), totals: await read($, totals), view: shown,
-      agents: await read($, agents), cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score, blockers: await read($, blockers), parts: await read($, parts),
+      agents: await read($, agents), cache: await read($, cache), plan: d.band, planInvalid: d.invalid, score: d.score, isPlanScore: d.isPlanScore, scoreLevel: await scoreLevel($), blockers: await read($, blockers), parts: await read($, parts),
       loops: await read($, loops),
       rec: recOf(await read($, rec)), forecast: forecastOf(h, u, runway), handoff: handoffView(h, u, counts.turnId !== null, runway),
       stack: { view: st, prompt: stackMem.prompt, runway, sessionModel: m.model },

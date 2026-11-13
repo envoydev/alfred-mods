@@ -519,7 +519,7 @@ rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ w
   `git rev-list --left-right --count @{upstream}...HEAD`, each with a 2 s timeout; short of width the folder goes first,
   then the changes, then the arrows.
 - **`plan:`** while a plan runs: its title, bar, steps done and the step in progress (the Plan tab has the percent and
-  the times).
+  the times), then the plan's score and its change from the round before, `score 85 ▲13`.
 - **`usage:`** in aqua, counts what the rows under it list: tool calls, skills, agents dispatched (and how many run)
   and rules. It shows whether the rows are open or not.
 - **The detail rows** are open by default; `"bandRows": false` closes them ([Settings](#settings)). Each row waits for
@@ -721,6 +721,12 @@ start, every 30 seconds and after `/clear`, and shows more:
 - **The ALFRED CODE section** in `/inspect`'s Now tab: what the stack does at a full context, its auto-run, auto-compact and scoring,
   the model it judges the session by, its resume prompt's first line and when it last wrote the file. A field the mod
   cannot use is named as ignored, and the rest still shows.
+- **The plan and its score:** when the status file names the plan folder Alfred Code works on
+  (`"plan": ".alfred/docs/work/plans/<feature>/"`), the plan row shows that plan from the folder's `status.json`,
+  before any other plan, from `awaiting approval` to `done ✓`. It ends with the score from the folder's
+  `scoring.json`: the kept round's total, `▲` or `▼` against the round graded before it, green at or above the scoring
+  level and amber under it, and `grading` while the grading still runs. A plan let go finished stays 10 minutes. No
+  folder named, or a file with another schema, and the plan row shows what it would without Alfred Code.
 - **The resume prompt:** while the pane has the focus (Ctrl+X Tab, or a click in fullscreen), `f` fills the stack's
   prompt into an empty prompt box, never sending it. Enter in the prompt box sends it; in the terminal the focus is
   back there after the fill. `/inspect fill` does the same from the prompt. With something already typed, a toast says
@@ -732,7 +738,8 @@ agents' tokens, the Tools tab names its guards (`blocked by shell-guards.js: …
 
 Without Alfred Code, or when the file is missing, has another schema or names another session, the band shows none of
 this, and the ALFRED CODE section shows one dim line with the reason, such as `Alfred Code: no status file for this
-session`. The file is the stack's: the mod never writes it and reads nothing else of the stack.
+session`. The file is the stack's: the mod never writes it, and reads nothing else of the stack but the two files of the
+plan folder it names.
 
 ## Plan and score files
 
@@ -742,7 +749,8 @@ scored output. Any skill or tool can write them; writers resolve their own paths
 reads the folder, except HANDOFF.md, which it writes. Keep the folder gitignored.
 
 The mod reads both folders after each Write, Edit or NotebookEdit call completes, at the end of each turn, and every
-30 seconds. It shows the plan with a step in progress written this session, else the task list, else the newest plan;
+30 seconds. It shows the plan with a step in progress written this session, else the task list, else the newest plan
+(with Alfred Code, the plan its status file names comes first: see With Alfred Code);
 `/inspect plan <slug>` pins one. A file that does not parse keeps its last good version and shows `plan file invalid`.
 Files with LF or CRLF line ends, and with or without a byte-order mark, read the same.
 

@@ -67,3 +67,34 @@ export function planText(statuses: Record<string, string> = {}, changes: object[
   edit?.(p)
   return JSON.stringify(p)
 }
+
+// alfred-code's plan folder contract (schema 1, the user's ruling of 2026-11-13): `<plan folder>/status.json` and
+// `<plan folder>/scoring.json`, the contract's two examples verbatim
+export const STATUS_JSON = `{
+  "schema": 1,
+  "title": "Waste bin (plannings)",
+  "updatedAt": "2026-11-13T11:40Z",
+  "approvedAt": "2026-11-13T09:55Z",
+  "completedAt": null,
+  "tasks": [
+    { "id": "1", "title": "Menu tile and its icon", "status": "blocked", "estimateMin": 45,
+      "startedAt": "2026-11-13T10:12Z", "doneAt": null },
+    { "id": "2", "title": "Load the deleted plannings", "status": "done", "estimateMin": 80,
+      "startedAt": "2026-11-13T10:40Z", "doneAt": "2026-11-13T11:35Z" },
+    { "id": "3", "title": "Restore deleted plan books", "status": "in_progress", "estimateMin": 105,
+      "startedAt": "2026-11-13T11:36Z", "doneAt": null },
+    { "id": "4", "title": "SignalR load and restore", "status": "todo", "estimateMin": 60,
+      "startedAt": null, "doneAt": null }
+  ]
+}`
+
+export const SCORING_JSON = `{
+  "schema": 1,
+  "scale": 100,
+  "released": 2,
+  "rounds": [
+    { "round": 1, "at": "2026-11-13T10:50Z", "total": 72, "severities": { "BLOCKER": 1, "MATERIAL": 3, "MINOR": 2 } },
+    { "round": 2, "at": "2026-11-13T11:01Z", "total": 85, "severities": { "BLOCKER": 0, "MATERIAL": 1, "MINOR": 2 } },
+    { "round": 3, "at": "2026-11-13T11:13Z", "total": 82, "severities": { "BLOCKER": 0, "MATERIAL": 2, "MINOR": 1 } }
+  ]
+}`
