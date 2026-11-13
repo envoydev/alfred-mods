@@ -357,32 +357,33 @@ function promptLines(prompt        )                                            
 
                                                                                                                                              
 
-function newRow(s         , now        )           {
+function newRow(spawned         , now        )           {
   return {
-    id: s.id, parentId: s.parentId, type: s.type, description: oneLine(s.description, 60), ...promptLines(s.prompt),
-    isTeammate: s.isTeammate, model: s.model, effort: null, status: 'running', isListed: false,
+    id: spawned.id, parentId: spawned.parentId, type: spawned.type, description: oneLine(spawned.description, 60), ...promptLines(spawned.prompt),
+    isTeammate: spawned.isTeammate, model: spawned.model, effort: null, status: 'running', isListed: false,
     startedAt: now, endedAt: null, action: null, report: null, contextTokens: null, tools: {}, lastStop: null,
   }
 }
 
 // A resume of a known agent runs its row again, unlisted until the list names it anew; any other spawn adds one
 function upsertSpawn(rows            , row          , isResume         )             {
-  const known = isResume && rows.some(r => r.id === row.id)
+  const known = isResume && rows.some(knownRow => knownRow.id === row.id)
   const out = known
-    ? rows.map(r => (r.id === row.id ? { ...r, status: 'running'         , startedAt: row.startedAt, endedAt: null, isListed: false } : r))
+    ? rows.map(knownRow => (knownRow.id === row.id
+      ? { ...knownRow, status: 'running'         , startedAt: row.startedAt, endedAt: null, isListed: false } : knownRow))
     : [...rows, row]
   return keepRows(out)
 }
 
-function isLive(s             )          {
-  return s === 'pending' || s === 'running' || s === 'waiting'
+function isLive(status             )          {
+  return status === 'pending' || status === 'running' || status === 'waiting'
 }
 
 // At most `limit` rows: the oldest ended ones go first, and a live one never goes
 function keepRows(rows            , limit = 50)             {
   const over = rows.length - limit
   if (over <= 0) return rows
-  const drop = new Set(rows.filter(r => !isLive(r.status)).sort((a, b) => a.startedAt - b.startedAt).slice(0, over))
+  const drop = new Set(rows.filter(agentRow => !isLive(agentRow.status)).sort((left, right) => left.startedAt - right.startedAt).slice(0, over))
   return rows.filter(row => !drop.has(row))
 }
 
@@ -391,9 +392,11 @@ function keepRows(rows            , limit = 50)             {
 function refreshAgents(rows            , listed                      , now        )             {
   return rows.map(row => {
     if (!isLive(row.status)) return row
-    const l = listed.find(x => x.id === row.id)
-    if (l === undefined) return row.isListed ? { ...row, status: 'completed'         , endedAt: now } : row
-    return { ...row, isListed: true, status: l.status, endedAt: isLive(l.status) ? null : now, parentId: row.parentId ?? l.parentId ?? null }
+    const listedRow = listed.find(candidate => candidate.id === row.id)
+    if (listedRow === undefined) return row.isListed ? { ...row, status: 'completed'         , endedAt: now } : row
+    return {
+      ...row, isListed: true, status: listedRow.status, endedAt: isLive(listedRow.status) ? null : now, parentId: row.parentId ?? listedRow.parentId ?? null,
+    }
   })
 }
 
@@ -419,7 +422,7 @@ function statusGlyph(status             )                                 {
 
 // The time axis's lanes (spec C2): the 8 newest rows that have a start, oldest first; a live row has no end yet
 function lanesOf(rows            , now        )         {
-  return rows.filter(r => r.startedAt > 0).sort((a, b) => a.startedAt - b.startedAt).slice(-8).map(row => ({
+  return rows.filter(agentRow => agentRow.startedAt > 0).sort((left, right) => left.startedAt - right.startedAt).slice(-8).map(row => ({
     label: laneLabel(row), startAt: row.startedAt,
     endAt: isLive(row.status) ? null : row.endedAt ?? now, status: row.status, time: agentTime(row, now),
   }))
@@ -435,7 +438,7 @@ function laneLabel(row          )         {
 
 const LANE_MAX = 40
 function laneFit(lanes        , columns        )                 {
-  const time = Math.max(0, ...lanes.map(l => [...l.time].length))
+  const time = Math.max(0, ...lanes.map(lane => [...lane.time].length))
   const room = columns - 4 - time
   const longest = Math.min(LANE_MAX, Math.max(6, ...lanes.map(lane => [...lane.label].length)))
   const label = Math.min(longest, room - 10)
@@ -444,14 +447,14 @@ function laneFit(lanes        , columns        )                 {
 
 // A report's line in the tree: its first that is not a heading, a rule or a fence, else its first heading's words
 function reportLine(report        )         {
-  const lines = report.split('\n').map(l => l.trim()).filter(l => l !== '' && !/^([-*_=]\s*){3,}$/.test(l) && !l.startsWith('```'))
-  const isHeading = (l        )          => /^#{1,6}\s/.test(l)
-  return (lines.find(l => !isHeading(l)) ?? lines[0] ?? '').replace(/^#{1,6}\s+/, '')
+  const lines = report.split('\n').map(line => line.trim()).filter(line => line !== '' && !/^([-*_=]\s*){3,}$/.test(line) && !line.startsWith('```'))
+  const isHeading = (line        )          => /^#{1,6}\s/.test(line)
+  return (lines.find(line => !isHeading(line)) ?? lines[0] ?? '').replace(/^#{1,6}\s+/, '')
 }
 
 // Loops no spawn announced (spec C3): a step adds to its loop, or starts one; the newest 60 are kept
 function addLoopStep(loops        , id        , output        , now        )         {
-  const known = loops.find(l => l.id === id)
+  const known = loops.find(loop => loop.id === id)
   if (known !== undefined) return loops.map(loop => (loop === known ? { ...loop, steps: loop.steps + 1, outputTokens: loop.outputTokens + output, lastAt: now } : loop))
   return [...loops, { id, steps: 1, outputTokens: output, firstAt: now, lastAt: now, isDone: false }].slice(-60)
 }
@@ -463,7 +466,7 @@ const LOOPS_NOTE = '(no spawn: compactions, forks)'
 // last 15 seconds), their output, then the dim note
 function loopsLine(loops        , now        , note        )         {
   if (loops.length === 0) return []
-  const active = loops.filter(l => !l.isDone && now - l.lastAt < 15_000).length
+  const active = loops.filter(loop => !loop.isDone && now - loop.lastAt < 15_000).length
   const output = loops.reduce((sum, loop) => sum + loop.outputTokens, 0)
   return [[{ text: `Other loops ${loops.length} · ${active} active · out ${tokensText(output)}` }], [{ text: note, tone: 'dim' }]]
 }
@@ -482,28 +485,28 @@ function actionOf(tool        , target        )         {
 // Depth first, siblings oldest first, under the main loop as the root. A row sits under its parent only when that is
 // a row and its parents never lead back to it; else under the root.
 function agentTree(rows            )            {
-  const byId = new Map(rows.map(r => [r.id, r]))
-  const parentOf = (r          )                => {
-    if (r.parentId === null || !byId.has(r.parentId)) return null
+  const byId = new Map(rows.map(agentRow => [agentRow.id, agentRow]))
+  const parentOf = (agentRow          )                => {
+    if (agentRow.parentId === null || !byId.has(agentRow.parentId)) return null
     const seen = new Set        ()
-    for (let p                = r.parentId; p !== null && !seen.has(p); p = byId.get(p)?.parentId ?? null) {
-      if (p === r.id) return null
-      seen.add(p)
+    for (let parentId                = agentRow.parentId; parentId !== null && !seen.has(parentId); parentId = byId.get(parentId)?.parentId ?? null) {
+      if (parentId === agentRow.id) return null
+      seen.add(parentId)
     }
-    return r.parentId
+    return agentRow.parentId
   }
   const kids = new Map                           ()
-  for (const r of [...rows].sort((a, b) => a.startedAt - b.startedAt)) {
-    const p = parentOf(r)
-    kids.set(p, [...(kids.get(p) ?? []), r])
+  for (const agentRow of [...rows].sort((left, right) => left.startedAt - right.startedAt)) {
+    const parent = parentOf(agentRow)
+    kids.set(parent, [...(kids.get(parent) ?? []), agentRow])
   }
   const out            = []
   const walk = (parent               , depth        , lead        )       => {
     const list = kids.get(parent) ?? []
-    list.forEach((r, i) => {
+    list.forEach((agentRow, i) => {
       const isLast = i === list.length - 1
-      out.push({ row: r, depth, isLast, prefix: `${lead}${isLast ? '└ ' : '├ '}` })
-      walk(r.id, depth + 1, `${lead}${isLast ? '  ' : '│ '}`)
+      out.push({ row: agentRow, depth, isLast, prefix: `${lead}${isLast ? '└ ' : '├ '}` })
+      walk(agentRow.id, depth + 1, `${lead}${isLast ? '  ' : '│ '}`)
     })
   }
   walk(null, 1, '')
@@ -514,7 +517,7 @@ function agentTree(rows            )            {
 function toolSummary(tools                          )                                        {
   const out = { tools: []            , skills: []             }
   for (const [key, stat] of Object.entries(tools)) {
-    const count = (glyph        , n        )         => (n === 0 ? '' : n === stat.calls ? ` ${glyph}` : ` ${glyph}${n}`)
+    const count = (glyph        , markCount        )         => (markCount === 0 ? '' : markCount === stat.calls ? ` ${glyph}` : ` ${glyph}${markCount}`)
     const marks = stat.failed === 0 && stat.stopped === 0 ? ' ✓' : `${count('✗', stat.failed)}${count('⊘', stat.stopped)}`
     if (key.startsWith('Skill: ')) out.skills.push(`${key.slice(7)} ×${stat.calls}`)
     else out.tools.push(`${key} ×${stat.calls}${marks}`)
@@ -551,14 +554,14 @@ const WARN_MIN_TOKENS = 100_000
 
 // Within the plan's usage while a 5h or 7d window reads under 100; on usage credits once one reads 100 or more
 function billingOf(windows              )          {
-  const plan = windows.filter(w => w.kind === 'five_hour' || w.kind === 'seven_day')
+  const plan = windows.filter(rateWindow => rateWindow.kind === 'five_hour' || rateWindow.kind === 'seven_day')
   if (plan.length === 0) return 'other'
   return plan.some(rateWindow => rateWindow.percentUsed >= 100) ? 'credits' : 'plan'
 }
 
 // The first pin in Claude Code's order: FORCE_PROMPT_CACHING_5M, the variable, the setting, ENABLE_PROMPT_CACHING_1H
 function pinOf(sources                                                                          )                     {
-  const tier = (x         )                   => (x === '5m' || x === '1h' ? x : null)
+  const tier = (raw         )                   => (raw === '5m' || raw === '1h' ? raw : null)
   if (sources.force5m === '1') return { tier: '5m', from: 'FORCE_PROMPT_CACHING_5M' }
   const ttl = tier(sources.ttl)
   if (ttl !== null) return { tier: ttl, from: 'CLAUDE_CODE_PROMPT_CACHE_TTL' }
@@ -571,8 +574,8 @@ function pinOf(sources                                                          
 // Idle compaction is off with either setting false or DISABLE_AUTO_COMPACT set; its threshold is raised to 100,000
 function idleOf(sources                                                                                                             )                                                          {
   const idleOff = sources.idleCompaction === false || sources.autoCompactEnabled === false || (sources.disableAutoCompact ?? '') !== ''
-  const n = /^\d+$/.test(sources.minTokens ?? '') ? Number(sources.minTokens) : 0
-  return { isIdleCompactOff: idleOff, idleMinTokens: n > 0 ? Math.max(100_000, n) : 200_000 }
+  const minTokens = /^\d+$/.test(sources.minTokens ?? '') ? Number(sources.minTokens) : 0
+  return { isIdleCompactOff: idleOff, idleMinTokens: minTokens > 0 ? Math.max(100_000, minTokens) : 200_000 }
 }
 
 
@@ -584,21 +587,26 @@ function tierOf(cache       , billing         )         {
 }
 
 // A main-loop request: the cache's time runs from its start, if it read or wrote the cache at all (caching can be off)
-function addRequest(cache       , u                                                                                              , at        )        {
-  const last = { read: u.cache_read_input_tokens, write: u.cache_creation_input_tokens, input: u.input_tokens }
+function addRequest(
+  cache       , usage                                                                                              , at        ,
+)        {
+  const last = { read: usage.cache_read_input_tokens, write: usage.cache_creation_input_tokens, input: usage.input_tokens }
   if (last.read === 0 && last.write === 0 && last.input === 0) return cache
-  const s = cache.sessionCounts
+  const counts = cache.sessionCounts
   const lastAt = last.read + last.write > 0 ? at : cache.lastRequestAt
-  return { ...cache, lastRequestAt: lastAt, lastRequest: last, sessionCounts: { read: s.read + last.read, write: s.write + last.write, input: s.input + last.input } }
+  return { ...cache, lastRequestAt: lastAt, lastRequest: last,
+    sessionCounts: { read: counts.read + last.read, write: counts.write + last.write, input: counts.input + last.input } }
 }
 
 const rateOf = (usdCost        , contextTokens        )                => (contextTokens > 0 ? usdCost / contextTokens : null)
 
 // A model switch's report: its tier under the billing now, and the rate its own estimate gives. Only a switch that
 // happened (PostModelSwitch) forfeits the cache; one Claude Code may still ask to confirm leaves it warm.
-function takeSwitch(cache       , s                                                                                         , at        , hasSwitched         )        {
+function takeSwitch(
+  cache       , change                                                                                         , at        , hasSwitched         ,
+)        {
   const out        = {
-    ...cache, tier: s.ttl, tierAt: at, tierBilling: s.billing, rateModel: s.model, ratePerToken: rateOf(s.usd, s.contextTokens),
+    ...cache, tier: change.ttl, tierAt: at, tierBilling: change.billing, rateModel: change.model, ratePerToken: rateOf(change.usd, change.contextTokens),
   }
   return hasSwitched ? { ...out, lastRequestAt: null } : out
 }
@@ -616,9 +624,9 @@ function afterCompact(cache       )        {
 
 const cachedOf = (cache       )         => (cache.lastRequest === null ? 0 : cache.lastRequest.read + cache.lastRequest.write)
 
-const reuseOf = (n                                                       )                => {
-  const all = n === null ? 0 : n.read + n.write + n.input
-  return n === null || all === 0 ? null : (n.read / all) * 100
+const reuseOf = (counts                                                       )                => {
+  const all = counts === null ? 0 : counts.read + counts.write + counts.input
+  return counts === null || all === 0 ? null : (counts.read / all) * 100
 }
 
 // With the context's tokens, the warning's window allows for Claude Code's own idle compaction
@@ -746,18 +754,18 @@ __m['session/windows.ts'] = (() => {
 // with none left
 function storedWindows(value         , now        )                                               {
   if (typeof value !== 'object' || value === null) return null
-  const v = value                                       
-  if (typeof v.at !== 'number' || !Array.isArray(v.windows)) return null
+  const stored = value                                       
+  if (typeof stored.at !== 'number' || !Array.isArray(stored.windows)) return null
   const windows               = []
-  for (const w of v.windows             ) {
-    if (typeof w !== 'object' || w === null) return null
-    const x = w                           
-    const resetsAt = x.resetsAt
-    if (typeof x.kind !== 'string' || typeof x.percentUsed !== 'number' || typeof resetsAt !== 'string') return null
+  for (const rawWindow of stored.windows             ) {
+    if (typeof rawWindow !== 'object' || rawWindow === null) return null
+    const windowFields = rawWindow                           
+    const resetsAt = windowFields.resetsAt
+    if (typeof windowFields.kind !== 'string' || typeof windowFields.percentUsed !== 'number' || typeof resetsAt !== 'string') return null
     const reset = Date.parse(resetsAt)
-    if (!Number.isNaN(reset) && reset > now) windows.push({ kind: x.kind, percentUsed: x.percentUsed, resetsAt })
+    if (!Number.isNaN(reset) && reset > now) windows.push({ kind: windowFields.kind, percentUsed: windowFields.percentUsed, resetsAt })
   }
-  return windows.length === 0 ? null : { at: v.at, windows }
+  return windows.length === 0 ? null : { at: stored.at, windows }
 }
 
 // The 5h and 7d windows a reading leaves: its own when it has some or a request has been made (`isRead`: off a
@@ -782,7 +790,7 @@ function dropPassed(usage       , now        )               {
 const storedMark = (windowsAt                           )         => (windowsAt === undefined || windowsAt === null ? '' : '≈')
 
 const rateWindowsOf = (limits                             )               =>
-  limits.map(w => ({ kind: w.kind, percentUsed: w.percentUsed, resetsAt: w.resetsAt ?? null }))
+  limits.map(limit => ({ kind: limit.kind, percentUsed: limit.percentUsed, resetsAt: limit.resetsAt ?? null }))
 
 return { storedWindows, nextWindows, dropPassed, storedMark, rateWindowsOf };
 })();
@@ -794,10 +802,10 @@ __m['place/place.ts'] = (() => {
 
 // The branch a HEAD file names, or a detached commit's first 7 characters; null for anything else
 function headBranch(text        )                {
-  const t = text.trim()
-  const ref = /^ref: refs\/heads\/(.+)$/.exec(t)
+  const trimmed = text.trim()
+  const ref = /^ref: refs\/heads\/(.+)$/.exec(trimmed)
   if (ref !== null) return ref[1] ?? null
-  return /^[0-9a-f]{40}([0-9a-f]{24})?$/.test(t) ? t.slice(0, 7) : null
+  return /^[0-9a-f]{40}([0-9a-f]{24})?$/.test(trimmed) ? trimmed.slice(0, 7) : null
 }
 
 // A worktree's `.git` file names its git folder, absolute or relative to the folder the file sits in
@@ -814,12 +822,12 @@ const baseName = (path        )         => path.replace(/[\\/]+$/, '').split(/[\
 // root, the root itself none, elsewhere '…/<its name>', so no path above the project (a home folder, a user name) is
 // kept. A Windows path compares without case.
 function folderOf(cwd        , root        )                {
-  const trim = (p        )         => p.replace(/\\/g, '/').replace(/\/+$/, '')
-  const c = trim(cwd)
-  const r = trim(root)
-  const fold = (p        )         => (/^[A-Za-z]:/.test(c) ? p.toLowerCase() : p)
-  if (fold(c) === fold(r)) return null
-  if (fold(c).startsWith(`${fold(r)}/`)) return c.slice(r.length + 1)
+  const trim = (path        )         => path.replace(/\\/g, '/').replace(/\/+$/, '')
+  const cwdPath = trim(cwd)
+  const rootPath = trim(root)
+  const fold = (path        )         => (/^[A-Za-z]:/.test(cwdPath) ? path.toLowerCase() : path)
+  if (fold(cwdPath) === fold(rootPath)) return null
+  if (fold(cwdPath).startsWith(`${fold(rootPath)}/`)) return cwdPath.slice(rootPath.length + 1)
   return `…/${baseName(cwd)}`
 }
 
@@ -854,8 +862,8 @@ const { baseName } = __m['place/place.ts'];
 
 const NO_PARTS        = { breakdownAt: null, categories: [], plugins: [], memory: { files: 0, tokens: 0, top: [] } }
 
-const slashed = (p        )         => p.replace(/\\/g, '/')
-const isDrive = (p        )          => /^[A-Za-z]:\//.test(p)
+const slashed = (filePath        )         => filePath.replace(/\\/g, '/')
+const isDrive = (filePath        )          => /^[A-Za-z]:\//.test(filePath)
 
 // `.claude/CLAUDE.md` for a file under the project, else `User CLAUDE.md`; a Windows path compares without case. A
 // session at a root or a drive root has no project to name from, and the auto memory's folder under
@@ -864,7 +872,7 @@ const isDrive = (p        )          => /^[A-Za-z]:\//.test(p)
 function memoryName(path        , type        , cwd        )         {
   const file = slashed(path)
   const root = slashed(cwd).replace(/\/+$/, '')
-  const fold = (p        )         => (isDrive(file) ? p.toLowerCase() : p)
+  const fold = (filePath        )         => (isDrive(file) ? filePath.toLowerCase() : filePath)
   const isRoot = root === '' || /^[A-Za-z]:$/.test(root)
   if (!isRoot && fold(file).startsWith(`${fold(root)}/`)) {
     const inside = file.slice(root.length + 1)
@@ -884,7 +892,7 @@ function ruleName(path        , type        )                {
 // The breakdown as the atom keeps it: `used` categories in Claude Code's order; agents by the plugin before the `:` of
 // their type and skills by their plugin, most tokens first; the memory files' count, tokens and three largest. A host
 // may leave a list out, so each is read as empty when absent.
-function partsOf(b                         , cwd        , at        , linked                      = new Set())        {
+function partsOf(breakdown                         , cwd        , at        , linked                      = new Set())        {
   const plugins = new Map                                                                                                    ()
   const of = (name        ) => {
     const known = plugins.get(name)
@@ -893,32 +901,36 @@ function partsOf(b                         , cwd        , at        , linked    
     plugins.set(name, made)
     return made
   }
-  for (const a of b.agents ?? []) {
-    const cut = a.agentType.indexOf(':')
+  for (const agent of breakdown.agents ?? []) {
+    const cut = agent.agentType.indexOf(':')
     if (cut <= 0) continue
-    const p = of(a.agentType.slice(0, cut))
-    p.agents += 1
-    p.agentTokens += a.tokens
+    const pluginPart = of(agent.agentType.slice(0, cut))
+    pluginPart.agents += 1
+    pluginPart.agentTokens += agent.tokens
   }
-  for (const s of b.skills?.skillFrontmatter ?? []) {
-    if (s.pluginName === undefined || s.pluginName === '') continue
-    const p = of(s.pluginName)
-    p.skills += 1
-    p.skillTokens += s.tokens
+  for (const skill of breakdown.skills?.skillFrontmatter ?? []) {
+    if (skill.pluginName === undefined || skill.pluginName === '') continue
+    const pluginPart = of(skill.pluginName)
+    pluginPart.skills += 1
+    pluginPart.skillTokens += skill.tokens
   }
-  const files = (b.memoryFiles ?? []).map(f => ({ name: memoryName(f.path, f.type, cwd), tokens: f.tokens }))
-  const rules = [...new Set((b.memoryFiles ?? []).flatMap(f => ruleName(f.path, f.type) ?? (linked.has(f.path) ? baseName(f.path) : [])))]
-  const listing = b.skills === undefined ? {} : { skills: { listed: b.skills.includedSkills, total: b.skills.totalSkills, tokens: b.skills.tokens } }
+  const files = (breakdown.memoryFiles ?? []).map(memoryFile => ({ name: memoryName(memoryFile.path, memoryFile.type, cwd), tokens: memoryFile.tokens }))
+  const rules = [...new Set((breakdown.memoryFiles ?? []).flatMap(memoryFile =>
+    ruleName(memoryFile.path, memoryFile.type) ?? (linked.has(memoryFile.path) ? baseName(memoryFile.path) : [])))]
+  const listing = breakdown.skills === undefined
+    ? {}
+    : { skills: { listed: breakdown.skills.includedSkills, total: breakdown.skills.totalSkills, tokens: breakdown.skills.tokens } }
   return {
     ...listing,
     ...(rules.length === 0 ? {} : { rules }),
     breakdownAt: at,
-    categories: (b.categories ?? []).filter(c => c.kind === 'used').map(c => ({ name: c.name, tokens: c.tokens })),
-    plugins: [...plugins.values()].sort((x, y) => y.agentTokens + y.skillTokens - (x.agentTokens + x.skillTokens) || x.name.localeCompare(y.name)),
+    categories: (breakdown.categories ?? []).filter(category => category.kind === 'used').map(category => ({ name: category.name, tokens: category.tokens })),
+    plugins: [...plugins.values()].sort((left, right) =>
+      right.agentTokens + right.skillTokens - (left.agentTokens + left.skillTokens) || left.name.localeCompare(right.name)),
     memory: {
       files: files.length,
-      tokens: files.reduce((sum, f) => sum + f.tokens, 0),
-      top: [...files].sort((x, y) => y.tokens - x.tokens).slice(0, 3),
+      tokens: files.reduce((sum, memoryFile) => sum + memoryFile.tokens, 0),
+      top: [...files].sort((left, right) => right.tokens - left.tokens).slice(0, 3),
     },
   }
 }
@@ -931,30 +943,33 @@ const LABEL = PARTS_LABEL
 function partsLines(parts       )         {
   if (parts.breakdownAt === null) return []
   const out         = []
-  const used = parts.categories.map(c => `${c.name} ${tokensText(c.tokens)}`)
+  const used = parts.categories.map(category => `${category.name} ${tokensText(category.tokens)}`)
   out.push([{ text: 'In context', width: LABEL }, { text: [`est. ${clockText(parts.breakdownAt)}`, ...used].join(' · ') }])
   if (parts.plugins.length > 0) {
-    const named = parts.plugins.map(x => {
-      const what = [x.agents > 0 ? `${x.agents} agents` : null, x.skills > 0 ? `${x.skills} skills` : null].filter((s)              => s !== null)
-      return `${x.name} ${tokensText(x.agentTokens + x.skillTokens)}: ${what.join(', ')}`
+    const named = parts.plugins.map(plugin => {
+      const what = [plugin.agents > 0 ? `${plugin.agents} agents` : null, plugin.skills > 0 ? `${plugin.skills} skills` : null]
+        .filter((count)                  => count !== null)
+      return `${plugin.name} ${tokensText(plugin.agentTokens + plugin.skillTokens)}: ${what.join(', ')}`
     })
     out.push([{ text: 'Plugins', width: LABEL }, { text: named.join(' · ') }])
   }
   if (parts.memory.files > 0) {
-    const m = parts.memory
-    const rest = m.files - m.top.length
-    const shown = [`${m.files} ${m.files === 1 ? 'file' : 'files'} ${tokensText(m.tokens)}`, ...m.top.map(t => `${t.name} ${tokensText(t.tokens)}`), ...(rest > 0 ? [`+${rest}`] : [])]
+    const memory = parts.memory
+    const rest = memory.files - memory.top.length
+    const shown = [`${memory.files} ${memory.files === 1 ? 'file' : 'files'} ${tokensText(memory.tokens)}`,
+      ...memory.top.map(topFile => `${topFile.name} ${tokensText(topFile.tokens)}`), ...(rest > 0 ? [`+${rest}`] : [])]
     out.push([{ text: 'Memory', width: LABEL }, { text: shown.join(' · ') }])
   }
   return out
 }
 
 // '57 of 60 listed', or '60 listed' when the listing carries every skill
-const listedText = (l              )         => (l.listed === l.total ? `${l.total} listed` : `${l.listed} of ${l.total} listed`)
+const listedText = (listing              )         =>
+  (listing.listed === listing.total ? `${listing.total} listed` : `${listing.listed} of ${listing.total} listed`)
 
 // The skills the main loop loaded, as 'solve-task ×2', first loaded first
 const loadedTexts = (skills                                    )           =>
-  Object.entries(skills ?? {}).map(([name, n]) => `${name} ×${n}`)
+  Object.entries(skills ?? {}).map(([name, uses]) => `${name} ×${uses}`)
 
 return { NO_PARTS, slashed, memoryName, ruleName, partsOf, PARTS_LABEL, partsLines, listedText, loadedTexts };
 })();
@@ -975,17 +990,17 @@ const GLYPH                          = {
 }
 
 // A total or a change: whole, or to one decimal on a 10-point scale
-const num = (n        )         => String(Math.round(n * 10) / 10)
+const num = (value        )         => String(Math.round(value * 10) / 10)
 // '×1.2'; under 0.1 its first significant digit, '×0.01', never '×0.0'
-const ratioText = (r        )         => (r >= 0.1 ? r.toFixed(1) : r.toPrecision(1))
+const ratioText = (ratio        )         => (ratio >= 0.1 ? ratio.toFixed(1) : ratio.toPrecision(1))
 // Cut on the masked text, never inside a REC token
 const cut = (text        , max        )         => fitLine(text, Math.max(2, max))
-const agentCount = (k        )         => `${k} ${k === 1 ? 'agent' : 'agents'}`
+const agentCount = (count        )         => `${count} ${count === 1 ? 'agent' : 'agents'}`
 
 // Some open step has an estimate, or the task list has its 3 completed: the time left is known
 const hasLeft = (view          )          => view.total - view.finished > view.unestimated
 // The task list: no step has an estimate, and it never calibrates
-const isTasks = (view          )          => view.isCalibrated && view.rows.every(r => r.step.estimateMin === null)
+const isTasks = (view          )          => view.isCalibrated && view.rows.every(row => row.step.estimateMin === null)
 
 function planBar(percent        )       {
   const [filled, empty] = barText(percent)
@@ -1061,39 +1076,39 @@ function narrowPlan(view          , agents        )       {
 }
 
 // 'done in 24m', '12m of ≈24m', '≈18m', with 'shared' after a shared step's time
-function timeOf(r         )         {
-  const s = r.step
-  const forecast = r.forecastMs === null ? null : `≈${minutesText(r.forecastMs)}`
-  const time = s.status === 'done' ? (r.actualMs > 0 ? `done in ${minutesText(r.actualMs)}` : 'done')
-    : s.status === 'skipped' ? 'skipped'
-    : s.status === 'in_progress' || r.actualMs > 0 ? `${minutesText(r.actualMs)}${forecast === null ? '' : ` of ${forecast}`}`
+function timeOf(row         )         {
+  const step = row.step
+  const forecast = row.forecastMs === null ? null : `≈${minutesText(row.forecastMs)}`
+  const time = step.status === 'done' ? (row.actualMs > 0 ? `done in ${minutesText(row.actualMs)}` : 'done')
+    : step.status === 'skipped' ? 'skipped'
+    : step.status === 'in_progress' || row.actualMs > 0 ? `${minutesText(row.actualMs)}${forecast === null ? '' : ` of ${forecast}`}`
     : forecast ?? ''
-  return r.isShared && time !== '' ? `${time} shared` : time
+  return row.isShared && time !== '' ? `${time} shared` : time
 }
 
 // A row per step in columns: glyph, id and title with ✎ when a note of yours names it, the time, and the estimate.
 // Wider than `columns`, the titles are cut and the mark is ✎ alone, so the time and estimate stay in view.
 function stepRows(rows           , indent        , withEstimate         , columns        )         {
   const times = rows.map(timeOf)
-  const timeWidth = Math.max(0, ...times.map(t => t.length))
-  const ests = rows.map(r => (withEstimate && r.step.estimateMin !== null ? `est ${minutesText(r.step.estimateMin * MIN)}` : ''))
+  const timeWidth = Math.max(0, ...times.map(text => text.length))
+  const ests = rows.map(row => (withEstimate && row.step.estimateMin !== null ? `est ${minutesText(row.step.estimateMin * MIN)}` : ''))
   const rights = rows.map((_, i) => (ests[i] === '' ? times[i] ?? '' : `${(times[i] ?? '').padEnd(timeWidth)}   ${ests[i] ?? ''}`))
-  const rightWidth = Math.max(0, ...rights.map(t => t.length))
-  const natural = rows.map(r => `${fitLine(r.step.id, 12)} ${fitLine(r.step.title, 60)}`.length + (r.notes.length > 0 ? NOTE.length + 3 : 0))
+  const rightWidth = Math.max(0, ...rights.map(text => text.length))
+  const natural = rows.map(row => `${fitLine(row.step.id, 12)} ${fitLine(row.step.title, 60)}`.length + (row.notes.length > 0 ? NOTE.length + 3 : 0))
   const room = Math.max(12, columns - indent.length - 2 - (rightWidth > 0 ? rightWidth + 3 : 0))
   const isTight = Math.max(0, ...natural) > room
   const mark = isTight ? '✎' : NOTE
-  const lefts = rows.map(r => {
-    const id = fitLine(r.step.id, 12)
-    const marked = r.notes.length > 0 ? mark.length + (isTight ? 1 : 3) : 0
-    return `${id} ${isTight ? cut(fitLine(r.step.title, 60), room - id.length - 1 - marked) : fitLine(r.step.title, 60)}`
+  const lefts = rows.map(row => {
+    const id = fitLine(row.step.id, 12)
+    const marked = row.notes.length > 0 ? mark.length + (isTight ? 1 : 3) : 0
+    return `${id} ${isTight ? cut(fitLine(row.step.title, 60), room - id.length - 1 - marked) : fitLine(row.step.title, 60)}`
   })
-  const widths = rows.map((r, i) => (lefts[i] ?? '').length + (r.notes.length > 0 ? mark.length + (isTight ? 1 : 3) : 0))
+  const widths = rows.map((row, i) => (lefts[i] ?? '').length + (row.notes.length > 0 ? mark.length + (isTight ? 1 : 3) : 0))
   const leftWidth = Math.max(0, ...widths)
   const out         = []
-  rows.forEach((r, i) => {
-    const line       = [{ text: indent }, GLYPH[r.step.status], { text: ` ${lefts[i] ?? ''}` }]
-    if (r.notes.length > 0) line.push({ text: isTight ? ' ' : '   ' }, { text: mark, tone: 'plan' })
+  rows.forEach((row, i) => {
+    const line       = [{ text: indent }, GLYPH[row.step.status], { text: ` ${lefts[i] ?? ''}` }]
+    if (row.notes.length > 0) line.push({ text: isTight ? ' ' : '   ' }, { text: mark, tone: 'plan' })
     // The time and estimate start at one column: the gap a margin, the time a cell as wide as the longest
     const gap = leftWidth - (widths[i] ?? 0) + 3
     const time = times[i] ?? ''
@@ -1104,7 +1119,7 @@ function stepRows(rows           , indent        , withEstimate         , column
       line.push({ text: `   ${est}` })
     } else if (time !== '') line.push({ text: `${' '.repeat(gap)}${time}` })
     out.push(line)
-    if (withEstimate) for (const note of r.notes) out.push([{ text: `${indent}     '${fitLine(note, 200)}'` }])
+    if (withEstimate) for (const note of row.notes) out.push([{ text: `${indent}     '${fitLine(note, 200)}'` }])
   })
   return out
 }
@@ -1115,7 +1130,7 @@ function planSection(view          , columns        )         {
   const head       = [{ text: 'PLAN', bold: true, tone: 'plan' }, { text: `   ${fitLine(view.title, 60)} · ${view.finished}/${view.total}` }]
   if (view.isFinished) head.push({ text: ` · done in ${minutesText(view.workedMs)}` })
   else if (hasLeft(view)) head.push({ text: ` · ≈${minutesText(view.leftMs)} left of ≈${minutesText(view.totalMs)}` })
-  const shown = [view.lastFinished, ...view.running, view.next].filter((r, i, all)               => r !== null && all.indexOf(r) === i)
+  const shown = [view.lastFinished, ...view.running, view.next].filter((row, i, all)                 => row !== null && all.indexOf(row) === i)
   return [head, ...stepRows(shown, '  ', false, columns)]
 }
 
@@ -1125,7 +1140,7 @@ function deltaSegs(delta               )       {
   return delta < 0 ? [{ text: ` ▼${num(-delta)}`, tone: 'fail' }] : [{ text: ' =', tone: 'dim' }]
 }
 
-const arrow = (d        )      => (d > 0 ? { text: ' ▲', tone: 'ok' } : d < 0 ? { text: ' ▼', tone: 'fail' } : { text: ' =', tone: 'dim' })
+const arrow = (delta        )      => (delta > 0 ? { text: ' ▲', tone: 'ok' } : delta < 0 ? { text: ' ▼', tone: 'fail' } : { text: ' =', tone: 'dim' })
 
 // The band's 'score 81 ▲13': the shown round's total (Alfred Code's released round, else the last), a dim 'grading'
 // while Alfred Code's grading runs, and the change from the round before; against `level`, Alfred Code's scoring
@@ -1142,7 +1157,8 @@ function scoresLabel(name        , scores        )         {
   return `${name} (${scores.subject.kind})${last === undefined ? '' : ` R${last.round} ${num(last.total)}`}`
 }
 
-const findingText = (f         )         => `${f.id === null ? '' : `${fitLine(f.id, 12)} `}${fitLine(f.text, 80)}${f.by === null ? '' : ` (${fitLine(f.by, 12)})`}`
+const findingText = (finding         )         =>
+  `${finding.id === null ? '' : `${fitLine(finding.id, 12)} `}${fitLine(finding.text, 80)}${finding.by === null ? '' : ` (${fitLine(finding.by, 12)})`}`
 
 // '  fixed:  F1 No migration rollback (S3)', the label once and the rest beneath it
 function findingRows(label        , texts          )         {
@@ -1153,16 +1169,16 @@ function findingRows(label        , texts          )         {
 // open findings
 function scoreLines(scoresView            )         {
   const out         = [[
-    { text: 'Scores', bold: true }, { text: `   ${scoresView.totals.map(t => `R${t.round} ${num(t.total)}`).join(' → ')}` },
+    { text: 'Scores', bold: true }, { text: `   ${scoresView.totals.map(point => `R${point.round} ${num(point.total)}`).join(' → ')}` },
     ...deltaSegs(scoresView.delta), { text: `   (scale ${num(scoresView.scale)})`, tone: 'dim' },
   ]]
   if (scoresView.criteria.length > 0) {
     const line       = []
-    for (const c of scoresView.criteria) {
-      line.push({ text: `${line.length === 0 ? '  ' : '   '}${c.name} ` })
-      if (scoresView.delta === null) line.push({ text: num(c.last) })
-      else if (c.prev === null) line.push({ text: `${num(c.last)} new`, tone: 'dim' })
-      else line.push({ text: `${num(c.prev)}→${num(c.last)}` }, arrow(c.last - c.prev))
+    for (const criterion of scoresView.criteria) {
+      line.push({ text: `${line.length === 0 ? '  ' : '   '}${criterion.name} ` })
+      if (scoresView.delta === null) line.push({ text: num(criterion.last) })
+      else if (criterion.prev === null) line.push({ text: `${num(criterion.last)} new`, tone: 'dim' })
+      else line.push({ text: `${num(criterion.prev)}→${num(criterion.last)}` }, arrow(criterion.last - criterion.prev))
     }
     out.push(line)
   }
@@ -1182,7 +1198,7 @@ function scoreLines(scoresView            )         {
 // the last update (amber when stale) and the other plans
 function planLines(
   view                 , scoresView                   ,
-  o                                                                                                                       ,
+  options                                                                                                                       ,
 )         {
   const out         = []
   if (view === null) out.push([{ text: 'No plan file in .claude/session-inspector/plans/, and no task list this session.', tone: 'dim' }])
@@ -1195,17 +1211,17 @@ function planLines(
     }
     if (!isTasks(view) && view.unestimated > 0) head.push({ text: ` · ${view.unestimated} without an estimate`, tone: 'dim' })
     out.push(head)
-    if (o.invalid) out.push([{ text: 'plan file invalid: showing the last good read', tone: 'warn' }])
-    out.push(...stepRows(view.rows, '', true, o.columns))
+    if (options.invalid) out.push([{ text: 'plan file invalid: showing the last good read', tone: 'warn' }])
+    out.push(...stepRows(view.rows, '', true, options.columns))
     for (const note of view.planNotes) out.push([{ text: '✎ ', tone: 'plan' }, { text: `'${fitLine(note, 200)}'` }])
     if (view.overheadMs > 0) out.push([{ text: `Overhead  ${minutesText(view.overheadMs)}` }])
   }
   if (scoresView !== null) out.push(...scoreLines(scoresView))
-  for (const label of o.otherScores.slice(0, 3)) out.push([{ text: label, tone: 'dim' }])
-  if (view !== null && o.updatedAt !== null) {
-    out.push([{ text: `last update ${minutesText(Math.max(0, o.now - o.updatedAt))} ago`, tone: view.staleMs === null ? 'dim' : 'warn' }])
+  for (const label of options.otherScores.slice(0, 3)) out.push([{ text: label, tone: 'dim' }])
+  if (view !== null && options.updatedAt !== null) {
+    out.push([{ text: `last update ${minutesText(Math.max(0, options.now - options.updatedAt))} ago`, tone: view.staleMs === null ? 'dim' : 'warn' }])
   }
-  if (o.others.length > 0) out.push([{ text: `Other plans: ${o.others.join(', ')}   /inspect plan <name>`, tone: 'dim' }])
+  if (options.others.length > 0) out.push([{ text: `Other plans: ${options.others.join(', ')}   /inspect plan <name>`, tone: 'dim' }])
   return out
 }
 
@@ -1227,10 +1243,10 @@ const ORDER = ['five_hour', 'seven_day']
 
 const LABEL                         = { five_hour: '5h', seven_day: '7d' }
 
-const percentText = (n        )         => `${Math.round(n)}%`
+const percentText = (percent        )         => `${Math.round(percent)}%`
 
 // ' 45%' in its bar's threshold colour; ' ≈45%' with `mark` for a window an earlier session read
-const percentSeg = (n        , mark = '')      => ({ text: ` ${mark}${percentText(n)}`, tone: toneOf(n) })
+const percentSeg = (percent        , mark = '')      => ({ text: ` ${mark}${percentText(percent)}`, tone: toneOf(percent) })
 
 function barSegs(percent        )        {
   const [filled, empty] = barText(percent)
@@ -1239,15 +1255,15 @@ function barSegs(percent        )        {
 
 function windowsInOrder(windows              )               {
   const rank = (rateWindow            )         => (ORDER.includes(rateWindow.kind) ? ORDER.indexOf(rateWindow.kind) : ORDER.length)
-  return [...windows].sort((a, b) => rank(a) - rank(b))
+  return [...windows].sort((left, right) => rank(left) - rank(right))
 }
 
 // The 5h window's pace: null until there are 3 readings
-function fiveHourPace(b                                           )                                  {
-  const w = b.usage.rateWindows.find(rateWindow => rateWindow.kind === 'five_hour')
-  if (w === undefined) return null
-  const reset = w.resetsAt === null ? NaN : Date.parse(w.resetsAt)
-  return paceForecast('five_hour', b.pace.five_hour?.points ?? [], Number.isNaN(reset) ? null : reset, b.now)
+function fiveHourPace(input                                           )                                  {
+  const fiveHour = input.usage.rateWindows.find(rateWindow => rateWindow.kind === 'five_hour')
+  if (fiveHour === undefined) return null
+  const reset = fiveHour.resetsAt === null ? NaN : Date.parse(fiveHour.resetsAt)
+  return paceForecast('five_hour', input.pace.five_hour?.points ?? [], Number.isNaN(reset) ? null : reset, input.now)
 }
 
 // ' (02.11 16:15)': when the window resets, or nothing while it reports none
@@ -1257,51 +1273,51 @@ function resetSegs(rateWindow            )       {
 }
 
 function gauges(input           )       {
-  const u = input.usage
+  const usage = input.usage
   const out       = []
   const sep = ()       => {
     if (out.length > 0) out.push({ text: ' │ ', tone: 'dim' })
   }
-  out.push(...contextSegs(u, input.runway))
-  if (u.contextPercent !== null || (input.runway ?? null) !== null) {
+  out.push(...contextSegs(usage, input.runway))
+  if (usage.contextPercent !== null || (input.runway ?? null) !== null) {
     const left = turnsLeft(input.turns.flatMap(turn => (turn.contextPercent === null ? [] : [turn.contextPercent])), input.forecast?.at)
     if (left !== null) out.push({ text: ` ≈${left} turns`, tone: 'dim' })
   }
-  const mark = storedMark(u.rateWindowsAt)
-  for (const rateWindow of windowsInOrder(u.rateWindows)) {
+  const mark = storedMark(usage.rateWindowsAt)
+  for (const rateWindow of windowsInOrder(usage.rateWindows)) {
     sep()
     const label = LABEL[rateWindow.kind] ?? rateWindow.kind
     if (rateWindow.kind === 'five_hour') {
       out.push({ text: `${label} `, tone: 'usage' }, ...barSegs(rateWindow.percentUsed), percentSeg(rateWindow.percentUsed, mark), ...resetSegs(rateWindow))
-      const p = fiveHourPace(input)
-      if (p === 'on-pace') out.push({ text: ' on pace', tone: 'ok' })
-      else if (p !== null) out.push({ text: ` full ≈${clockText(p.limitAt)}`, tone: 'warn' })
+      const pace = fiveHourPace(input)
+      if (pace === 'on-pace') out.push({ text: ' on pace', tone: 'ok' })
+      else if (pace !== null) out.push({ text: ` full ≈${clockText(pace.limitAt)}`, tone: 'warn' })
     } else out.push({ text: `${label} `, tone: 'usage' }, { text: `${mark}${percentText(rateWindow.percentUsed)}`, tone: toneOf(rateWindow.percentUsed) }, ...resetSegs(rateWindow))
   }
-  if (u.costUsd !== null) {
+  if (usage.costUsd !== null) {
     sep()
-    out.push({ text: usdText(u.costUsd) })
+    out.push({ text: usdText(usage.costUsd) })
   }
   return out
 }
 
 // The ctx item: against the stack's resume trigger while the runway applies (`ctx ▰▰▰▱▱ 62% of 150k`), else the window
-function contextSegs(u       , runway                           )       {
+function contextSegs(usage       , runway                           )       {
   if (runway !== undefined && runway !== null) {
     return [{ text: 'ctx ', tone: 'usage' }, ...barSegs(runway.percent), percentSeg(runway.percent), { text: ` of ${tokensText(runway.resumeAt)}`, tone: 'usage' }]
   }
-  return u.contextPercent === null ? [{ text: 'ctx —', tone: 'usage' }] : [{ text: 'ctx ', tone: 'usage' }, ...barSegs(u.contextPercent), percentSeg(u.contextPercent)]
+  return usage.contextPercent === null ? [{ text: 'ctx —', tone: 'usage' }] : [{ text: 'ctx ', tone: 'usage' }, ...barSegs(usage.contextPercent), percentSeg(usage.contextPercent)]
 }
 
-function narrowGauges(u       , runway                           )       {
+function narrowGauges(usage       , runway                           )       {
   const out       = []
   const sep = ()       => {
     if (out.length > 0) out.push({ text: ' · ', tone: 'dim' })
   }
-  out.push(...contextSegs(u, runway))
-  for (const rateWindow of windowsInOrder(u.rateWindows)) {
+  out.push(...contextSegs(usage, runway))
+  for (const rateWindow of windowsInOrder(usage.rateWindows)) {
     sep()
-    out.push({ text: `${LABEL[rateWindow.kind] ?? rateWindow.kind} `, tone: 'usage' }, ...barSegs(rateWindow.percentUsed), percentSeg(rateWindow.percentUsed, storedMark(u.rateWindowsAt)), ...resetSegs(rateWindow))
+    out.push({ text: `${LABEL[rateWindow.kind] ?? rateWindow.kind} `, tone: 'usage' }, ...barSegs(rateWindow.percentUsed), percentSeg(rateWindow.percentUsed, storedMark(usage.rateWindowsAt)), ...resetSegs(rateWindow))
   }
   return out
 }
@@ -1311,7 +1327,7 @@ function narrowGauges(u       , runway                           )       {
 function timeParts(input           , upTo = 2, isLive = false)           {
   const you = (isLive ? input.live.promptAt : null) ?? input.turns[input.turns.length - 1]?.promptAt ?? input.session.lastPromptAt
   return [you === null ? null : `you ${clockText(you)}`, input.session.lastReplyAt === null ? null : `Claude ${clockText(input.session.lastReplyAt)}`]
-    .filter((p)              => p !== null)
+    .filter((part)                 => part !== null)
     .slice(0, upTo)
 }
 
@@ -1331,12 +1347,13 @@ const { widthOf } = __m['core/format.ts'];
 
 // A line's cells as the terminal draws it: its text, and each button `[ label ]`, or `1: label` when plain
 function cellsOf(line      )         {
-  return line.reduce((n, seg) => {
-    if ('text' in seg && seg.width !== undefined) return n + seg.width
-    if (!('button' in seg)) return n + widthOf([seg])
-    const b = seg.button
-    const label = widthOf([{ text: b.label }])
-    return n + (b.plain === true || /^\d$/.test(b.hotkey ?? '') ? (b.hotkey === undefined ? 0 : b.hotkey.length + 2) + label : label + 4)
+  return line.reduce((cells, seg) => {
+    if ('text' in seg && seg.width !== undefined) return cells + seg.width
+    if (!('button' in seg)) return cells + widthOf([seg])
+    const button = seg.button
+    const label = widthOf([{ text: button.label }])
+    return cells + (button.plain === true || /^\d$/.test(button.hotkey ?? '')
+      ? (button.hotkey === undefined ? 0 : button.hotkey.length + 2) + label : label + 4)
   }, 0)
 }
 
@@ -1351,8 +1368,8 @@ function wrapRows(label     , under     , items        , columns        , joiner
   let used = lead
   let count = 0
   for (const item of items) {
-    const w = widthOf(item)
-    if (count > 0 && used + gap + w > columns) {
+    const itemWidth = widthOf(item)
+    if (count > 0 && used + gap + itemWidth > columns) {
       rows.push(row)
       row = [under]
       used = lead
@@ -1363,7 +1380,7 @@ function wrapRows(label     , under     , items        , columns        , joiner
       used += gap
     }
     row.push(...item)
-    used += w
+    used += itemWidth
     count++
   }
   rows.push(row)
@@ -1404,17 +1421,17 @@ const isSkill = (key        )          => key.startsWith('Skill: ')
 // The session's tools by calls, most first (ties by name), Skill calls apart
 function toolsByCalls(stats                                      )                       {
   return Object.entries(stats ?? {})
-    .filter(([key, s]) => s.calls > 0 && !isSkill(key))
-    .sort(([ka, a], [kb, stat]) => stat.calls - a.calls || (ka < kb ? -1 : ka > kb ? 1 : 0))
+    .filter(([key, stat]) => stat.calls > 0 && !isSkill(key))
+    .sort(([ka, leftStat], [kb, stat]) => stat.calls - leftStat.calls || (ka < kb ? -1 : ka > kb ? 1 : 0))
 }
 
 // The counts of what the detail rows list (spec 2026-11-11, D5; settings-values S6, once a toggle): the tool calls, the
 // main chat's skills, the agents dispatched (and how many run) and the rules, each only above 0; its forms drop the
 // rules, then the agents, then the skills. None with nothing counted.
 function toggleForms(input           )         {
-  const count = (n        , one        )                => (n === 0 ? null : `${n} ${one}${n === 1 ? '' : 's'}`)
-  const calls = toolsByCalls(input.stats).reduce((n, [, stat]) => n + stat.calls, 0)
-  const dispatched = Object.values(input.session.agentTypes ?? {}).reduce((n, k) => n + k, 0)
+  const count = (amount        , one        )                => (amount === 0 ? null : `${amount} ${one}${amount === 1 ? '' : 's'}`)
+  const calls = toolsByCalls(input.stats).reduce((total, [, stat]) => total + stat.calls, 0)
+  const dispatched = Object.values(input.session.agentTypes ?? {}).reduce((total, typeCount) => total + typeCount, 0)
   const running = input.agents.filter(row => isLive(row.status)).length
   const drawn = rulesDrawn(input.rules ?? NO_RULES)
   const tools = count(calls, 'tool')
@@ -1422,11 +1439,11 @@ function toggleForms(input           )         {
   const agents = count(dispatched, 'agent')
   const rules = count(drawn.always.length + drawn.byPath.length, 'rule')
   if (tools === null && skills === null && agents === null && rules === null) return []
-  const parts = (...of                   )           => of.filter((p)              => p !== null)
+  const parts = (...of                   )           => of.filter((part)                 => part !== null)
   const agentsPart = agents === null ? null : running > 0 ? `${agents} (${running} ◐)` : agents
   const all = parts(tools, skills, agentsPart, rules)
-  const forms = [all, parts(tools, skills, agentsPart), parts(tools, skills), parts(tools)].filter(f => f.length > 0)
-  return [...new Set(forms.map(f => f.join(' · ')))].map(text => [{ text, tone: 'dim'          }])
+  const forms = [all, parts(tools, skills, agentsPart), parts(tools, skills), parts(tools)].filter(form => form.length > 0)
+  return [...new Set(forms.map(form => form.join(' · ')))].map(text => [{ text, tone: 'dim'          }])
 }
 
 // The open rows (spec 2026-11-11, D2): every tool by name with its calls, then the skills the main chat loaded and how
@@ -1457,17 +1474,17 @@ function toolRows(input           )         {
 const NO_RULES             = { always: [], byPath: [], isTracked: true }
 
 // The rules drawn, each name once, an always-on name winning: the always-on ones, then the by-path ones not among them
-function rulesDrawn(r            )                                         {
-  const always = [...new Set(r.always)]
-  return { always, byPath: [...new Set(r.byPath)].filter(n => !always.includes(n)) }
+function rulesDrawn(rules            )                                         {
+  const always = [...new Set(rules.always)]
+  return { always, byPath: [...new Set(rules.byPath)].filter(name => !always.includes(name)) }
 }
 
 // The rules row's items (spec 2026-11-11, D4): the always-on rules plain, the by-path ones violet, then how many of
 // each; untracked (the option on), by path is not known; after a resume, the by-path ones loaded before are unseen
-function ruleSegs(r            , isResumed         )         {
-  const { always, byPath } = rulesDrawn(r)
-  if (r.isTracked && always.length + byPath.length === 0) return [[{ text: 'none loaded', tone: 'dim' }]]
-  const summary = r.isTracked
+function ruleSegs(rules            , isResumed         )         {
+  const { always, byPath } = rulesDrawn(rules)
+  if (rules.isTracked && always.length + byPath.length === 0) return [[{ text: 'none loaded', tone: 'dim' }]]
+  const summary = rules.isTracked
     ? `${always.length} always-on · ${byPath.length} by path${isResumed ? ' since resume' : ''}`
     : `${always.length} always-on · by path not tracked`
   return [
@@ -1483,10 +1500,10 @@ function agentSegs(rows            , types                                    , 
   const names = Object.keys(types ?? {})
   if (names.length === 0) return [[{ text: isResumed ? 'none seen since resume' : 'none', tone: 'dim' }]]
   const items = names.map((type)       => {
-    const of = rows.filter(r => r.type === type)
-    const glyph      = of.some(r => isLive(r.status))
+    const of = rows.filter(row => row.type === type)
+    const glyph      = of.some(row => isLive(row.status))
       ? { text: '◐ ', tone: 'warn' }
-      : of.some(r => r.status === 'failed' || r.status === 'killed') ? { text: '✗ ', tone: 'fail' } : { text: '✓ ', tone: 'ok' }
+      : of.some(row => row.status === 'failed' || row.status === 'killed') ? { text: '✗ ', tone: 'fail' } : { text: '✓ ', tone: 'ok' }
     return [glyph, { text: `${type} ×${types?.[type] ?? 0}` }]
   })
   const running = rows.filter(row => isLive(row.status)).length
@@ -1575,7 +1592,7 @@ function placeRow(input           )         {
   const folder = place.folder
   // Short of width the folder goes first, then the changes, then the commits ahead and behind
   const forms = [...(folder === undefined ? [] : [line(fitFolder(folder, 40)), line(lastPart(folder))]), line(null), line(null, false), line(null, false, false)]
-  const form = forms.find(f => widthOf(f) <= input.columns - ROW_LABEL) ?? forms[forms.length - 1] ?? []
+  const form = forms.find(candidate => widthOf(candidate) <= input.columns - ROW_LABEL) ?? forms[forms.length - 1] ?? []
   return [[rowLabel('project:'), ...form]]
 }
 
@@ -1584,7 +1601,7 @@ function placeRow(input           )         {
 // settings-values, S6); short of width its forms drop the rules, then the agents, then the skills
 function usageRow(input           )         {
   const texts = toggleForms(input).flatMap(line => line.flatMap(seg => ('text' in seg ? [`[ ${seg.text} ]`] : [])))
-  const text = texts.find(t => widthOf([{ text: t }]) <= input.columns - ROW_LABEL) ?? texts[texts.length - 1]
+  const text = texts.find(candidate => widthOf([{ text: candidate }]) <= input.columns - ROW_LABEL) ?? texts[texts.length - 1]
   // Aqua, as the toggle's button was drawn (the user, 2026-11-11)
   return text === undefined ? [] : [[rowLabel('usage:'), { text, tone: 'counts' }]]
 }
@@ -1714,7 +1731,7 @@ function lastTurn(input           , isNarrow         )       {
   return input.mode === 'full' ? line : [...line, ...times(input)]
 }
 
-const agentCount = (k        )         => `${k} ${k === 1 ? 'agent' : 'agents'}`
+const agentCount = (count        )         => `${count} ${count === 1 ? 'agent' : 'agents'}`
 
 // ' │ PLAN 3/5 · score 81 ▲13', each part only when known, for an idle line 1 that needs you; while the full band
 // draws the plan row, the row has the count and the plan's own score, so line 1 keeps only a score of another output
@@ -1731,25 +1748,25 @@ function planTail(input           , isRowDrawn         )       {
 // the running Bash. Past the width the agent parts fold into ' +N agents', then the Bash part goes, then the plan's
 // step, then its title is cut.
 function workingLine(input           , isNarrow         )       {
-  const running = input.agents.filter(r => isLive(r.status))
+  const running = input.agents.filter(agent => isLive(agent.status))
   // The full band's plan has its own row, so line 1 keeps the turn there
   const plan = input.mode === 'full' ? null : input.plan
   if (plan !== null && isNarrow) return narrowPlan(plan, running.length)
-  const n = input.session.turnCount + 1
+  const turnNumber = input.session.turnCount + 1
   const took = elapsedText(input.now - (input.live.startedAt ?? input.now))
   const count = input.mode === 'full' ? ` · ${input.live.toolCalls} ${input.live.toolCalls === 1 ? 'tool' : 'tools'}` : ''
   const head      = input.isWorking
-    ? { text: isNarrow ? `⟳ Turn ${n} ${took}` : `⟳ Turn ${n} · ${took}${count}`, bold: true }
+    ? { text: isNarrow ? `⟳ Turn ${turnNumber} ${took}` : `⟳ Turn ${turnNumber} · ${took}${count}`, bold: true }
     : { text: `⟳ ${agentCount(running.length)}`, bold: true }
   if (isNarrow) return input.isWorking && running.length > 0 ? [head, { text: ` · ${agentCount(running.length)}` }] : [head]
   const bash       = []
-  const calls = input.live.runningCalls.filter(r => r.tool === 'Bash')
+  const calls = input.live.runningCalls.filter(call => call.tool === 'Bash')
   const newest = calls[calls.length - 1]
   if (newest !== undefined) {
     bash.push({ text: ` │ Bash ▸ ${newest.label} ${elapsedText(input.now - newest.startedAt)}` })
     if (calls.length > 1) bash.push({ text: ` +${calls.length - 1}`, tone: 'dim' })
   }
-  const parts       = running.map(r => ({ text: r.action === null ? ` │ ${r.type}` : ` │ ${r.type} ▸ ${r.action}` }))
+  const parts       = running.map(agent => ({ text: agent.action === null ? ` │ ${agent.type}` : ` │ ${agent.type} ▸ ${agent.action}` }))
   const folded = (kept        )       => {
     const rest = parts.length - kept
     return [...parts.slice(0, kept), ...(rest > 0 ? [{ text: ` +${agentCount(rest)}`, tone: 'dim'          }] : [])]
@@ -1765,18 +1782,18 @@ function workingLine(input           , isNarrow         )       {
 
 // What the spinner adds after the engine's suffix: an agent's action and context on that agent's spinner; on the main
 // loop's, its newest call in flight, its context percent and the agents running. Null with nothing to add.
-function spinnerSuffix(s                                                                               )                {
+function spinnerSuffix(spinner                                                                               )                {
   const parts           = []
-  const row = s.agents.find(r => r.id === s.requestId)
+  const row = spinner.agents.find(agent => agent.id === spinner.requestId)
   if (row !== undefined) {
     if (row.action !== null) parts.push(fitLine(row.action, 40))
     if (row.contextTokens !== null) parts.push(`ctx ${tokensText(row.contextTokens)}`)
   } else {
-    const newest = s.live.runningCalls[s.live.runningCalls.length - 1]
+    const newest = spinner.live.runningCalls[spinner.live.runningCalls.length - 1]
     if (newest !== undefined) parts.push(fitLine(actionOf(newest.tool, newest.label), 40))
-    if (s.percent !== null) parts.push(percentText(s.percent))
-    const k = s.agents.filter(r => isLive(r.status)).length
-    if (k > 0) parts.push(agentCount(k))
+    if (spinner.percent !== null) parts.push(percentText(spinner.percent))
+    const liveCount = spinner.agents.filter(agent => isLive(agent.status)).length
+    if (liveCount > 0) parts.push(agentCount(liveCount))
   }
   return parts.length === 0 ? null : parts.join(' · ')
 }
@@ -1829,21 +1846,21 @@ const REC_MARK      = { text: '● REC', tone: 'fail', bold: true }
 // The status line under the prompt (spec D2), which stays while the band is collapsed: what needs the person, short
 // and in the band's order - REC, the context once the band turns hot at 60, the new failures - or null for none. While
 // the band is in view it shows REC and the context itself, so the line leaves them out (spec 2026-11-11, D6).
-function statusText(o                                                                                           )                {
+function statusText(facts                                                                                           )                {
   const parts = [
-    o.recLevel === 'off' || o.isBandShown ? null : '● REC',
-    !o.isBandShown && o.percent !== null && Math.round(o.percent) >= 60 ? `ctx ${percentText(o.percent)}` : null,
-    o.newFailures > 0 ? `✗ ${o.newFailures} new` : null,
-  ].filter((p)              => p !== null)
+    facts.recLevel === 'off' || facts.isBandShown ? null : '● REC',
+    !facts.isBandShown && facts.percent !== null && Math.round(facts.percent) >= 60 ? `ctx ${percentText(facts.percent)}` : null,
+    facts.newFailures > 0 ? `✗ ${facts.newFailures} new` : null,
+  ].filter((part)                 => part !== null)
   return parts.length === 0 ? null : parts.join(' · ')
 }
 
 // The rows the band takes under the input (spec 2026-11-11 band-under, U2, F7): the main screen's whole height, as the
 // site above reports there; in fullscreen, half the screen less the prompt and the engine's footer line, less a status
 // line's two rows (claude-hud's default; the setting says nothing of the height) and the mod's pinned line
-function underRows(viewport                                          , o                                               )         {
+function underRows(viewport                                          , chrome                                               )         {
   if (viewport.isFullscreen !== true) return viewport.rows
-  return Math.max(2, Math.floor(viewport.rows / 2) - 6 - (o.hasStatusLine ? 2 : 0) - (o.isPinned ? 1 : 0))
+  return Math.max(2, Math.floor(viewport.rows / 2) - 6 - (chrome.hasStatusLine ? 2 : 0) - (chrome.isPinned ? 1 : 0))
 }
 
 // What the full band keeps under its info line: the rows the info line may take (none for 0), the project row, the open
@@ -1863,75 +1880,76 @@ function bandLines(input           )         {
   // Short of rows, the project row gives way first, then the info line's second row, then the open detail rows from
   // the last, then the usage row, then the plan row, then the info line: the line under them holds the buttons, and a
   // digit arms only those in view
-  for (const k of [KEEP_ALL, { ...KEEP_ALL, isPlaceKept: false }, { ...KEEP_ALL, isPlaceKept: false, infoUpTo: 1 }]) {
-    const lines = bandRows(input, k)
+  for (const keep of [KEEP_ALL, { ...KEEP_ALL, isPlaceKept: false }, { ...KEEP_ALL, isPlaceKept: false, infoUpTo: 1 }]) {
+    const lines = bandRows(input, keep)
     if (lines.length <= max) return lines
   }
   const core       = { infoUpTo: 1, isPlaceKept: false, toolRowsKept: 0, isUsageKept: true, isPlanKept: true }
   const coreLines = bandRows(input, core)
   if (coreLines.length <= max) return bandRows(input, { ...core, toolRowsKept: max - coreLines.length })
-  for (const k of [{ ...core, isUsageKept: false }, { ...core, isUsageKept: false, isPlanKept: false }]) {
-    const lines = bandRows(input, k)
+  for (const keep of [{ ...core, isUsageKept: false }, { ...core, isUsageKept: false, isPlanKept: false }]) {
+    const lines = bandRows(input, keep)
     if (lines.length <= max) return lines
   }
   return bandRows(input, { infoUpTo: 0, isPlaceKept: false, toolRowsKept: 0, isUsageKept: false, isPlanKept: false })
 }
 
-function bandRows(input           , k      )         {
+function bandRows(input           , keep      )         {
   const isNarrow = input.columns < 100
   const marks         = [input.rec !== undefined && input.rec.level !== 'off' ? [REC_MARK] : [], input.banner ?? []].filter(segs => segs.length > 0)
-  if (marks.length === 0) return bandBody(input, isNarrow, k)
+  if (marks.length === 0) return bandBody(input, isNarrow, keep)
   const sep      = { text: ' │ ', tone: 'dim' }
-  const alone       = marks.flatMap((m, i) => (i === 0 ? m : [sep, ...m]))
+  const alone       = marks.flatMap((mark, i) => (i === 0 ? mark : [sep, ...mark]))
   const lead       = [...alone, sep]
   // Only line 1 shares its row with the marks: the lines under it are fitted to the band's whole width
-  const [first] = bandBody({ ...input, columns: input.columns - widthOf(lead) }, isNarrow, k)
+  const [first] = bandBody({ ...input, columns: input.columns - widthOf(lead) }, isNarrow, keep)
   if (first === undefined) return [alone]
-  const body = bandBody(input, isNarrow, k)
+  const body = bandBody(input, isNarrow, keep)
   return widthOf(lead) + widthOf(first) <= input.columns ? [[...lead, ...first], ...body.slice(1)] : [alone, ...body]
 }
 
-function bandBody(b           , isNarrow         , k      )         {
-  const u = b.usage
+function bandBody(band           , isNarrow         , keep      )         {
+  const usage = band.usage
   // Before the first reading the calm band waits; the full band draws once the model or a stored window is known
-  const isFullKnown = b.mode === 'full' && (b.session.model !== null || u.rateWindows.length > 0)
-  if (b.turns.length === 0 && u.contextPercent === null && !isFullKnown) return []
-  const invalid       = b.isPlanInvalid ? [{ text: ' │ ', tone: 'dim' }, { text: 'plan file invalid', tone: 'warn' }] : []
-  const gaugeLine = isNarrow ? narrowGauges(u, b.runway) : withToday(b, gauges(b), invalid)
+  const isFullKnown = band.mode === 'full' && (band.session.model !== null || usage.rateWindows.length > 0)
+  if (band.turns.length === 0 && usage.contextPercent === null && !isFullKnown) return []
+  const invalid       = band.isPlanInvalid ? [{ text: ' │ ', tone: 'dim' }, { text: 'plan file invalid', tone: 'warn' }] : []
+  const gaugeLine = isNarrow ? narrowGauges(usage, band.runway) : withToday(band, gauges(band), invalid)
   const line2 = [...gaugeLine, ...invalid]
   // The info line, then the project, plan and usage rows, then the detail rows while `bandRows` opens them; the full
   // band's alone (the user, 2026-11-11)
-  const head = k.infoUpTo > 0 && b.mode === 'full' ? infoRows(b, k.infoUpTo) : []
-  const place = head.length > 0 && k.isPlaceKept ? placeRow(b) : []
-  const counts = head.length > 0 && k.isUsageKept ? usageRow(b) : []
+  const head = keep.infoUpTo > 0 && band.mode === 'full' ? infoRows(band, keep.infoUpTo) : []
+  const place = head.length > 0 && keep.isPlaceKept ? placeRow(band) : []
+  const counts = head.length > 0 && keep.isUsageKept ? usageRow(band) : []
   const info         = head.length === 0 ? [] : [
-    ...head, ...place, ...(k.isPlanKept ? planRow(b) : []), ...counts, ...(b.isToolsOpen === true ? toolRows(b).slice(0, k.toolRowsKept) : []),
+    ...head, ...place, ...(keep.isPlanKept ? planRow(band) : []), ...counts, ...(band.isToolsOpen === true ? toolRows(band).slice(0, keep.toolRowsKept) : []),
   ]
-  const p = fiveHourPace(b)
-  const isHot = (b.runway?.percent ?? u.contextPercent ?? 0) >= 60 || u.rateWindows.some(rateWindow => rateWindow.percentUsed >= 60) || (p !== null && p !== 'on-pace')
-  const agentsRun = b.agents.some(r => isLive(r.status))
-  const warning = cacheWarning(b, true)
-  const ask = handoffAsk(b)
-  if (!isHot && b.newFailures === 0 && !b.isWorking && !agentsRun && warning === null && ask === null) {
+  const pace = fiveHourPace(band)
+  const isHot = (band.runway?.percent ?? usage.contextPercent ?? 0) >= 60
+    || usage.rateWindows.some(rateWindow => rateWindow.percentUsed >= 60) || (pace !== null && pace !== 'on-pace')
+  const agentsRun = band.agents.some(agent => isLive(agent.status))
+  const warning = cacheWarning(band, true)
+  const ask = handoffAsk(band)
+  if (!isHot && band.newFailures === 0 && !band.isWorking && !agentsRun && warning === null && ask === null) {
     // Idle and healthy, the full band keeps its colours, as while it works (the user, 2026-11-12: 'colors by default ...
     // not only when active work'); the calm band stays one dim line until something needs you
-    if (b.mode === 'full') return [[...gaugeLine, ...invalid], ...info]
-    const calm = isNarrow ? gaugeLine : withTimes(b, gaugeLine)
-    const dim = (l      )       => l.map(seg => ('text' in seg ? { text: seg.text, tone: 'dim'          } : seg))
+    if (band.mode === 'full') return [[...gaugeLine, ...invalid], ...info]
+    const calm = isNarrow ? gaugeLine : withTimes(band, gaugeLine)
+    const dim = (line      )       => line.map(seg => ('text' in seg ? { text: seg.text, tone: 'dim'          } : seg))
     return [[...dim(calm), ...invalid], ...info.map(dim)]
   }
-  if (b.isWorking) return [workingLine(b, isNarrow), line2, ...info]
-  const failed       = b.newFailures > 0
-    ? [{ text: `✗ ${b.newFailures} new `, tone: 'fail' }, underButton(b, { key: 'inspect', label: 'Inspect', hotkey: '1' }, '/inspect')]
+  if (band.isWorking) return [workingLine(band, isNarrow), line2, ...info]
+  const failed       = band.newFailures > 0
+    ? [{ text: `✗ ${band.newFailures} new `, tone: 'fail' }, underButton(band, { key: 'inspect', label: 'Inspect', hotkey: '1' }, '/inspect')]
     : []
-  const items = [warning, ask, failed].filter((l)            => l !== null && l.length > 0)
-  const joined       = items.flatMap((l, i) => (i === 0 ? l : [{ text: '    ' }, ...l]))
+  const items = [warning, ask, failed].filter((item)               => item !== null && item.length > 0)
+  const joined       = items.flatMap((item, i) => (i === 0 ? item : [{ text: '    ' }, ...item]))
   // Under the input the action row comes first, nearest the input as above it is the last (the user, 2026-11-12, over
   // band-under U2's place after the gauges), so a cut at the screen's edge takes the detail rows first; its commands are
   // longer than the digits above, so the items take a row each when one row cannot hold them
-  const action         = items.length === 0 ? [] : b.under !== undefined && cellsOf(joined) > b.columns ? items : [joined]
-  const first = agentsRun ? workingLine(b, isNarrow) : withPlanTail(b, lastTurn(b, isNarrow), head.length > 0 && k.isPlanKept)
-  const out = b.under === undefined ? [first, line2, ...info, ...action] : [...action, first, line2, ...info]
+  const action         = items.length === 0 ? [] : band.under !== undefined && cellsOf(joined) > band.columns ? items : [joined]
+  const first = agentsRun ? workingLine(band, isNarrow) : withPlanTail(band, lastTurn(band, isNarrow), head.length > 0 && keep.isPlanKept)
+  const out = band.under === undefined ? [first, line2, ...info, ...action] : [...action, first, line2, ...info]
   return out.filter(segs => segs.length > 0)
 }
 
@@ -1963,7 +1981,7 @@ const READ_STEPS = 4
 
 const isRecord = (value         )                                   => typeof value === 'object' && value !== null && !Array.isArray(value)
 const str = (value         )         => (typeof value === 'string' ? value : '')
-const basename = (path        )         => path.split(/[\\/]/).filter(p => p !== '').pop() ?? path
+const basename = (path        )         => path.split(/[\\/]/).filter(segment => segment !== '').pop() ?? path
 const lineCount = (text        )         => (text.trimEnd() === '' ? 0 : text.trimEnd().split('\n').length)
 
 // A URL as a person reads it: no scheme, no 'www.', no trailing slash
@@ -1991,8 +2009,8 @@ function describe(call             )         {
 // `5 todos · 2 done, 1 in progress`
 function todoCounts(todos         )         {
   const list = Array.isArray(todos) ? todos.filter(isRecord) : []
-  const done = list.filter(t => t.status === 'completed').length
-  const now = list.filter(t => t.status === 'in_progress').length
+  const done = list.filter(todo => todo.status === 'completed').length
+  const now = list.filter(todo => todo.status === 'in_progress').length
   const parts = [...(done > 0 ? [`${done} done`] : []), ...(now > 0 ? [`${now} in progress`] : [])]
   return `${list.length} ${list.length === 1 ? 'todo' : 'todos'}${parts.length === 0 ? '' : ` · ${parts.join(', ')}`}`
 }
@@ -2007,8 +2025,8 @@ function fromProject(path        , cwd                           )         {
 // `+3 −1`: the lines a patch added and removed
 function patchCounts(patch         )                {
   if (!Array.isArray(patch)) return null
-  const lines = patch.flatMap(h => (isRecord(h) && Array.isArray(h.lines) ? h.lines : [])).map(str)
-  return `+${lines.filter(l => l.startsWith('+')).length} −${lines.filter(l => l.startsWith('-')).length}`
+  const lines = patch.flatMap(hunk => (isRecord(hunk) && Array.isArray(hunk.lines) ? hunk.lines : [])).map(str)
+  return `+${lines.filter(line => line.startsWith('+')).length} −${lines.filter(line => line.startsWith('-')).length}`
 }
 
 // Lines of Bash's stdout and stderr, or of a string output; any other output has no count
@@ -2037,16 +2055,16 @@ function status(call             )        {
     const exit = /^Exit code (\d+)/.exec(errorText(call))
     return [{ text: exit === null ? '✗' : `✗ exit ${exit[1]}`, tone: 'fail' }]
   }
-  const n = countOf(call)
-  return [...(n === null || n === 0 ? [] : [{ text: `${n} ${n === 1 ? 'line' : 'lines'} ` }]), { text: '✓', tone: 'ok' }]
+  const lineCount = countOf(call)
+  return [...(lineCount === null || lineCount === 0 ? [] : [{ text: `${lineCount} ${lineCount === 1 ? 'line' : 'lines'} ` }]), { text: '✓', tone: 'ok' }]
 }
 
 // Up to 3 indented lines under a failure: the last non-empty lines of stderr, else of the error text past its exit code
 function errorLines(call             )         {
   if (!call.isErrored || call.isInterrupted || call.outcome !== null) return []
-  const lines = errorText(call).split('\n').map(l => l.trimEnd()).filter(l => l.trim() !== '')
+  const lines = errorText(call).split('\n').map(line => line.trimEnd()).filter(line => line.trim() !== '')
   if (/^Exit code \d+$/.test(lines[0] ?? '')) lines.shift()
-  return lines.slice(-3).map(l => [{ text: `    ${l}`, tone: 'dim' }])
+  return lines.slice(-3).map(line => [{ text: `    ${line}`, tone: 'dim' }])
 }
 
 const sizeOf = (bytes        )         =>
@@ -2070,7 +2088,7 @@ function stepLines(call             , columns        , cwd                )     
     if (out?.status === 'async_launched') lines.push(step('running in the background'))
     if (out?.status === 'remote_launched') lines.push(step('running in the cloud'))
     if (out?.status === 'completed') {
-      const said = (Array.isArray(out.content) ? out.content : []).map(b => (isRecord(b) ? str(b.text) : '')).join('\n')
+      const said = (Array.isArray(out.content) ? out.content : []).map(block => (isRecord(block) ? str(block.text) : '')).join('\n')
       const found = reportLine(said)
       if (found !== '') lines.push(step(`result: ${found}`))
       const uses = typeof out.totalToolUseCount === 'number' ? [`${out.totalToolUseCount} tool ${out.totalToolUseCount === 1 ? 'use' : 'uses'}`] : []
@@ -2100,25 +2118,26 @@ function stepLines(call             , columns        , cwd                )     
     return [step(`changed ${fromProject(str(out.filePath) || str(input.file_path), cwd)}${counts === null ? '' : ` · ${counts}`}${out.replaceAll === true ? ' · every match' : ''}`)]
   }
   if (call.tool === 'TodoWrite') {
-    const now = (Array.isArray(input.todos) ? input.todos : []).find(t => isRecord(t) && t.status === 'in_progress')
+    const now = (Array.isArray(input.todos) ? input.todos : []).find(todo => isRecord(todo) && todo.status === 'in_progress')
     return isRecord(now) && str(now.activeForm).trim() !== '' ? [step(`now: ${str(now.activeForm).trim()}`)] : []
   }
   if (call.tool === 'ToolSearch' && out !== null && Array.isArray(out.matches)) {
-    const found = out.matches.map(str).filter(m => m !== '')
+    const found = out.matches.map(str).filter(match => match !== '')
     return [step(found.length === 0 ? 'found nothing' : `found ${found.join(', ')}`)]
   }
   if (call.tool === 'AskUserQuestion') {
     const answers = out !== null && isRecord(out.answers) ? out.answers : {}
-    return (Array.isArray(input.questions) ? input.questions : []).filter(isRecord).flatMap(q => {
-      const asked = str(q.question).trim()
-      const answer = answers[str(q.question)]
+    return (Array.isArray(input.questions) ? input.questions : []).filter(isRecord).flatMap(question => {
+      const asked = str(question.question).trim()
+      const answer = answers[str(question.question)]
       const said = Array.isArray(answer) ? answer.map(str).join(', ') : str(answer)
       return [...(asked === '' ? [] : [step(asked)]), ...(said.trim() === '' ? [] : [step(`answered: ${said.trim()}`)])]
     })
   }
   if (call.tool.startsWith('mcp__')) {
-    const scalar = (v         )                                 => (typeof v === 'string' && v.trim() !== '') || typeof v === 'number' || typeof v === 'boolean'
-    return Object.entries(input).filter(([, v]) => scalar(v)).slice(0, 3).map(([k, value]) => step(`${k}: ${String(value).trim()}`))
+    const scalar = (value         )                                     =>
+      (typeof value === 'string' && value.trim() !== '') || typeof value === 'number' || typeof value === 'boolean'
+    return Object.entries(input).filter(([, value]) => scalar(value)).slice(0, 3).map(([key, value]) => step(`${key}: ${String(value).trim()}`))
   }
   if (call.tool === 'Monitor') {
     const watched = str(input.command).trim() || (isRecord(input.ws) ? str(input.ws.url) : '')
@@ -2137,10 +2156,10 @@ function stepLines(call             , columns        , cwd                )     
     return lines
   }
   if (call.tool === 'WebSearch' && out !== null && Array.isArray(out.results)) {
-    const urls = out.results.flatMap(r => (isRecord(r) && Array.isArray(r.content) ? r.content : []))
-      .map(h => (isRecord(h) ? str(h.url) : '')).filter(u => u !== '')
+    const urls = out.results.flatMap(result => (isRecord(result) && Array.isArray(result.content) ? result.content : []))
+      .map(hit => (isRecord(hit) ? str(hit.url) : '')).filter(url => url !== '')
     if (urls.length === 0) return [step('no results')]
-    const sites = [...new Set(urls.map(hostOf).filter(h => h !== ''))]
+    const sites = [...new Set(urls.map(hostOf).filter(host => host !== ''))]
     const more = sites.length > 3 ? ` +${sites.length - 3} more` : ''
     return [step(`${urls.length} ${urls.length === 1 ? 'result' : 'results'} · ${sites.slice(0, 3).join(', ')}${more}`)]
   }
@@ -2176,8 +2195,8 @@ function readStep(call             , cwd                           )         {
 // then `+k more`; `✗ <k>` when k failed
 function readsLines(run               , columns        , cwd                           )         {
   const counts = new Map                ()
-  for (const c of run) counts.set(readStep(c, cwd), (counts.get(readStep(c, cwd)) ?? 0) + 1)
-  const items = [...counts].map(([name, n]) => (n > 1 ? `${name} · ${n} times` : name))
+  for (const readCall of run) counts.set(readStep(readCall, cwd), (counts.get(readStep(readCall, cwd)) ?? 0) + 1)
+  const items = [...counts].map(([name, times]) => (times > 1 ? `${name} · ${times} times` : name))
   const failed = run.filter(call => call.isErrored || call.outcome !== null).length
   const head       = [{ text: '⏺ ' }, { text: `${run.length} ${run.length === 1 ? 'read' : 'reads'}`, bold: true }, { text: ' · ' },
     failed > 0 ? { text: `✗ ${failed}`, tone: 'fail' } : { text: '✓', tone: 'ok' }]
@@ -2188,9 +2207,10 @@ function readsLines(run               , columns        , cwd                    
 
 // A repeat: the same tool, description and outcome, back to back
 // back to back, its steps the same too (two agents of one type with different jobs stay two rows)
-const sameAs = (a             , b             )          =>
-  a.tool === b.tool && describe(a) === describe(b) && a.outcome === b.outcome && a.isErrored === b.isErrored && a.isInterrupted === b.isInterrupted &&
-  JSON.stringify(stepLines(a, 200)) === JSON.stringify(stepLines(b, 200))
+const sameAs = (left             , right             )          =>
+  left.tool === right.tool && describe(left) === describe(right) && left.outcome === right.outcome && left.isErrored === right.isErrored
+  && left.isInterrupted === right.isInterrupted &&
+  JSON.stringify(stepLines(left, 200)) === JSON.stringify(stepLines(right, 200))
 
 // A settled group's lines: each run of reads as one reads line and its steps, every other call its own lines, repeats
 // as `N times in a row`
@@ -2232,8 +2252,8 @@ const NOTE_MAX = 200
 const isObj = (value         )               => typeof value === 'object' && value !== null && !Array.isArray(value)
 const str = (value         )                => (typeof value === 'string' ? value : null)
 const time = (value         )                => {
-  const t = typeof value === 'string' ? Date.parse(value) : NaN
-  return Number.isFinite(t) ? t : null
+  const parsed = typeof value === 'string' ? Date.parse(value) : NaN
+  return Number.isFinite(parsed) ? parsed : null
 }
 const num = (value         )                  => typeof value === 'number' && Number.isFinite(value)
 
@@ -2270,7 +2290,7 @@ function parsePlan(text        )              {
   const value = json(text)
   if (value === null || value.version !== 1 || str(value.title) === null || !Array.isArray(value.steps) || value.steps.length === 0) return null
   const steps = value.steps.map(stepOf)
-  if (steps.some(s => s === null)) return null
+  if (steps.some(step => step === null)) return null
   const changes = Array.isArray(value.changes) ? value.changes.map(changeOf).filter((change)                       => change !== null) : []
   return { title: value.title          , updatedAt: time(value.updatedAt), steps: steps              , changes }
 }
@@ -2291,7 +2311,7 @@ function roundOf(value         )                    {
   if (!isObj(value) || !num(value.round) || !Number.isInteger(value.round) || !num(value.total)) return null
   const criteria                         = {}
   if (isObj(value.criteria)) for (const [name, score] of Object.entries(value.criteria)) if (num(score)) criteria[name] = score
-  const findings = Array.isArray(value.findings) ? value.findings.map(findingOf).filter((f)               => f !== null) : []
+  const findings = Array.isArray(value.findings) ? value.findings.map(findingOf).filter((finding)                     => finding !== null) : []
   return { round: value.round, at: time(value.at), total: value.total, criteria, findings }
 }
 
@@ -2301,17 +2321,17 @@ function parseScores(text        )                {
   const { kind, ref } = value.subject
   if (typeof kind !== 'string' || !SUBJECTS.includes(kind) || typeof ref !== 'string') return null
   const rounds = value.rounds.map(roundOf)
-  if (rounds.some(r => r === null)) return null
+  if (rounds.some(round => round === null)) return null
   return {
     subject: { kind: kind                             , ref }, updatedAt: time(value.updatedAt), scale: value.scale,
-    rounds: (rounds                ).sort((a, b) => a.round - b.round),
+    rounds: (rounds                ).sort((first, second) => first.round - second.round),
   }
 }
 
 
 const MIN = 60_000
 const STALE_MS = 20 * MIN
-const isFinishedStep = (s          )          => s.status === 'done' || s.status === 'skipped'
+const isFinishedStep = (step          )          => step.status === 'done' || step.status === 'skipped'
 // A plan is done when every step is, or when Alfred Code closed it
 const isPlanDone = (plan      )          => typeof plan.completedAt === 'number' || plan.steps.every(isFinishedStep)
 
@@ -2320,22 +2340,22 @@ const isPlanDone = (plan      )          => typeof plan.completedAt === 'number'
 // plan needs no fresh write: its status file naming it this session is the evidence.
 function isPlanRunning(file               , since               )          {
   const plan = file.value
-  if (plan === null || !plan.steps.some(s => s.status !== 'pending') || isPlanDone(plan)) return false
+  if (plan === null || !plan.steps.some(step => step.status !== 'pending') || isPlanDone(plan)) return false
   return file.isNamed === true || (since !== null && file.mtimeMs >= since)
 }
 
 // Which plan the Plan tab shows (Decision 5): the pinned one while it parses; else Alfred Code's named plan; else the
 // newest that runs; else the task list when it has items, so a plan an earlier session left never hides this session's; else the newest good plan
 function shownPlan(plans       , pinned               , hasTasks         )                                 {
-  const good = plans.planFiles.filter(w => w.value !== null)
+  const good = plans.planFiles.filter(file => file.value !== null)
   const newest = (list                 )                       =>
-    list.reduce                      ((a, w) => (a === null || w.mtimeMs > a.mtimeMs ? w : a), null)
-  const pin = pinned === null ? undefined : good.find(w => w.name === pinned)
+    list.reduce                      ((newestFile, file) => (newestFile === null || file.mtimeMs > newestFile.mtimeMs ? file : newestFile), null)
+  const pin = pinned === null ? undefined : good.find(file => file.name === pinned)
   if (pin !== undefined) return pin
   // The plan Alfred Code's status file names comes before the rest, begun or not
-  const named = plans.alfredFolder === null || plans.alfredFolder === undefined ? undefined : good.find(w => w.name === plans.alfredFolder?.name)
+  const named = plans.alfredFolder === null || plans.alfredFolder === undefined ? undefined : good.find(file => file.name === plans.alfredFolder?.name)
   if (named !== undefined) return named
-  const running = newest(good.filter(w => isPlanRunning(w, plans.watchedSince)))
+  const running = newest(good.filter(file => isPlanRunning(file, plans.watchedSince)))
   if (running !== null) return running
   if (hasTasks) return 'tasks'
   return newest(good)
@@ -2353,34 +2373,36 @@ function creditedPlan(plans       , pinned               , hasTasks         )   
 // main loop's overhead. A skipped step is finished, but says nothing of the estimates, so it never calibrates.
 function planView(plan      , times                          , overheadMs        , liveMs                        , now        )           {
   const notes = (step               )           =>
-    plan.changes.filter(c => c.kind === 'integrated' && c.source === 'user' && c.note !== null && c.step === step).map(change => change.note          )
-  const actual = (s          )         => (times[s.id]?.ms ?? 0) + (liveMs[s.id] ?? 0)
-  const calibrating = plan.steps.filter(s => s.status === 'done' && s.estimateMin !== null && actual(s) > 0)
+    plan.changes.filter(planChange => planChange.kind === 'integrated' && planChange.source === 'user' && planChange.note !== null && planChange.step === step)
+      .map(change => change.note          )
+  const actual = (step          )         => (times[step.id]?.ms ?? 0) + (liveMs[step.id] ?? 0)
+  const calibrating = plan.steps.filter(step => step.status === 'done' && step.estimateMin !== null && actual(step) > 0)
   const isCalibrated = calibrating.length >= 2
   const ratio = isCalibrated
-    ? calibrating.reduce((n, s) => n + actual(s), 0) / calibrating.reduce((n, s) => n + (s.estimateMin          ) * MIN, 0)
+    ? calibrating.reduce((total, step) => total + actual(step), 0) / calibrating.reduce((total, step) => total + (step.estimateMin          ) * MIN, 0)
     : 1
   const rows            = plan.steps.map(step => ({
     step, actualMs: actual(step),
     forecastMs: isFinishedStep(step) || step.estimateMin === null ? null : Math.round(step.estimateMin * MIN * ratio),
     isShared: times[step.id]?.isShared ?? false, notes: notes(step.id),
   }))
-  const open = rows.filter(r => !isFinishedStep(r.step))
-  const finishedRows = rows.filter(r => isFinishedStep(r.step))
+  const open = rows.filter(row => !isFinishedStep(row.step))
+  const finishedRows = rows.filter(row => isFinishedStep(row.step))
   // The last finished: the newest `doneAt`, else the last in the plan's order
-  const lastFinished = finishedRows.reduce                ((last, r) =>
-    last === null || (r.step.doneAt ?? -Infinity) >= (last.step.doneAt ?? -Infinity) ? r : last, null)
-  const isRunning = rows.some(r => r.step.status === 'in_progress')
+  const lastFinished = finishedRows.reduce                ((last, row) =>
+    last === null || (row.step.doneAt ?? -Infinity) >= (last.step.doneAt ?? -Infinity) ? row : last, null)
+  const isRunning = rows.some(row => row.step.status === 'in_progress')
   const stale = plan.updatedAt === null ? null : now - plan.updatedAt
   return {
     title: plan.title, finished: finishedRows.length, total: rows.length,
     percent: Math.round((finishedRows.length / rows.length) * 100),
-    running: rows.filter(r => r.step.status === 'in_progress'), next: rows.find(r => r.step.status === 'pending') ?? null,
+    running: rows.filter(row => row.step.status === 'in_progress'), next: rows.find(row => row.step.status === 'pending') ?? null,
     lastFinished, rows,
-    workedMs: rows.reduce((n, r) => n + r.actualMs, 0) + overheadMs, overheadMs,
-    leftMs: open.reduce((n, r) => n + Math.max(0, (r.forecastMs ?? 0) - r.actualMs), 0),
-    totalMs: finishedRows.reduce((n, r) => n + r.actualMs, 0) + open.reduce((n, r) => n + Math.max(r.forecastMs ?? 0, r.actualMs), 0) + overheadMs,
-    ratio, isCalibrated, unestimated: open.filter(r => r.step.estimateMin === null).length,
+    workedMs: rows.reduce((total, row) => total + row.actualMs, 0) + overheadMs, overheadMs,
+    leftMs: open.reduce((total, row) => total + Math.max(0, (row.forecastMs ?? 0) - row.actualMs), 0),
+    totalMs: finishedRows.reduce((total, row) => total + row.actualMs, 0)
+      + open.reduce((total, row) => total + Math.max(row.forecastMs ?? 0, row.actualMs), 0) + overheadMs,
+    ratio, isCalibrated, unestimated: open.filter(row => row.step.estimateMin === null).length,
     isFinished: open.length === 0 || typeof plan.completedAt === 'number', isAwaiting: plan.approvedAt === null, staleMs: isRunning && stale !== null && stale > STALE_MS ? stale : null, planNotes: notes(null),
   }
 }
@@ -2392,26 +2414,28 @@ const SEVERITY_ORDER                      = ['BLOCKER', 'MATERIAL', 'MINOR']
 // counted; the fixed and improved lists only when the writer recognised findings across rounds and set a status.
 function scoresView(scores        )                    {
   // Alfred Code's released round, else the newest; the arrow against the round graded just before it
-  const at = typeof scores.released === 'number' ? scores.rounds.findIndex(r => r.round === scores.released) : -1
-  const i = at >= 0 ? at : scores.rounds.length - 1
-  const last = scores.rounds[i]
+  const at = typeof scores.released === 'number' ? scores.rounds.findIndex(round => round.round === scores.released) : -1
+  const shownIndex = at >= 0 ? at : scores.rounds.length - 1
+  const last = scores.rounds[shownIndex]
   if (last === undefined) return null
-  const prev = scores.rounds[i - 1] ?? null
-  const count = (r                   , severity          )         =>
-    r === null ? 0 : r.counts !== undefined ? r.counts[severity] ?? 0 : r.findings.filter(f => f.severity === severity && f.status !== 'fixed').length
-  const present = (r                   , severity          )          =>
-    r !== null && (r.counts !== undefined ? r.counts[severity] !== undefined : r.findings.some(f => f.severity === severity))
+  const prev = scores.rounds[shownIndex - 1] ?? null
+  const count = (round                   , severity          )         =>
+    round === null ? 0 : round.counts !== undefined ? round.counts[severity] ?? 0
+      : round.findings.filter(finding => finding.severity === severity && finding.status !== 'fixed').length
+  const present = (round                   , severity          )          =>
+    round !== null && (round.counts !== undefined ? round.counts[severity] !== undefined : round.findings.some(finding => finding.severity === severity))
   return {
     scale: scores.scale,
-    totals: scores.rounds.slice(-4).map(r => ({ round: r.round, total: r.total })),
+    totals: scores.rounds.slice(-4).map(round => ({ round: round.round, total: round.total })),
     shown: { round: last.round, total: last.total }, isGrading: scores.released === null,
     delta: prev === null ? null : last.total - prev.total,
     criteria: Object.entries(last.criteria).map(([name, score]) => ({ name, prev: prev?.criteria[name] ?? null, last: score })),
-    severities: SEVERITY_ORDER.filter(v => present(prev, v) || present(last, v)).map(value => ({ severity: value, prev: count(prev, value), last: count(last, value) })),
-    fixed: last.findings.filter(f => f.status === 'fixed'),
-    improved: last.findings.filter(f => f.status === 'improved'),
-    open: last.findings.filter(f => f.status === null || f.status === 'open'),
-    hasStatus: last.findings.some(f => f.status !== null),
+    severities: SEVERITY_ORDER.filter(severity => present(prev, severity) || present(last, severity))
+      .map(value => ({ severity: value, prev: count(prev, value), last: count(last, value) })),
+    fixed: last.findings.filter(finding => finding.status === 'fixed'),
+    improved: last.findings.filter(finding => finding.status === 'improved'),
+    open: last.findings.filter(finding => finding.status === null || finding.status === 'open'),
+    hasStatus: last.findings.some(finding => finding.status !== null),
   }
 }
 
@@ -2428,17 +2452,17 @@ function tasksAfter(items            , tool        , input                      
   }
   if (tool === 'TaskUpdate') {
     const id = str(input.taskId)
-    if (input.status === 'deleted') return items.filter(t => t.id !== id)
+    if (input.status === 'deleted') return items.filter(task => task.id !== id)
     const status = typeof input.status === 'string' && TASK_STATUSES.includes(input.status) ? (input.status                      ) : null
     const subject = str(input.subject)
-    return items.map(t => (t.id === id ? { ...t, status: status ?? t.status, subject: subject ?? t.subject } : t))
+    return items.map(task => (task.id === id ? { ...task, status: status ?? task.status, subject: subject ?? task.subject } : task))
   }
   if (tool === 'TodoWrite') {
     if (!Array.isArray(input.todos)) return items
     return input.todos.filter(isObj).map((todo, i) => {
       const subject = str(todo.content) ?? ''
       const status = typeof todo.status === 'string' && TASK_STATUSES.includes(todo.status) ? (todo.status                      ) : 'pending'
-      return { id: String(i), subject, status, workedMs: items.find(t => t.subject === subject)?.workedMs ?? 0 }
+      return { id: String(i), subject, status, workedMs: items.find(listed => listed.subject === subject)?.workedMs ?? 0 }
     })
   }
   return null
@@ -2451,13 +2475,13 @@ function taskView(items            , liveMs                        )           {
     step: { id: task.id, title: task.subject, status: task.status === 'completed' ? 'done' : task.status, estimateMin: null, startedAt: null, doneAt: null },
     actualMs: task.workedMs + (liveMs[task.id] ?? 0), forecastMs: null, isShared: false, notes: [],
   }))
-  const done = rows.filter(r => r.step.status === 'done')
-  const open = rows.filter(r => r.step.status !== 'done')
-  const workedMs = rows.reduce((n, r) => n + r.actualMs, 0)
-  const leftMs = done.length >= 3 ? Math.round((done.reduce((n, r) => n + r.actualMs, 0) / done.length) * open.length) : 0
+  const done = rows.filter(row => row.step.status === 'done')
+  const open = rows.filter(row => row.step.status !== 'done')
+  const workedMs = rows.reduce((total, row) => total + row.actualMs, 0)
+  const leftMs = done.length >= 3 ? Math.round((done.reduce((total, row) => total + row.actualMs, 0) / done.length) * open.length) : 0
   return {
     title: 'Tasks', finished: done.length, total: rows.length, percent: rows.length === 0 ? 0 : Math.round((done.length / rows.length) * 100),
-    running: rows.filter(r => r.step.status === 'in_progress'), next: rows.find(r => r.step.status === 'pending') ?? null,
+    running: rows.filter(row => row.step.status === 'in_progress'), next: rows.find(row => row.step.status === 'pending') ?? null,
     lastFinished: done[done.length - 1] ?? null, rows, workedMs, overheadMs: 0, leftMs, totalMs: workedMs + leftMs,
     ratio: 1, isCalibrated: true, unestimated: done.length >= 3 ? 0 : open.length,
     isFinished: rows.length > 0 && open.length === 0, staleMs: null, planNotes: [], isAwaiting: false,
@@ -2467,20 +2491,20 @@ function taskView(items            , liveMs                        )           {
 const taskStatusKey = (items            )         => JSON.stringify(items.map(task => [task.id, task.status]))
 
 const stepStatusKey = (files                 )         =>
-  JSON.stringify(files.map(file => [file.name, file.value?.steps.map(s => [s.id, s.status]) ?? null]))
+  JSON.stringify(files.map(file => [file.name, file.value?.steps.map(step => [step.id, step.status]) ?? null]))
 
 const FINISH_SHOWN_MS = 10 * 60_000
 
 // The user's notes in `after` that `before` lacks, each counted by its time, step and text, so two alike are two
 function newUserNotes(before              , after              )               {
-  const idOf = (c            )         => JSON.stringify([c.at, c.step, c.note])
-  const isNote = (c            )          => c.kind === 'integrated' && c.source === 'user' && c.note !== null
+  const idOf = (note            )         => JSON.stringify([note.at, note.step, note.note])
+  const isNote = (note            )          => note.kind === 'integrated' && note.source === 'user' && note.note !== null
   const left = new Map                ()
-  for (const c of before.filter(isNote)) left.set(idOf(c), (left.get(idOf(c)) ?? 0) + 1)
+  for (const note of before.filter(isNote)) left.set(idOf(note), (left.get(idOf(note)) ?? 0) + 1)
   return after.filter(isNote).filter(change => {
-    const n = left.get(idOf(change)) ?? 0
-    if (n > 0) left.set(idOf(change), n - 1)
-    return n === 0
+    const count = left.get(idOf(change)) ?? 0
+    if (count > 0) left.set(idOf(change), count - 1)
+    return count === 0
   })
 }
 
