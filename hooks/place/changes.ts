@@ -6,10 +6,10 @@ export function numstatTotals(stdout: string): { added: number; removed: number 
   let added = 0
   let removed = 0
   for (const row of stdout.split('\n')) {
-    const m = /^(\d+|-)\t(\d+|-)\t/.exec(row)
-    if (m === null) continue
-    added += m[1] === '-' ? 0 : Number(m[1])
-    removed += m[2] === '-' ? 0 : Number(m[2])
+    const match = /^(\d+|-)\t(\d+|-)\t/.exec(row)
+    if (match === null) continue
+    added += match[1] === '-' ? 0 : Number(match[1])
+    removed += match[2] === '-' ? 0 : Number(match[2])
   }
   return { added, removed }
 }
@@ -29,6 +29,6 @@ export function textLines(text: string): number | null {
 // Commits ahead of and behind the upstream (the user, 2026-11-12: 'git:(band-order) arrow-up-symbol 1
 // arrow-down-symbol 2'): `git rev-list --left-right --count @{upstream}...HEAD` prints behind, a tab, then ahead
 export function aheadBehind(stdout: string): { ahead: number; behind: number } | null {
-  const m = /^(\d+)\t(\d+)\s*$/.exec(stdout)
-  return m === null ? null : { ahead: Number(m[2]), behind: Number(m[1]) }
+  const match = /^(\d+)\t(\d+)\s*$/.exec(stdout)
+  return match === null ? null : { ahead: Number(match[2]), behind: Number(match[1]) }
 }

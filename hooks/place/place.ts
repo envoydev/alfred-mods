@@ -12,8 +12,8 @@ export function headBranch(text: string): string | null {
 
 // A worktree's `.git` file names its git folder, absolute or relative to the folder the file sits in
 export function gitDirOf(text: string, dir: string): string | null {
-  const m = /^gitdir:\s*(.+)$/m.exec(text)
-  const to = m?.[1]?.trim()
+  const match = /^gitdir:\s*(.+)$/m.exec(text)
+  const to = match?.[1]?.trim()
   if (to === undefined || to === '') return null
   return /^([A-Za-z]:)?[\\/]/.test(to) ? to : `${dir}/${to}`
 }
@@ -44,6 +44,6 @@ export function parentOf(path: string): string | null {
 export const joinPath = (dir: string, name: string): string => (/[\\/]$/.test(dir) ? `${dir}${name}` : `${dir}/${name}`)
 
 // The counts stay until the next count replaces them
-export const withPlace = (place: NonNullable<Meta['place']>) => (m: Meta): Meta =>
-  m.place?.project === place.project && m.place.folder === place.folder && m.place.branch === place.branch ? m
-    : { ...m, place: { ...place, ...(m.place?.changes === undefined ? {} : { changes: m.place.changes }), ...(m.place?.sync === undefined ? {} : { sync: m.place.sync }) } }
+export const withPlace = (place: NonNullable<Meta['place']>) => (session: Meta): Meta =>
+  session.place?.project === place.project && session.place.folder === place.folder && session.place.branch === place.branch ? session
+    : { ...session, place: { ...place, ...(session.place?.changes === undefined ? {} : { changes: session.place.changes }), ...(session.place?.sync === undefined ? {} : { sync: session.place.sync }) } }
