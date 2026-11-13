@@ -8,9 +8,9 @@ import type { Hit, ResultMask } from './types'
 // Tools whose masked result does not draw; the live check adds any it finds (spec Risks row 1)
 export const REFUSED: readonly string[] = []
 
-const isRecord = (v: unknown): v is Record<string, unknown> => {
-  if (typeof v !== 'object' || v === null || Array.isArray(v)) return false
-  const proto: unknown = Object.getPrototypeOf(v)
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const proto: unknown = Object.getPrototypeOf(value)
   return proto === Object.prototype || proto === null
 }
 
@@ -23,7 +23,7 @@ const PEM_END = /-----END[A-Z ]{0,40}PRIVATE KEY-----/
 
 // The indexes of a list of lines (an Edit diff's, one string per line) that a private key spans past its BEGIN line,
 // through its END line or the list's end, where `fn` hides the BEGIN line: the key class needs both in one string
-function keyLines(lines: unknown[], fn: (s: string) => string): Set<number> {
+function keyLines(lines: unknown[], fn: (text: string) => string): Set<number> {
   const out = new Set<number>()
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
@@ -39,7 +39,7 @@ function keyLines(lines: unknown[], fn: (s: string) => string): Set<number> {
 // Every string inside a value through `fn`, arrays and plain objects rebuilt only where a string changed: an unchanged
 // value comes back as the same reference, so a hook can pass next(e) untouched. A private key's lines in a list draw
 // `‹key›` each, after any diff mark, so the list keeps its length.
-export function maskDeep(value: unknown, fn: (s: string) => string): unknown {
+export function maskDeep(value: unknown, fn: (text: string) => string): unknown {
   if (typeof value === 'string') return fn(value)
   if (Array.isArray(value)) {
     const keyed = keyLines(value, fn)
@@ -106,9 +106,9 @@ export function maskDialog(questions: unknown[], spans: (s: string) => Hit[]): u
   // The distinct values each kind hides, in the order the dialog shows them; a token already in the text is no value
   const values = new Map<string, string[]>()
   const valueOf = (s: string, h: Hit): { kind: string; value: string; lead: string } | null => {
-    const m = BARE.exec(h.text)
-    const lead = m?.[1] ?? ''
-    const kind = m?.[2]
+    const match = BARE.exec(h.text)
+    const lead = match?.[1] ?? ''
+    const kind = match?.[2]
     const value = s.slice(h.start + lead.length, h.end)
     return kind === undefined || value === h.text.slice(lead.length) ? null : { kind, value: value.toLowerCase(), lead }
   }
@@ -152,7 +152,7 @@ export function neutralDialog(questions: unknown[]): unknown[] {
 }
 
 // One question through `fn`, every string but its options' labels
-function maskQuestion(q: unknown, fn: (s: string) => string): unknown {
+function maskQuestion(q: unknown, fn: (text: string) => string): unknown {
   if (!isRecord(q) || !Array.isArray(q.options)) return maskDeep(q, fn)
   const { options, ...rest } = q
   const outRest = maskDeep(rest, fn) as Record<string, unknown>

@@ -4,10 +4,10 @@ import { AMOUNTS, EMAILS, KEYS, LEFT_ALONE, PHONES, strictSamples } from './samp
 import type { Line } from '../core/types'
 import type { Compiled, Hit, Klass, RecLevel, RecState } from './types'
 
-const whole = (token: string) => (m: RegExpExecArray): Hit => ({ start: m.index, end: m.index + m[0].length, text: token })
+const whole = (token: string) => (match: RegExpExecArray): Hit => ({ start: match.index, end: match.index + match[0].length, text: token })
 
 // The tokens REC draws, kept as they are, so a masked string masks to itself
-const TOKENS: Klass = { re: /‹(?:key|email|phone|private|user)(?: \d+)?›/g, hit: m => whole(m[0])(m) }
+const TOKENS: Klass = { re: /‹(?:key|email|phone|private|user)(?: \d+)?›/g, hit: match => whole(match[0])(match) }
 
 // Each letter of a word either case, as one class of the key regex is case-sensitive and another is not
 const either = (word: string): string => [...word].map(c => `[${c.toUpperCase()}${c.toLowerCase()}]`).join('')
@@ -41,12 +41,12 @@ const KEY = new RegExp([
   String.raw`:(?<=[A-Za-z][A-Za-z0-9+.-]{1,20}:\/\/[^\s:@\/]{0,64}:)(?<url>[^\s\/?#]{1,128})(?=@)`,
 ].join('|'), 'g')
 
-const keyHit = (m: RegExpExecArray): Hit => {
-  const g = m.groups ?? {}
-  const end = m.index + m[0].length
-  if (g['url'] !== undefined) return { start: m.index, end, text: ':‹key›' }
+const keyHit = (match: RegExpExecArray): Hit => {
+  const g = match.groups ?? {}
+  const end = match.index + match[0].length
+  if (g['url'] !== undefined) return { start: match.index, end, text: ':‹key›' }
   const value = g['bearer'] ?? g['named'] ?? g['short'] ?? g['flag'] ?? g['auth'] ?? g['authBare']
-  return { start: value === undefined ? m.index : end - value.length, end, text: '‹key›' }
+  return { start: value === undefined ? match.index : end - value.length, end, text: '‹key›' }
 }
 
 const EMAIL = /(?<![\w.%+-])[\w.%+-]{1,64}@[A-Za-z0-9.-]{1,253}\.[A-Za-z]{2,24}(?![A-Za-z0-9-])/g
@@ -55,19 +55,19 @@ const EMAIL = /(?<![\w.%+-])[\w.%+-]{1,64}@[A-Za-z0-9.-]{1,253}\.[A-Za-z]{2,24}(
 // most 3 digits, so it never matches.
 const PHONE = new RegExp(String.raw`(?<![\w+.-])(?:(?<intl>\+\d(?:[ .()-]{0,2}\d){7,14})|(?<national>(?:\(\d{1,4}\) ?\d{1,4}[ .-]|\d{1,4}[ .-]\d{1,4}[ .-]\d{1,4}[ .-]|\d{1,7}[ .-]\d{1,7}[ .-]|\d{6,7}[ .-])\d{4}))(?!\w|[.-]\d)`, 'g')
 
-const phoneHit = (m: RegExpExecArray): Hit | null => {
-  const national = m.groups?.['national']
+const phoneHit = (match: RegExpExecArray): Hit | null => {
+  const national = match.groups?.['national']
   if (national !== undefined && ![10, 11].includes(national.replace(/\D/g, '').length)) return null
-  return whole('‹phone›')(m)
+  return whole('‹phone›')(match)
 }
 
 const AMOUNT: Klass = {
   re: /\$\d[\d,]{0,20}(?:\.\d{1,6})?/g,
-  hit: m => ({ start: m.index, end: m.index + m[0].length, text: m[0].replace(/\d/g, '•') }),
+  hit: match => ({ start: match.index, end: match.index + match[0].length, text: match[0].replace(/\d/g, '•') }),
 }
 
 // What a u-flag regex escapes outside a class
-const escape = (s: string): string => s.replace(/[\\^$.*+?()[\]{}|\/]/g, '\\$&')
+const escape = (text: string): string => text.replace(/[\\^$.*+?()[\]{}|\/]/g, '\\$&')
 const WORD_EDGE = String.raw`[\p{L}\p{N}_]`
 
 // A home and its other spelling on Windows: Git Bash's HOME /c/Users/jane is C:\Users\jane to Claude Code and Windows
@@ -150,8 +150,8 @@ export function maskHits(c: Compiled, text: string): Hit[] {
 export const LEVELS: RecLevel[] = ['off', 'on', 'strict']
 
 // The stored words, anything else read as none
-export function parseWords(v: unknown): string[] {
-  return Array.isArray(v) ? v.filter((w): w is string => typeof w === 'string') : []
+export function parseWords(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((w): w is string => typeof w === 'string') : []
 }
 
 const countText = (n: number): string => `${n} private ${n === 1 ? 'word' : 'words'}`
@@ -253,4 +253,4 @@ export function recTest(level: RecLevel, words: string[], home: string | null): 
   return [...out, ...failed].join('\n')
 }
 
-export const recSummary = (r: RecState): { level: RecState['level']; words: number } => ({ level: r.level, words: r.count })
+export const recSummary = (rec: RecState): { level: RecState['level']; words: number } => ({ level: rec.level, words: rec.count })

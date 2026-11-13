@@ -3,7 +3,7 @@ import type { RecLevel, RecState } from '../../types'
 export type { RecLevel, RecState }
 
 // One class of text REC hides: what it matches and the hit it makes
-export type Klass = { re: RegExp; hit: (m: RegExpExecArray) => Hit | null }
+export type Klass = { re: RegExp; hit: (match: RegExpExecArray) => Hit | null }
 
 // A match and the text it draws as: a token, or digits as dots
 export type Hit = { start: number; end: number; text: string }
