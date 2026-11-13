@@ -166,12 +166,12 @@ function deltaSegs(delta: number | null): Line {
 const arrow = (delta: number): Seg => (delta > 0 ? { text: ' ▲', tone: 'ok' } : delta < 0 ? { text: ' ▼', tone: 'fail' } : { text: ' =', tone: 'dim' })
 
 // The band's 'score 81 ▲13': the shown round's total (Alfred Code's released round, else the last), a dim 'grading'
-// while Alfred Code's grading runs, and the change from the round before; against `level`, Alfred Code's scoring
+// while Alfred Code's grading runs (a dim 'withheld' once it withheld the plan), and the change from the round before; against `level`, Alfred Code's scoring
 // level, green at or above it and amber under it, no colour without one
 export function scoreSeg(scoresView: ScoresView, level: number | null = null): Line {
   const total = scoresView.shown.total
   const score: Seg = level === null ? { text: `score ${num(total)}` } : { text: `score ${num(total)}`, tone: (total * 100) / scoresView.scale >= level ? 'ok' : 'warn' }
-  return [score, ...(scoresView.isGrading ? [{ text: ' grading', tone: 'dim' } as Seg] : []), ...deltaSegs(scoresView.delta)]
+  return [score, ...(scoresView.isGrading ? [{ text: ' grading', tone: 'dim' } as Seg] : scoresView.isWithheld === true ? [{ text: ' withheld', tone: 'dim' } as Seg] : []), ...deltaSegs(scoresView.delta)]
 }
 
 // '<name> (<kind>) R3 88', for a scores file listed on one line

@@ -190,7 +190,7 @@ export function scoresView(scores: Scores): ScoresView | null {
   return {
     scale: scores.scale,
     totals: scores.rounds.slice(-4).map(round => ({ round: round.round, total: round.total })),
-    shown: { round: last.round, total: last.total }, isGrading: scores.released === null,
+    shown: { round: last.round, total: last.total }, isGrading: scores.released === null && scores.isWithheld !== true, isWithheld: scores.isWithheld === true,
     delta: prev === null ? null : last.total - prev.total,
     criteria: Object.entries(last.criteria).map(([name, score]) => ({ name, prev: prev?.criteria[name] ?? null, last: score })),
     severities: SEVERITY_ORDER.filter(severity => present(prev, severity) || present(last, severity))

@@ -19,6 +19,8 @@ export type PlanView = {
 export type ScoresView = {
   scale: number; totals: { round: number; total: number }[]; delta: number | null
   shown: { round: number; total: number }; isGrading: boolean
+  // Alfred Code withheld the plan: its newest score shows, marked withheld
+  isWithheld?: boolean
   criteria: { name: string; prev: number | null; last: number }[]
   severities: { severity: Severity; prev: number; last: number }[]
   fixed: Finding[]; improved: Finding[]; open: Finding[]; hasStatus: boolean

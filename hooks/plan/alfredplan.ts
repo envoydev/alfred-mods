@@ -61,5 +61,8 @@ export function parseAlfredScoring(text: string, ref: string): Scores | null {
   const released = value.released ?? null
   if (released !== null && !sorted.some(round => round.round === released)) return null
   const newest = sorted.reduce<number | null>((latest, round) => (round.at !== null && (latest === null || round.at > latest) ? round.at : latest), null)
-  return { subject: { kind: 'plan', ref }, updatedAt: newest, scale: value.scale, rounds: sorted, released: released as number | null }
+  const scores: Scores = { subject: { kind: 'plan', ref }, updatedAt: newest, scale: value.scale, rounds: sorted, released: released as number | null }
+  // alfred-code 3.12: a withheld plan carries status 'withheld' with released null
+  if (released === null && value.status === 'withheld') scores.isWithheld = true
+  return scores
 }

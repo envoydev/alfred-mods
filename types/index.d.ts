@@ -131,6 +131,8 @@ export type ScoreRound = {
 export type Scores = {
   subject: { kind: 'plan' | 'diagnosis' | 'reply'; ref: string }; updatedAt: number | null; scale: number; rounds: ScoreRound[]
   released?: number | null
+  // true when Alfred Code withheld the plan (scoring.json status 'withheld'); absent otherwise
+  isWithheld?: boolean
 }
 // A file of the folder as last read: its last good parse, kept while a newer read fails
 // `isNamed`: the plan Alfred Code's status file names this session

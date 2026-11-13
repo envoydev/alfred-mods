@@ -2,6 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { parseAlfredScoring, parseAlfredStatus } from '../../hooks/plan/alfredplan'
 import { planView, isPlanRunning, scoresView } from '../../hooks/plan/plan'
+import { scoreSeg } from '../../hooks/plan/planlines'
 import { SCORING_JSON, STATUS_JSON } from '../plans'
 
 const status = (over: Record<string, unknown> = {}): string => JSON.stringify({ ...JSON.parse(STATUS_JSON), ...over })
@@ -73,6 +74,22 @@ test('the score is the released round\'s, its arrow against the round graded jus
 test('while grading runs (released null) the score is the newest round\'s, marked as grading', () => {
   const s = parseAlfredScoring(scoring({ released: null }), 'p')
   expect(s === null ? null : scoresView(s)).toMatchObject({ shown: { round: 3, total: 82 }, delta: -3, isGrading: true })
+})
+
+// PF1 in alfred-code 3.12: a plan graded and then withheld carries "status": "withheld" with released null; without
+// the key, released null still reads as grading in progress
+test('a withheld plan shows its newest score marked withheld, never as grading', () => {
+  const s = parseAlfredScoring(scoring({ released: null, status: 'withheld' }), 'p')
+  expect(s?.isWithheld).toBe(true)
+  const view = s === null ? null : scoresView(s)
+  expect(view).toMatchObject({ shown: { round: 3, total: 82 }, isGrading: false, isWithheld: true })
+  const text = view === null ? '' : scoreSeg(view).map(seg => ('text' in seg ? seg.text : '')).join('')
+  expect(text).toContain(' withheld')
+  expect(text).not.toContain('grading')
+  // Another status, or none, leaves the old reading
+  expect(parseAlfredScoring(scoring({ released: null, status: 'other' }), 'p')?.isWithheld).toBeUndefined()
+  const grading = parseAlfredScoring(scoring({ released: null }), 'p')
+  expect(grading === null ? null : scoresView(grading)).toMatchObject({ isGrading: true, isWithheld: false })
 })
 
 // The review's findings (2026-11-13), each reproduced before its fix

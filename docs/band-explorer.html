@@ -1143,12 +1143,12 @@ function deltaSegs(delta               )       {
 const arrow = (delta        )      => (delta > 0 ? { text: ' ▲', tone: 'ok' } : delta < 0 ? { text: ' ▼', tone: 'fail' } : { text: ' =', tone: 'dim' })
 
 // The band's 'score 81 ▲13': the shown round's total (Alfred Code's released round, else the last), a dim 'grading'
-// while Alfred Code's grading runs, and the change from the round before; against `level`, Alfred Code's scoring
+// while Alfred Code's grading runs (a dim 'withheld' once it withheld the plan), and the change from the round before; against `level`, Alfred Code's scoring
 // level, green at or above it and amber under it, no colour without one
 function scoreSeg(scoresView            , level                = null)       {
   const total = scoresView.shown.total
   const score      = level === null ? { text: `score ${num(total)}` } : { text: `score ${num(total)}`, tone: (total * 100) / scoresView.scale >= level ? 'ok' : 'warn' }
-  return [score, ...(scoresView.isGrading ? [{ text: ' grading', tone: 'dim' }       ] : []), ...deltaSegs(scoresView.delta)]
+  return [score, ...(scoresView.isGrading ? [{ text: ' grading', tone: 'dim' }       ] : scoresView.isWithheld === true ? [{ text: ' withheld', tone: 'dim' }       ] : []), ...deltaSegs(scoresView.delta)]
 }
 
 // '<name> (<kind>) R3 88', for a scores file listed on one line
@@ -2438,7 +2438,7 @@ function scoresView(scores        )                    {
   return {
     scale: scores.scale,
     totals: scores.rounds.slice(-4).map(round => ({ round: round.round, total: round.total })),
-    shown: { round: last.round, total: last.total }, isGrading: scores.released === null,
+    shown: { round: last.round, total: last.total }, isGrading: scores.released === null && scores.isWithheld !== true, isWithheld: scores.isWithheld === true,
     delta: prev === null ? null : last.total - prev.total,
     criteria: Object.entries(last.criteria).map(([name, score]) => ({ name, prev: prev?.criteria[name] ?? null, last: score })),
     severities: SEVERITY_ORDER.filter(severity => present(prev, severity) || present(last, severity))
