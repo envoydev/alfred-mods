@@ -1,12 +1,12 @@
 // A tool call's record, kept from its first event to its settle
-import type { Call, CallFacts } from './types'
+import type { ToolCall, CallFacts } from './types'
 
 // A tool call's record, made on its first event; the newest 100 are kept
-export function remember(calls: Map<string, Call>, id: string, tool: string): Call {
+export function rememberCall(calls: Map<string, ToolCall>, id: string, tool: string): ToolCall {
   let call = calls.get(id)
   if (call === undefined) {
     call = {
-      facts: { tool, ...NO_FACTS }, key: tool, tool, target: '', agentId: null, settled: false, outcome: null, rowId: null, by: null,
+      facts: { tool, ...NO_FACTS }, key: tool, tool, target: '', agentId: null, isSettled: false, outcome: null, failureId: null, blockedBy: null,
       startedAt: null, durationMs: null, pendingMs: null,
     }
     calls.set(id, call)

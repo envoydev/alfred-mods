@@ -97,7 +97,7 @@ export function numberOf(f: Failure, i: number): number {
   return f.n ?? i + 1
 }
 
-export function tally(stat: ToolStat | undefined, outcome: Outcome, by: 1 | -1): ToolStat {
+export function tallyOutcome(stat: ToolStat | undefined, outcome: Outcome, by: 1 | -1): ToolStat {
   const t = stat ?? { calls: 0, ok: 0, failed: 0, stopped: 0 }
   return {
     calls: t.calls + by,

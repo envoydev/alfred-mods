@@ -13,7 +13,7 @@ import { readStats } from '../tools/effects'
 import { readAgents } from '../agents/effects'
 import { mask, maskForFile } from '../rec/mask'
 import { compactNow } from '../cache/effects'
-import type { Held, MatchedInput } from '../core/types'
+import type { Pending, MatchedInput } from '../core/types'
 import { drawnPlan, readPlans, readTasks } from '../plan/effects'
 import { runwayOf } from '../stack/stack'
 import { clock, tokens } from '../core/format'
@@ -196,13 +196,13 @@ export async function dismissAsk($: EngineInterface): Promise<void> {
 
 // c: a save first, unless one was made at this step, then Phase 2's compaction; a failed save compacts nothing, so
 // the context is never lost without its handoff
-export async function saveThenCompact($: EngineInterface, held: Held): Promise<void> {
+export async function saveThenCompact($: EngineInterface, pending: Pending): Promise<void> {
   const h = await readHandoff($)
   await dismissAsk($)
   if (!(h.lastSave?.isOk === true && handoffMem.savedStep === h.handled)) {
     if (!(await startSave($, 'compact')).isOk) return
   }
-  await compactNow($, held)
+  await compactNow($, pending)
 }
 
 // A /clear within 2 hours of the last save fills the resume prompt into an empty draft, once; a draft that is not
@@ -270,7 +270,7 @@ export async function followStatusFile($: EngineInterface, text: string | null, 
   if (u.tokens !== null && u.window !== null) await stepHandoff($, u.tokens, u.window)
 }
 
-export async function runAutoHandoffCommand($: EngineInterface, e: MatchedInput<'command.run', { command: 'auto-handoff' }>, held: Held) {
+export async function runHandoffCommand($: EngineInterface, e: MatchedInput<'command.run', { command: 'auto-handoff' }>, pending: Pending) {
   const args = e.args.trim().toLowerCase()
   if (args === 'now') {
     await saveNow($)
@@ -278,7 +278,7 @@ export async function runAutoHandoffCommand($: EngineInterface, e: MatchedInput<
   }
   // The ask's c and r, for a screen where its keys and clicks do not reach the mod (the user, 2026-11-12)
   if (args === 'compact') {
-    void saveThenCompact($, held)
+    void saveThenCompact($, pending)
     return { text: `Saving a handoff to ${HANDOFF_PATH}, then compacting.` }
   }
   if (args === 'later') {

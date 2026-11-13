@@ -6,7 +6,7 @@ import type { EngineInterface, ModelUsage } from 'claude-code'
 import type { Cache, CacheConfig } from './types'
 import { addRequest, afterCompact, billingOf, cacheView, idleOf, minutes, pinOf, takeRate, takeSwitch, toastAt } from './cache'
 import { noteCompaction, readLive, readUsage, setModel } from '../session/effects'
-import type { Held, HookInput, HookNext } from '../core/types'
+import type { Pending, HookInput, HookNext } from '../core/types'
 import { toast } from '../core/effects'
 import { retellRecNote } from '../rec/effects'
 import { rearmAfterCompaction } from '../handoff/effects'
@@ -30,7 +30,7 @@ export function resetCache($: EngineInterface) {
 }
 
 // The variables and settings that pin the cache's tier or turn idle compaction off, written only on a change
-export async function readCacheConfig($: EngineInterface, held: Held): Promise<void> {
+export async function readCacheConfig($: EngineInterface, pending: Pending): Promise<void> {
   const config: CacheConfig = {
     pin: pinOf({
       force5m: await $.env.get('FORCE_PROMPT_CACHING_5M'),
@@ -44,22 +44,22 @@ export async function readCacheConfig($: EngineInterface, held: Held): Promise<v
       disableAutoCompact: await $.env.get('DISABLE_AUTO_COMPACT'),
       minTokens: await $.env.get('CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS'),
     }),
-    isTerminal: held.isTerminal,
+    isTerminal: pending.isTerminal,
   }
   if (JSON.stringify((await readCache($)).config) !== JSON.stringify(config)) await updateCache($, c => ({ ...c, config }))
 }
 
 // Sets the toast's timer afresh: due 5 minutes before a 1h cache goes cold, or 3 where Claude Code should compact it
 // itself first
-export async function armCacheClose($: EngineInterface, held: Held): Promise<void> {
-  held.close?.cancel()
-  held.close = null
+export async function armCacheClose($: EngineInterface, pending: Pending): Promise<void> {
+  pending.cacheToast?.cancel()
+  pending.cacheToast = null
   const c = await readCache($)
   const u = await readUsage($)
   const at = toastAt(c, billingOf(u.windows), u.tokens)
   if (at === null) return
   const now = await $.clock.now()
-  held.close = $.clock.after(Math.max(0, at - now), () => {
+  pending.cacheToast = $.clock.after(Math.max(0, at - now), () => {
     cacheClose($).catch(() => undefined)
   })
 }
@@ -80,47 +80,47 @@ export async function cacheClose($: EngineInterface): Promise<void> {
 
 // A main-loop compaction that stands: counted, and the cache cold, as its cached prefix is gone; a compaction can drop
 // REC's note from the history, so the next prompt carries it again
-export async function countCompaction($: EngineInterface, held: Held): Promise<void> {
-  held.counted++
+export async function countCompaction($: EngineInterface, pending: Pending): Promise<void> {
+  pending.compactionsCounted++
   retellRecNote()
   await rearmAfterCompaction($)
   const at = await $.clock.now()
   await noteCompaction($, at)
   await updateCache($, afterCompact)
-  await armCacheClose($, held)
+  await armCacheClose($, pending)
 }
 
 // [Compact]: the call comes first, so the press counts as the person's. The compaction is counted once: by the mod's
 // own session.compact hook when the call passes through it, else here, as a host may skip the calling plugin whole.
 // A skip or a failure is said, and a second press while one runs starts none.
-export async function compactNow($: EngineInterface, held: Held): Promise<void> {
-  if (held.compacting) {
+export async function compactNow($: EngineInterface, pending: Pending): Promise<void> {
+  if (pending.isCompacting) {
     toast($, 'Compact is already running.')
     return
   }
-  held.compacting = true
-  const seen = held.counted
+  pending.isCompacting = true
+  const seen = pending.compactionsCounted
   try {
     const done = await $.session.compact()
     if (done.skip !== undefined) toast($, `Compact skipped: ${done.skip}`)
-    else if (held.counted === seen) await countCompaction($, held)
+    else if (pending.compactionsCounted === seen) await countCompaction($, pending)
   } catch (err) {
     toast($, `Compact did not run: ${err instanceof Error ? err.message : String(err)}`)
   } finally {
-    held.compacting = false
+    pending.isCompacting = false
   }
 }
 
-export async function followCompaction($: EngineInterface, e: HookInput<'session.compact'>, next: HookNext<'session.compact'>, held: Held) {
+export async function trackCompaction($: EngineInterface, e: HookInput<'session.compact'>, next: HookNext<'session.compact'>, pending: Pending) {
   const compacted = await next(e)
   if (e.agentId === undefined && e.trigger !== 'precompute' && compacted.skip === undefined) {
-    await countCompaction($, held)
+    await countCompaction($, pending)
     readBreakdownSoon($)
   }
   return compacted
 }
 
-export async function afterModelSwitch($: EngineInterface, e: HookInput<'classic.PostModelSwitch'>, next: HookNext<'classic.PostModelSwitch'>, held: Held) {
+export async function trackModelSwitch($: EngineInterface, e: HookInput<'classic.PostModelSwitch'>, next: HookNext<'classic.PostModelSwitch'>, pending: Pending) {
   const done = await next(e)
   // The band names the model before the first step does (the review, 2026-11-11)
   await setModel($, e.to_model)
@@ -128,18 +128,18 @@ export async function afterModelSwitch($: EngineInterface, e: HookInput<'classic
   const now = await $.clock.now()
   const s = { ttl: e.cache_ttl, contextTokens: e.context_tokens, usd: e.estimated_cache_write_usd, model: e.to_model, billing }
   await updateCache($, c => takeSwitch(c, s, now, true))
-  await armCacheClose($, held)
+  await armCacheClose($, pending)
   return done
 }
 
-export async function beforeModelSwitch($: EngineInterface, e: HookInput<'classic.PreModelSwitch'>, next: HookNext<'classic.PreModelSwitch'>, held: Held) {
+export async function trackModelSwitchAsk($: EngineInterface, e: HookInput<'classic.PreModelSwitch'>, next: HookNext<'classic.PreModelSwitch'>, pending: Pending) {
   const done = await next(e)
   if (done.block !== undefined || done.permissionDecision === 'deny' || done.permissionDecision === 'ask') return done
   const billing = billingOf((await readUsage($)).windows)
   const now = await $.clock.now()
   const s = { ttl: e.cache_ttl, contextTokens: e.context_tokens, usd: e.estimated_cache_write_usd, model: e.to_model, billing }
   await updateCache($, c => takeSwitch(c, s, now, false))
-  await armCacheClose($, held)
+  await armCacheClose($, pending)
   return done
 }
 

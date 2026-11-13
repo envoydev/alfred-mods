@@ -44,6 +44,6 @@ export function parentOf(path: string): string | null {
 export const joinPath = (dir: string, name: string): string => (/[\\/]$/.test(dir) ? `${dir}${name}` : `${dir}/${name}`)
 
 // The counts stay until the next count replaces them
-export const setPlace = (place: NonNullable<Meta['place']>) => (m: Meta): Meta =>
+export const withPlace = (place: NonNullable<Meta['place']>) => (m: Meta): Meta =>
   m.place?.project === place.project && m.place.folder === place.folder && m.place.branch === place.branch ? m
     : { ...m, place: { ...place, ...(m.place?.changes === undefined ? {} : { changes: m.place.changes }), ...(m.place?.sync === undefined ? {} : { sync: m.place.sync }) } }

@@ -14,7 +14,7 @@ import { readAgents, readLoops } from '../agents/effects'
 import { markFailuresSeen, readBlockers, readFailures, readStats } from '../tools/effects'
 import { BAND_MODES, DEFAULTS, sourceName } from '../settings/settings'
 import { agentsLines, asCommands, cacheLines, nowLines, paneCommands, reportRows, tabBar, timelineLines, toolsLines, usageLines } from './tabs'
-import type { Held, MatchedInput } from '../core/types'
+import type { Pending, MatchedInput } from '../core/types'
 import { readLive, readMeta, readPace, readTick, readTotals, readTurns, readUsage } from '../session/effects'
 import { recOf } from '../rec/rec'
 import { readRec } from '../rec/effects'
@@ -153,7 +153,7 @@ export async function runInspectCommand($: EngineInterface, e: MatchedInput<'com
   return { text: opened.isPlaced ? 'Opened the inspect pane.' : `The inspect pane is open but not drawn: ${opened.reason}.` }
 }
 
-export async function drawInspectPane($: EngineInterface, e: MatchedInput<'ui.render', { component: 'Pane', requestId: 'inspect' }>, held: Held) {
+export async function drawInspectPane($: EngineInterface, e: MatchedInput<'ui.render', { component: 'Pane', requestId: 'inspect' }>, pending: Pending) {
   await readTick($)
   const now = await $.clock.now()
   const counts = await readLive($)
@@ -188,10 +188,10 @@ export async function drawInspectPane($: EngineInterface, e: MatchedInput<'ui.re
     'tab-agents': () => openInspect($, 'agents'),
     'tab-tools': () => openInspect($, 'tools'),
     'tab-cache': () => openInspect($, 'cache'),
-    compact: () => compactNow($, held),
+    compact: () => compactNow($, pending),
     'handoff-save': () => saveNow($),
     'stack-fill': async () => toast($, await fillStack($)),
-    'handoff-compact': () => saveThenCompact($, held),
+    'handoff-compact': () => saveThenCompact($, pending),
     'handoff-dismiss': () => dismissAsk($),
     'tab-timeline': () => openInspect($, 'timeline'),
     'tab-plan': () => openInspect($, 'plan'),

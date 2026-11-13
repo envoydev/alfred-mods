@@ -3,7 +3,7 @@ import type { EngineInterface } from 'claude-code'
 import { mask } from '../rec/mask'
 import { printable } from './format'
 
-export async function readText($: EngineInterface, path: string): Promise<string | null> {
+export async function readTextFile($: EngineInterface, path: string): Promise<string | null> {
   try {
     return await $.fs.read(path)
   } catch {

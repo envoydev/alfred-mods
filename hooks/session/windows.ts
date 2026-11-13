@@ -43,5 +43,5 @@ export function dropPassed(u: Usage, now: number): Usage | null {
 // '≈' before a window's percent while it is a stored one
 export const storedMark = (windowsAt: number | null | undefined): string => (windowsAt === undefined || windowsAt === null ? '' : '≈')
 
-export const windowsOf = (limits: readonly SessionRateLimit[]): Window[] =>
+export const rateWindowsOf = (limits: readonly SessionRateLimit[]): Window[] =>
   limits.map(w => ({ kind: w.kind, percentUsed: w.percentUsed, resetsAt: w.resetsAt ?? null }))

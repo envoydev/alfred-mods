@@ -37,7 +37,7 @@ export type Family = 'opus' | 'sonnet' | 'haiku' | 'fable'
 // mod's own hook counted, whether the session started in the terminal's REPL, which only session.start says and
 // /clear does not repeat, the plan folders' next read and the read running, one at a time, and the step-time writes,
 // in order
-export type Held = {
-  close: Timer | null; compacting: boolean; counted: number; isTerminal: boolean; reload: Timer | null; reading: Promise<void>
-  writes: Promise<void>
+export type Pending = {
+  cacheToast: Timer | null; isCompacting: boolean; compactionsCounted: number; isTerminal: boolean; planReload: Timer | null; planRead: Promise<void>
+  timeWrites: Promise<void>
 }

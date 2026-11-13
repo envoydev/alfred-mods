@@ -3,7 +3,7 @@ import type { Field, From, Resolved, Source, Values } from './types'
 import { DEFAULTS, FIELDS, OLD_KEYS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast, writeField } from './settings'
 import type { Level } from '../rec/types'
 import { toast } from '../core/effects'
-import { loadQuiet } from '../tools/effects'
+import { applyQuiet } from '../tools/effects'
 import { recStatus } from '../rec/rec'
 import { loadRec, recWordCount } from '../rec/effects'
 import { loadBand } from '../band/effects'
@@ -57,10 +57,10 @@ export async function loadSettingsNow($: EngineInterface, isStart: boolean): Pro
   await retireOld($, r, legacy, rawHandoff)
   if (isStart) await tellMoved($, r)
   const before = settingsMem.rec
-  const held = holdRec(before, { level: r.values.rec, from: r.from.rec })
+  const pending = holdRec(before, { level: r.values.rec, from: r.from.rec })
   // A skipped value is told once (S3): each skip the last told set did not hold, when the set changes. While REC holds,
   // its skip is the hold's to tell: a skip toast would name a level REC is not at
-  const skips = r.skipped.filter(k => !(held.isHeld && k.field === 'rec'))
+  const skips = r.skipped.filter(k => !(pending.isHeld && k.field === 'rec'))
   const skippedKey = skips.map(k => `${k.field}@${k.source}`).sort().join(',')
   if (skippedKey !== settingsMem.skippedKey) {
     const told = new Set(settingsMem.skippedKey.split(','))
@@ -68,15 +68,15 @@ export async function loadSettingsNow($: EngineInterface, isStart: boolean): Pro
     settingsMem.skippedKey = skippedKey
   }
   // REC's hold (S3), told once per hold; a level that changes after the session's first read is told as /rec told it
-  settingsMem.rec = { level: held.level, from: held.from }
-  if (!held.isHeld) settingsMem.isHoldTold = false
+  settingsMem.rec = { level: pending.level, from: pending.from }
+  if (!pending.isHeld) settingsMem.isHoldTold = false
   else if (!settingsMem.isHoldTold) {
     settingsMem.isHoldTold = true
-    toast($, holdToast(held.level, held.from))
+    toast($, holdToast(pending.level, pending.from))
   }
   await loadRec($)
-  if (before !== null && before.level !== held.level) toast($, recStatus(held.level, recWordCount()))
-  await loadQuiet($)
+  if (before !== null && before.level !== pending.level) toast($, recStatus(pending.level, recWordCount()))
+  await applyQuiet($)
   await loadBand($)
   await loadHandoff($)
 }
@@ -142,7 +142,7 @@ export async function setField<F extends Field>($: EngineInterface, field: F, va
   return `Set ${shown} in ${user}.${isFirst ? ` ${nameOf(from)} gives ${JSON.stringify(r.values[field])}, which comes first.` : ''}`
 }
 
-export function followConfigChange($: EngineInterface, e: HookInput<'classic.ConfigChange'>, next: HookNext<'classic.ConfigChange'>) {
+export function reloadSettingsSoon($: EngineInterface, e: HookInput<'classic.ConfigChange'>, next: HookNext<'classic.ConfigChange'>) {
   $.clock.after(0, () => {
     loadSettings($).catch(() => undefined)
   })

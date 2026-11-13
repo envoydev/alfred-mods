@@ -98,7 +98,7 @@ export async function maskCommandOutput($: EngineInterface, e: MatchedInput<'ui.
   return text === e.props.text ? next(e) : next({ ...e, props: { ...e.props, text: printable(text) } })
 }
 
-export async function maskQuestionDialog($: EngineInterface, e: MatchedInput<'ui.render', { component: 'AskUserQuestion' }>, next: MatchedNext<'ui.render', { component: 'AskUserQuestion' }>) {
+export async function maskQuestions($: EngineInterface, e: MatchedInput<'ui.render', { component: 'AskUserQuestion' }>, next: MatchedNext<'ui.render', { component: 'AskUserQuestion' }>) {
   if (!(await isRecOn($))) return next(e)
   const questions = maskDialog(e.props.questions, maskSpans)
   return questions === e.props.questions ? next(e) : next({ ...e, props: { ...e.props, questions } })

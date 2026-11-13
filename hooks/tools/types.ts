@@ -31,10 +31,10 @@ export type RowContext = { cwd?: string | null; times?: number }
 
 // What the events said about one call. Never drawn, so a reload losing the calls in flight costs only those.
 // `pendingMs`: a call the person was asked about, settled before its `duration_ms` arrived, waits for it.
-export type Call = {
+export type ToolCall = {
   facts: CallFacts; key: string; tool: string; target: string; agentId: string | null
-  // `by`: the hook script its last settle counted a block for
-  settled: boolean; outcome: Outcome | null; rowId: string | null; by: string | null
+  // `blockedBy`: the hook script its last settle counted a block for
+  isSettled: boolean; outcome: Outcome | null; failureId: string | null; blockedBy: string | null
   startedAt: number | null; durationMs: number | null; pendingMs: number | null
   // A Skill call whose skill runs forked, in a subagent of its own: never in the main context
   isFork?: boolean

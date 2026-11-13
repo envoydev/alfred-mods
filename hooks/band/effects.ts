@@ -20,7 +20,7 @@ import { compactNow, readCache } from '../cache/effects'
 import { readAgents } from '../agents/effects'
 import { planDraw } from '../plan/effects'
 import { forecastOf } from '../handoff/handoff'
-import type { Held, MatchedInput, MatchedNext } from '../core/types'
+import type { Pending, MatchedInput, MatchedNext } from '../core/types'
 import { drawLines, drawNote, drawUnder, drawUnderNote } from '../core/draw'
 import { bandFailed } from '../core/failsafe'
 import { isNoColor } from '../core/effects'
@@ -112,11 +112,11 @@ export async function bandInputOf(
 }
 
 // What the band's buttons do, above or under
-export function bandPress($: EngineInterface, held: Held): Record<string, () => unknown> {
-  return { inspect: () => inspectFromBand($), compact: () => compactNow($, held), handoff: () => saveNow($) }
+export function bandPress($: EngineInterface, pending: Pending): Record<string, () => unknown> {
+  return { inspect: () => inspectFromBand($), compact: () => compactNow($, pending), handoff: () => saveNow($) }
 }
 
-export async function drawBandAbove($: EngineInterface, e: MatchedInput<'ui.render', { component: 'AbovePrompt' }>, next: MatchedNext<'ui.render', { component: 'AbovePrompt' }>, held: Held, isLeftOut: boolean) {
+export async function drawBandAbove($: EngineInterface, e: MatchedInput<'ui.render', { component: 'AbovePrompt' }>, next: MatchedNext<'ui.render', { component: 'AbovePrompt' }>, pending: Pending, isLeftOut: boolean) {
   // Decided on module memory, so a person above meets no new read before the survey's check; the read keeps this
   // hook drawn again on a later "bandPlace": "above". The width it lends the footer redraws it only on a change.
   if (isPassingAbove(e.surface)) {
@@ -134,10 +134,10 @@ export async function drawBandAbove($: EngineInterface, e: MatchedInput<'ui.rend
   const lines = bandLines(await bandInputOf($, { columns: e.props.bodyColumns, maxRows: e.props.maxRows, isWorking: e.props.isWorking, isLeftOut }))
   bandMem.isShown = lines.length > 0 && e.props.isCollapsed === false
   if (lines.length === 0) return next(e)
-  return drawLines($, e, lines, { noColor: await isNoColor($), press: bandPress($, held), columns: e.props.bodyColumns })
+  return drawLines($, e, lines, { noColor: await isNoColor($), press: bandPress($, pending), columns: e.props.bodyColumns })
 }
 
-export async function drawBandUnder($: EngineInterface, e: MatchedInput<'ui.render', { component: 'PromptHint' }>, next: MatchedNext<'ui.render', { component: 'PromptHint' }>, held: Held, isLeftOut: boolean) {
+export async function drawBandUnder($: EngineInterface, e: MatchedInput<'ui.render', { component: 'PromptHint' }>, next: MatchedNext<'ui.render', { component: 'PromptHint' }>, pending: Pending, isLeftOut: boolean) {
   const setting = await readBandSetting($)
   const v = e.viewport
   if (setting.isUnder !== true || e.surface !== 'terminal' || v === undefined) return next(e)
@@ -153,7 +153,7 @@ export async function drawBandUnder($: EngineInterface, e: MatchedInput<'ui.rend
   bandMem.isShown = lines.length > 0
   const beneath = await next(e)
   if (lines.length === 0) return beneath
-  return drawUnder($, e, beneath, lines, { noColor: await isNoColor($), press: bandPress($, held), columns })
+  return drawUnder($, e, beneath, lines, { noColor: await isNoColor($), press: bandPress($, pending), columns })
 }
 
 export async function drawSpinner($: EngineInterface, e: MatchedInput<'ui.render', { component: 'Spinner' }>, next: MatchedNext<'ui.render', { component: 'Spinner' }>) {

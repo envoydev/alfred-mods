@@ -1,7 +1,7 @@
 // The lifecycle folder's effects: what it reads and writes through $
 import { readBandSetting, resetBandFooter, syncStatus } from '../band/effects'
 import { armCacheClose, readCache, readCacheConfig, resetCache, takeResumeRate } from '../cache/effects'
-import { baseline, bumpTick, dropPassedWindows, forgetMidTurnRead, forgetStoredWindows, forgetTurnSpend, freshUsage, isMidTurnReadDue, isTodayStale, markResumed, pruneCost, readLive, readModelAndVersion, readUsage, resetLive, resetMeta, resetPace, resetTick, resetTotals, resetTurns, resetUsage, seedWindows, takeUsage, todayUsd } from '../session/effects'
+import { setCostBaseline, bumpTick, dropPassedWindows, forgetMidTurnRead, forgetStoredWindows, forgetTurnSpend, refreshUsageMidTurn, isMidTurnReadDue, isTodayStale, markResumed, pruneCost, readLive, readModelAndVersion, readUsage, resetLive, resetMeta, resetPace, resetTick, resetTotals, resetTurns, resetUsage, seedRateWindows, refreshUsage, readTodayUsd } from '../session/effects'
 import { readAgents, refreshLiveAgents, resetAgents, resetLoops } from '../agents/effects'
 import { notePermissionMode, resetBlockers, resetFailures, resetQuiet, resetStats } from '../tools/effects'
 import { openKeepWindow, readStatus, readStatusAfterStartOver, resetStack } from '../stack/effects'
@@ -15,8 +15,8 @@ import { forgetBreakdown, readBreakdownSoon, resetParts } from '../context/effec
 import { loadSettings } from '../settings/effects'
 import { pollPlace, readPlace } from '../place/effects'
 import { resetView } from '../inspect/effects'
-import type { Call } from '../tools/types'
-import type { Held, HookInput, HookNext } from '../core/types'
+import type { ToolCall } from '../tools/types'
+import type { Pending, HookInput, HookNext } from '../core/types'
 import { staleKeys } from '../plan/steptime'
 
 // The conversation the mod last started, by session id, and the start-over running. A /clear, a resume or a branch goes
@@ -32,7 +32,7 @@ const tickMem = { minute: -1 }
 export async function readStart($: EngineInterface): Promise<void> {
   await readModelAndVersion($)
   await readPlace($).catch(() => undefined)
-  await seedWindows($).catch(() => undefined)
+  await seedRateWindows($).catch(() => undefined)
   await resetBandFooter($)
   // The rules row's always-on rules (spec 2026-11-11, D4), from a breakdown read on a timer: the start waits on nothing
   readBreakdownSoon($)
@@ -53,7 +53,7 @@ export async function tickOnce($: EngineInterface): Promise<void> {
   // Past local midnight, today's cost is the new date's in the store
   if (isTodayStale(now)) {
     try {
-      await takeUsage($, await todayUsd($, now))
+      await refreshUsage($, await readTodayUsd($, now))
     } catch {
       // The next tick tries again
     }
@@ -61,7 +61,7 @@ export async function tickOnce($: EngineInterface): Promise<void> {
   const isBusy = anyLive || (await readLive($)).turnId !== null
   if (isBusy && isMidTurnReadDue(now)) {
     try {
-      await freshUsage($)
+      await refreshUsageMidTurn($)
     } catch {
       // The band keeps its last figures until the next tick
     }
@@ -105,7 +105,7 @@ export async function resetAll($: EngineInterface): Promise<void> {
 // as one too, and gets the resume prompt in an empty draft, never sent. A prompt that found the id has left the box,
 // which is not filled after it. No session.end hook tells them apart: a managed plugin that skips the mod's hooks may
 // skip that one too, and the mod hooks no event it did not hook before.
-export function startOver($: EngineInterface, source: string | null, calls: Map<string, Call>, held: Held): Promise<void> {
+export function startOver($: EngineInterface, source: string | null, calls: Map<string, ToolCall>, pending: Pending): Promise<void> {
   const run = (conversationMem.starting ?? Promise.resolve()).catch(() => undefined).then(async () => {
     conversationMem.id = await $.session.id()
     const isClear = source === 'clear' || (source === null && (await $.session.turns()) <= 1)
@@ -113,8 +113,8 @@ export function startOver($: EngineInterface, source: string | null, calls: Map<
     // no file keeps the last values (Phase 5 spec Choice 12). The window opens first, so a poll tick while the stores
     // load is inside it
     openKeepWindow((await $.clock.now()) + 10_000)
-    held.close?.cancel()
-    held.close = null
+    pending.cacheToast?.cancel()
+    pending.cacheToast = null
     calls.clear()
     // A cleared or resumed conversation is told of REC again on its first prompt
     forgetRecNote()
@@ -130,8 +130,8 @@ export function startOver($: EngineInterface, source: string | null, calls: Map<
     const now = await $.clock.now()
     await restartPlanWatch($, now)
     await seedMine($)
-    scheduleReload($, held)
-    await baseline($, await takeUsage($, await todayUsd($, now)))
+    scheduleReload($, pending)
+    await setCostBaseline($, await refreshUsage($, await readTodayUsd($, now)))
     await readStart($)
   })
   const starting: Promise<void> = run.finally(() => {
@@ -143,18 +143,18 @@ export function startOver($: EngineInterface, source: string | null, calls: Map<
 
 // A new id that no classic.SessionStart reported, read at the tick (`by` null) and before a prompt (`by` 'prompt'):
 // started over once. A start-over already running answers for it, and is waited for.
-export async function followConversation($: EngineInterface, by: 'prompt' | null, calls: Map<string, Call>, held: Held): Promise<void> {
+export async function followConversation($: EngineInterface, by: 'prompt' | null, calls: Map<string, ToolCall>, pending: Pending): Promise<void> {
   if (conversationMem.starting !== null) return conversationMem.starting
   if (conversationMem.id === null) return
   const id = await $.session.id()
   if (conversationMem.starting !== null) return conversationMem.starting
-  if (id !== conversationMem.id) await startOver($, by, calls, held)
+  if (id !== conversationMem.id) await startOver($, by, calls, pending)
 }
 
-export async function followSessionStart($: EngineInterface, e: HookInput<'classic.SessionStart'>, next: HookNext<'classic.SessionStart'>, calls: Map<string, Call>, held: Held) {
+export async function followSessionStart($: EngineInterface, e: HookInput<'classic.SessionStart'>, next: HookNext<'classic.SessionStart'>, calls: Map<string, ToolCall>, pending: Pending) {
   notePermissionMode(e.permission_mode)
   if (e.source === 'clear' || e.source === 'resume' || e.source === 'fork') {
-    await startOver($, e.source, calls, held)
+    await startOver($, e.source, calls, pending)
     const cost = e.estimated_cache_write_usd
     const tokens = e.context_tokens ?? 0
     if (e.source !== 'clear' && cost !== undefined && tokens > 0) {
@@ -162,7 +162,7 @@ export async function followSessionStart($: EngineInterface, e: HookInput<'class
       await takeResumeRate($, cost, tokens, model)
     }
   }
-  await readCacheConfig($, held)
+  await readCacheConfig($, pending)
   if (e.source !== 'startup') return next(e)
   // A start: the stack's own SessionStart hook, beneath, writes this session's file, so it is read once those hooks
   // have run, not at the next poll. A compaction's rewrite waits for the poll: read here, it would step the handoff
@@ -172,7 +172,7 @@ export async function followSessionStart($: EngineInterface, e: HookInput<'class
   return result
 }
 
-export async function startSession($: EngineInterface, e: HookInput<'session.start'>, next: HookNext<'session.start'>, calls: Map<string, Call>, held: Held) {
+export async function startSession($: EngineInterface, e: HookInput<'session.start'>, next: HookNext<'session.start'>, calls: Map<string, ToolCall>, pending: Pending) {
   const started = await next(e)
   await $.command.register({ name: 'inspect', description: 'Session metrics, agents, tool failures, cache, the timeline and the plan in a pane', argumentHint: '[now|usage|agents|tools|cache|timeline|plan [name]|close|show [n]|copy [n]|report [n]|fill|band off|calm|full]' })
   await $.command.register({ name: 'rec', description: 'Recording mode: set "rec" in ~/.claude/settings.json, show the level, test it, or edit your private words', argumentHint: '[on|strict|off|test|words [close]]' })
@@ -185,7 +185,7 @@ export async function startSession($: EngineInterface, e: HookInput<'session.sta
   // Starts over a conversation no classic.SessionStart reported, moves the agent rows and redraws the running times,
   // once a second
   $.clock.every(1000, () => {
-    followConversation($, null, calls, held).then(() => tickOnce($)).catch(() => undefined)
+    followConversation($, null, calls, pending).then(() => tickOnce($)).catch(() => undefined)
   })
   const now = await $.clock.now()
   await pruneCost($, now)
@@ -194,22 +194,22 @@ export async function startSession($: EngineInterface, e: HookInput<'session.sta
   forgetStoredWindows()
   // A process that starts on a conversation with prompts in it resumed one; a reload keeps $.state and its last reading
   const isFresh = (await readUsage($)).at === 0
-  const reading = await takeUsage($, await todayUsd($, now))
-  await baseline($, reading)
+  const reading = await refreshUsage($, await readTodayUsd($, now))
+  await setCostBaseline($, reading)
   await readStart($)
   if (isFresh && (await $.session.turns().catch(() => 0)) > 0) await markResumed($)
-  held.isTerminal = e.surface === 'terminal' && e.isInteractive
-  await readCacheConfig($, held)
+  pending.isTerminal = e.surface === 'terminal' && e.isInteractive
+  await readCacheConfig($, pending)
   // A reload keeps $.state but not the module's timer: a cache still warm gets its toast armed again
-  await armCacheClose($, held)
+  await armCacheClose($, pending)
   // A plan's file must be written after this to run; a reload keeps the first start's time
   await startPlanWatch($, now)
   $.clock.every(30_000, () => {
-    queueReload($, held)
+    queueReload($, pending)
     // The status file is read whatever the settings read did
     loadSettings($).catch(() => undefined).then(() => readStatus($)).catch(() => undefined)
     pollPlace($).catch(() => undefined)
   })
-  scheduleReload($, held)
+  scheduleReload($, pending)
   return started
 }
