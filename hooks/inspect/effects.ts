@@ -52,7 +52,7 @@ export async function isInspectDrawn($: EngineInterface): Promise<boolean> {
 export async function openInspect($: EngineInterface, tab: Tab): Promise<UiOpenResult> {
   // Esc at an idle, empty prompt closes it: on the terminal's main screen nothing takes a click (the user, 2026-11-12)
   const opening = $.ui.open({ id: 'inspect', title: 'Inspect', closeOnEscape: true })
-  await updateView($, v => ({ ...v, tab }))
+  await updateView($, view => ({ ...view, tab }))
   // The Usage tab reads the context's parts again when the last read is over a minute old
   if (tab === 'usage' && (await isBreakdownStale($))) readBreakdownSoon($)
   const opened = await opening
@@ -76,8 +76,8 @@ export async function runBandCommand($: EngineInterface, word: string): Promise<
   const mode = BAND_MODES.find(m => m === word)
   if (mode !== undefined) return writeUserField($, 'band', mode)
   await loadSettings($)
-  const r = resolvedSettings()
-  return `Band: ${r?.values.band ?? DEFAULTS.band} - from ${sourceLabel(r?.from.band ?? 'default', '/band')}. ${BAND_HELP}`
+  const resolved = resolvedSettings()
+  return `Band: ${resolved?.values.band ?? DEFAULTS.band} - from ${sourceLabel(resolved?.from.band ?? 'default', '/band')}. ${BAND_HELP}`
 }
 
 // '/inspect show [n]' and '/inspect copy [n]': the failure whose row starts with n, the newest when n is left out
@@ -107,9 +107,9 @@ export async function runReportCommand($: EngineInterface, word: string | undefi
   const list = reportRows(await readAgents($))
   if (list.length === 0) return 'No agent report to show.'
   const n = ordinalOf(word)
-  const r = list[n - 1]
-  if (r === undefined) return outOfRange('report', word, list.length, 'top')
-  return runToggleCommand($, `report:${r.id}`, `report ${n} (${r.type} · ${oneLine(printable(r.description), 40)})`, 'agents', ['agents'])
+  const row = list[n - 1]
+  if (row === undefined) return outOfRange('report', word, list.length, 'top')
+  return runToggleCommand($, `report:${row.id}`, `report ${n} (${row.type} · ${oneLine(printable(row.description), 40)})`, 'agents', ['agents'])
 }
 
 // Show and Hide as one toggle, as the button: shown, the pane comes up on a tab that lists it
@@ -127,7 +127,7 @@ export async function openInspectFromBand($: EngineInterface): Promise<void> {
 }
 
 export async function toggleExpanded($: EngineInterface, id: string): Promise<void> {
-  await updateView($, v => ({ ...v, shown: v.shown.includes(id) ? v.shown.filter(x => x !== id) : [...v.shown, id] }))
+  await updateView($, view => ({ ...view, shown: view.shown.includes(id) ? view.shown.filter(x => x !== id) : [...view.shown, id] }))
 }
 
 export async function runInspectCommand($: EngineInterface, e: MatchedInput<'command.run', { command: 'inspect' }>) {
@@ -147,7 +147,7 @@ export async function runInspectCommand($: EngineInterface, e: MatchedInput<'com
       const asked = oneLine(printable(name), 40)
       return { text: good.length === 0 ? `No plan named ${asked}. No plan file in ${PLANS_DIR}/.` : `No plan named ${asked}. Plans: ${good.join(', ')}.` }
     }
-    await updateView($, v => (v.planSlug === name ? v : { ...v, planSlug: name }))
+    await updateView($, view => (view.planSlug === name ? view : { ...view, planSlug: name }))
   }
   const opened = await openInspect($, tab)
   return { text: opened.isPlaced ? 'Opened the inspect pane.' : `The inspect pane is open but not drawn: ${opened.reason}.` }
@@ -159,7 +159,7 @@ export async function drawInspectPane($: EngineInterface, e: MatchedInput<'ui.re
   const counts = await readLive($)
   const shown = await readView($)
   const rows = await readFailures($)
-  const d = await readPlanDrawing($, now)
+  const drawing = await readPlanDrawing($, now)
   const u = await readUsage($)
   const h = await readHandoff($)
   const m = await readMeta($)
@@ -167,9 +167,9 @@ export async function drawInspectPane($: EngineInterface, e: MatchedInput<'ui.re
   const runway = runwayOf(st, u, m.model)
   const input = {
     now, columns: e.props.bodyColumns, isWorking: counts.turnId !== null, live: counts, usage: u,
-    session: m, turns: await readTurns($), newFailures: rows.filter(f => f.isNew).length,
+    session: m, turns: await readTurns($), newFailures: rows.filter(failure => failure.isNew).length,
     pace: await readPace($), failures: rows, stats: await readStats($), totals: await readTotals($), view: shown,
-    agents: await readAgents($), cache: await readCache($), plan: d.band, isPlanInvalid: d.invalid, score: d.score, isPlanScore: d.isPlanScore, scoreLevel: await readScoreLevel($), blockers: await readBlockers($), parts: await readParts($),
+    agents: await readAgents($), cache: await readCache($), plan: drawing.band, isPlanInvalid: drawing.invalid, score: drawing.score, isPlanScore: drawing.isPlanScore, scoreLevel: await readScoreLevel($), blockers: await readBlockers($), parts: await readParts($),
     loops: await readLoops($),
     rec: recSummary(await readRec($)), forecast: forecastTargetOf(h, u, runway), handoff: handoffViewOf(h, u, counts.turnId !== null, runway),
     stack: { view: st, prompt: stackPrompt(), runway, sessionModel: m.model },
@@ -180,7 +180,7 @@ export async function drawInspectPane($: EngineInterface, e: MatchedInput<'ui.re
     : shown.tab === 'cache' ? cacheLines(input)
     : shown.tab === 'tools' ? toolsLines(input)
     : shown.tab === 'timeline' ? timelineLines(input.turns, Math.max(3, e.props.scroll.bodyRows - 1 - bar.length), u.windows.length > 0, e.props.bodyColumns)
-    : shown.tab === 'plan' ? planLines(d.shown, d.scores, { invalid: d.invalid, others: d.others, otherScores: d.otherScores, updatedAt: d.updatedAt, now, columns: e.props.bodyColumns })
+    : shown.tab === 'plan' ? planLines(drawing.shown, drawing.scores, { invalid: drawing.invalid, others: drawing.others, otherScores: drawing.otherScores, updatedAt: drawing.updatedAt, now, columns: e.props.bodyColumns })
     : nowLines(input)
   const press: Record<string, () => unknown> = {
     'tab-now': () => openInspect($, 'now'),
