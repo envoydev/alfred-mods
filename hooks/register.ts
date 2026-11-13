@@ -129,34 +129,34 @@ export const register: Register = (on, options) => {
 
   // REC on Claude Code's rows: each site rewrites its props only while REC is on and masking changes something, else
   // passes next(e) as it came. The stored messages and what the model reads stay as they are.
-  on('ui.render', { component: 'UserMessage' }, ($, e, next) => maskUserMessage($, e, next)).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
+  on('ui.render', { component: 'UserMessage' }, ($, e, next) => maskUserMessage($, e, next)).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($.ui.resolve(e), REC_HIDDEN)))
 
-  on('ui.render', { component: 'AssistantMessage' }, ($, e, next) => maskAssistantMessage($, e, next)).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
+  on('ui.render', { component: 'AssistantMessage' }, ($, e, next) => maskAssistantMessage($, e, next)).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($.ui.resolve(e), REC_HIDDEN)))
 
-  on('ui.render', { component: 'CommandOutput' }, ($, e, next) => maskCommandOutput($, e, next)).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
+  on('ui.render', { component: 'CommandOutput' }, ($, e, next) => maskCommandOutput($, e, next)).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($.ui.resolve(e), REC_HIDDEN)))
 
   // The tool sites in two steps (Decision 14): "quiet"'s compact row or emptied result first, then REC over whatever
   // the first hands on. A settled row that is not expanded, or that a group unfolded, draws its compact line.
   // An unfolded group's rows draw `output` inline, so a row's input and output are both masked
-  on('ui.render', { component: 'ToolUse' }, ($, e, next) => drawToolUse($, e, next)).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
+  on('ui.render', { component: 'ToolUse' }, ($, e, next) => drawToolUse($, e, next)).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($.ui.resolve(e), REC_HIDDEN)))
 
   // With "quiet" on an errored result draws an empty Box, as Claude Code would draw its whole error text and the compact
   // row above carries ✗ and its error lines, and so does a result whose row carries what it said (DROPS_RESULT: Bash,
   // Edit, Write and more); any other keeps next(e)'s tree, the classifier line in it. Under REC, so does an errored
   // result whose row drew its masked error text
-  on('ui.render', { component: 'ToolResult' }, ($, e, next) => drawToolResult($, e, next)).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
+  on('ui.render', { component: 'ToolResult' }, ($, e, next) => drawToolResult($, e, next)).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($.ui.resolve(e), REC_HIDDEN)))
 
   // With "quiet" on a settled group of calls alone draws its compact lines. One holding another row, or an errored or
   // interrupted call, is unfolded and its calls marked, so each draws its own compact line; a group drawn expanded (the
   // main screen's ctrl+o) unmarks them, so ctrl+o shows all. A group's folded line shows its calls' paths, patterns and
   // git results, and `isExpanded` is the one prop a rewrite changes, so REC unfolds it into ToolUse rows, which the
   // hook above masks, live or settled.
-  on('ui.render', { component: 'ToolGroup' }, ($, e, next) => drawToolGroup($, e, next)).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($, e, REC_HIDDEN)))
+  on('ui.render', { component: 'ToolGroup' }, ($, e, next) => drawToolGroup($, e, next)).catch(($, e, next) => (recLevel() === 'off' ? next(e) : drawNote($.ui.resolve(e), REC_HIDDEN)))
 
   on('ui.render', { component: 'AskUserQuestion' }, ($, e, next) => maskQuestions($, e, next)).catch(($, e, next) => (recLevel() === 'off' ? next(e) : next({ ...e, props: { ...e.props, questions: neutralDialog(e.props.questions) } })))
 
-  on('ui.render', { component: 'Pane', requestId: 'inspect' }, ($, e) => drawInspectPane($, e, pending)).catch(($, e, next) => drawNote($, e, paneFailed(next.error.kind, next.error.message, recLevel() !== 'off')))
+  on('ui.render', { component: 'Pane', requestId: 'inspect' }, ($, e) => drawInspectPane($, e, pending)).catch(($, e, next) => drawNote($.ui.resolve(e), paneFailed(next.error.kind, next.error.message, recLevel() !== 'off')))
 
   // The private-words pane: words are added only here, never through a command's arguments, which the transcript echoes
-  on('ui.render', { component: 'Pane', requestId: 'rec' }, ($, e) => drawRecPane($, e)).catch(($, e, next) => drawNote($, e, paneFailed(next.error.kind, next.error.message, recLevel() !== 'off')))
+  on('ui.render', { component: 'Pane', requestId: 'rec' }, ($, e) => drawRecPane($, e)).catch(($, e, next) => drawNote($.ui.resolve(e), paneFailed(next.error.kind, next.error.message, recLevel() !== 'off')))
 }

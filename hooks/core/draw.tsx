@@ -1,13 +1,13 @@
 // Lines of styled segments to the surface's elements. Every string passes through mask() here, the one place REC
 // (Phase 4) hooks, and through printable(), as tool output can carry control characters.
-import type { EngineInterface, RenderElement, ResolveInput } from 'claude-code'
+import type { RenderElement, ResolveInput } from 'claude-code'
 
 import { mask } from '../rec/mask'
 import { laneFit, statusGlyph } from '../agents/agents'
 import { spark } from './forecast'
 import { printable } from './format'
 import type { AgentStatus, LaneFit } from '../agents/types'
-import type { Lane, Line, Seg, Tone } from './types'
+import type { Lane, Line, Seg, Tone, Ui } from './types'
 
 const show = (text: string): string => mask(printable(text))
 
@@ -94,13 +94,13 @@ function lanesSvg(lanes: Lane[], now: number, noColor: boolean): string {
 // A chart where the surface draws Svg, its sparkline as text elsewhere. The Svg is drawn at the markup's 120 by 24,
 // whatever the turns, in a Box of CHART_MAX cells (the release 2 review: sized by the turns, two turns drew it 2 cells
 // wide)
-function chart($: EngineInterface, e: ResolveInput, values: number[], noColor: boolean): RenderElement {
+function chart(ui: Ui, e: ResolveInput, values: number[], noColor: boolean): RenderElement {
   const alt = show(spark(values))
-  if (e.surface === 'desktop' || e.surface === 'vscode') {
-    const { Svg } = $.ui.resolve(e)
+  if ((e.surface === 'desktop' || e.surface === 'vscode') && 'Svg' in ui) {
+    const { Svg } = ui
     return <Svg source={polyline(values, noColor)} alt={alt} width={120} height={24} />
   }
-  const { Text } = $.ui.resolve(e)
+  const { Text } = ui
   return <Text {...style({ tone: 'usage' }, noColor)}>{alt}</Text>
 }
 
@@ -230,9 +230,9 @@ function fit(pieces: Piece[], columns: number): Fitted[] {
 // transcript), so its Box takes the slot's width and clips there. Each row is at least one row tall: a Box with nothing
 // in it is none, and a blank line in a result would vanish.
 export function drawLines(
-  $: EngineInterface, e: ResolveInput, lines: Line[], o: { noColor: boolean; press: Record<string, () => unknown>; columns: number; fill?: boolean },
+  ui: Ui, e: ResolveInput, lines: Line[], o: { noColor: boolean; press: Record<string, () => unknown>; columns: number; fill?: boolean },
 ): RenderElement {
-  const { Box, Button, Code, Text } = $.ui.resolve(e)
+  const { Box, Button, Code, Text } = ui
   const draw = (face: { mono?: true }) => ({ piece: p, cut }: Fitted): RenderElement => {
     switch (p.kind) {
       case 'gap': return <Box width={p.width} flexShrink={0} />
@@ -245,7 +245,7 @@ export function drawLines(
         if (cut !== undefined) return <Box width={cut} flexShrink={0} {...margins}><Text {...style(p.seg, o.noColor)} {...face} wrap="truncate-end">{p.text}</Text></Box>
         return <Box flexShrink={0} {...margins}><Text {...style(p.seg, o.noColor)} {...face}>{p.text}</Text></Box>
       }
-      case 'chart': return <Box width={p.cells} flexShrink={0}>{chart($, e, p.values, o.noColor)}</Box>
+      case 'chart': return <Box width={p.cells} flexShrink={0}>{chart(ui, e, p.values, o.noColor)}</Box>
       case 'code': return <Code source={p.source} />
       case 'button': {
         if (p.button.isText === true) return <Box flexShrink={0}><Text {...style({ tone: 'dim' }, o.noColor)} {...face}>{p.label}</Text></Box>
@@ -268,8 +268,8 @@ export function drawLines(
   // Agents on a time axis (spec C2): one SVG where the surface draws one beside text, else a text line per lane, in
   // the monospaced face on mobile so the bars line up
   const laneRows = (seg: Extract<Seg, { lanes: Lane[] }>, n: number): RenderElement[] => {
-    if (e.surface === 'desktop' || e.surface === 'vscode') {
-      const { Svg } = $.ui.resolve(e)
+    if ((e.surface === 'desktop' || e.surface === 'vscode') && 'Svg' in ui) {
+      const { Svg } = ui
       const alt = show(`${seg.lanes.length} agents on a time axis`)
       // Straight in a Box as wide as the pane, the slot an unsized Svg scales down to (a Box that cannot shrink gave it
       // none, the release 3 review)
@@ -292,39 +292,38 @@ export function drawLines(
 // The band under the input (spec 2026-11-11 band-under, U2): Claude Code's own footer line first, kept live, then the
 // band's lines
 export function drawUnder(
-  $: EngineInterface, e: ResolveInput, beneath: RenderElement, lines: Line[], o: { noColor: boolean; press: Record<string, () => unknown>; columns: number },
+  ui: Ui, e: ResolveInput, beneath: RenderElement, lines: Line[], o: { noColor: boolean; press: Record<string, () => unknown>; columns: number },
 ): RenderElement {
-  const { Box } = $.ui.resolve(e)
-  return <Box flexDirection="column">{beneath}{drawLines($, e, lines, o)}</Box>
+  const { Box } = ui
+  return <Box flexDirection="column">{beneath}{drawLines(ui, e, lines, o)}</Box>
 }
 
 // The footer's .catch while under: Claude Code's line, then the band's failure note, as `drawNote` draws it above
-export function drawUnderNote($: EngineInterface, e: ResolveInput, beneath: RenderElement, text: string): RenderElement {
-  const { Box, Text } = $.ui.resolve(e)
+export function drawUnderNote(ui: Ui, beneath: RenderElement, text: string): RenderElement {
+  const { Box, Text } = ui
   return <Box flexDirection="column">{beneath}<Text dimColor wrap="truncate-end">{text}</Text></Box>
 }
 
 // One dim line a draw hook's .catch draws in place of its tree. Not masked: the text is the mod's own, and the masker
 // may be what failed.
-export function drawNote($: EngineInterface, e: ResolveInput, text: string): RenderElement {
-  const { Box, Text } = $.ui.resolve(e)
+export function drawNote(ui: Ui, text: string): RenderElement {
+  const { Box, Text } = ui
   return <Box flexDirection="column"><Text dimColor wrap="truncate-end">{text}</Text></Box>
 }
 
 // Lines above an Input and lines below it, as the rec pane draws them: the field takes the keys as the pane opens. A
 // surface with no Input (mobile) draws the lines alone.
 export function drawWithInput(
-  $: EngineInterface, e: ResolveInput, top: Line[], input: { key: string; label: string; submitLabel: string; onSubmit: (value: string) => void }, bottom: Line[],
+  ui: Ui, e: ResolveInput, top: Line[], input: { key: string; label: string; submitLabel: string; onSubmit: (value: string) => void }, bottom: Line[],
   o: { noColor: boolean; press: Record<string, () => unknown>; columns: number; fill?: boolean },
 ): RenderElement {
-  const els = $.ui.resolve(e)
-  if (!('Input' in els)) return drawLines($, e, [...top, ...bottom], o)
-  const { Box, Input } = els
+  if (!('Input' in ui)) return drawLines(ui, e, [...top, ...bottom], o)
+  const { Box, Input } = ui
   return (
     <Box flexDirection="column">
-      {drawLines($, e, top, o)}
+      {drawLines(ui, e, top, o)}
       <Input key={input.key} label={show(input.label)} submitLabel={show(input.submitLabel)} autoFocus onSubmit={(value: string) => input.onSubmit(value)} />
-      {drawLines($, e, bottom, o)}
+      {drawLines(ui, e, bottom, o)}
     </Box>
   )
 }

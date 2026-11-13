@@ -134,7 +134,7 @@ export async function drawBandAbove($: EngineInterface, e: MatchedInput<'ui.rend
   const lines = bandLines(await readBandInput($, { columns: e.props.bodyColumns, maxRows: e.props.maxRows, isWorking: e.props.isWorking, isLeftOut }))
   bandMemory.isShown = lines.length > 0 && e.props.isCollapsed === false
   if (lines.length === 0) return next(e)
-  return drawLines($, e, lines, { noColor: await isNoColor($), press: bandButtons($, pending), columns: e.props.bodyColumns })
+  return drawLines($.ui.resolve(e), e, lines, { noColor: await isNoColor($), press: bandButtons($, pending), columns: e.props.bodyColumns })
 }
 
 export async function drawBandUnder($: EngineInterface, e: MatchedInput<'ui.render', { component: 'PromptHint' }>, next: MatchedNext<'ui.render', { component: 'PromptHint' }>, pending: Pending, isLeftOut: boolean) {
@@ -153,7 +153,7 @@ export async function drawBandUnder($: EngineInterface, e: MatchedInput<'ui.rend
   bandMemory.isShown = lines.length > 0
   const beneath = await next(e)
   if (lines.length === 0) return beneath
-  return drawUnder($, e, beneath, lines, { noColor: await isNoColor($), press: bandButtons($, pending), columns })
+  return drawUnder($.ui.resolve(e), e, beneath, lines, { noColor: await isNoColor($), press: bandButtons($, pending), columns })
 }
 
 export async function drawSpinner($: EngineInterface, e: MatchedInput<'ui.render', { component: 'Spinner' }>, next: MatchedNext<'ui.render', { component: 'Spinner' }>) {
@@ -172,14 +172,14 @@ export async function drawSpinner($: EngineInterface, e: MatchedInput<'ui.render
 export function drawBandAboveFailed($: EngineInterface, e: MatchedInput<'ui.render', { component: 'AbovePrompt' }>, next: MatchedNext<'ui.render', { component: 'AbovePrompt' }> & Caught) {
   if (isPassingAbove(e.surface)) return next(e)
   bandMemory.isShown = false
-  return drawNote($, e, bandFailed(next.error.kind))
+  return drawNote($.ui.resolve(e), bandFailed(next.error.kind))
 }
 
 // The band under's .catch: what draws when its hook failed
 export async function drawBandUnderFailed($: EngineInterface, e: MatchedInput<'ui.render', { component: 'PromptHint' }>, next: MatchedNext<'ui.render', { component: 'PromptHint' }> & Caught) {
   if (!bandMemory.isUnder || e.surface !== 'terminal') return next(e)
   bandMemory.isShown = false
-  return drawUnderNote($, e, await next(e), bandFailed(next.error.kind))
+  return drawUnderNote($.ui.resolve(e), await next(e), bandFailed(next.error.kind))
 }
 
 // Each session, and each start-over, proves its footer again before the site above passes (spec band-under U2)

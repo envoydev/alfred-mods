@@ -64,7 +64,7 @@ test('a missing field is unknown and not listed', () => {
   })
 })
 
-test('resumeAt null sets noOffer', () => {
+test('resumeAt null sets hasNoOffer', () => {
   const r = parseStack(file({ resumeAt: null }), 's1')
   if (r.state !== 'used') throw new Error('not used')
   expect(r.fields.resumeAt).toBe(null)

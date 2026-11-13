@@ -306,7 +306,7 @@ export async function drawToolUse($: EngineInterface, e: MatchedInput<'ui.render
   if ((await readQuiet($)).isOn && !e.props.isRunning && (e.props.isExpanded !== true || rowMemory.marks.has(e.props.tool_use_id))) {
     const columns = e.viewport?.columns ?? 120
     const lines = callLine(compactCallOf(e.props.tool_use_id, e.props), columns, { cwd: workingFolder() })
-    return drawLines($, e, lines, { noColor: await isNoColor($), press: {}, columns , fill: true })
+    return drawLines($.ui.resolve(e), e, lines, { noColor: await isNoColor($), press: {}, columns , fill: true })
   }
   if (!(await isRecOn($))) return next(e)
   // An unfolded group's errored row draws its error text inline, and Claude Code draws that text, not `output` (live,
@@ -320,7 +320,7 @@ export async function drawToolUse($: EngineInterface, e: MatchedInput<'ui.render
       const columns = e.viewport?.columns ?? 120
       const head = callLine(compactCallOf(e.props.tool_use_id, e.props), columns, { cwd: workingFolder() }).slice(0, 1)
       const isExpanded = e.props.isExpanded === true
-      return drawLines($, e, [...head, ...resultLines(failed.text, { isExpanded, isErrored: true, gutter: e.surface === 'terminal' })], { noColor: await isNoColor($), press: {}, columns , fill: true })
+      return drawLines($.ui.resolve(e), e, [...head, ...resultLines(failed.text, { isExpanded, isErrored: true, gutter: e.surface === 'terminal' })], { noColor: await isNoColor($), press: {}, columns , fill: true })
     }
   }
   const input = maskDeep(e.props.input, mask)
@@ -334,14 +334,14 @@ export async function drawToolResult($: EngineInterface, e: MatchedInput<'ui.ren
   // only in that view (an unfolded group draws its rows' output inline), so it unmarks its row and redraws it in full
   if (e.props.isExpanded === true && rowMemory.marks.delete(e.props.tool_use_id)) $.ui.invalidate('ui.render')
   const isDropped = e.props.isErrored || DROPS_RESULT.includes(e.props.tool)
-  if (isDropped && e.props.isExpanded !== true && (await readQuiet($)).isOn) return drawLines($, e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
+  if (isDropped && e.props.isExpanded !== true && (await readQuiet($)).isOn) return drawLines($.ui.resolve(e), e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
   if (!(await isRecOn($))) return next(e)
-  if (e.props.isErrored && errorRowIds.has(e.props.tool_use_id)) return drawLines($, e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
+  if (e.props.isErrored && errorRowIds.has(e.props.tool_use_id)) return drawLines($.ui.resolve(e), e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
   const masked = maskResult({ ...e.props, error: errorTexts.get(e.props.tool_use_id) ?? null }, mask)
   if (masked.kind === 'same') return next(e)
   if (masked.kind === 'output') return next({ ...e, props: { ...e.props, output: masked.output } })
   const lines = resultLines(masked.text, { isExpanded: e.props.isExpanded === true, isErrored: e.props.isErrored, gutter: e.surface === 'terminal' })
-  return drawLines($, e, lines, { noColor: await isNoColor($), press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
+  return drawLines($.ui.resolve(e), e, lines, { noColor: await isNoColor($), press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
 }
 
 export async function drawToolGroup($: EngineInterface, e: MatchedInput<'ui.render', { component: 'ToolGroup' }>, next: MatchedNext<'ui.render', { component: 'ToolGroup' }>) {
@@ -355,7 +355,7 @@ export async function drawToolGroup($: EngineInterface, e: MatchedInput<'ui.rend
   if (isQuiet && !e.props.isActive && e.props.isCallsOnly === true) {
     const columns = e.viewport?.columns ?? 120
     const lines = groupLines(e.props.calls.map(c => compactCallOf(c.tool_use_id, c)), columns, { cwd: workingFolder() })
-    return drawLines($, e, lines, { noColor: await isNoColor($), press: {}, columns , fill: true })
+    return drawLines($.ui.resolve(e), e, lines, { noColor: await isNoColor($), press: {}, columns , fill: true })
   }
   if (isQuiet && (isRec || !e.props.isActive)) markUnfolded(ids)
   else if (!isRec) return next(e)

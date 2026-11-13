@@ -207,5 +207,5 @@ export async function drawInspectPane($: EngineInterface, e: MatchedInput<'ui.re
   // 2026-11-12): each button draws as its command
   const isMain = e.surface === 'terminal' && e.viewport?.isFullscreen === false
   const lines = isMain ? asCommands([...bar, ...body], paneCommands(rows, input.agents)) : [...bar, ...body]
-  return drawLines($, e, lines, { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
+  return drawLines($.ui.resolve(e), e, lines, { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
 }

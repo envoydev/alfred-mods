@@ -196,7 +196,7 @@ test('a Box keeps its key in the drawn tree', async ($, on) => {
 const FIT_PANE = { title: 'Fit', isFocused: false, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 30 }, view: {} }
 function fitPane(on: On, lines: Line[]): void {
   on('ui.render', { component: 'Pane', requestId: 'fit' }, ($$, e) =>
-    drawLines($$, e, lines, { noColor: false, press: {}, columns: e.props.bodyColumns }))
+    drawLines($$.ui.resolve(e), e, lines, { noColor: false, press: {}, columns: e.props.bodyColumns }))
 }
 const mountFit = ($: Engine, surface: RenderSurface, columns: number) =>
   $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'fit', props: { ...FIT_PANE, bodyColumns: columns } })

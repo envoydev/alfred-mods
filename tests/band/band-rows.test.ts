@@ -706,7 +706,7 @@ test("the project and usage rows' tones", () => {
 for (const noColor of [false, true]) {
   test(`the project and usage rows draw ${noColor ? 'no colour under NO_COLOR' : 'purple, yellow and aqua'}`, async ($, on) => {
     const lines = bandLines(USER_ORDER).filter(l => /^(project|usage):/.test(text(l)))
-    on('ui.render', { component: 'Pane', requestId: 'rows' }, (h$, e) => drawLines(h$, e, lines, { noColor, press: {}, columns: 150 }))
+    on('ui.render', { component: 'Pane', requestId: 'rows' }, (h$, e) => drawLines(h$.ui.resolve(e), e, lines, { noColor, press: {}, columns: 150 }))
     const ui = await $.ui.mount({
       plugin: 'alfred-mods', surface: 'desktop', component: 'Pane', requestId: 'rows',
       props: { title: 'rows', isFocused: false, bodyColumns: 150, placement: 'dock', scroll: { offset: 0, bodyRows: 10 }, view: {} },

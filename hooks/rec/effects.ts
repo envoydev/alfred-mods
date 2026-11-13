@@ -111,7 +111,7 @@ export async function drawRecPane($: EngineInterface, e: MatchedInput<'ui.render
   if (r.level === 'off') words.forEach((w, i) => { press[`remove-${i}`] = () => removeRecWord($, w) })
   const note = r.note === null ? [] : [[{ text: r.note, tone: 'warn' as const }]]
   const input = { key: 'word', label: 'Add a word', submitLabel: 'Add', onSubmit: (value: string) => { void addRecWord($, value) } }
-  return drawWithInput($, e, recPaneLines(r.level, words), input, note, { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
+  return drawWithInput($.ui.resolve(e), e, recPaneLines(r.level, words), input, note, { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
 }
 
 export async function runRecCommand($: EngineInterface, e: MatchedInput<'command.run', { command: 'rec' }>) {

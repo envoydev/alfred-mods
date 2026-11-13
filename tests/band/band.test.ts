@@ -355,7 +355,7 @@ for (const surface of SURFACES) {
 }
 
 test('the chart\'s SVG keeps its hex', async ($, on) => {
-  on('ui.render', { component: 'Pane', requestId: 'chart' }, (h$, e) => drawLines(h$, e, [[{ chart: [10, 50, 90] }]], { noColor: false, press: {}, columns: 80 }))
+  on('ui.render', { component: 'Pane', requestId: 'chart' }, (h$, e) => drawLines(h$.ui.resolve(e), e, [[{ chart: [10, 50, 90] }]], { noColor: false, press: {}, columns: 80 }))
   const ui = await $.ui.mount({
     plugin: 'alfred-mods', surface: 'desktop', component: 'Pane', requestId: 'chart',
     props: { title: 'chart', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 10 }, view: {} },
@@ -366,7 +366,7 @@ test('the chart\'s SVG keeps its hex', async ($, on) => {
 
 test('every drawn string passes through mask', async ($, on) => {
   // drawLines draws a site the mod leaves to the engine, with a hook's `$`
-  on('ui.render', (h$, e) => drawLines(h$, e, [[{ text: 'abc' }]], { noColor: false, press: {}, columns: 80 }))
+  on('ui.render', (h$, e) => drawLines(h$.ui.resolve(e), e, [[{ text: 'abc' }]], { noColor: false, press: {}, columns: 80 }))
   const ui = await $.ui.mount({
     plugin: 'alfred-mods', surface: 'terminal', component: 'Pane', requestId: 'mask-check',
     props: { title: 'mask', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 10 }, view: {} },

@@ -1,5 +1,5 @@
 // The types every folder shares: the band's drawn segments, a hook's held timers, and the hook helper types
-import type { EventName, Hook, MatchedHook, Timer } from 'claude-code'
+import type { EngineInterface, EventName, Hook, MatchedHook, Timer } from 'claude-code'
 import type { AgentStatus } from '../agents/types'
 
 // A hook's input, its next and its result, as a feature function takes them (the form probe P2 passed)
@@ -9,6 +9,9 @@ export type HookResult<E extends EventName> = ReturnType<Hook<E>>
 // The same under a matcher, narrowed by it as on(event, matcher, hook) narrows them
 export type MatchedInput<E extends EventName, M> = Parameters<MatchedHook<E, M>>[1]
 export type MatchedNext<E extends EventName, M> = Parameters<MatchedHook<E, M>>[2]
+
+// The surface's elements, as $.ui.resolve(e) gives them in an effects file: the draw helpers take this, never $
+export type Ui = ReturnType<EngineInterface['ui']['resolve']>
 
 export type Tone = 'ok' | 'warn' | 'fail' | 'dim' | 'usage' | 'skill' | 'agents' | 'cache' | 'plan' | 'handoff' | 'opus' | 'sonnet' | 'haiku' | 'fable' | 'git' | 'branch' | 'counts'
 
