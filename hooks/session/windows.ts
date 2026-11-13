@@ -1,5 +1,6 @@
 // What the band shows from the session's first second (the user, 2026-11-11): the 5h and 7d windows the last reading
 import type { Usage, Window } from './types'
+import type { SessionRateLimit } from 'claude-code'
 // on this machine stored, until this session's own, and the project and branch read from git's own files, with no git
 // process.
 
@@ -41,3 +42,6 @@ export function dropPassed(u: Usage, now: number): Usage | null {
 
 // '≈' before a window's percent while it is a stored one
 export const storedMark = (windowsAt: number | null | undefined): string => (windowsAt === undefined || windowsAt === null ? '' : '≈')
+
+export const windowsOf = (limits: readonly SessionRateLimit[]): Window[] =>
+  limits.map(w => ({ kind: w.kind, percentUsed: w.percentUsed, resetsAt: w.resetsAt ?? null }))

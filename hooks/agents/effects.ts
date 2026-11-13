@@ -82,3 +82,8 @@ export async function trackSpawn($: EngineInterface, e: HookInput<'agent.spawn'>
   }
   return spawned
 }
+
+// A loop no spawn announced, done
+export async function finishLoop($: EngineInterface, id: string): Promise<void> {
+  await updateLoops($, list => list.map(l => (l.id === id ? { ...l, isDone: true } : l)))
+}

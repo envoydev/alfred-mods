@@ -5,15 +5,14 @@ import type {
   EngineInterface, Register, SessionContextBreakdown, SessionRateLimit, SessionUsage, Timer, TurnStepInput, TurnStepResult, UiOpenResult,
 } from 'claude-code'
 
-import { isLive, markOf, refreshAgents, statusAt } from './agents/agents'
+import { isLive, refreshAgents } from './agents/agents'
 import { spinnerSuffix } from './band/working'
 import { bandLines, underRows } from './band/band'
-import { addRequest, billingOf, needsTick, takeRate } from './cache/cache'
-import { baseCost, pruneCost, recordCost, todayUsd } from './session/cost'
+import { billingOf, needsTick, takeRate } from './cache/cache'
 import { drawLines, drawNote, drawUnder, drawUnderNote } from './core/draw'
 import { localDate } from './core/forecast'
 import { REC_HIDDEN, SPINNER_WORD, bandFailed, paneFailed } from './core/failsafe'
-import { clock, fingerprint, oneLine, printable, tokens, usd, when } from './core/format'
+import { clock, fingerprint, oneLine, printable, tokens, when } from './core/format'
 import { mask, recLevel } from './rec/mask'
 import { neutralDialog } from './rec/sites'
 import { DROPS_RESULT } from './tools/compact'
@@ -26,14 +25,14 @@ import { agentsLines, asCommands, cacheLines, nowLines, paneCommands, reportRows
 import { numberOf } from './tools/outcome'
 import { recNote, recOf } from './rec/rec'
 import { BAND_MODES, DEFAULTS, sourceName } from './settings/settings'
-import { dropPassed, nextWindows, storedWindows } from './session/windows'
+import { dropPassed } from './session/windows'
 import { countSkillPrompt, drawToolGroup, drawToolResult, drawToolUse, modeMem, notePermissionAsk, notePermissionDenied, notePromptMode, noteToolCheck, noteToolFailure, noteToolTime, readBlockers, readFailures, readStats, resetBlockers, resetFailures, resetQuiet, resetStats, trackToolCall, updateFailures } from './tools/effects'
-import { FRESH_EVERY_MS, freshMem, readLive, readMeta, readPace, readTick, readTotals, readTurns, readUsage, resetLive, resetMeta, resetPace, resetTotals, resetTurns, resetUsage, spendMem, updateLive, updateMeta, updatePace, updateTick, updateTotals, updateTurns, updateUsage, windowsMem } from './session/effects'
-import { agentStep, readAgents, readLoops, resetAgents, resetLoops, trackSpawn, updateAgents, updateLoops, updateRow } from './agents/effects'
+import { FRESH_EVERY_MS, baseline, completeTurn, freshMem, freshUsage, pruneCost, readLive, readMeta, readPace, readTick, readTotals, readTurns, readUsage, resetLive, resetMeta, resetPace, resetTotals, resetTurns, resetUsage, seedWindows, spendMem, startTurn, takeMeasure, takeUsage, todayMem, todayUsd, trackTurnStep, updateMeta, updateTick, updateUsage, windowsMem } from './session/effects'
+import { readAgents, readLoops, resetAgents, resetLoops, trackSpawn, updateAgents } from './agents/effects'
 import { afterModelSwitch, armCacheClose, beforeModelSwitch, compactNow, followCompaction, readCache, readCacheConfig, resetCache, updateCache } from './cache/effects'
-import { addMark, closeLoops, openSlice, planDraw, queueReload, readPlans, resetCredit, resetPlans, resetTasks, scheduleReload, seedMine, storedTimes, updatePlans } from './plan/effects'
+import { planDraw, queueReload, readPlans, resetCredit, resetPlans, resetTasks, scheduleReload, seedMine, storedTimes, updatePlans } from './plan/effects'
 import { fillStack, readStack, readStatus, resetStack, scoreLevel, stackMem } from './stack/effects'
-import { dismissAsk, fillResume, handoffMem, readHandoff, resetHandoff, runAutoHandoffCommand, saveNow, saveThenCompact, stepHandoff } from './handoff/effects'
+import { dismissAsk, fillResume, handoffMem, readHandoff, resetHandoff, runAutoHandoffCommand, saveNow, saveThenCompact } from './handoff/effects'
 import { drawRecPane, maskAssistantMessage, maskCommandOutput, maskQuestionDialog, maskUserMessage, noteMem, readRec, recMem, resetRec, runRecCommand } from './rec/effects'
 import { bandMem, isPassingAbove, readBandSetting, statusMem, syncStatus } from './band/effects'
 import { noteLoadedRule, partsMem, readBreakdownSoon, readParts, resetParts } from './context/effects'
@@ -41,54 +40,13 @@ import { readView, resetView, updateView } from './inspect/effects'
 import type { BandInput } from './band/types'
 import type { Tab } from './inspect/types'
 import type { Plans } from './plan/types'
-import type { Turn, Usage, Window } from './session/types'
+import type { Usage } from './session/types'
 import type { Call } from './tools/types'
 import type { Held } from './core/types'
 import { pollPlace, readPlace } from './place/effects'
 import { followConfigChange, loadSettings, setField, settingsMem } from './settings/effects'
 import { conversationMem, tickMem } from './lifecycle/effects'
 import { closePane, isNoColor, toast } from './core/effects'
-
-const windowsOf = (limits: readonly SessionRateLimit[]): Window[] =>
-  limits.map(w => ({ kind: w.kind, percentUsed: w.percentUsed, resetsAt: w.resetsAt ?? null }))
-
-// The status line's figures now; today's cost is the store's, so it is only replaced when given
-async function takeUsage($: EngineInterface, today?: number | null): Promise<SessionUsage> {
-  const reading = await $.session.usage()
-  await writeUsage($, reading, today)
-  return reading
-}
-
-// Today's cost as the store last gave it, with the session's cost at that reading and the local date it was for: a
-// step adds what the session spent since, so today's figure moves mid-turn with no store work (spec B). The store is
-// written at the turn's end, and read again by the tick once the date has turned.
-let todayMem: { cost: number; today: number; date: string } | null = null
-
-async function writeUsage($: EngineInterface, reading: SessionUsage, today?: number | null): Promise<void> {
-  const at = await $.clock.now()
-  if (typeof today === 'number') todayMem = reading.cost === undefined ? null : { cost: reading.cost.usd, today, date: localDate(at) }
-  const fresh = windowsOf(reading.rateLimits)
-  await updateUsage($, u => ({
-    tokens: reading.context.tokens ?? null, window: reading.context.window, percent: reading.context.percent ?? null,
-    startedAt: reading.startedAt, ...nextWindows(u, fresh, reading.context.tokens !== undefined), costUsd: reading.cost?.usd ?? null,
-    todayUsd: today === undefined ? u.todayUsd : today, at,
-  }))
-}
-
-async function storeWindows($: EngineInterface, windows: Window[], at: number): Promise<void> {
-  const json = JSON.stringify(windows.map(w => [w.kind, Math.round(w.percentUsed), w.resetsAt]))
-  if (windows.length === 0 || json === windowsMem.stored) return
-  windowsMem.stored = json
-  await $.store.set('usage:windows', { at, windows })
-}
-
-// A session with no windows of its own yet shows the ones the last reading on this machine stored, while their reset is
-// ahead, marked as read before
-async function seedWindows($: EngineInterface): Promise<void> {
-  if ((await readUsage($)).windows.length > 0) return
-  const stored = storedWindows(await $.store.get('usage:windows'), await $.clock.now())
-  if (stored !== null) await updateUsage($, u => ({ ...u, windows: stored.windows, windowsAt: stored.at }))
-}
 
 // What the band shows before the first reply: the model, Claude Code's version, the place, the stored windows and the
 // context's parts. Each read stands alone: a refusal leaves its value as it was.
@@ -114,22 +72,6 @@ async function readStart($: EngineInterface): Promise<void> {
   bandMem.hasStatusLine = statusLine !== null && statusLine !== undefined
   // The rules row's always-on rules (spec 2026-11-11, D4), from a breakdown read on a timer: the start waits on nothing
   readBreakdownSoon($)
-}
-
-// A main-loop step's reading: the band's ctx and cost before the turn ends (session.measure fires after it)
-async function freshUsage($: EngineInterface): Promise<void> {
-  freshMem.at = await $.clock.now()
-  const reading = await $.session.usage()
-  const mem = todayMem
-  const isToday = mem !== null && mem.date === localDate(freshMem.at)
-  const today = isToday && reading.cost !== undefined ? mem.today + Math.max(0, reading.cost.usd - mem.cost) : undefined
-  await writeUsage($, reading, today)
-  await syncStatus($)
-}
-
-// A session first seen now takes its cost so far as the baseline: spend a /clear or a resume carries over
-async function baseline($: EngineInterface, reading: SessionUsage): Promise<void> {
-  if (reading.cost !== undefined) await baseCost($, await $.session.id(), reading.cost.usd, await $.clock.now())
 }
 
 // Once a second: the engine's list moves the live agent rows, the band's figures are read every 5 seconds and the
@@ -196,60 +138,6 @@ async function resetAll($: EngineInterface): Promise<void> {
   await resetParts($)
   await resetLoops($)
   partsMem.lastAt = null
-}
-
-const LABEL: Record<string, string> = { five_hour: '5h', seven_day: '7d' }
-
-// Appends each window's reading while its reset is unchanged; a new reset starts it over. Returns the toasts due:
-// the highest of 75 and 90 that the 5h or weekly window crossed upward since its last reading, once per window.
-async function trackPace($: EngineInterface, limits: readonly SessionRateLimit[], now: number): Promise<string[]> {
-  let due: string[] = []
-  await updatePace($, p => {
-    due = []
-    const out = { ...p }
-    for (const w of limits) {
-      const resetsAt = w.resetsAt ?? null
-      const prev = p[w.kind]
-      const same = prev !== undefined && prev.resetsAt === resetsAt
-      const points = same ? prev.points : []
-      const toasted = same ? prev.toasted : []
-      const last = points[points.length - 1]
-      const marks = LABEL[w.kind] !== undefined && last !== undefined
-        ? [75, 90].filter(m => last.percent < m && w.percentUsed >= m && !toasted.includes(m))
-        : []
-      if (marks.length > 0) {
-        const reset = resetsAt === null ? NaN : Date.parse(resetsAt)
-        due.push(`${LABEL[w.kind]} limit at ${Math.max(...marks)}%, resets ${Number.isNaN(reset) ? 'later' : when(reset)}`)
-      }
-      out[w.kind] = { resetsAt, points: [...points, { at: now, percent: w.percentUsed }].slice(-20), toasted: [...toasted, ...marks] }
-    }
-    return out
-  })
-  return due
-}
-
-// The main loop's turn ends: it joins the timeline, the live counts start over, and today's cost is brought up
-async function endTurn($: EngineInterface, turnId: string, durationMs: number, end: Turn['end'], used: { tokensIn: number; tokensOut: number }): Promise<void> {
-  const reading = await $.session.usage()
-  const now = await $.clock.now()
-  const before = await readMeta($)
-  const counts = await readLive($)
-  // The cost between the turn's start and end; none when either read failed, or under half a cent or negative
-  const start = spendMem.get(turnId)
-  spendMem.delete(turnId)
-  const spend = start === undefined || reading.cost === undefined ? null : reading.cost.usd - start
-  await updateTurns($, list => {
-    const turn: Turn = {
-      n: before.turnCount + 1, turnId, promptAt: counts.promptAt,
-      replyAt: now, durationMs, ...used, tools: counts.tools, failures: counts.failures,
-      contextPercent: reading.context.percent ?? null, end, spendUsd: spend !== null && spend >= 0.005 ? spend : null,
-    }
-    return [...list, turn].slice(-50)
-  })
-  await updateMeta($, m => ({ ...m, lastReplyAt: now, turnCount: m.turnCount + 1 }))
-  await resetLive($)
-  if (reading.cost !== undefined) await recordCost($, await $.session.id(), reading.cost.usd, now)
-  await takeUsage($, reading.cost !== undefined ? await todayUsd($, now) : undefined)
 }
 
 // Opens the pane on a tab. The failures it shows are seen once a surface draws it, never while it waits undrawn.
@@ -587,133 +475,15 @@ export const register: Register = (on, options) => {
     return entered
   }).catch(($, e, next) => next(e))
 
-  on('turn.start', async ($, e, next) => {
-    const now = await $.clock.now()
-    // An agent's turn can start before its spawn resolves: its slice opens either way
-    await openSlice($, e.agentId ?? 'main', now)
-    if (e.agentId !== undefined) {
-      await updateRow($, e.agentId, r => ({ ...r, status: 'running', endedAt: null }))
-      const row = (await readAgents($)).find(r => r.id === e.agentId)
-      if (row !== undefined) await addMark($, markOf(row))
-    }
-    if (e.agentId === undefined) {
-      const startedAt = now
-      // The turn answers the waiting prompt with its text; the prompts waiting before it never started a turn
-      const key = fingerprint(e.text)
-      const waiting = (await readMeta($)).waiting
-      const promptAt = waiting.find(w => w.key === key)?.at ?? null
-      if (promptAt !== null) {
-        await updateMeta($, m => {
-          const i = m.waiting.findIndex(w => w.key === key)
-          return { ...m, lastPromptAt: promptAt, waiting: i < 0 ? m.waiting : m.waiting.slice(i + 1) }
-        })
-      }
-      await updateLive($, () => ({ turnId: e.turnId, startedAt, tools: 0, failures: 0, running: [], promptAt }))
-      spendMem.clear()
-      try {
-        const cost = (await $.session.usage()).cost
-        if (cost !== undefined) spendMem.set(e.turnId, cost.usd)
-      } catch {
-        // No start read: the turn's spend is unknown
-      }
-    }
-    return next(e)
-  }).catch(($, e, next) => next(e))
+  on('turn.start', ($, e, next) => startTurn($, e, next)).catch(($, e, next) => next(e))
 
   on('turn.step', async function* ($, e, next) {
-    if (e.agentId !== undefined) {
-      const step = yield* next(e)
-      try {
-        await agentStep($, e, step)
-      } catch {
-        // The row's figures are lost; the step itself stands
-      }
-      return step
-    }
-    let startedAt: number | null = null
-    try {
-      startedAt = await $.clock.now()
-    } catch {
-      // A step with no start time streams with no timing
-    }
-    const step = yield* next(e)
-    try {
-      await updateMeta($, m => ({ ...m, model: e.model, effort: e.effort === undefined ? m.effort : String(e.effort) }))
-      const output = step.usage?.output_tokens
-      if (output !== undefined && startedAt !== null) {
-        const ms = (await $.clock.now()) - startedAt
-        await updateTotals($, t => ({ ...t, stepOutput: t.stepOutput + output, stepMs: t.stepMs + ms }))
-      }
-      const u = step.usage
-      const at = startedAt
-      if (u !== null && at !== null && u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens > 0) {
-        await updateCache($, c => addRequest(c, u, at))
-        await armCacheClose($, held)
-      }
-    } catch {
-      // The step's figures are lost; the step itself stands
-    }
-    try {
-      await freshUsage($)
-    } catch {
-      // The band keeps its last figures; the step itself stands
-    }
-    return step
+    return yield* trackTurnStep($, e, next, held)
   })
 
-  on('turn.complete', async ($, e, next) => {
-    const done = await next(e)
-    await closeLoops($, held, [e.agentId ?? 'main'], await $.clock.now(), false)
-    if (e.agentId !== undefined && !(await readAgents($)).some(r => r.id === e.agentId)) {
-      const id = e.agentId
-      if ((await readLoops($)).some(l => l.id === id)) await updateLoops($, list => list.map(l => (l.id === id ? { ...l, isDone: true } : l)))
-      return done
-    }
-    if (e.agentId !== undefined) {
-      const now = await $.clock.now()
-      const reason = e.reason
-      const answer = e.answer
-      await updateRow($, e.agentId, r => ({
-        ...r, status: statusAt(reason, r.isTeammate), endedAt: now, report: answer === '' ? r.report : answer.slice(0, 4000),
-      }))
-    }
-    const u = e.usage
-    if (u !== undefined) {
-      await updateTotals($, t => ({
-        ...t,
-        input: t.input + u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens,
-        output: t.output + u.output_tokens,
-        cacheRead: t.cacheRead + u.cache_read_input_tokens,
-        cacheWrite: t.cacheWrite + u.cache_creation_input_tokens,
-      }))
-    }
-    if (e.agentId === undefined) {
-      const tokensIn = u === undefined ? 0 : u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens
-      await endTurn($, e.turnId, e.durationMs, e.reason, { tokensIn, tokensOut: u?.output_tokens ?? 0 })
-      await readCacheConfig($, held)
-      await armCacheClose($, held)
-      scheduleReload($, held)
-    }
-    return done
-  }).catch(($, e, next) => next(e))
+  on('turn.complete', ($, e, next) => completeTurn($, e, next, held)).catch(($, e, next) => next(e))
 
-  on('session.measure', async ($, e, next) => {
-    const measured = await next(e)
-    const at = await $.clock.now()
-    const fresh = windowsOf(e.rateLimits)
-    await updateUsage($, u => {
-      const { windowsAt: _stored, ...rest } = u
-      return {
-        ...rest, tokens: e.context.tokens ?? null, window: e.context.window, percent: e.context.percent ?? null,
-        ...nextWindows(u, fresh, e.context.tokens !== undefined), costUsd: e.cost?.usd ?? u.costUsd, at,
-      }
-    })
-    await storeWindows($, fresh, at)
-    for (const text of await trackPace($, e.rateLimits, at)) toast($, text)
-    await stepHandoff($, e.context.tokens, e.context.window)
-    await syncStatus($)
-    return measured
-  }).catch(($, e, next) => next(e))
+  on('session.measure', ($, e, next) => takeMeasure($, e, next)).catch(($, e, next) => next(e))
 
   on('session.compact', ($, e, next) => followCompaction($, e, next, held)).catch(($, e, next) => next(e))
 

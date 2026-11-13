@@ -2,9 +2,9 @@
 // ref handed to another module. Change a shape tag when that value's fields change: it declines what an earlier version
 // stored, which outlives a reload.
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface } from 'claude-code'
+import type { EngineInterface, ModelUsage } from 'claude-code'
 import type { Cache, CacheConfig } from './types'
-import { afterCompact, billingOf, cacheView, idleOf, minutes, pinOf, takeSwitch, toastAt } from './cache'
+import { addRequest, afterCompact, billingOf, cacheView, idleOf, minutes, pinOf, takeSwitch, toastAt } from './cache'
 import { noteCompaction, readLive, readUsage, setModel } from '../session/effects'
 import type { Held, HookInput, HookNext } from '../core/types'
 import { toast } from '../core/effects'
@@ -141,4 +141,9 @@ export async function beforeModelSwitch($: EngineInterface, e: HookInput<'classi
   await updateCache($, c => takeSwitch(c, s, now, false))
   await armCacheClose($, held)
   return done
+}
+
+// A main-loop request's cache figures, at the time its step started
+export async function addCacheRequest($: EngineInterface, usage: Pick<ModelUsage, 'input_tokens' | 'cache_read_input_tokens' | 'cache_creation_input_tokens'>, at: number): Promise<void> {
+  await updateCache($, c => addRequest(c, usage, at))
 }
