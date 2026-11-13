@@ -7,7 +7,7 @@ import type {
 
 import { actionOf, addLoopStep, isLive, newRow, refreshAgents, statusAt, upsertSpawn } from './agents/agents'
 import { spinnerSuffix } from './band/working'
-import { bandLines, statusText, underRows } from './band/band'
+import { bandLines, underRows } from './band/band'
 import { addRequest, afterCompact, billingOf, cacheView, idleOf, minutes, needsTick, pinOf, takeRate, takeSwitch, toastAt } from './cache/cache'
 import { baseCost, pruneCost, recordCost, todayUsd } from './session/cost'
 import { drawLines, drawNote, drawUnder, drawUnderNote, drawWithInput } from './core/draw'
@@ -40,11 +40,11 @@ import { readCredit, readPlans, readTasks, resetCredit, resetPlans, resetTasks, 
 import { INITIAL_STACK, readStack, resetStack, stackMem, updateStack } from './stack/effects'
 import { handoffMem, readHandoff, resetHandoff, updateHandoff } from './handoff/effects'
 import { noteMem, readRec, recMem, resetRec, updateRec } from './rec/effects'
-import { bandMem, readBandSetting, statusMem, updateBandSetting } from './band/effects'
+import { bandMem, isPassingAbove, loadBand, readBandSetting, statusMem, syncStatus } from './band/effects'
 import { partsMem, readParts, resetParts, updateParts } from './context/effects'
 import { readView, resetView, updateView } from './inspect/effects'
 import type { AgentRow } from './agents/types'
-import type { BandInput, BandMode, BandSetting } from './band/types'
+import type { BandInput } from './band/types'
 import type { Cache, CacheConfig } from './cache/types'
 import type { Handoff, HandoffView, PlanPart, SaveBy, SaveInput, SaveResult, ScoresPart } from './handoff/types'
 import type { Tab } from './inspect/types'
@@ -446,19 +446,6 @@ async function tickOnce($: EngineInterface): Promise<void> {
   if (isBusy || isWarm || isNewMinute) await updateTick($, n => n + 1)
   // A failure the pane marked seen, a /clear or a stack file read leaves the line as it was until here
   await syncStatus($)
-}
-
-async function syncStatus($: EngineInterface): Promise<void> {
-  const u = await readUsage($)
-  const runway = runwayOf(await readStack($), u, (await readMeta($)).model)
-  const raw = statusText({
-    percent: runway?.percent ?? u.percent, newFailures: (await readFailures($)).filter(f => f.isNew).length,
-    recLevel: (await readRec($)).level, isBandShown: bandMem.isShown,
-  })
-  const text = raw === null ? undefined : mask(raw)
-  if (text === statusMem.last) return
-  statusMem.last = text
-  $.ui.status(text)
 }
 
 // The variables and settings that pin the cache's tier or turn idle compaction off, written only on a change
@@ -1194,19 +1181,6 @@ async function loadQuiet($: EngineInterface): Promise<boolean> {
   return isOn
 }
 
-// "band", "bandRows" and "bandPlace" into the band's setting
-async function loadBand($: EngineInterface): Promise<BandMode> {
-  const v = settingsNow()
-  const mode: BandMode = v.band
-  const isOpen = v.bandRows
-  const isUnder = v.bandPlace === 'under'
-  bandMem.isUnder = isUnder
-  const next: BandSetting = { mode, ...(isOpen ? { isToolsOpen: true } : {}), ...(isUnder ? { isUnder: true } : {}) }
-  await updateBandSetting($, b =>
-    (b.mode === mode && (b.isToolsOpen === true) === isOpen && (b.isUnder === true) === isUnder ? b : next))
-  return mode
-}
-
 // The band's lines from the session's state, for the site above or the footer (spec band-under U2): the same reads, the
 // place's own width, rows and turn
 async function bandInputOf(
@@ -1240,10 +1214,6 @@ async function bandInputOf(
 function bandPress($: EngineInterface, held: Held): Record<string, () => unknown> {
   return { inspect: () => inspectFromBand($), compact: () => compactNow($, held), handoff: () => saveNow($) }
 }
-
-// Under the input on the terminal, once its footer has drawn, the site above is Claude Code's (spec band-under U2)
-const isPassingAbove = (surface: string): boolean => bandMem.isUnder && surface === 'terminal' && bandMem.hasFooter
-
 
 // A skill the main loop loaded: in its context from then on, until the conversation starts over
 async function addSkill($: EngineInterface, name: string): Promise<void> {

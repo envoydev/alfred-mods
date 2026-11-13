@@ -3,7 +3,15 @@
 // stored, which outlives a reload.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
-import type { BandSetting } from './types'
+import type { BandMode, BandSetting } from './types'
+import { readMeta, readUsage } from '../session/effects'
+import { readStack } from '../stack/effects'
+import { statusText } from './band'
+import { mask } from '../rec/mask'
+import { settingsNow } from '../settings/effects'
+import { readRec } from '../rec/effects'
+import { readFailures } from '../tools/effects'
+import { runwayOf } from '../stack/stack'
 
 // Calm until session start reads the setting, which turns it full when nothing is stored: a test that never starts
 // a session draws the band it was written for
@@ -30,3 +38,34 @@ export const statusMem = { last: null as string | undefined | null }
 // this session, so the site above may pass; `hasStatusLine`, a `statusLine` is set, which the fullscreen budget leaves
 // room for.
 export const bandMem = { isShown: false, isUnder: false, columns: null as number | null, hasFooter: false, hasStatusLine: false }
+
+export async function syncStatus($: EngineInterface): Promise<void> {
+  const u = await readUsage($)
+  const runway = runwayOf(await readStack($), u, (await readMeta($)).model)
+  const raw = statusText({
+    percent: runway?.percent ?? u.percent, newFailures: (await readFailures($)).filter(f => f.isNew).length,
+    recLevel: (await readRec($)).level, isBandShown: bandMem.isShown,
+  })
+  const text = raw === null ? undefined : mask(raw)
+  if (text === statusMem.last) return
+  statusMem.last = text
+  $.ui.status(text)
+}
+
+// "band", "bandRows" and "bandPlace" into the band's setting
+export async function loadBand($: EngineInterface): Promise<BandMode> {
+  const v = settingsNow()
+  const mode: BandMode = v.band
+  const isOpen = v.bandRows
+  const isUnder = v.bandPlace === 'under'
+  bandMem.isUnder = isUnder
+  const next: BandSetting = { mode, ...(isOpen ? { isToolsOpen: true } : {}), ...(isUnder ? { isUnder: true } : {}) }
+  await updateBandSetting($, b =>
+    (b.mode === mode && (b.isToolsOpen === true) === isOpen && (b.isUnder === true) === isUnder ? b : next))
+  return mode
+}
+
+// Under the input on the terminal, once its footer has drawn, the site above is Claude Code's (spec band-under U2)
+export const isPassingAbove = (surface: string): boolean => bandMem.isUnder && surface === 'terminal' && bandMem.hasFooter
+
+
