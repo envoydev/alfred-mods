@@ -11,8 +11,8 @@ import type { ToolStat } from '../tools/types'
 // line included, as a model may write its brief on it
 export function promptLines(prompt: string): { plan: string | null; task: string | null } {
   const value = (name: string): string | null => {
-    const m = new RegExp(`^[ \\t]*${name}:[ \\t]*(\\S+)`, 'm').exec(prompt.replace(/\r\n?/g, '\n'))
-    return m?.[1] === undefined ? null : oneLine(m[1], 60)
+    const match = new RegExp(`^[ \\t]*${name}:[ \\t]*(\\S+)`, 'm').exec(prompt.replace(/\r\n?/g, '\n'))
+    return match?.[1] === undefined ? null : oneLine(match[1], 60)
   }
   return { plan: value('plan'), task: value('task') }
 }
@@ -45,24 +45,24 @@ export function keepRows(rows: AgentRow[], limit = 50): AgentRow[] {
   const over = rows.length - limit
   if (over <= 0) return rows
   const drop = new Set(rows.filter(r => !isLive(r.status)).sort((a, b) => a.startedAt - b.startedAt).slice(0, over))
-  return rows.filter(r => !drop.has(r))
+  return rows.filter(row => !drop.has(row))
 }
 
 // What the engine's list says of the live rows: its status and parent for a row it names, and the end of one it named
 // before and names no longer. A row it never named, such as a workflow's agent, and an ended row stay as they are.
 export function refreshAgents(rows: AgentRow[], listed: readonly AgentInfo[], now: number): AgentRow[] {
-  return rows.map(r => {
-    if (!isLive(r.status)) return r
-    const l = listed.find(x => x.id === r.id)
-    if (l === undefined) return r.isListed ? { ...r, status: 'completed' as const, endedAt: now } : r
-    return { ...r, isListed: true, status: l.status, endedAt: isLive(l.status) ? null : now, parentId: r.parentId ?? l.parentId ?? null }
+  return rows.map(row => {
+    if (!isLive(row.status)) return row
+    const l = listed.find(x => x.id === row.id)
+    if (l === undefined) return row.isListed ? { ...row, status: 'completed' as const, endedAt: now } : row
+    return { ...row, isListed: true, status: l.status, endedAt: isLive(l.status) ? null : now, parentId: row.parentId ?? l.parentId ?? null }
   })
 }
 
 // How long the agent has run, or how it ended and after how long
-export function agentTime(r: AgentRow, now: number): string {
-  const took = durationText((r.endedAt ?? now) - r.startedAt)
-  switch (r.status) {
+export function agentTime(row: AgentRow, now: number): string {
+  const took = durationText((row.endedAt ?? now) - row.startedAt)
+  switch (row.status) {
     case 'running': return took
     case 'waiting': return `waiting · ${took}`
     case 'pending': return 'pending'
@@ -81,25 +81,25 @@ export function statusGlyph(status: AgentStatus): Extract<Seg, { text: string }>
 
 // The time axis's lanes (spec C2): the 8 newest rows that have a start, oldest first; a live row has no end yet
 export function lanesOf(rows: AgentRow[], now: number): Lane[] {
-  return rows.filter(r => r.startedAt > 0).sort((a, b) => a.startedAt - b.startedAt).slice(-8).map(r => ({
-    label: laneLabel(r), startAt: r.startedAt,
-    endAt: isLive(r.status) ? null : r.endedAt ?? now, status: r.status, time: agentTime(r, now),
+  return rows.filter(r => r.startedAt > 0).sort((a, b) => a.startedAt - b.startedAt).slice(-8).map(row => ({
+    label: laneLabel(row), startAt: row.startedAt,
+    endAt: isLive(row.status) ? null : row.endedAt ?? now, status: row.status, time: agentTime(row, now),
   }))
 }
 
 // A lane's label: what the agent was asked, its task id first, or its type when it was asked nothing (the user,
 // 2026-11-12: 'I want to see what agents are doing or did'; the type alone left eight lanes all 'general-purpo…')
-export function laneLabel(r: AgentRow): string {
-  const asked = oneLine(r.description, 200)
-  const what = asked === '' ? r.type : asked
-  return r.task === null ? what : `task ${r.task} · ${what}`
+export function laneLabel(row: AgentRow): string {
+  const asked = oneLine(row.description, 200)
+  const what = asked === '' ? row.type : asked
+  return row.task === null ? what : `task ${row.task} · ${what}`
 }
 
 const LANE_MAX = 40
 export function laneFit(lanes: Lane[], columns: number): LaneFit | null {
   const time = Math.max(0, ...lanes.map(l => [...l.time].length))
   const room = columns - 4 - time
-  const longest = Math.min(LANE_MAX, Math.max(6, ...lanes.map(l => [...l.label].length)))
+  const longest = Math.min(LANE_MAX, Math.max(6, ...lanes.map(lane => [...lane.label].length)))
   const label = Math.min(longest, room - 10)
   return label < 6 ? null : { label, bar: Math.min(LANE_MAX, room - label), time }
 }
@@ -114,7 +114,7 @@ export function reportLine(report: string): string {
 // Loops no spawn announced (spec C3): a step adds to its loop, or starts one; the newest 60 are kept
 export function addLoopStep(loops: Loop[], id: string, output: number, now: number): Loop[] {
   const known = loops.find(l => l.id === id)
-  if (known !== undefined) return loops.map(l => (l === known ? { ...l, steps: l.steps + 1, output: l.output + output, lastAt: now } : l))
+  if (known !== undefined) return loops.map(loop => (loop === known ? { ...loop, steps: loop.steps + 1, output: loop.output + output, lastAt: now } : loop))
   return [...loops, { id, steps: 1, output, firstAt: now, lastAt: now, isDone: false }].slice(-60)
 }
 
@@ -126,7 +126,7 @@ export const LOOPS_NOTE = '(no spawn: compactions, forks)'
 export function loopsLine(loops: Loop[], now: number, note: string): Line[] {
   if (loops.length === 0) return []
   const active = loops.filter(l => !l.isDone && now - l.lastAt < 15_000).length
-  const output = loops.reduce((sum, l) => sum + l.output, 0)
+  const output = loops.reduce((sum, loop) => sum + loop.output, 0)
   return [[{ text: `Other loops ${loops.length} · ${active} active · out ${tokensText(output)}` }], [{ text: note, tone: 'dim' }]]
 }
 
@@ -175,13 +175,13 @@ export function agentTree(rows: AgentRow[]): TreeRow[] {
 // Each tool as '<name> ×<calls>' with ✓ when all were ok, else ✗ and ⊘ with their counts unless all calls; skills apart
 export function toolSummary(tools: Record<string, ToolStat>): { tools: string[]; skills: string[] } {
   const out = { tools: [] as string[], skills: [] as string[] }
-  for (const [key, t] of Object.entries(tools)) {
-    const count = (glyph: string, n: number): string => (n === 0 ? '' : n === t.calls ? ` ${glyph}` : ` ${glyph}${n}`)
-    const marks = t.failed === 0 && t.stopped === 0 ? ' ✓' : `${count('✗', t.failed)}${count('⊘', t.stopped)}`
-    if (key.startsWith('Skill: ')) out.skills.push(`${key.slice(7)} ×${t.calls}`)
-    else out.tools.push(`${key} ×${t.calls}${marks}`)
+  for (const [key, stat] of Object.entries(tools)) {
+    const count = (glyph: string, n: number): string => (n === 0 ? '' : n === stat.calls ? ` ${glyph}` : ` ${glyph}${n}`)
+    const marks = stat.failed === 0 && stat.stopped === 0 ? ' ✓' : `${count('✗', stat.failed)}${count('⊘', stat.stopped)}`
+    if (key.startsWith('Skill: ')) out.skills.push(`${key.slice(7)} ×${stat.calls}`)
+    else out.tools.push(`${key} ×${stat.calls}${marks}`)
   }
   return out
 }
 
-export const stepMarkOf = (r: AgentRow): string | null => (r.plan !== null && r.task !== null ? `${r.plan}:${r.task}` : null)
+export const stepMarkOf = (row: AgentRow): string | null => (row.plan !== null && row.task !== null ? `${row.plan}:${row.task}` : null)

@@ -35,13 +35,13 @@ export function resetLoops($: EngineInterface) {
 
 // Calls of the main loop, and of agents whose spawn was seen; anything else is not counted
 export async function isTrackedLoop($: EngineInterface, agentId: string | undefined): Promise<boolean> {
-  return agentId === undefined || (await readAgents($)).some(r => r.id === agentId)
+  return agentId === undefined || (await readAgents($)).some(row => row.id === agentId)
 }
 
 // Changes the row of an agent whose spawn was seen; an unknown id writes nothing
 export async function updateAgentRow($: EngineInterface, id: string, fn: (r: AgentRow) => AgentRow): Promise<void> {
   if (!(await readAgents($)).some(r => r.id === id)) return
-  await updateAgents($, rows => rows.map(r => (r.id === id ? fn(r) : r)))
+  await updateAgents($, rows => rows.map(row => (row.id === id ? fn(row) : row)))
 }
 
 // An agent's step: its model and effort, its context as the sum the engine's own `context_tokens` uses, and how it
@@ -55,9 +55,9 @@ export async function trackAgentStep($: EngineInterface, e: TurnStepInput, step:
     await updateLoops($, list => addLoopStep(list, id, u?.output_tokens ?? 0, now))
     return
   }
-  await updateAgentRow($, id, r => ({
-    ...r, model: e.model, effort: e.effort === undefined ? r.effort : String(e.effort),
-    contextTokens: u === null ? r.contextTokens : u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens + u.output_tokens,
+  await updateAgentRow($, id, row => ({
+    ...row, model: e.model, effort: e.effort === undefined ? row.effort : String(e.effort),
+    contextTokens: u === null ? row.contextTokens : u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens + u.output_tokens,
     lastStop: step.stopReason ?? null,
   }))
 }
@@ -85,7 +85,7 @@ export async function trackSpawn($: EngineInterface, e: HookInput<'agent.spawn'>
 
 // A loop no spawn announced, done
 export async function finishLoop($: EngineInterface, id: string): Promise<void> {
-  await updateLoops($, list => list.map(l => (l.id === id ? { ...l, isDone: true } : l)))
+  await updateLoops($, list => list.map(loop => (loop.id === id ? { ...loop, isDone: true } : loop)))
 }
 
 // The live rows moved by the engine's agent list, written only on a change
