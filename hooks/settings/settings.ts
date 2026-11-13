@@ -19,13 +19,13 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 const isBool = (value: unknown): value is boolean => typeof value === 'boolean'
 
 // Each field's test and the words its toast uses for the values it takes
-const RULES: Record<Field, { isValid: (v: unknown) => boolean; takes: string }> = {
-  band: { isValid: v => BAND_MODES.some(m => m === v), takes: '"full", "calm" or "off"' },
-  bandPlace: { isValid: v => v === 'above' || v === 'under', takes: '"above" or "under"' },
+const RULES: Record<Field, { isValid: (value: unknown) => boolean; takes: string }> = {
+  band: { isValid: value => BAND_MODES.some(mode => mode === value), takes: '"full", "calm" or "off"' },
+  bandPlace: { isValid: value => value === 'above' || value === 'under', takes: '"above" or "under"' },
   bandRows: { isValid: isBool, takes: 'true or false' },
   quiet: { isValid: isBool, takes: 'true or false' },
-  rec: { isValid: v => LEVELS.some(l => l === v), takes: '"off", "on" or "strict"' },
-  handoff: { isValid: value => MODES.some(m => m === value), takes: '"ask", "auto" or "off"' },
+  rec: { isValid: value => LEVELS.some(level => level === value), takes: '"off", "on" or "strict"' },
+  handoff: { isValid: value => MODES.some(mode => mode === value), takes: '"ask", "auto" or "off"' },
   handoffAt: { isValid: isThreshold, takes: 'a whole number from 10 to 95' }
 }
 
@@ -85,10 +85,10 @@ export function legacyOf(raw: { band: unknown; place: unknown; tools: unknown; q
   if (raw.place === 'under') out.bandPlace = 'under'
   if (raw.tools === 'open' || raw.tools === 'closed') out.bandRows = raw.tools === 'open'
   if (isBool(raw.quiet)) out.quiet = raw.quiet
-  const level = LEVELS.find(l => l === raw.rec)
+  const level = LEVELS.find(known => known === raw.rec)
   if (level !== undefined) out.rec = level
   if (isRecord(raw.handoff)) {
-    const mode = MODES.find(m => m === (raw.handoff as Record<string, unknown>).mode)
+    const mode = MODES.find(known => known === (raw.handoff as Record<string, unknown>).mode)
     if (mode !== undefined) out.handoff = mode
     if (isThreshold(raw.handoff.threshold)) out.handoffAt = raw.handoff.threshold
   }
@@ -117,7 +117,7 @@ export function holdToast(level: RecLevel, from: From): string {
 // S7's toast, once per machine: the earlier commands' choices still in force, as the line to paste, in S2's order. The
 // line comes first, so the box's three lines show it before the why (the review's #1)
 export function movedToast(kept: Partial<SettingsValues>): string {
-  const fields = FIELDS.filter(f => kept[f] !== undefined).map(field => `"${field}": ${JSON.stringify(kept[field])}`).join(', ')
+  const fields = FIELDS.filter(name => kept[name] !== undefined).map(field => `"${field}": ${JSON.stringify(kept[field])}`).join(', ')
   return `Add "alfred-mods": { ${fields} } to ~/.claude/settings.json - the choices your earlier commands made`
 }
 

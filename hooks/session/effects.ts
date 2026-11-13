@@ -137,13 +137,14 @@ export async function showPlace($: EngineInterface, place: Place): Promise<void>
 export async function showPlaceCounts($: EngineInterface, changes: { added: number; removed: number } | null, sync: { ahead: number; behind: number } | null): Promise<void> {
   await updateSession($, session => {
     if (session.place === undefined) return session
-    const p = session.place
-    const isSame = JSON.stringify(p.changes ?? null) === JSON.stringify(changes) && JSON.stringify(p.sync ?? null) === JSON.stringify(sync)
+    const sessionPlace = session.place
+    const isSame = JSON.stringify(sessionPlace.changes ?? null) === JSON.stringify(changes)
+      && JSON.stringify(sessionPlace.sync ?? null) === JSON.stringify(sync)
     if (isSame) return session
     return {
       ...session,
       place: {
-        project: p.project, ...(p.folder === undefined ? {} : { folder: p.folder }), branch: p.branch,
+        project: sessionPlace.project, ...(sessionPlace.folder === undefined ? {} : { folder: sessionPlace.folder }), branch: sessionPlace.branch,
         ...(changes === null ? {} : { changes }), ...(sync === null ? {} : { sync }),
       },
     }
@@ -176,7 +177,7 @@ export async function settleRunningCall($: EngineInterface, callId: string, coun
     ...live,
     toolCalls: counts.isMain && live.turnId !== null && counts.isFirstSettle ? live.toolCalls + 1 : live.toolCalls,
     toolFailures: counts.isMain && live.turnId !== null ? live.toolFailures + counts.failuresDelta : live.toolFailures,
-    runningCalls: live.runningCalls.filter(r => r.id !== callId),
+    runningCalls: live.runningCalls.filter(runningCall => runningCall.id !== callId),
   }))
 }
 
@@ -264,7 +265,7 @@ export async function storeRateWindows($: EngineInterface, windows: RateWindow[]
 export async function seedRateWindows($: EngineInterface): Promise<void> {
   if ((await readUsage($)).rateWindows.length > 0) return
   const stored = storedWindows(await $.store.get('usage:windows'), await $.clock.now())
-  if (stored !== null) await updateUsage($, u => ({ ...u, rateWindows: stored.windows, rateWindowsAt: stored.at }))
+  if (stored !== null) await updateUsage($, storedUsage => ({ ...storedUsage, rateWindows: stored.windows, rateWindowsAt: stored.at }))
 }
 
 // A main-loop step's reading: the band's ctx and cost before the turn ends (session.measure fires after it)
@@ -292,21 +293,21 @@ export async function trackPace($: EngineInterface, limits: readonly SessionRate
   await updatePace($, pace => {
     due = []
     const out = { ...pace }
-    for (const w of limits) {
-      const resetsAt = w.resetsAt ?? null
-      const prev = pace[w.kind]
+    for (const rateWindow of limits) {
+      const resetsAt = rateWindow.resetsAt ?? null
+      const prev = pace[rateWindow.kind]
       const same = prev !== undefined && prev.resetsAt === resetsAt
       const points = same ? prev.points : []
       const toasted = same ? prev.toastedMarks : []
       const last = points[points.length - 1]
-      const marks = PACE_LABEL[w.kind] !== undefined && last !== undefined
-        ? [75, 90].filter(m => last.percent < m && w.percentUsed >= m && !toasted.includes(m))
+      const marks = PACE_LABEL[rateWindow.kind] !== undefined && last !== undefined
+        ? [75, 90].filter(mark => last.percent < mark && rateWindow.percentUsed >= mark && !toasted.includes(mark))
         : []
       if (marks.length > 0) {
         const reset = resetsAt === null ? NaN : Date.parse(resetsAt)
-        due.push(`${PACE_LABEL[w.kind]} limit at ${Math.max(...marks)}%, resets ${Number.isNaN(reset) ? 'later' : whenText(reset)}`)
+        due.push(`${PACE_LABEL[rateWindow.kind]} limit at ${Math.max(...marks)}%, resets ${Number.isNaN(reset) ? 'later' : whenText(reset)}`)
       }
-      out[w.kind] = { resetsAt, points: [...points, { at: now, percent: w.percentUsed }].slice(-20), toastedMarks: [...toasted, ...marks] }
+      out[rateWindow.kind] = { resetsAt, points: [...points, { at: now, percent: rateWindow.percentUsed }].slice(-20), toastedMarks: [...toasted, ...marks] }
     }
     return out
   })
@@ -342,8 +343,8 @@ export async function trackTurnStart($: EngineInterface, e: HookInput<'turn.star
   // An agent's turn can start before its spawn resolves: its slice opens either way
   await openLoopSlice($, e.agentId ?? 'main', now)
   if (e.agentId !== undefined) {
-    await updateAgentRow($, e.agentId, r => ({ ...r, status: 'running', endedAt: null }))
-    const row = (await readAgents($)).find(r => r.id === e.agentId)
+    await updateAgentRow($, e.agentId, agentRow => ({ ...agentRow, status: 'running', endedAt: null }))
+    const row = (await readAgents($)).find(agentRow => agentRow.id === e.agentId)
     if (row !== undefined) await addStepMark($, stepMarkOf(row))
   }
   if (e.agentId === undefined) {
@@ -351,10 +352,10 @@ export async function trackTurnStart($: EngineInterface, e: HookInput<'turn.star
     // The turn answers the waiting prompt with its text; the prompts waiting before it never started a turn
     const key = fingerprint(e.text)
     const waiting = (await readSession($)).waitingPrompts
-    const promptAt = waiting.find(w => w.fingerprint === key)?.at ?? null
+    const promptAt = waiting.find(prompt => prompt.fingerprint === key)?.at ?? null
     if (promptAt !== null) {
       await updateSession($, session => {
-        const i = session.waitingPrompts.findIndex(w => w.fingerprint === key)
+        const i = session.waitingPrompts.findIndex(prompt => prompt.fingerprint === key)
         return { ...session, lastPromptAt: promptAt, waitingPrompts: i < 0 ? session.waitingPrompts : session.waitingPrompts.slice(i + 1) }
       })
     }
@@ -394,10 +395,10 @@ export async function* trackTurnStep($: EngineInterface, e: HookInput<'turn.step
       const ms = (await $.clock.now()) - startedAt
       await updateTotals($, totals => ({ ...totals, stepOutput: totals.stepOutput + output, stepMs: totals.stepMs + ms }))
     }
-    const u = step.usage
+    const stepUsage = step.usage
     const at = startedAt
-    if (u !== null && at !== null && u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens > 0) {
-      await addCacheRequest($, u, at)
+    if (stepUsage !== null && at !== null && stepUsage.input_tokens + stepUsage.cache_read_input_tokens + stepUsage.cache_creation_input_tokens > 0) {
+      await addCacheRequest($, stepUsage, at)
       await armCacheToast($, pending)
     }
   } catch {
@@ -414,7 +415,7 @@ export async function* trackTurnStep($: EngineInterface, e: HookInput<'turn.step
 export async function trackTurnEnd($: EngineInterface, e: HookInput<'turn.complete'>, next: HookNext<'turn.complete'>, pending: Pending) {
   const done = await next(e)
   await closeLoopSlices($, pending, [e.agentId ?? 'main'], await $.clock.now(), false)
-  if (e.agentId !== undefined && !(await readAgents($)).some(r => r.id === e.agentId)) {
+  if (e.agentId !== undefined && !(await readAgents($)).some(agentRow => agentRow.id === e.agentId)) {
     const id = e.agentId
     if ((await readLoops($)).some(loop => loop.id === id)) await finishLoop($, id)
     return done
@@ -427,19 +428,19 @@ export async function trackTurnEnd($: EngineInterface, e: HookInput<'turn.comple
       ...row, status: statusAt(reason, row.isTeammate), endedAt: now, report: answer === '' ? row.report : answer.slice(0, 4000),
     }))
   }
-  const u = e.usage
-  if (u !== undefined) {
+  const turnUsage = e.usage
+  if (turnUsage !== undefined) {
     await updateTotals($, totals => ({
       ...totals,
-      input: totals.input + u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens,
-      output: totals.output + u.output_tokens,
-      cacheRead: totals.cacheRead + u.cache_read_input_tokens,
-      cacheWrite: totals.cacheWrite + u.cache_creation_input_tokens,
+      input: totals.input + turnUsage.input_tokens + turnUsage.cache_read_input_tokens + turnUsage.cache_creation_input_tokens,
+      output: totals.output + turnUsage.output_tokens,
+      cacheRead: totals.cacheRead + turnUsage.cache_read_input_tokens,
+      cacheWrite: totals.cacheWrite + turnUsage.cache_creation_input_tokens,
     }))
   }
   if (e.agentId === undefined) {
-    const tokensIn = u === undefined ? 0 : u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens
-    await endMainTurn($, e.turnId, e.durationMs, e.reason, { tokensIn, tokensOut: u?.output_tokens ?? 0 })
+    const tokensIn = turnUsage === undefined ? 0 : turnUsage.input_tokens + turnUsage.cache_read_input_tokens + turnUsage.cache_creation_input_tokens
+    await endMainTurn($, e.turnId, e.durationMs, e.reason, { tokensIn, tokensOut: turnUsage?.output_tokens ?? 0 })
     await readCacheConfig($, pending)
     await armCacheToast($, pending)
     schedulePlanReload($, pending)
@@ -472,15 +473,15 @@ export async function trackPrompt($: EngineInterface, e: HookInput<'prompt.submi
   if (e.origin.kind !== 'composer' && e.origin.kind !== 'bridge') return next(e)
   const at = await $.clock.now()
   const key = fingerprint(e.text)
-  await updateSession($, m => ({ ...m, waitingPrompts: [...m.waitingPrompts, { at, fingerprint: key }].slice(-5) }))
+  await updateSession($, current => ({ ...current, waitingPrompts: [...current.waitingPrompts, { at, fingerprint: key }].slice(-5) }))
   const note = takeRecNote()
   const entered = await next(note === null ? e : { ...e, context: [...(e.context ?? []), note] })
   const settled = entered.drop === undefined ? fingerprint(entered.text) : null
   if (settled !== key) {
     await updateSession($, session => ({
       ...session,
-      waitingPrompts: settled === null ? session.waitingPrompts.filter(w => w.at !== at || w.fingerprint !== key)
-        : session.waitingPrompts.map(w => (w.at === at && w.fingerprint === key ? { at, fingerprint: settled } : w)),
+      waitingPrompts: settled === null ? session.waitingPrompts.filter(prompt => prompt.at !== at || prompt.fingerprint !== key)
+        : session.waitingPrompts.map(prompt => (prompt.at === at && prompt.fingerprint === key ? { at, fingerprint: settled } : prompt)),
     }))
   }
   return entered
@@ -490,7 +491,7 @@ export async function trackPrompt($: EngineInterface, e: HookInput<'prompt.submi
 export async function readModelAndVersion($: EngineInterface): Promise<void> {
   try {
     const model = await $.session.model()
-    await updateSession($, m => (m.model === null ? { ...m, model } : m))
+    await updateSession($, current => (current.model === null ? { ...current, model } : current))
   } catch {
     // The first step names the model
   }
@@ -504,8 +505,8 @@ export async function readModelAndVersion($: EngineInterface): Promise<void> {
 
 // A rate window whose reset has passed, dropped
 export async function dropPassedWindows($: EngineInterface, now: number): Promise<void> {
-  const u = await readUsage($)
-  if (dropPassed(u, now) !== null) await updateUsage($, usage => dropPassed(usage, now) ?? usage)
+  const storedUsage = await readUsage($)
+  if (dropPassed(storedUsage, now) !== null) await updateUsage($, usage => dropPassed(usage, now) ?? usage)
 }
 
 // Past local midnight, today's cost is the new date's
@@ -525,7 +526,7 @@ export function forgetMidTurnRead(): void {
 
 // The clocks on screen redraw
 export async function bumpTick($: EngineInterface): Promise<void> {
-  await updateTick($, n => n + 1)
+  await updateTick($, tick => tick + 1)
 }
 
 export async function resetTick($: EngineInterface): Promise<void> {

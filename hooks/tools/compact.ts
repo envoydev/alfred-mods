@@ -22,7 +22,7 @@ const READ_STEPS = 4
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 const str = (value: unknown): string => (typeof value === 'string' ? value : '')
-const basename = (path: string): string => path.split(/[\\/]/).filter(p => p !== '').pop() ?? path
+const basename = (path: string): string => path.split(/[\\/]/).filter(segment => segment !== '').pop() ?? path
 const lineCount = (text: string): number => (text.trimEnd() === '' ? 0 : text.trimEnd().split('\n').length)
 
 // A URL as a person reads it: no scheme, no 'www.', no trailing slash
@@ -50,8 +50,8 @@ function describe(call: CompactCall): string {
 // `5 todos · 2 done, 1 in progress`
 function todoCounts(todos: unknown): string {
   const list = Array.isArray(todos) ? todos.filter(isRecord) : []
-  const done = list.filter(t => t.status === 'completed').length
-  const now = list.filter(t => t.status === 'in_progress').length
+  const done = list.filter(todo => todo.status === 'completed').length
+  const now = list.filter(todo => todo.status === 'in_progress').length
   const parts = [...(done > 0 ? [`${done} done`] : []), ...(now > 0 ? [`${now} in progress`] : [])]
   return `${list.length} ${list.length === 1 ? 'todo' : 'todos'}${parts.length === 0 ? '' : ` · ${parts.join(', ')}`}`
 }
@@ -66,8 +66,8 @@ function fromProject(path: string, cwd: string | null | undefined): string {
 // `+3 −1`: the lines a patch added and removed
 function patchCounts(patch: unknown): string | null {
   if (!Array.isArray(patch)) return null
-  const lines = patch.flatMap(h => (isRecord(h) && Array.isArray(h.lines) ? h.lines : [])).map(str)
-  return `+${lines.filter(l => l.startsWith('+')).length} −${lines.filter(l => l.startsWith('-')).length}`
+  const lines = patch.flatMap(hunk => (isRecord(hunk) && Array.isArray(hunk.lines) ? hunk.lines : [])).map(str)
+  return `+${lines.filter(line => line.startsWith('+')).length} −${lines.filter(line => line.startsWith('-')).length}`
 }
 
 // Lines of Bash's stdout and stderr, or of a string output; any other output has no count
@@ -96,16 +96,16 @@ function status(call: CompactCall): Seg[] {
     const exit = /^Exit code (\d+)/.exec(errorText(call))
     return [{ text: exit === null ? '✗' : `✗ exit ${exit[1]}`, tone: 'fail' }]
   }
-  const n = countOf(call)
-  return [...(n === null || n === 0 ? [] : [{ text: `${n} ${n === 1 ? 'line' : 'lines'} ` }]), { text: '✓', tone: 'ok' }]
+  const lineCount = countOf(call)
+  return [...(lineCount === null || lineCount === 0 ? [] : [{ text: `${lineCount} ${lineCount === 1 ? 'line' : 'lines'} ` }]), { text: '✓', tone: 'ok' }]
 }
 
 // Up to 3 indented lines under a failure: the last non-empty lines of stderr, else of the error text past its exit code
 function errorLines(call: CompactCall): Line[] {
   if (!call.isErrored || call.isInterrupted || call.outcome !== null) return []
-  const lines = errorText(call).split('\n').map(l => l.trimEnd()).filter(l => l.trim() !== '')
+  const lines = errorText(call).split('\n').map(line => line.trimEnd()).filter(line => line.trim() !== '')
   if (/^Exit code \d+$/.test(lines[0] ?? '')) lines.shift()
-  return lines.slice(-3).map(l => [{ text: `    ${l}`, tone: 'dim' }])
+  return lines.slice(-3).map(line => [{ text: `    ${line}`, tone: 'dim' }])
 }
 
 const sizeOf = (bytes: number): string =>
@@ -129,7 +129,7 @@ function stepLines(call: CompactCall, columns: number, cwd?: string | null): Lin
     if (out?.status === 'async_launched') lines.push(step('running in the background'))
     if (out?.status === 'remote_launched') lines.push(step('running in the cloud'))
     if (out?.status === 'completed') {
-      const said = (Array.isArray(out.content) ? out.content : []).map(b => (isRecord(b) ? str(b.text) : '')).join('\n')
+      const said = (Array.isArray(out.content) ? out.content : []).map(block => (isRecord(block) ? str(block.text) : '')).join('\n')
       const found = reportLine(said)
       if (found !== '') lines.push(step(`result: ${found}`))
       const uses = typeof out.totalToolUseCount === 'number' ? [`${out.totalToolUseCount} tool ${out.totalToolUseCount === 1 ? 'use' : 'uses'}`] : []
@@ -159,25 +159,26 @@ function stepLines(call: CompactCall, columns: number, cwd?: string | null): Lin
     return [step(`changed ${fromProject(str(out.filePath) || str(input.file_path), cwd)}${counts === null ? '' : ` · ${counts}`}${out.replaceAll === true ? ' · every match' : ''}`)]
   }
   if (call.tool === 'TodoWrite') {
-    const now = (Array.isArray(input.todos) ? input.todos : []).find(t => isRecord(t) && t.status === 'in_progress')
+    const now = (Array.isArray(input.todos) ? input.todos : []).find(todo => isRecord(todo) && todo.status === 'in_progress')
     return isRecord(now) && str(now.activeForm).trim() !== '' ? [step(`now: ${str(now.activeForm).trim()}`)] : []
   }
   if (call.tool === 'ToolSearch' && out !== null && Array.isArray(out.matches)) {
-    const found = out.matches.map(str).filter(m => m !== '')
+    const found = out.matches.map(str).filter(match => match !== '')
     return [step(found.length === 0 ? 'found nothing' : `found ${found.join(', ')}`)]
   }
   if (call.tool === 'AskUserQuestion') {
     const answers = out !== null && isRecord(out.answers) ? out.answers : {}
-    return (Array.isArray(input.questions) ? input.questions : []).filter(isRecord).flatMap(q => {
-      const asked = str(q.question).trim()
-      const answer = answers[str(q.question)]
+    return (Array.isArray(input.questions) ? input.questions : []).filter(isRecord).flatMap(question => {
+      const asked = str(question.question).trim()
+      const answer = answers[str(question.question)]
       const said = Array.isArray(answer) ? answer.map(str).join(', ') : str(answer)
       return [...(asked === '' ? [] : [step(asked)]), ...(said.trim() === '' ? [] : [step(`answered: ${said.trim()}`)])]
     })
   }
   if (call.tool.startsWith('mcp__')) {
-    const scalar = (v: unknown): v is string | number | boolean => (typeof v === 'string' && v.trim() !== '') || typeof v === 'number' || typeof v === 'boolean'
-    return Object.entries(input).filter(([, v]) => scalar(v)).slice(0, 3).map(([k, value]) => step(`${k}: ${String(value).trim()}`))
+    const scalar = (value: unknown): value is string | number | boolean =>
+      (typeof value === 'string' && value.trim() !== '') || typeof value === 'number' || typeof value === 'boolean'
+    return Object.entries(input).filter(([, value]) => scalar(value)).slice(0, 3).map(([key, value]) => step(`${key}: ${String(value).trim()}`))
   }
   if (call.tool === 'Monitor') {
     const watched = str(input.command).trim() || (isRecord(input.ws) ? str(input.ws.url) : '')
@@ -196,10 +197,10 @@ function stepLines(call: CompactCall, columns: number, cwd?: string | null): Lin
     return lines
   }
   if (call.tool === 'WebSearch' && out !== null && Array.isArray(out.results)) {
-    const urls = out.results.flatMap(r => (isRecord(r) && Array.isArray(r.content) ? r.content : []))
-      .map(h => (isRecord(h) ? str(h.url) : '')).filter(u => u !== '')
+    const urls = out.results.flatMap(result => (isRecord(result) && Array.isArray(result.content) ? result.content : []))
+      .map(hit => (isRecord(hit) ? str(hit.url) : '')).filter(url => url !== '')
     if (urls.length === 0) return [step('no results')]
-    const sites = [...new Set(urls.map(hostOf).filter(h => h !== ''))]
+    const sites = [...new Set(urls.map(hostOf).filter(host => host !== ''))]
     const more = sites.length > 3 ? ` +${sites.length - 3} more` : ''
     return [step(`${urls.length} ${urls.length === 1 ? 'result' : 'results'} · ${sites.slice(0, 3).join(', ')}${more}`)]
   }
@@ -235,8 +236,8 @@ function readStep(call: CompactCall, cwd: string | null | undefined): string {
 // then `+k more`; `✗ <k>` when k failed
 function readsLines(run: CompactCall[], columns: number, cwd: string | null | undefined): Line[] {
   const counts = new Map<string, number>()
-  for (const c of run) counts.set(readStep(c, cwd), (counts.get(readStep(c, cwd)) ?? 0) + 1)
-  const items = [...counts].map(([name, n]) => (n > 1 ? `${name} · ${n} times` : name))
+  for (const readCall of run) counts.set(readStep(readCall, cwd), (counts.get(readStep(readCall, cwd)) ?? 0) + 1)
+  const items = [...counts].map(([name, times]) => (times > 1 ? `${name} · ${times} times` : name))
   const failed = run.filter(call => call.isErrored || call.outcome !== null).length
   const head: Line = [{ text: '⏺ ' }, { text: `${run.length} ${run.length === 1 ? 'read' : 'reads'}`, bold: true }, { text: ' · ' },
     failed > 0 ? { text: `✗ ${failed}`, tone: 'fail' } : { text: '✓', tone: 'ok' }]
@@ -247,9 +248,10 @@ function readsLines(run: CompactCall[], columns: number, cwd: string | null | un
 
 // A repeat: the same tool, description and outcome, back to back
 // back to back, its steps the same too (two agents of one type with different jobs stay two rows)
-const sameAs = (a: CompactCall, b: CompactCall): boolean =>
-  a.tool === b.tool && describe(a) === describe(b) && a.outcome === b.outcome && a.isErrored === b.isErrored && a.isInterrupted === b.isInterrupted &&
-  JSON.stringify(stepLines(a, 200)) === JSON.stringify(stepLines(b, 200))
+const sameAs = (left: CompactCall, right: CompactCall): boolean =>
+  left.tool === right.tool && describe(left) === describe(right) && left.outcome === right.outcome && left.isErrored === right.isErrored
+  && left.isInterrupted === right.isInterrupted &&
+  JSON.stringify(stepLines(left, 200)) === JSON.stringify(stepLines(right, 200))
 
 // A settled group's lines: each run of reads as one reads line and its steps, every other call its own lines, repeats
 // as `N times in a row`

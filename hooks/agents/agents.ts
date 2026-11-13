@@ -19,32 +19,33 @@ export function promptLines(prompt: string): { plan: string | null; task: string
 
 type Spawned = { id: string; parentId: string | null; type: string; description: string; prompt: string; isTeammate: boolean; model: string }
 
-export function newRow(s: Spawned, now: number): AgentRow {
+export function newRow(spawned: Spawned, now: number): AgentRow {
   return {
-    id: s.id, parentId: s.parentId, type: s.type, description: oneLine(s.description, 60), ...promptLines(s.prompt),
-    isTeammate: s.isTeammate, model: s.model, effort: null, status: 'running', isListed: false,
+    id: spawned.id, parentId: spawned.parentId, type: spawned.type, description: oneLine(spawned.description, 60), ...promptLines(spawned.prompt),
+    isTeammate: spawned.isTeammate, model: spawned.model, effort: null, status: 'running', isListed: false,
     startedAt: now, endedAt: null, action: null, report: null, contextTokens: null, tools: {}, lastStop: null,
   }
 }
 
 // A resume of a known agent runs its row again, unlisted until the list names it anew; any other spawn adds one
 export function upsertSpawn(rows: AgentRow[], row: AgentRow, isResume: boolean): AgentRow[] {
-  const known = isResume && rows.some(r => r.id === row.id)
+  const known = isResume && rows.some(knownRow => knownRow.id === row.id)
   const out = known
-    ? rows.map(r => (r.id === row.id ? { ...r, status: 'running' as const, startedAt: row.startedAt, endedAt: null, isListed: false } : r))
+    ? rows.map(knownRow => (knownRow.id === row.id
+      ? { ...knownRow, status: 'running' as const, startedAt: row.startedAt, endedAt: null, isListed: false } : knownRow))
     : [...rows, row]
   return keepRows(out)
 }
 
-export function isLive(s: AgentStatus): boolean {
-  return s === 'pending' || s === 'running' || s === 'waiting'
+export function isLive(status: AgentStatus): boolean {
+  return status === 'pending' || status === 'running' || status === 'waiting'
 }
 
 // At most `limit` rows: the oldest ended ones go first, and a live one never goes
 export function keepRows(rows: AgentRow[], limit = 50): AgentRow[] {
   const over = rows.length - limit
   if (over <= 0) return rows
-  const drop = new Set(rows.filter(r => !isLive(r.status)).sort((a, b) => a.startedAt - b.startedAt).slice(0, over))
+  const drop = new Set(rows.filter(agentRow => !isLive(agentRow.status)).sort((left, right) => left.startedAt - right.startedAt).slice(0, over))
   return rows.filter(row => !drop.has(row))
 }
 
@@ -53,9 +54,11 @@ export function keepRows(rows: AgentRow[], limit = 50): AgentRow[] {
 export function refreshAgents(rows: AgentRow[], listed: readonly AgentInfo[], now: number): AgentRow[] {
   return rows.map(row => {
     if (!isLive(row.status)) return row
-    const l = listed.find(x => x.id === row.id)
-    if (l === undefined) return row.isListed ? { ...row, status: 'completed' as const, endedAt: now } : row
-    return { ...row, isListed: true, status: l.status, endedAt: isLive(l.status) ? null : now, parentId: row.parentId ?? l.parentId ?? null }
+    const listedRow = listed.find(candidate => candidate.id === row.id)
+    if (listedRow === undefined) return row.isListed ? { ...row, status: 'completed' as const, endedAt: now } : row
+    return {
+      ...row, isListed: true, status: listedRow.status, endedAt: isLive(listedRow.status) ? null : now, parentId: row.parentId ?? listedRow.parentId ?? null,
+    }
   })
 }
 
@@ -81,7 +84,7 @@ export function statusGlyph(status: AgentStatus): Extract<Seg, { text: string }>
 
 // The time axis's lanes (spec C2): the 8 newest rows that have a start, oldest first; a live row has no end yet
 export function lanesOf(rows: AgentRow[], now: number): Lane[] {
-  return rows.filter(r => r.startedAt > 0).sort((a, b) => a.startedAt - b.startedAt).slice(-8).map(row => ({
+  return rows.filter(agentRow => agentRow.startedAt > 0).sort((left, right) => left.startedAt - right.startedAt).slice(-8).map(row => ({
     label: laneLabel(row), startAt: row.startedAt,
     endAt: isLive(row.status) ? null : row.endedAt ?? now, status: row.status, time: agentTime(row, now),
   }))
@@ -97,7 +100,7 @@ export function laneLabel(row: AgentRow): string {
 
 const LANE_MAX = 40
 export function laneFit(lanes: Lane[], columns: number): LaneFit | null {
-  const time = Math.max(0, ...lanes.map(l => [...l.time].length))
+  const time = Math.max(0, ...lanes.map(lane => [...lane.time].length))
   const room = columns - 4 - time
   const longest = Math.min(LANE_MAX, Math.max(6, ...lanes.map(lane => [...lane.label].length)))
   const label = Math.min(longest, room - 10)
@@ -106,14 +109,14 @@ export function laneFit(lanes: Lane[], columns: number): LaneFit | null {
 
 // A report's line in the tree: its first that is not a heading, a rule or a fence, else its first heading's words
 export function reportLine(report: string): string {
-  const lines = report.split('\n').map(l => l.trim()).filter(l => l !== '' && !/^([-*_=]\s*){3,}$/.test(l) && !l.startsWith('```'))
-  const isHeading = (l: string): boolean => /^#{1,6}\s/.test(l)
-  return (lines.find(l => !isHeading(l)) ?? lines[0] ?? '').replace(/^#{1,6}\s+/, '')
+  const lines = report.split('\n').map(line => line.trim()).filter(line => line !== '' && !/^([-*_=]\s*){3,}$/.test(line) && !line.startsWith('```'))
+  const isHeading = (line: string): boolean => /^#{1,6}\s/.test(line)
+  return (lines.find(line => !isHeading(line)) ?? lines[0] ?? '').replace(/^#{1,6}\s+/, '')
 }
 
 // Loops no spawn announced (spec C3): a step adds to its loop, or starts one; the newest 60 are kept
 export function addLoopStep(loops: Loop[], id: string, output: number, now: number): Loop[] {
-  const known = loops.find(l => l.id === id)
+  const known = loops.find(loop => loop.id === id)
   if (known !== undefined) return loops.map(loop => (loop === known ? { ...loop, steps: loop.steps + 1, outputTokens: loop.outputTokens + output, lastAt: now } : loop))
   return [...loops, { id, steps: 1, outputTokens: output, firstAt: now, lastAt: now, isDone: false }].slice(-60)
 }
@@ -125,7 +128,7 @@ export const LOOPS_NOTE = '(no spawn: compactions, forks)'
 // last 15 seconds), their output, then the dim note
 export function loopsLine(loops: Loop[], now: number, note: string): Line[] {
   if (loops.length === 0) return []
-  const active = loops.filter(l => !l.isDone && now - l.lastAt < 15_000).length
+  const active = loops.filter(loop => !loop.isDone && now - loop.lastAt < 15_000).length
   const output = loops.reduce((sum, loop) => sum + loop.outputTokens, 0)
   return [[{ text: `Other loops ${loops.length} · ${active} active · out ${tokensText(output)}` }], [{ text: note, tone: 'dim' }]]
 }
@@ -144,28 +147,28 @@ export function actionOf(tool: string, target: string): string {
 // Depth first, siblings oldest first, under the main loop as the root. A row sits under its parent only when that is
 // a row and its parents never lead back to it; else under the root.
 export function agentTree(rows: AgentRow[]): TreeRow[] {
-  const byId = new Map(rows.map(r => [r.id, r]))
-  const parentOf = (r: AgentRow): string | null => {
-    if (r.parentId === null || !byId.has(r.parentId)) return null
+  const byId = new Map(rows.map(agentRow => [agentRow.id, agentRow]))
+  const parentOf = (agentRow: AgentRow): string | null => {
+    if (agentRow.parentId === null || !byId.has(agentRow.parentId)) return null
     const seen = new Set<string>()
-    for (let p: string | null = r.parentId; p !== null && !seen.has(p); p = byId.get(p)?.parentId ?? null) {
-      if (p === r.id) return null
-      seen.add(p)
+    for (let parentId: string | null = agentRow.parentId; parentId !== null && !seen.has(parentId); parentId = byId.get(parentId)?.parentId ?? null) {
+      if (parentId === agentRow.id) return null
+      seen.add(parentId)
     }
-    return r.parentId
+    return agentRow.parentId
   }
   const kids = new Map<string | null, AgentRow[]>()
-  for (const r of [...rows].sort((a, b) => a.startedAt - b.startedAt)) {
-    const p = parentOf(r)
-    kids.set(p, [...(kids.get(p) ?? []), r])
+  for (const agentRow of [...rows].sort((left, right) => left.startedAt - right.startedAt)) {
+    const parent = parentOf(agentRow)
+    kids.set(parent, [...(kids.get(parent) ?? []), agentRow])
   }
   const out: TreeRow[] = []
   const walk = (parent: string | null, depth: number, lead: string): void => {
     const list = kids.get(parent) ?? []
-    list.forEach((r, i) => {
+    list.forEach((agentRow, i) => {
       const isLast = i === list.length - 1
-      out.push({ row: r, depth, isLast, prefix: `${lead}${isLast ? '└ ' : '├ '}` })
-      walk(r.id, depth + 1, `${lead}${isLast ? '  ' : '│ '}`)
+      out.push({ row: agentRow, depth, isLast, prefix: `${lead}${isLast ? '└ ' : '├ '}` })
+      walk(agentRow.id, depth + 1, `${lead}${isLast ? '  ' : '│ '}`)
     })
   }
   walk(null, 1, '')
@@ -176,7 +179,7 @@ export function agentTree(rows: AgentRow[]): TreeRow[] {
 export function toolSummary(tools: Record<string, ToolStat>): { tools: string[]; skills: string[] } {
   const out = { tools: [] as string[], skills: [] as string[] }
   for (const [key, stat] of Object.entries(tools)) {
-    const count = (glyph: string, n: number): string => (n === 0 ? '' : n === stat.calls ? ` ${glyph}` : ` ${glyph}${n}`)
+    const count = (glyph: string, markCount: number): string => (markCount === 0 ? '' : markCount === stat.calls ? ` ${glyph}` : ` ${glyph}${markCount}`)
     const marks = stat.failed === 0 && stat.stopped === 0 ? ' ✓' : `${count('✗', stat.failed)}${count('⊘', stat.stopped)}`
     if (key.startsWith('Skill: ')) out.skills.push(`${key.slice(7)} ×${stat.calls}`)
     else out.tools.push(`${key} ×${stat.calls}${marks}`)

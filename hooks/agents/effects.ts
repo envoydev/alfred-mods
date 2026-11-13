@@ -39,25 +39,27 @@ export async function isTrackedLoop($: EngineInterface, agentId: string | undefi
 }
 
 // Changes the row of an agent whose spawn was seen; an unknown id writes nothing
-export async function updateAgentRow($: EngineInterface, id: string, fn: (r: AgentRow) => AgentRow): Promise<void> {
-  if (!(await readAgents($)).some(r => r.id === id)) return
+export async function updateAgentRow($: EngineInterface, id: string, fn: (agentRow: AgentRow) => AgentRow): Promise<void> {
+  if (!(await readAgents($)).some(agentRow => agentRow.id === id)) return
   await updateAgents($, rows => rows.map(row => (row.id === id ? fn(row) : row)))
 }
 
 // An agent's step: its model and effort, its context as the sum the engine's own `context_tokens` uses, and how it
 // stopped, so a report cut off at max_tokens is flagged (spec C4)
 export async function trackAgentStep($: EngineInterface, e: TurnStepInput, step: TurnStepResult): Promise<void> {
-  const u = step.usage
+  const stepUsage = step.usage
   const id = e.agentId ?? ''
   // A loop no spawn announced is counted apart (spec C3)
-  if (!(await readAgents($)).some(r => r.id === id)) {
+  if (!(await readAgents($)).some(agentRow => agentRow.id === id)) {
     const now = await $.clock.now()
-    await updateLoops($, list => addLoopStep(list, id, u?.output_tokens ?? 0, now))
+    await updateLoops($, list => addLoopStep(list, id, stepUsage?.output_tokens ?? 0, now))
     return
   }
   await updateAgentRow($, id, row => ({
     ...row, model: e.model, effort: e.effort === undefined ? row.effort : String(e.effort),
-    contextTokens: u === null ? row.contextTokens : u.input_tokens + u.cache_read_input_tokens + u.cache_creation_input_tokens + u.output_tokens,
+    contextTokens: stepUsage === null
+      ? row.contextTokens
+      : stepUsage.input_tokens + stepUsage.cache_read_input_tokens + stepUsage.cache_creation_input_tokens + stepUsage.output_tokens,
     lastStop: step.stopReason ?? null,
   }))
 }
@@ -73,12 +75,12 @@ export async function trackSpawn($: EngineInterface, e: HookInput<'agent.spawn'>
       isTeammate: e.isTeammate === true, model: spawned.model,
     }, now)
     // A dispatch is a new row: a resume of a kept one runs that row again (upsertSpawn's own test)
-    const isKnown = e.resume !== undefined && (await readAgents($)).some(r => r.id === id)
+    const isKnown = e.resume !== undefined && (await readAgents($)).some(agentRow => agentRow.id === id)
     if (!isKnown) await countAgentType($, row.type)
     await updateAgents($, rows => upsertSpawn(rows, row, e.resume !== undefined))
     await addStepMark($, stepMarkOf(row))
     // Its first step came before its spawn resolved: the loop is this agent's
-    if ((await readLoops($)).some(l => l.id === id)) await updateLoops($, list => list.filter(l => l.id !== id))
+    if ((await readLoops($)).some(loop => loop.id === id)) await updateLoops($, list => list.filter(loop => loop.id !== id))
   }
   return spawned
 }

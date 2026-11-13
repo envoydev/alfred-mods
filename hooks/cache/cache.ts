@@ -21,14 +21,14 @@ export const WARN_MIN_TOKENS = 100_000
 
 // Within the plan's usage while a 5h or 7d window reads under 100; on usage credits once one reads 100 or more
 export function billingOf(windows: RateWindow[]): Billing {
-  const plan = windows.filter(w => w.kind === 'five_hour' || w.kind === 'seven_day')
+  const plan = windows.filter(rateWindow => rateWindow.kind === 'five_hour' || rateWindow.kind === 'seven_day')
   if (plan.length === 0) return 'other'
   return plan.some(rateWindow => rateWindow.percentUsed >= 100) ? 'credits' : 'plan'
 }
 
 // The first pin in Claude Code's order: FORCE_PROMPT_CACHING_5M, the variable, the setting, ENABLE_PROMPT_CACHING_1H
 export function pinOf(sources: { force5m?: string; ttl?: string; setting?: unknown; enable1h?: string }): CacheConfig['pin'] {
-  const tier = (x: unknown): CacheTier | null => (x === '5m' || x === '1h' ? x : null)
+  const tier = (raw: unknown): CacheTier | null => (raw === '5m' || raw === '1h' ? raw : null)
   if (sources.force5m === '1') return { tier: '5m', from: 'FORCE_PROMPT_CACHING_5M' }
   const ttl = tier(sources.ttl)
   if (ttl !== null) return { tier: ttl, from: 'CLAUDE_CODE_PROMPT_CACHE_TTL' }
@@ -41,8 +41,8 @@ export function pinOf(sources: { force5m?: string; ttl?: string; setting?: unkno
 // Idle compaction is off with either setting false or DISABLE_AUTO_COMPACT set; its threshold is raised to 100,000
 export function idleOf(sources: { idleCompaction?: unknown; autoCompactEnabled?: unknown; disableAutoCompact?: string; minTokens?: string }): Pick<CacheConfig, 'isIdleCompactOff' | 'idleMinTokens'> {
   const idleOff = sources.idleCompaction === false || sources.autoCompactEnabled === false || (sources.disableAutoCompact ?? '') !== ''
-  const n = /^\d+$/.test(sources.minTokens ?? '') ? Number(sources.minTokens) : 0
-  return { isIdleCompactOff: idleOff, idleMinTokens: n > 0 ? Math.max(100_000, n) : 200_000 }
+  const minTokens = /^\d+$/.test(sources.minTokens ?? '') ? Number(sources.minTokens) : 0
+  return { isIdleCompactOff: idleOff, idleMinTokens: minTokens > 0 ? Math.max(100_000, minTokens) : 200_000 }
 }
 
 
@@ -54,21 +54,26 @@ export function tierOf(cache: Cache, billing: Billing): TierOf {
 }
 
 // A main-loop request: the cache's time runs from its start, if it read or wrote the cache at all (caching can be off)
-export function addRequest(cache: Cache, u: Pick<ModelUsage, 'input_tokens' | 'cache_read_input_tokens' | 'cache_creation_input_tokens'>, at: number): Cache {
-  const last = { read: u.cache_read_input_tokens, write: u.cache_creation_input_tokens, input: u.input_tokens }
+export function addRequest(
+  cache: Cache, usage: Pick<ModelUsage, 'input_tokens' | 'cache_read_input_tokens' | 'cache_creation_input_tokens'>, at: number,
+): Cache {
+  const last = { read: usage.cache_read_input_tokens, write: usage.cache_creation_input_tokens, input: usage.input_tokens }
   if (last.read === 0 && last.write === 0 && last.input === 0) return cache
-  const s = cache.sessionCounts
+  const counts = cache.sessionCounts
   const lastAt = last.read + last.write > 0 ? at : cache.lastRequestAt
-  return { ...cache, lastRequestAt: lastAt, lastRequest: last, sessionCounts: { read: s.read + last.read, write: s.write + last.write, input: s.input + last.input } }
+  return { ...cache, lastRequestAt: lastAt, lastRequest: last,
+    sessionCounts: { read: counts.read + last.read, write: counts.write + last.write, input: counts.input + last.input } }
 }
 
 const rateOf = (usdCost: number, contextTokens: number): number | null => (contextTokens > 0 ? usdCost / contextTokens : null)
 
 // A model switch's report: its tier under the billing now, and the rate its own estimate gives. Only a switch that
 // happened (PostModelSwitch) forfeits the cache; one Claude Code may still ask to confirm leaves it warm.
-export function takeSwitch(cache: Cache, s: { ttl: CacheTier; contextTokens: number; usd: number; model: string; billing: Billing }, at: number, hasSwitched: boolean): Cache {
+export function takeSwitch(
+  cache: Cache, change: { ttl: CacheTier; contextTokens: number; usd: number; model: string; billing: Billing }, at: number, hasSwitched: boolean,
+): Cache {
   const out: Cache = {
-    ...cache, tier: s.ttl, tierAt: at, tierBilling: s.billing, rateModel: s.model, ratePerToken: rateOf(s.usd, s.contextTokens),
+    ...cache, tier: change.ttl, tierAt: at, tierBilling: change.billing, rateModel: change.model, ratePerToken: rateOf(change.usd, change.contextTokens),
   }
   return hasSwitched ? { ...out, lastRequestAt: null } : out
 }
@@ -86,9 +91,9 @@ export function afterCompact(cache: Cache): Cache {
 
 const cachedOf = (cache: Cache): number => (cache.lastRequest === null ? 0 : cache.lastRequest.read + cache.lastRequest.write)
 
-const reuseOf = (n: { read: number; write: number; input: number } | null): number | null => {
-  const all = n === null ? 0 : n.read + n.write + n.input
-  return n === null || all === 0 ? null : (n.read / all) * 100
+const reuseOf = (counts: { read: number; write: number; input: number } | null): number | null => {
+  const all = counts === null ? 0 : counts.read + counts.write + counts.input
+  return counts === null || all === 0 ? null : (counts.read / all) * 100
 }
 
 // With the context's tokens, the warning's window allows for Claude Code's own idle compaction

@@ -69,15 +69,17 @@ export async function readStatusFileNow($: EngineInterface, keep: boolean): Prom
 
 // The `stack` atom from one read: inside the window a missing file writes back the last value and keeps the prompt;
 // every other read writes its own value, and `last` with it
-export async function writeStackFrom($: EngineInterface, r: { exists: boolean; text: string | null; id: string; now: number; inWindow: boolean }): Promise<void> {
-  if (!r.exists && r.inWindow) {
+export async function writeStackFrom(
+  $: EngineInterface, read: { exists: boolean; text: string | null; id: string; now: number; inWindow: boolean },
+): Promise<void> {
+  if (!read.exists && read.inWindow) {
     const last = stackMemory.last
-    if (last !== null) await updateStack($, s => (JSON.stringify(s) === JSON.stringify(last) ? s : last))
+    if (last !== null) await updateStack($, stored => (JSON.stringify(stored) === JSON.stringify(last) ? stored : last))
     return
   }
-  const parsed = r.text === null ? null : parseStack(r.text, r.id)
-  const base: Stack = { ...INITIAL_STACK, readAt: r.now }
-  const next: Stack = !r.exists ? { ...base, reason: NO_FILE }
+  const parsed = read.text === null ? null : parseStack(read.text, read.id)
+  const base: Stack = { ...INITIAL_STACK, readAt: read.now }
+  const next: Stack = !read.exists ? { ...base, reason: NO_FILE }
     : parsed === null ? { ...base, state: 'ignored', reason: UNREADABLE }
     : parsed.state === 'ignored' ? { ...base, state: 'ignored', reason: parsed.reason }
     : { ...base, ...parsed.fields, state: 'used', hasPrompt: parsed.prompt !== null }

@@ -67,15 +67,15 @@ export async function armCacheToast($: EngineInterface, pending: Pending): Promi
 // The toast, once per warm stretch, while the main loop is idle and the cache is still 1h and warm by then; a
 // compaction of Claude Code's own has made it cold
 export async function toastCacheClosing($: EngineInterface): Promise<void> {
-  const c = await readCache($)
+  const stored = await readCache($)
   const usage = await readUsage($)
-  const cacheState = cacheView(c, billingOf(usage.rateWindows), await $.clock.now(), usage.contextTokens)
-  if (cacheState.tier.tier !== '1h' || !cacheState.isClosing || c.toastedForRequestAt === c.lastRequestAt) return
+  const cacheState = cacheView(stored, billingOf(usage.rateWindows), await $.clock.now(), usage.contextTokens)
+  if (cacheState.tier.tier !== '1h' || !cacheState.isClosing || stored.toastedForRequestAt === stored.lastRequestAt) return
   if ((await readLive($)).turnId !== null) return
   const rewrite = cacheState.rewriteUsd === null ? '' : ` (rewrite ≈ ${usdText(cacheState.rewriteUsd)})`
   toast($, `Cache cold in ${cacheState.tier.isEstimate ? '≈' : ''}${minutesLeftText(cacheState.leftMs ?? 0)}${rewrite}: press 3 to compact, or /inspect cache`)
-  const lastAt = c.lastRequestAt
-  await updateCache($, x => ({ ...x, toastedForRequestAt: lastAt }))
+  const lastAt = stored.lastRequestAt
+  await updateCache($, storedCache => ({ ...storedCache, toastedForRequestAt: lastAt }))
 }
 
 // A main-loop compaction that stands: counted, and the cache cold, as its cached prefix is gone; a compaction can drop
@@ -126,8 +126,8 @@ export async function trackModelSwitch($: EngineInterface, e: HookInput<'classic
   await setModel($, e.to_model)
   const billing = billingOf((await readUsage($)).rateWindows)
   const now = await $.clock.now()
-  const s = { ttl: e.cache_ttl, contextTokens: e.context_tokens, usd: e.estimated_cache_write_usd, model: e.to_model, billing }
-  await updateCache($, cache => takeSwitch(cache, s, now, true))
+  const change = { ttl: e.cache_ttl, contextTokens: e.context_tokens, usd: e.estimated_cache_write_usd, model: e.to_model, billing }
+  await updateCache($, cache => takeSwitch(cache, change, now, true))
   await armCacheToast($, pending)
   return done
 }
@@ -137,8 +137,8 @@ export async function trackModelSwitchAsk($: EngineInterface, e: HookInput<'clas
   if (done.block !== undefined || done.permissionDecision === 'deny' || done.permissionDecision === 'ask') return done
   const billing = billingOf((await readUsage($)).rateWindows)
   const now = await $.clock.now()
-  const s = { ttl: e.cache_ttl, contextTokens: e.context_tokens, usd: e.estimated_cache_write_usd, model: e.to_model, billing }
-  await updateCache($, cache => takeSwitch(cache, s, now, false))
+  const change = { ttl: e.cache_ttl, contextTokens: e.context_tokens, usd: e.estimated_cache_write_usd, model: e.to_model, billing }
+  await updateCache($, cache => takeSwitch(cache, change, now, false))
   await armCacheToast($, pending)
   return done
 }

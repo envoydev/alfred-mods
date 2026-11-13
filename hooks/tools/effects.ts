@@ -97,10 +97,10 @@ export async function addFailureRow($: EngineInterface, id: string, call: ToolCa
     detail: (result?.deny ?? result?.text ?? '').slice(0, 4000), count: 1, isNew: isNew && !isSeen, blockedBy: by,
   }
   await updateFailures($, list => {
-    const i = drop === null ? -1 : list.findIndex(f => f.id === drop)
+    const i = drop === null ? -1 : list.findIndex(failure => failure.id === drop)
     const old = list[i]
     const rest = old === undefined ? list
-      : old.count > 1 ? list.map(f => (f === old ? { ...f, count: f.count - 1 } : f))
+      : old.count > 1 ? list.map(failure => (failure === old ? { ...failure, count: failure.count - 1 } : failure))
       : list.filter(failure => failure !== old)
     // A call settled again keeps its row's number
     const out = foldFailure(rest, old !== undefined && old.count === 1 && old.failureNumber !== undefined ? { ...row, failureNumber: old.failureNumber } : row)
@@ -118,12 +118,14 @@ export function markUnfolded(ids: string[]): void {
 }
 
 // A row's or a group call's facts as a compact row reads them; a refusal draws as a block
-export function compactCallOf(id: string | undefined, c: { tool: string; input: unknown; output?: unknown; isErrored: boolean; isInterrupted: boolean }): CompactCall {
-  const o = id === undefined ? undefined : rowMemory.outcomes.get(id)
-  const outcome = o?.outcome === 'denied' ? 'denied' : o?.outcome === 'blocked' || o?.outcome === 'refused' ? 'blocked' : null
+export function compactCallOf(
+  id: string | undefined, call: { tool: string; input: unknown; output?: unknown; isErrored: boolean; isInterrupted: boolean },
+): CompactCall {
+  const remembered = id === undefined ? undefined : rowMemory.outcomes.get(id)
+  const outcome = remembered?.outcome === 'denied' ? 'denied' : remembered?.outcome === 'blocked' || remembered?.outcome === 'refused' ? 'blocked' : null
   return {
-    tool: c.tool, input: c.input, output: c.output, isErrored: c.isErrored, isInterrupted: c.isInterrupted, outcome,
-    reason: outcome === null ? null : o?.reason ?? null, isAutoAllowed: o?.isAutoAllowed === true,
+    tool: call.tool, input: call.input, output: call.output, isErrored: call.isErrored, isInterrupted: call.isInterrupted, outcome,
+    reason: outcome === null ? null : remembered?.reason ?? null, isAutoAllowed: remembered?.isAutoAllowed === true,
   }
 }
 
@@ -148,11 +150,11 @@ export async function settleToolCall($: EngineInterface, id: string, call: ToolC
   const counted = call.blockedBy
   call.blockedBy = by
   if (counted !== by) {
-    await updateBlockers($, b => {
-      const out = { ...b }
+    await updateBlockers($, blockers => {
+      const out = { ...blockers }
       if (counted !== null) {
-        const n = (out[counted] ?? 0) - 1
-        if (n > 0) out[counted] = n
+        const remaining = (out[counted] ?? 0) - 1
+        if (remaining > 0) out[counted] = remaining
         else delete out[counted]
       }
       if (by !== null) out[by] = (out[by] ?? 0) + 1
@@ -160,7 +162,7 @@ export async function settleToolCall($: EngineInterface, id: string, call: ToolC
     })
   }
   const isMain = call.agentId === null
-  const failed = (o: Outcome | null): number => (o !== null && o !== 'ok' ? 1 : 0)
+  const failed = (outcome: Outcome | null): number => (outcome !== null && outcome !== 'ok' ? 1 : 0)
   await settleRunningCall($, id, { isMain, isFirstSettle: before === null, failuresDelta: failed(outcome) - failed(before) })
   if (isMain && before === null) await countMainCall($)
   // A Skill call that failed loaded nothing, and one whose skill ran forked loaded it into a subagent
@@ -179,7 +181,7 @@ export function keepErrorText(id: string, text: string): void {
 // "quiet" into the quiet atom
 export async function applyQuiet($: EngineInterface): Promise<boolean> {
   const isOn = settingsInForce().quiet
-  await updateQuiet($, q => (q.isOn === isOn ? q : { isOn }))
+  await updateQuiet($, quiet => (quiet.isOn === isOn ? quiet : { isOn }))
   return isOn
 }
 
@@ -271,7 +273,8 @@ export async function noteToolDuration($: EngineInterface, e: HookInput<'classic
 
 export async function notePermissionRequest($: EngineInterface, e: HookInput<'classic.PermissionRequest'>, next: HookNext<'classic.PermissionRequest'>, calls: Map<string, ToolCall>) {
   const answered = await next(e)
-  const call = [...calls.values()].reverse().find(c => !c.isSettled && c.facts.tool === e.tool_name && c.facts.checked === 'ask')
+  const call = [...calls.values()].reverse()
+    .find(askedCall => !askedCall.isSettled && askedCall.facts.tool === e.tool_name && askedCall.facts.checked === 'ask')
   const decision = answered.decision
   if (call !== undefined && decision === undefined) call.facts = { ...call.facts, asked: true }
   if (call !== undefined && decision?.behavior === 'deny') call.facts = { ...call.facts, hookDeny: decision.message ?? '' }
@@ -347,14 +350,14 @@ export async function drawToolResult($: EngineInterface, e: MatchedInput<'ui.ren
 export async function drawToolGroup($: EngineInterface, e: MatchedInput<'ui.render', { component: 'ToolGroup' }>, next: MatchedNext<'ui.render', { component: 'ToolGroup' }>) {
   const isQuiet = (await readQuiet($)).isOn
   const isRec = await isRecOn($)
-  const ids = e.props.calls.flatMap(c => (c.tool_use_id === undefined ? [] : [c.tool_use_id]))
+  const ids = e.props.calls.flatMap(batchCall => (batchCall.tool_use_id === undefined ? [] : [batchCall.tool_use_id]))
   if (e.props.isExpanded) {
     if (isQuiet) for (const id of ids) rowMemory.marks.delete(id)
     return next(e)
   }
   if (isQuiet && !e.props.isActive && e.props.isCallsOnly === true) {
     const columns = e.viewport?.columns ?? 120
-    const lines = groupLines(e.props.calls.map(c => compactCallOf(c.tool_use_id, c)), columns, { cwd: workingFolder() })
+    const lines = groupLines(e.props.calls.map(batchCall => compactCallOf(batchCall.tool_use_id, batchCall)), columns, { cwd: workingFolder() })
     return drawLines($.ui.resolve(e), e, lines, { noColor: await isNoColor($), press: {}, columns , fill: true })
   }
   if (isQuiet && (isRec || !e.props.isActive)) markUnfolded(ids)
@@ -364,7 +367,7 @@ export async function drawToolGroup($: EngineInterface, e: MatchedInput<'ui.rend
 
 // The failures a shown tab listed are no longer new
 export async function markFailuresSeen($: EngineInterface): Promise<void> {
-  await updateFailures($, list => (list.some(f => f.isNew) ? list.map(failure => ({ ...failure, isNew: false })) : list))
+  await updateFailures($, list => (list.some(entry => entry.isNew) ? list.map(failure => ({ ...failure, isNew: false })) : list))
 }
 
 // The session's permission mode, when an event reports one

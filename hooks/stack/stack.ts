@@ -22,7 +22,7 @@ const isWhole = (value: unknown, min: number, max: number): value is number => t
 // A field's rule: the value it reads as, or `bad`; a missing field never reaches a rule
 type Rule<T> = (value: unknown) => T | 'bad'
 
-const fullContextRule: Rule<FullContext> = value => CONTEXTS.find(c => c === value) ?? 'bad'
+const fullContextRule: Rule<FullContext> = value => CONTEXTS.find(context => context === value) ?? 'bad'
 const modelRule: Rule<string | null> = value => value === null || (typeof value === 'string' && value.length >= 1 && value.length <= 100 && !CONTROL.test(value)) ? value : 'bad'
 const windowRule: Rule<number | null> = value => value === null || isWhole(value, 1000, 10_000_000) ? value : 'bad'
 const autoRunRule: Rule<boolean> = value => typeof value === 'boolean' ? value : 'bad'
@@ -42,7 +42,7 @@ const planRule: Rule<string | null> = value => {
   if (value === null) return null
   if (typeof value !== 'string' || value.length > 300 || CONTROL.test(value) || value.includes('\\') || /^[A-Za-z]:/.test(value)) return 'bad'
   const segs = value.replace(/\/$/, '').split('/')
-  return segs.every(x => x !== '' && x !== '.' && x !== '..') ? segs.join('/') : 'bad'
+  return segs.every(segment => segment !== '' && segment !== '.' && segment !== '..') ? segs.join('/') : 'bad'
 }
 const promptRule: Rule<string | null> = value => value === null || (typeof value === 'string' && value.length >= 1 && value.length <= 1000 && !PROMPT_CONTROL.test(value)) ? value : 'bad'
 
@@ -63,7 +63,7 @@ export function parseStack(text: string, session: string): StackRead {
   const model = field('model', modelRule)
   const window = field('window', windowRule)
   // Under the file's own valid window, else under 10,000,000; a file's own null means no offer at this window
-  const resumeAt = field<number | null>('resumeAt', r => r === null || isWhole(r, 1000, (window ?? 10_000_000) - 1) ? r : 'bad')
+  const resumeAt = field<number | null>('resumeAt', value => value === null || isWhole(value, 1000, (window ?? 10_000_000) - 1) ? value : 'bad')
   const noOffer = value.resumeAt === null
   const autoRun = field('autoRun', autoRunRule)
   const scorer = field('scorer', scorerRule)
@@ -79,11 +79,11 @@ export function parseStack(text: string, session: string): StackRead {
 }
 
 // A model id as both sides spell it: lowercase, a trailing `[...]` suffix dropped (`claude-opus-5-5[1m]`)
-const bareModel = (m: string): string => m.toLowerCase().replace(/\[[^\]]*\]$/, '')
+const bareModel = (model: string): string => model.toLowerCase().replace(/\[[^\]]*\]$/, '')
 
 // The file's model and the session's agree when either is unknown or both name the same model
-export function modelsAgree(a: string | null, b: string | null): boolean {
-  return a === null || b === null || bareModel(a) === bareModel(b)
+export function modelsAgree(left: string | null, right: string | null): boolean {
+  return left === null || right === null || bareModel(left) === bareModel(right)
 }
 
 
@@ -130,28 +130,28 @@ function modesLine(stack: Stack): string | null {
     : stack.scorer.on ? `scoring on (level ${stack.scorer.level}, ${stack.scorer.rounds} round${stack.scorer.rounds === 1 ? '' : 's'})` : 'scoring off'
   const compact = stack.autoCompact === null ? null
     : !stack.autoCompact.on ? 'auto-compact off' : stack.autoCompact.at === null ? 'auto-compact on' : `auto-compact on (at ${thousands(stack.autoCompact.at)})`
-  const parts = [stack.autoRun === null ? null : `auto-run ${stack.autoRun ? 'on' : 'off'}`, compact, scorer].filter((p): p is string => p !== null)
+  const parts = [stack.autoRun === null ? null : `auto-run ${stack.autoRun ? 'on' : 'off'}`, compact, scorer].filter((part): part is string => part !== null)
   return parts.length === 0 ? null : parts.join(' · ')
 }
 
 // The Now tab's ALFRED CODE section (spec 'The ALFRED CODE section'), the brief's diagnostics row: the reason a file
 // was not used, else what the stack reports, with the resume prompt's first line and its fill while the stack owns the
 // full context
-export function stackLines(stack: Stack, o: { prompt: string | null; runway: Runway | null; sessionModel: string | null; columns: number }): Line[] {
+export function stackLines(stack: Stack, opts: { prompt: string | null; runway: Runway | null; sessionModel: string | null; columns: number }): Line[] {
   if (stack.state === 'none') return [HEAD, [{ text: `Alfred Code: ${NO_FILE}`, tone: 'dim' }]]
   if (stack.state === 'ignored') return [HEAD, [{ text: `Alfred Code status file not used: ${stack.reason ?? 'unknown'}`, tone: 'dim' }]]
   const out: Line[] = [HEAD]
-  const context = contextLine(stack, o.runway)
+  const context = contextLine(stack, opts.runway)
   if (context !== null) out.push([{ text: context }])
   const modes = modesLine(stack)
   if (modes !== null) out.push([{ text: modes }])
   if (stack.model !== null) {
     const row: Line = [{ text: `model ${stack.model}` }]
-    if (!modelsAgree(stack.model, o.sessionModel)) row.push({ text: ` · this session runs ${o.sessionModel ?? ''}: runway not used`, tone: 'warn' })
+    if (!modelsAgree(stack.model, opts.sessionModel)) row.push({ text: ` · this session runs ${opts.sessionModel ?? ''}: runway not used`, tone: 'warn' })
     out.push(row)
   }
-  if (o.prompt !== null && (stack.fullContext === 'fresh-session' || stack.fullContext === 'compact')) {
-    out.push([{ text: `resume: ${fitLine(o.prompt, Math.max(1, o.columns - BESIDE))}  ` }, FILL])
+  if (opts.prompt !== null && (stack.fullContext === 'fresh-session' || stack.fullContext === 'compact')) {
+    out.push([{ text: `resume: ${fitLine(opts.prompt, Math.max(1, opts.columns - BESIDE))}  ` }, FILL])
   }
   const written = stack.updatedAt === null ? '' : ` · written ${clockText(stack.updatedAt)}`
   const ignored = stack.ignoredFields.length === 0 ? '' : ` · ignored: ${stack.ignoredFields.join(', ')}`
@@ -176,7 +176,7 @@ export function fillReady(stack: Stack, prompt: string | null): prompt is string
 }
 
 // The toast for what the prompt box answered; an absent cause is a hook's refusal, unknown
-export function fillToast(r: { isFilled: boolean; refusal?: 'no_composer' | 'dialog' }): string {
-  if (r.isFilled) return STACK_TOASTS.filled
-  return r.refusal === 'dialog' ? STACK_TOASTS.dialog : r.refusal === 'no_composer' ? STACK_TOASTS.noBox : STACK_TOASTS.notFilled
+export function fillToast(result: { isFilled: boolean; refusal?: 'no_composer' | 'dialog' }): string {
+  if (result.isFilled) return STACK_TOASTS.filled
+  return result.refusal === 'dialog' ? STACK_TOASTS.dialog : result.refusal === 'no_composer' ? STACK_TOASTS.noBox : STACK_TOASTS.notFilled
 }

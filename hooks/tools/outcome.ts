@@ -50,7 +50,7 @@ const SCRIPT = /\.(?:js|mjs|cjs|ts|sh|py|ps1|rb)$/
 export function blockerOf(text: string): string | null {
   const command = /hook error: \[([^\n]*?)\]:(?:\s|$)/.exec(text)?.[1]
   if (command === undefined) return null
-  const scripts = command.split(/\s+/).map(t => t.replace(/["']/g, '')).filter(t => SCRIPT.test(t))
+  const scripts = command.split(/\s+/).map(token => token.replace(/["']/g, '')).filter(token => SCRIPT.test(token))
   const name = scripts[scripts.length - 1]?.split(/[\\/]/).pop() ?? ''
   return name !== '' && [...name].length <= 40 && !/\p{C}/u.test(name) ? name : null
 }
@@ -98,11 +98,11 @@ export function failureNumberOf(failure: Failure, i: number): number {
 }
 
 export function tallyOutcome(stat: ToolStat | undefined, outcome: Outcome, by: 1 | -1): ToolStat {
-  const t = stat ?? { calls: 0, ok: 0, failed: 0, stopped: 0 }
+  const toolStat = stat ?? { calls: 0, ok: 0, failed: 0, stopped: 0 }
   return {
-    calls: t.calls + by,
-    ok: t.ok + (outcome === 'ok' ? by : 0),
-    failed: t.failed + (outcome === 'error' ? by : 0),
-    stopped: t.stopped + (outcome === 'ok' || outcome === 'error' ? 0 : by),
+    calls: toolStat.calls + by,
+    ok: toolStat.ok + (outcome === 'ok' ? by : 0),
+    failed: toolStat.failed + (outcome === 'error' ? by : 0),
+    stopped: toolStat.stopped + (outcome === 'ok' || outcome === 'error' ? 0 : by),
   }
 }

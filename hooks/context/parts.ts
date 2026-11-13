@@ -10,8 +10,8 @@ import type { Line } from '../core/types'
 
 export const NO_PARTS: Parts = { breakdownAt: null, categories: [], plugins: [], memory: { files: 0, tokens: 0, top: [] } }
 
-export const slashed = (p: string): string => p.replace(/\\/g, '/')
-const isDrive = (p: string): boolean => /^[A-Za-z]:\//.test(p)
+export const slashed = (filePath: string): string => filePath.replace(/\\/g, '/')
+const isDrive = (filePath: string): boolean => /^[A-Za-z]:\//.test(filePath)
 
 // `.claude/CLAUDE.md` for a file under the project, else `User CLAUDE.md`; a Windows path compares without case. A
 // session at a root or a drive root has no project to name from, and the auto memory's folder under
@@ -20,7 +20,7 @@ const isDrive = (p: string): boolean => /^[A-Za-z]:\//.test(p)
 export function memoryName(path: string, type: string, cwd: string): string {
   const file = slashed(path)
   const root = slashed(cwd).replace(/\/+$/, '')
-  const fold = (p: string): string => (isDrive(file) ? p.toLowerCase() : p)
+  const fold = (filePath: string): string => (isDrive(file) ? filePath.toLowerCase() : filePath)
   const isRoot = root === '' || /^[A-Za-z]:$/.test(root)
   if (!isRoot && fold(file).startsWith(`${fold(root)}/`)) {
     const inside = file.slice(root.length + 1)
@@ -40,7 +40,7 @@ export function ruleName(path: string, type: string): string | null {
 // The breakdown as the atom keeps it: `used` categories in Claude Code's order; agents by the plugin before the `:` of
 // their type and skills by their plugin, most tokens first; the memory files' count, tokens and three largest. A host
 // may leave a list out, so each is read as empty when absent.
-export function partsOf(b: SessionContextBreakdown, cwd: string, at: number, linked: ReadonlySet<string> = new Set()): Parts {
+export function partsOf(breakdown: SessionContextBreakdown, cwd: string, at: number, linked: ReadonlySet<string> = new Set()): Parts {
   const plugins = new Map<string, { name: string; agents: number; agentTokens: number; skills: number; skillTokens: number }>()
   const of = (name: string) => {
     const known = plugins.get(name)
@@ -49,32 +49,36 @@ export function partsOf(b: SessionContextBreakdown, cwd: string, at: number, lin
     plugins.set(name, made)
     return made
   }
-  for (const a of b.agents ?? []) {
-    const cut = a.agentType.indexOf(':')
+  for (const agent of breakdown.agents ?? []) {
+    const cut = agent.agentType.indexOf(':')
     if (cut <= 0) continue
-    const p = of(a.agentType.slice(0, cut))
-    p.agents += 1
-    p.agentTokens += a.tokens
+    const pluginPart = of(agent.agentType.slice(0, cut))
+    pluginPart.agents += 1
+    pluginPart.agentTokens += agent.tokens
   }
-  for (const s of b.skills?.skillFrontmatter ?? []) {
-    if (s.pluginName === undefined || s.pluginName === '') continue
-    const p = of(s.pluginName)
-    p.skills += 1
-    p.skillTokens += s.tokens
+  for (const skill of breakdown.skills?.skillFrontmatter ?? []) {
+    if (skill.pluginName === undefined || skill.pluginName === '') continue
+    const pluginPart = of(skill.pluginName)
+    pluginPart.skills += 1
+    pluginPart.skillTokens += skill.tokens
   }
-  const files = (b.memoryFiles ?? []).map(f => ({ name: memoryName(f.path, f.type, cwd), tokens: f.tokens }))
-  const rules = [...new Set((b.memoryFiles ?? []).flatMap(f => ruleName(f.path, f.type) ?? (linked.has(f.path) ? baseName(f.path) : [])))]
-  const listing = b.skills === undefined ? {} : { skills: { listed: b.skills.includedSkills, total: b.skills.totalSkills, tokens: b.skills.tokens } }
+  const files = (breakdown.memoryFiles ?? []).map(memoryFile => ({ name: memoryName(memoryFile.path, memoryFile.type, cwd), tokens: memoryFile.tokens }))
+  const rules = [...new Set((breakdown.memoryFiles ?? []).flatMap(memoryFile =>
+    ruleName(memoryFile.path, memoryFile.type) ?? (linked.has(memoryFile.path) ? baseName(memoryFile.path) : [])))]
+  const listing = breakdown.skills === undefined
+    ? {}
+    : { skills: { listed: breakdown.skills.includedSkills, total: breakdown.skills.totalSkills, tokens: breakdown.skills.tokens } }
   return {
     ...listing,
     ...(rules.length === 0 ? {} : { rules }),
     breakdownAt: at,
-    categories: (b.categories ?? []).filter(c => c.kind === 'used').map(c => ({ name: c.name, tokens: c.tokens })),
-    plugins: [...plugins.values()].sort((x, y) => y.agentTokens + y.skillTokens - (x.agentTokens + x.skillTokens) || x.name.localeCompare(y.name)),
+    categories: (breakdown.categories ?? []).filter(category => category.kind === 'used').map(category => ({ name: category.name, tokens: category.tokens })),
+    plugins: [...plugins.values()].sort((left, right) =>
+      right.agentTokens + right.skillTokens - (left.agentTokens + left.skillTokens) || left.name.localeCompare(right.name)),
     memory: {
       files: files.length,
-      tokens: files.reduce((sum, f) => sum + f.tokens, 0),
-      top: [...files].sort((x, y) => y.tokens - x.tokens).slice(0, 3),
+      tokens: files.reduce((sum, memoryFile) => sum + memoryFile.tokens, 0),
+      top: [...files].sort((left, right) => right.tokens - left.tokens).slice(0, 3),
     },
   }
 }
@@ -87,27 +91,30 @@ const LABEL = PARTS_LABEL
 export function partsLines(parts: Parts): Line[] {
   if (parts.breakdownAt === null) return []
   const out: Line[] = []
-  const used = parts.categories.map(c => `${c.name} ${tokensText(c.tokens)}`)
+  const used = parts.categories.map(category => `${category.name} ${tokensText(category.tokens)}`)
   out.push([{ text: 'In context', width: LABEL }, { text: [`est. ${clockText(parts.breakdownAt)}`, ...used].join(' · ') }])
   if (parts.plugins.length > 0) {
-    const named = parts.plugins.map(x => {
-      const what = [x.agents > 0 ? `${x.agents} agents` : null, x.skills > 0 ? `${x.skills} skills` : null].filter((s): s is string => s !== null)
-      return `${x.name} ${tokensText(x.agentTokens + x.skillTokens)}: ${what.join(', ')}`
+    const named = parts.plugins.map(plugin => {
+      const what = [plugin.agents > 0 ? `${plugin.agents} agents` : null, plugin.skills > 0 ? `${plugin.skills} skills` : null]
+        .filter((count): count is string => count !== null)
+      return `${plugin.name} ${tokensText(plugin.agentTokens + plugin.skillTokens)}: ${what.join(', ')}`
     })
     out.push([{ text: 'Plugins', width: LABEL }, { text: named.join(' · ') }])
   }
   if (parts.memory.files > 0) {
-    const m = parts.memory
-    const rest = m.files - m.top.length
-    const shown = [`${m.files} ${m.files === 1 ? 'file' : 'files'} ${tokensText(m.tokens)}`, ...m.top.map(t => `${t.name} ${tokensText(t.tokens)}`), ...(rest > 0 ? [`+${rest}`] : [])]
+    const memory = parts.memory
+    const rest = memory.files - memory.top.length
+    const shown = [`${memory.files} ${memory.files === 1 ? 'file' : 'files'} ${tokensText(memory.tokens)}`,
+      ...memory.top.map(topFile => `${topFile.name} ${tokensText(topFile.tokens)}`), ...(rest > 0 ? [`+${rest}`] : [])]
     out.push([{ text: 'Memory', width: LABEL }, { text: shown.join(' · ') }])
   }
   return out
 }
 
 // '57 of 60 listed', or '60 listed' when the listing carries every skill
-export const listedText = (l: SkillListing): string => (l.listed === l.total ? `${l.total} listed` : `${l.listed} of ${l.total} listed`)
+export const listedText = (listing: SkillListing): string =>
+  (listing.listed === listing.total ? `${listing.total} listed` : `${listing.listed} of ${listing.total} listed`)
 
 // The skills the main loop loaded, as 'solve-task ×2', first loaded first
 export const loadedTexts = (skills: Record<string, number> | undefined): string[] =>
-  Object.entries(skills ?? {}).map(([name, n]) => `${name} ×${n}`)
+  Object.entries(skills ?? {}).map(([name, uses]) => `${name} ×${uses}`)

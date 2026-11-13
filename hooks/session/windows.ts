@@ -8,18 +8,18 @@ import type { SessionRateLimit } from 'claude-code'
 // with none left
 export function storedWindows(value: unknown, now: number): { at: number; windows: RateWindow[] } | null {
   if (typeof value !== 'object' || value === null) return null
-  const v = value as { at?: unknown; windows?: unknown }
-  if (typeof v.at !== 'number' || !Array.isArray(v.windows)) return null
+  const stored = value as { at?: unknown; windows?: unknown }
+  if (typeof stored.at !== 'number' || !Array.isArray(stored.windows)) return null
   const windows: RateWindow[] = []
-  for (const w of v.windows as unknown[]) {
-    if (typeof w !== 'object' || w === null) return null
-    const x = w as Record<string, unknown>
-    const resetsAt = x.resetsAt
-    if (typeof x.kind !== 'string' || typeof x.percentUsed !== 'number' || typeof resetsAt !== 'string') return null
+  for (const rawWindow of stored.windows as unknown[]) {
+    if (typeof rawWindow !== 'object' || rawWindow === null) return null
+    const windowFields = rawWindow as Record<string, unknown>
+    const resetsAt = windowFields.resetsAt
+    if (typeof windowFields.kind !== 'string' || typeof windowFields.percentUsed !== 'number' || typeof resetsAt !== 'string') return null
     const reset = Date.parse(resetsAt)
-    if (!Number.isNaN(reset) && reset > now) windows.push({ kind: x.kind, percentUsed: x.percentUsed, resetsAt })
+    if (!Number.isNaN(reset) && reset > now) windows.push({ kind: windowFields.kind, percentUsed: windowFields.percentUsed, resetsAt })
   }
-  return windows.length === 0 ? null : { at: v.at, windows }
+  return windows.length === 0 ? null : { at: stored.at, windows }
 }
 
 // The 5h and 7d windows a reading leaves: its own when it has some or a request has been made (`isRead`: off a
@@ -44,4 +44,4 @@ export function dropPassed(usage: Usage, now: number): Usage | null {
 export const storedMark = (windowsAt: number | null | undefined): string => (windowsAt === undefined || windowsAt === null ? '' : '≈')
 
 export const rateWindowsOf = (limits: readonly SessionRateLimit[]): RateWindow[] =>
-  limits.map(w => ({ kind: w.kind, percentUsed: w.percentUsed, resetsAt: w.resetsAt ?? null }))
+  limits.map(limit => ({ kind: limit.kind, percentUsed: limit.percentUsed, resetsAt: limit.resetsAt ?? null }))

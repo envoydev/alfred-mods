@@ -27,8 +27,9 @@ const breakdownMemory = { lastAt: null as number | null }
 // The memory files a link under the project's `.claude/rules/` reaches: the breakdown names such a rule by where the
 // link lands (live, 2026-11-11), so an import there looks the same until both sides are resolved. Asked only of a file
 // that is no CLAUDE.md, no rule by its folder and no auto memory, so a session with none lists no folder.
-export async function findLinkedRules($: EngineInterface, b: SessionContextBreakdown, cwd: string): Promise<Set<string>> {
-  const unplaced = (b.memoryFiles ?? []).filter(f => f.type !== 'AutoMem' && ruleName(f.path, f.type) === null && !/^CLAUDE(\.local)?\.md$/.test(baseName(f.path)))
+export async function findLinkedRules($: EngineInterface, breakdown: SessionContextBreakdown, cwd: string): Promise<Set<string>> {
+  const unplaced = (breakdown.memoryFiles ?? []).filter(memoryFile =>
+    memoryFile.type !== 'AutoMem' && ruleName(memoryFile.path, memoryFile.type) === null && !/^CLAUDE(\.local)?\.md$/.test(baseName(memoryFile.path)))
   if (unplaced.length === 0) return new Set()
   const ends: string[] = []
   const walk = async (dir: string, depth: number): Promise<void> => {
@@ -44,10 +45,10 @@ export async function findLinkedRules($: EngineInterface, b: SessionContextBreak
   await walk(`${slashed(cwd).replace(/\/+$/, '')}/.claude/rules`, 0)
   const found = new Set<string>()
   if (ends.length === 0) return found
-  for (const f of unplaced) {
-    const real = (await $.fs.stat(f.path, { resolve: true }).catch(() => undefined))?.realPath
+  for (const memoryFile of unplaced) {
+    const real = (await $.fs.stat(memoryFile.path, { resolve: true }).catch(() => undefined))?.realPath
     const file = real === undefined ? null : slashed(real)
-    if (file !== null && ends.some(end => file === end || file.startsWith(`${end}/`))) found.add(f.path)
+    if (file !== null && ends.some(end => file === end || file.startsWith(`${end}/`))) found.add(memoryFile.path)
   }
   return found
 }
@@ -55,19 +56,19 @@ export async function findLinkedRules($: EngineInterface, b: SessionContextBreak
 // One breakdown read serves the compaction point and the context's parts (spec C1): a read that gives one writes the
 // parts atom; a read that fails or gives none is null, and the parts stay as they were
 export async function readBreakdown($: EngineInterface): Promise<SessionContextBreakdown | null> {
-  let b: SessionContextBreakdown | undefined
+  let breakdown: SessionContextBreakdown | undefined
   try {
-    b = (await $.session.usage({ breakdown: 'summary' })).context.breakdown
+    breakdown = (await $.session.usage({ breakdown: 'summary' })).context.breakdown
   } catch {
     return null
   }
-  if (b === undefined) return null
+  if (breakdown === undefined) return null
   const now = await $.clock.now()
   const cwd = await $.session.cwd()
-  const next = partsOf(b, cwd, now, await findLinkedRules($, b, cwd))
+  const next = partsOf(breakdown, cwd, now, await findLinkedRules($, breakdown, cwd))
   breakdownMemory.lastAt = now
   await updateParts($, () => next)
-  return b
+  return breakdown
 }
 
 // A read off the hook path, after a compaction or as the Usage tab opens stale (spec C1)
