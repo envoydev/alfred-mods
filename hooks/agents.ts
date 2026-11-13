@@ -1,8 +1,8 @@
 // Agents as rows: what a spawn says, how a run ends, which rows are kept, the tree they draw and their tool counts.
 import type { AgentInfo } from 'claude-code'
 
-import { duration, oneLine, tokens } from './format.ts'
-import type { Lane, Line, Seg } from './band.ts'
+import { duration, oneLine, tokens } from './format.js'
+import type { Lane, Line, Seg } from './band.js'
 import type { AgentRow, AgentStatus, Loop, ToolStat, TurnEnd } from '../types'
 
 // The first word of a prompt's first `plan:` and `task:` lines; nothing else of the prompt is kept, the rest of either

@@ -2,8 +2,8 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, RenderSurface } from 'claude-code'
 
-import { PRESENTATION, rows, stubAll, watchState } from './kit.ts'
-import { blockerOf } from '../hooks/outcome.ts'
+import { PRESENTATION, rows, stubAll, watchState } from './kit.js'
+import { blockerOf } from '../hooks/outcome.js'
 import type { Failure } from '../types'
 
 // Spec C6: a hook's block names the script that blocked it, and the Tools tab counts blocks per script

@@ -2,12 +2,12 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, RenderSurface, SessionUsage } from 'claude-code'
 
-import { clock } from '../hooks/format.ts'
-import { EMAILS } from '../hooks/samples.ts'
-import { stackLines } from '../hooks/stack.ts'
+import { clock } from '../hooks/format.js'
+import { EMAILS } from '../hooks/samples.js'
+import { stackLines } from '../hooks/stack.js'
 import type { Stack } from '../types'
-import { PRESENTATION, START, engine, rows, step, stepEngine, stubAll } from './kit.ts'
-import type { FileStub } from './kit.ts'
+import { PRESENTATION, START, engine, rows, step, stepEngine, stubAll } from './kit.js'
+import type { FileStub } from './kit.js'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const STATUS = '.claude/session-inspector/status/s1.json'

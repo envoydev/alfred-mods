@@ -1,14 +1,14 @@
 // The band above the prompt, from the session's values to lines of styled segments. Calm by default: colour
 // appears only when a threshold is crossed, something failed or a turn runs.
-import { actionOf, isLive } from './agents.ts'
-import { billingOf, cacheView, minutes } from './cache.ts'
-import { bar, clock, duration, elapsed, fitLine, mins, modelParts, modelText, toneOf, tokens, usd, when, widthOf } from './format.ts'
-import { pace, turnsLeft } from './forecast.ts'
-import { listedText, loadedTexts } from './parts.ts'
-import { narrowPlan, planLine, planRowParts, scoreSeg } from './planlines.ts'
-import { storedMark } from './startup.ts'
-import type { PlanView, ScoresView } from './plan.ts'
-import type { Runway } from './stack.ts'
+import { actionOf, isLive } from './agents.js'
+import { billingOf, cacheView, minutes } from './cache.js'
+import { bar, clock, duration, elapsed, fitLine, mins, modelParts, modelText, toneOf, tokens, usd, when, widthOf } from './format.js'
+import { pace, turnsLeft } from './forecast.js'
+import { listedText, loadedTexts } from './parts.js'
+import { narrowPlan, planLine, planRowParts, scoreSeg } from './planlines.js'
+import { storedMark } from './startup.js'
+import type { PlanView, ScoresView } from './plan.js'
+import type { Runway } from './stack.js'
 
 import type { AgentRow, AgentStatus, BandMode, Cache, Level, Live, Meta, Pace, SkillListing, ToolStat, Totals, Turn, Usage, Window } from '../types'
 
@@ -497,13 +497,13 @@ function lastTurn(b: BandInput, isNarrow: boolean): Line {
 
 const agentCount = (k: number): string => `${k} ${k === 1 ? 'agent' : 'agents'}`
 
-// ' │ PLAN 3/5 · score 81 ▲13', each part only when known, for an idle line 1 that needs you; the full band's plan has
-// its own row, with its score, so there only a score with no plan drawn
-function planTail(b: BandInput): Line {
+// ' │ PLAN 3/5 · score 81 ▲13', each part only when known, for an idle line 1 that needs you; while the full band
+// draws the plan row, the row has the count and the plan's own score, so line 1 keeps only a score of another output
+function planTail(b: BandInput, isRowDrawn: boolean): Line {
   const parts: Line[] = []
-  if (b.plan !== null && b.mode !== 'full') parts.push([{ text: 'PLAN', tone: 'plan' }, { text: ` ${b.plan.finished}/${b.plan.total}` }])
-  // The full band's plan row carries the plan's score
-  if (b.score !== null && !(b.mode === 'full' && b.plan !== null && b.isPlanScore !== false)) parts.push(scoreSeg(b.score, b.scoreLevel ?? null))
+  const hasRow = isRowDrawn && b.plan !== null
+  if (b.plan !== null && !hasRow) parts.push([{ text: 'PLAN', tone: 'plan' }, { text: ` ${b.plan.finished}/${b.plan.total}` }])
+  if (b.score !== null && !(hasRow && b.isPlanScore !== false)) parts.push(scoreSeg(b.score, b.scoreLevel ?? null))
   if (parts.length === 0) return []
   return [{ text: ' │ ', tone: 'dim' }, ...parts.flatMap((p, i) => (i === 0 ? p : [{ text: ' · ' }, ...p]))]
 }
@@ -581,8 +581,8 @@ function handoffAsk(b: BandInput): Line | null {
 }
 
 // The idle line 1 with ' │ PLAN 3/5 · score 81 ▲13' while it fits
-function withPlanTail(b: BandInput, line: Line): Line {
-  const full = [...line, ...planTail(b)]
+function withPlanTail(b: BandInput, line: Line, isRowDrawn: boolean): Line {
+  const full = [...line, ...planTail(b, isRowDrawn)]
   return line.length > 0 && widthOf(full) <= b.columns ? full : line
 }
 
@@ -691,7 +691,7 @@ function bandBody(b: BandInput, isNarrow: boolean, k: Keep): Line[] {
   // band-under U2's place after the gauges), so a cut at the screen's edge takes the detail rows first; its commands are
   // longer than the digits above, so the items take a row each when one row cannot hold them
   const action: Line[] = items.length === 0 ? [] : b.under !== undefined && cellsOf(joined) > b.columns ? items : [joined]
-  const first = agentsRun ? working(b, isNarrow) : withPlanTail(b, lastTurn(b, isNarrow))
+  const first = agentsRun ? working(b, isNarrow) : withPlanTail(b, lastTurn(b, isNarrow), head.length > 0 && k.isPlanKept)
   const out = b.under === undefined ? [first, line2, ...info, ...action] : [...action, first, line2, ...info]
   return out.filter(l => l.length > 0)
 }

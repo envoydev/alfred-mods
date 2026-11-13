@@ -1,8 +1,8 @@
 // F10's compact tool rows (brief 'Compact tool rows', Decisions 4 to 8): one line per call, runs of reads folded into
 // one, and the result block's preview emptied. Every line is drawn through drawLines, so REC masks it after compacting.
-import type { Line, Seg } from './band.ts'
-import { reportLine } from './agents.ts'
-import { duration, fitLine, tokens, widthOf } from './format.ts'
+import type { Line, Seg } from './band.js'
+import { reportLine } from './agents.js'
+import { duration, fitLine, tokens, widthOf } from './format.js'
 
 // `outcome` and `reason`: a call the person denied or a rule, a hook or the classifier blocked, as Phase 1 settled it
 // `isAutoAllowed`: auto mode's classifier let the call run, no one asked

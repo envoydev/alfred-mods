@@ -6,44 +6,44 @@ import type {
   EngineInterface, Register, SessionContextBreakdown, SessionRateLimit, SessionUsage, Timer, TurnStepInput, TurnStepResult, UiOpenResult,
 } from 'claude-code'
 
-import { actionOf, addLoopStep, agentTree, isLive, newRow, refreshAgents, statusAt, upsertSpawn } from './agents.ts'
-import { bandLines, spinnerSuffix, statusText, underRows } from './band.ts'
-import type { BandInput } from './band.ts'
+import { actionOf, addLoopStep, agentTree, isLive, newRow, refreshAgents, statusAt, upsertSpawn } from './agents.js'
+import { bandLines, spinnerSuffix, statusText, underRows } from './band.js'
+import type { BandInput } from './band.js'
 import {
   addRequest, afterCompact, billingOf, cacheView, idleOf, minutes, needsTick, pinOf, takeRate, takeSwitch, toastAt,
-} from './cache.ts'
-import { baseCost, pruneCost, recordCost, todayUsd } from './cost.ts'
-import { drawLines, drawNote, drawUnder, drawUnderNote, drawWithInput } from './draw.tsx'
-import { localDate } from './forecast.ts'
-import { REC_HIDDEN, SPINNER_WORD, bandFailed, paneFailed } from './failsafe.ts'
-import { NO_PARTS, linkedRules, partsOf, ruleName } from './parts.ts'
-import { clock, fingerprint, mins, oneLine, printable, tokens, usd, when } from './format.ts'
-import { mask, maskForFile, maskSpans, recLevel, setRec, toast } from './mask.ts'
-import { maskDeep, maskDialog, maskResult, neutralDialog, resultLines } from './sites.ts'
-import { DROPS_RESULT, callLine, groupLines } from './compact.ts'
-import { aheadBehind, numstatTotals, textLines, untrackedNames } from './changes.ts'
-import type { CompactCall } from './compact.ts'
+} from './cache.js'
+import { baseCost, pruneCost, recordCost, todayUsd } from './cost.js'
+import { drawLines, drawNote, drawUnder, drawUnderNote, drawWithInput } from './draw.js'
+import { localDate } from './forecast.js'
+import { REC_HIDDEN, SPINNER_WORD, bandFailed, paneFailed } from './failsafe.js'
+import { NO_PARTS, linkedRules, partsOf, ruleName } from './parts.js'
+import { clock, fingerprint, mins, oneLine, printable, tokens, usd, when } from './format.js'
+import { mask, maskForFile, maskSpans, recLevel, setRec, toast } from './mask.js'
+import { maskDeep, maskDialog, maskResult, neutralDialog, resultLines } from './sites.js'
+import { DROPS_RESULT, callLine, groupLines } from './compact.js'
+import { aheadBehind, numstatTotals, textLines, untrackedNames } from './changes.js'
+import type { CompactCall } from './compact.js'
 import {
   FOREIGN, HANDOFF_PATH, HANDOFF_USAGE, MARKER, MODES, RESUME_PROMPT, TOASTS, gitPart, handoffText, nextStep,
   parseStatus, percentOf, statusPath, stepUnder, stepsOf, windowThreshold,
-} from './handoff.ts'
-import type { HandoffView, PlanPart, SaveInput, ScoresPart } from './handoff.ts'
-import { NO_FILE, STACK_TOASTS, UNREADABLE, bannerSegs, fillReady, fillToast, parseStack, runwayOf } from './stack.ts'
-import type { Runway } from './stack.ts'
-import { creditedPlan, isFinishedStep, isPlanDone, parsePlan, parseScores, planView, runs, scoresView, shownPlan, taskView, tasksAfter } from './plan.ts'
-import type { PlanView, ScoresView } from './plan.ts'
-import { PLANS_DIR, SCORES_DIR, readFolder, readPlanFolder } from './planfiles.ts'
-import { parseAlfredScoring, parseAlfredStatus } from './alfredplan.ts'
-import { planLines, scoresLabel } from './planlines.ts'
-import { closeOf, closeSlices, closeWait, isAllWait, liveSpans, mineOf, openWait, overheadKey, sliceMs, staleKeys, stepKey, sumTimes, waitOf } from './steptime.ts'
-import type { Close } from './steptime.ts'
-import { agentsLines, asCommands, cacheLines, nowLines, paneCommands, reportRows, tabBar, timelineLines, toolsLines, usageLines } from './tabs.ts'
-import { classify, fold, numberOf, targetOf, toolKey } from './outcome.ts'
-import { LEVELS, REC_HELP, addWord, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec.ts'
-import { BAND_MODES, DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast, writeField } from './settings.ts'
-import type { Field, From, Resolved, Source, Values } from './settings.ts'
-import { baseName, dropPassed, folderOf, gitDirOf, headBranch, nextWindows, parentOf, storedWindows } from './startup.ts'
-import type { CallFacts } from './outcome.ts'
+} from './handoff.js'
+import type { HandoffView, PlanPart, SaveInput, ScoresPart } from './handoff.js'
+import { NO_FILE, STACK_TOASTS, UNREADABLE, bannerSegs, fillReady, fillToast, parseStack, runwayOf } from './stack.js'
+import type { Runway } from './stack.js'
+import { creditedPlan, isFinishedStep, isPlanDone, parsePlan, parseScores, planView, runs, scoresView, shownPlan, taskView, tasksAfter } from './plan.js'
+import type { PlanView, ScoresView } from './plan.js'
+import { PLANS_DIR, SCORES_DIR, readFolder, readPlanFolder } from './planfiles.js'
+import { parseAlfredScoring, parseAlfredStatus } from './alfredplan.js'
+import { planLines, scoresLabel } from './planlines.js'
+import { closeOf, closeSlices, closeWait, isAllWait, liveSpans, mineOf, openWait, overheadKey, sliceMs, staleKeys, stepKey, sumTimes, waitOf } from './steptime.js'
+import type { Close } from './steptime.js'
+import { agentsLines, asCommands, cacheLines, nowLines, paneCommands, reportRows, tabBar, timelineLines, toolsLines, usageLines } from './tabs.js'
+import { classify, fold, numberOf, targetOf, toolKey } from './outcome.js'
+import { LEVELS, REC_HELP, addWord, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec.js'
+import { BAND_MODES, DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast, writeField } from './settings.js'
+import type { Field, From, Resolved, Source, Values } from './settings.js'
+import { baseName, dropPassed, folderOf, gitDirOf, headBranch, nextWindows, parentOf, storedWindows } from './startup.js'
+import type { CallFacts } from './outcome.js'
 import type {
   AgentRow, Cache, CacheConfig, Credit, Failure, Handoff, Live, Loop, Meta, Outcome, Pace, Plan, PlanChange, Level, Plans, Quiet, BandSetting, BandMode, RecState, SaveResult, Scores, Stack, Tab, TaskItem, ToolStat, Totals, Turn, Usage, View,
   Watched, Window,
@@ -911,9 +911,12 @@ async function reloadPlans($: EngineInterface, held: Held): Promise<void> {
     plan: isSame ? before.plans.find(w => w.name === before.alfred?.name) : undefined,
     scores: isSame ? before.scores.find(w => w.name === before.alfred?.name) : undefined,
   }, parseAlfredStatus, parseAlfredScoring)
-  const without = <T>(list: Watched<T>[]): Watched<T>[] => (alfredRead === null ? list : list.filter(w => w.name !== alfredRead.name))
-  const planFiles = [...without(ownPlans), ...(alfredRead?.plan ? [{ ...alfredRead.plan, isNamed: named !== null }] : [])]
-  const scoreFiles = [...without(ownScores), ...(alfredRead?.scores ? [alfredRead.scores] : [])]
+  // The folder's files stand in for a same-named plan or scores file of the project's own folder while they exist
+  const alfredPlan = alfredRead?.plan ? { ...alfredRead.plan, isNamed: named !== null } : null
+  const alfredScores = alfredRead?.scores ?? null
+  const without = <T>(list: Watched<T>[], over: Watched<unknown> | null): Watched<T>[] => (over === null ? list : list.filter(w => w.name !== over.name))
+  const planFiles = [...without(ownPlans, alfredPlan), ...(alfredPlan === null ? [] : [alfredPlan])]
+  const scoreFiles = [...without(ownScores, alfredScores), ...(alfredScores === null ? [] : [alfredScores])]
   if (statusesOf(before.plans) !== statusesOf(planFiles)) await closeLoops($, held, null, now, true, before)
   const { times, overhead } = await timesOf($, planFiles)
   const seen = new Set(before.toasted)
@@ -922,7 +925,8 @@ async function reloadPlans($: EngineInterface, held: Held): Promise<void> {
   for (const w of planFiles) {
     const plan = w.value
     if (plan === null || w.isInvalid) continue
-    const had = before.plans.find(b => b.name === w.name)?.value ?? null
+    // A folder read for the first time has no last state, whatever plan shared its name before
+    const had = w === alfredPlan && !isSame ? null : before.plans.find(b => b.name === w.name)?.value ?? null
     if (had !== null) {
       for (const c of newNotes(had.changes, plan.changes)) due.push(`✎ Note folded into ${c.step ?? 'the plan'}: '${oneLine(c.note ?? '', 60)}'`)
     }
@@ -936,11 +940,11 @@ async function reloadPlans($: EngineInterface, held: Held): Promise<void> {
   }
   const toasted = [...seen].slice(-100)
   const doneAt = alfredRead === null ? undefined : finished[alfredRead.name] ?? before.finished[alfredRead.name]
-  const keep = alfredRead !== null && alfredRead.plan !== null && (named !== null || (doneAt !== undefined && now - doneAt < FINISH_SHOWN_MS))
+  const keep = alfredRead !== null && alfredPlan !== null && (named !== null || (doneAt !== undefined && now - doneAt < FINISH_SHOWN_MS))
   const alfred = keep && folder !== null ? { name: alfredRead.name, folder } : null
-  const gone = (w: Watched<unknown>): boolean => alfredRead !== null && !keep && w.name === alfredRead.name
+  // A folder let go leaves the project's own files as they were read
   await update($, plans, p => ({
-    ...p, plans: planFiles.filter(w => !gone(w)), scores: scoreFiles.filter(w => !gone(w)), times, overhead,
+    ...p, plans: keep ? planFiles : ownPlans, scores: keep ? scoreFiles : ownScores, times, overhead,
     finished: { ...p.finished, ...finished }, toasted, alfred,
   }))
   for (const text of due) toast($, text)

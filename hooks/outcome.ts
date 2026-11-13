@@ -1,5 +1,5 @@
 // A tool call's facts, as its events reported them, to the outcome the band and the pane show.
-import { oneLine } from './format.ts'
+import { oneLine } from './format.js'
 
 import type { Failure, Outcome } from '../types'
 

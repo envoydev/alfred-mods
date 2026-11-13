@@ -3,7 +3,7 @@
 // The rules are pure functions over the store's entries; the functions taking `$` only read and write them.
 import type { EngineInterface } from 'claude-code'
 
-import { localDate } from './forecast.ts'
+import { localDate } from './forecast.js'
 
 export type Entries = Record<string, unknown>
 type Last = { micros: number; at: number }

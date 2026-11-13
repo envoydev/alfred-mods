@@ -3,9 +3,9 @@
 // asking and what is the responce; What doc mcp queryng; What monitoring'), and a repeat says what its count means
 import { expect, test } from 'claude-code/testing'
 
-import type { Line } from '../hooks/band.ts'
-import { DROPS_RESULT, callLine, groupLines } from '../hooks/compact.ts'
-import type { CompactCall } from '../hooks/compact.ts'
+import type { Line } from '../hooks/band.js'
+import { DROPS_RESULT, callLine, groupLines } from '../hooks/compact.js'
+import type { CompactCall } from '../hooks/compact.js'
 
 const text = (lines: Line[]): string[] => lines.map(l => l.map(s => ('text' in s ? s.text : '')).join(''))
 const CALL: CompactCall = { tool: 'Bash', input: {}, output: undefined, isErrored: false, isInterrupted: false, outcome: null, reason: null }

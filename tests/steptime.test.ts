@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
-import { closeSlices, liveSpans, mineOf, overheadKey, sliceMs, staleKeys, stepKey, sumTimes, targetsOf, waitOf } from '../hooks/steptime.ts'
-import { FIVE, planOf } from './plans.ts'
+import { closeSlices, liveSpans, mineOf, overheadKey, sliceMs, staleKeys, stepKey, sumTimes, targetsOf, waitOf } from '../hooks/steptime.js'
+import { FIVE, planOf } from './plans.js'
 import type { Credit } from '../types'
 
 const NAME = 'token-refresh'

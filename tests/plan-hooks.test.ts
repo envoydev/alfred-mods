@@ -1,8 +1,8 @@
 import { expect, test } from 'claude-code/testing'
 
-import { runs, shownPlan } from '../hooks/plan.ts'
-import { PRESENTATION, SPAWN, START, engine, spawns, stubAll, watchState } from './kit.ts'
-import { PLAN_JSON, SCORES_JSON, planText } from './plans.ts'
+import { runs, shownPlan } from '../hooks/plan.js'
+import { PRESENTATION, SPAWN, START, engine, spawns, stubAll, watchState } from './kit.js'
+import { PLAN_JSON, SCORES_JSON, planText } from './plans.js'
 import type { Credit, Plans, TaskItem } from '../types'
 
 const PLAN_PATH = '.claude/session-inspector/plans/token-refresh.json'

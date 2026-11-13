@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
-import { parsePlan, parseScores, planView, scoresView, taskView, tasksAfter } from '../hooks/plan.ts'
-import { FIVE, FIVE_OVERHEAD, FIVE_TIMES, MIN, NOW, PLAN_JSON, SCORES_JSON, planOf } from './plans.ts'
+import { parsePlan, parseScores, planView, scoresView, taskView, tasksAfter } from '../hooks/plan.js'
+import { FIVE, FIVE_OVERHEAD, FIVE_TIMES, MIN, NOW, PLAN_JSON, SCORES_JSON, planOf } from './plans.js'
 import type { Scores, TaskItem } from '../types'
 
 // The plan example as an object, changed by `change` and written back as text

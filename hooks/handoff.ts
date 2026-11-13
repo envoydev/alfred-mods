@@ -4,10 +4,10 @@
 import type { ProcessRunResult } from 'claude-code'
 
 import type { Handoff, HandoffMode, SaveResult, Severity, StepStatus } from '../types'
-import { barSegs, pctSeg } from './band.ts'
-import type { Line, Seg } from './band.ts'
-import type { Runway } from './stack.ts'
-import { clock, duration, mins, modelText, tokens, usd } from './format.ts'
+import { barSegs, pctSeg } from './band.js'
+import type { Line, Seg } from './band.js'
+import type { Runway } from './stack.js'
+import { clock, duration, mins, modelText, tokens, usd } from './format.js'
 
 export const MODES: HandoffMode[] = ['ask', 'auto', 'off']
 

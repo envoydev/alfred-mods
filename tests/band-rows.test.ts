@@ -4,15 +4,15 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, SessionUsage } from 'claude-code'
 
-import { newRow } from '../hooks/agents.ts'
-import { agentSegs, bandLines, cellsOf, ruleSegs, toggleForms, toolRows } from '../hooks/band.ts'
-import type { BandInput, Line } from '../hooks/band.ts'
-import { drawLines } from '../hooks/draw.tsx'
-import { widthOf } from '../hooks/format.ts'
-import { SPAWN, START, engine, rows, stubAll, watchState } from './kit.ts'
-import { FIVE, FIVE_OVERHEAD, FIVE_TIMES, NOW as PLAN_NOW, SCORING_JSON, STATUS_JSON, planOf } from './plans.ts'
-import { planView, scoresView } from '../hooks/plan.ts'
-import { parseAlfredScoring, parseAlfredStatus } from '../hooks/alfredplan.ts'
+import { newRow } from '../hooks/agents.js'
+import { agentSegs, bandLines, cellsOf, ruleSegs, toggleForms, toolRows } from '../hooks/band.js'
+import type { BandInput, Line } from '../hooks/band.js'
+import { drawLines } from '../hooks/draw.js'
+import { widthOf } from '../hooks/format.js'
+import { SPAWN, START, engine, rows, stubAll, watchState } from './kit.js'
+import { FIVE, FIVE_OVERHEAD, FIVE_TIMES, NOW as PLAN_NOW, SCORING_JSON, STATUS_JSON, planOf } from './plans.js'
+import { planView, scoresView } from '../hooks/plan.js'
+import { parseAlfredScoring, parseAlfredStatus } from '../hooks/alfredplan.js'
 
 import type { AgentRow, AgentStatus, Cache, Meta, ToolStat, Turn } from '../types'
 
@@ -444,6 +444,16 @@ test('a score that is not the plan\'s own stays off the plan row and on line 1',
   const lines = bandLines(input({ columns: 160, plan: alfredPlan(), score: scored(), scoreLevel: 80, isPlanScore: false, newFailures: 1 }))
   expect(text(lines.find(l => text(l).startsWith('plan:')) ?? [])).not.toContain('score')
   expect(text(lines[0] ?? [])).toContain('score 85')
+})
+
+test('short of rows, a dropped plan row hands its count and score to line 1', () => {
+  const b = (maxRows: number) => bandLines(input({ columns: 160, plan: alfredPlan(), score: scored(), scoreLevel: 80, newFailures: 1, maxRows }))
+  // The fewest rows that still draw the plan row, then one fewer
+  const least = [2, 3, 4, 5, 6].find(n => planRowOf(b(n)) !== undefined) ?? 0
+  expect(least).toBeGreaterThan(2)
+  expect(text(b(least)[0] ?? [])).not.toContain('score')
+  expect(planRowOf(b(least - 1))).toBeUndefined()
+  expect(text(b(least - 1)[0] ?? [])).toContain('PLAN 1/4 · score 85 ▲13')
 })
 
 for (const columns of [40, 60, 100]) {

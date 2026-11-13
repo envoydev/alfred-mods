@@ -2,8 +2,8 @@
 // settings-values, S1-S3): each field read per file, the first valid value in the order policy, flag, local, project,
 // user, then an earlier command's choice, then the default. Pure: register.ts reads the files and the store.
 import type { BandMode, HandoffMode, Level } from '../types'
-import { MODES, isThreshold } from './handoff.ts'
-import { LEVELS } from './rec.ts'
+import { MODES, isThreshold } from './handoff.js'
+import { LEVELS } from './rec.js'
 
 export type Field = 'band' | 'bandPlace' | 'bandRows' | 'quiet' | 'rec' | 'handoff' | 'handoffAt'
 export type Source = 'policy' | 'flag' | 'local' | 'project' | 'user'

@@ -2,7 +2,7 @@
 // stored choice reads under the user's file (S7)
 import { expect, test } from 'claude-code/testing'
 
-import { START, engine, setUser, stubAll, watchState } from './kit.ts'
+import { START, engine, setUser, stubAll, watchState } from './kit.js'
 
 test('"quiet" true and false set it, from the user file', async ($, on) => {
   const kit = stubAll(on, { quiet: 'unset' })

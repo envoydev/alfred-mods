@@ -2,11 +2,11 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { shownPlan } from '../hooks/plan.ts'
+import { shownPlan } from '../hooks/plan.js'
 import type { Plans } from '../types'
-import { START, engine, stubAll, watchState } from './kit.ts'
-import type { FileStub } from './kit.ts'
-import { PLAN_JSON, SCORING_JSON, STATUS_JSON } from './plans.ts'
+import { START, engine, stubAll, watchState } from './kit.js'
+import type { FileStub } from './kit.js'
+import { PLAN_JSON, SCORING_JSON, STATUS_JSON } from './plans.js'
 
 // The plan folder the Alfred Code status file names (alfred-code's plan folder contract, the user's ruling of
 // 2026-11-13): read only through that field, so a project without Alfred Code reads exactly what it read before
@@ -121,4 +121,26 @@ test('a switch to another plan folder never shows the old plan under the new nam
   await clock.advance(30_000)
   const other = p().plans.find(w => w.name === 'other')
   expect(other === undefined || other.value === null).toBe(true)
+})
+
+// A plan of the project's own folder that shares the plan folder's name (the review's deferred minor, 2026-11-13)
+const OWN_SAME = '.claude/session-inspector/plans/waste-bin.json'
+const ownSame = (status: string): FileStub => ({
+  text: JSON.stringify({ version: 1, title: 'Own plan', updatedAt: '2026-11-13T10:00:00Z', steps: [{ id: 'S1', title: 'One', status }] }), mtimeMs: 2,
+})
+
+test('a plan of the project\'s own folder with the same name stays while the named folder has no status.json', async ($, on) => {
+  const { p } = await start($, on, { [STATUS]: session(FOLDER), [OWN_SAME]: ownSame('in_progress') })
+  expect(p().plans.find(w => w.name === 'waste-bin')?.value?.title).toBe('Own plan')
+  expect(p().alfred).toBeNull()
+})
+
+test('the first read of a named folder never takes the same-named own plan as its last state', async ($, on) => {
+  const { p, files, clock, toasts } = await start($, on, { [STATUS]: session(null), [OWN_SAME]: ownSame('in_progress') })
+  files.current[STATUS] = session(FOLDER)
+  files.current[PLAN_STATUS] = statusWith({ completedAt: '2026-11-13T12:00Z' }, 3)
+  await clock.advance(30_000)
+  await clock.advance(30_000)
+  expect(p().plans.find(w => w.name === 'waste-bin')?.value?.title).toBe('Waste bin (plannings)')
+  expect(toasts.some(t => t.startsWith('Plan done'))).toBe(false)
 })

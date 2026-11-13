@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { SessionUsage } from 'claude-code'
 
-import { SPAWN, START, SWITCH, engine, step, stepEngine, stubAll, watchState } from './kit.ts'
+import { SPAWN, START, SWITCH, engine, step, stepEngine, stubAll, watchState } from './kit.js'
 import type { Cache, Meta } from '../types'
 
 const MAIN = { input_tokens: 0, output_tokens: 500, cache_read_input_tokens: 169_200, cache_creation_input_tokens: 10_800, model: 'claude-opus-5-5' }

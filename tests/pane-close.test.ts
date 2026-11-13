@@ -3,7 +3,7 @@
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { PRESENTATION, START, engine, stubAll } from './kit.ts'
+import { PRESENTATION, START, engine, stubAll } from './kit.js'
 
 const run = async ($: Engine, command: string, args: string): Promise<string> =>
   (await $.command.run({ command, args, origin: { kind: 'composer' }, presentation: PRESENTATION })).text ?? ''

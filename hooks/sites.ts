@@ -1,9 +1,9 @@
 // REC on Claude Code's own rows (spec 'Where REC masks'): the strings inside a row's props masked with every key, type
 // and non-string value kept, the AskUserQuestion dialog kept inside the tool's limits, and the result blocks a rewrite
 // cannot carry drawn as the mod's own masked lines.
-import type { Line } from './band.ts'
-import { cutMasked, printable } from './format.ts'
-import type { Hit } from './rec.ts'
+import type { Line } from './band.js'
+import { cutMasked, printable } from './format.js'
+import type { Hit } from './rec.js'
 
 // Tools whose masked result does not draw; the live check adds any it finds (spec Risks row 1)
 export const REFUSED: readonly string[] = []

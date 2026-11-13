@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, RenderSurface, SessionUsage } from 'claude-code'
 
-import { PRESENTATION, SPAWN, START, engine, rows, spawns, step, stubAll, watchState } from './kit.ts'
+import { PRESENTATION, SPAWN, START, engine, rows, spawns, step, stubAll, watchState } from './kit.js'
 import type { Turn } from '../types'
 
 // Spec C4: an agent cut off at max_tokens is flagged, and each main turn shows the session's spend while it ran

@@ -5,11 +5,11 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine, MockClock } from 'claude-code/testing'
 import type { On, RenderSurface, RenderViewport } from 'claude-code'
 
-import { resolve, skippedToast } from '../hooks/settings.ts'
-import { STACK_TOASTS } from '../hooks/stack.ts'
+import { resolve, skippedToast } from '../hooks/settings.js'
+import { STACK_TOASTS } from '../hooks/stack.js'
 import type { Handoff, Meta, View } from '../types'
-import { PRESENTATION, SPAWN, START, engine, engineSites, rows, setUser, stubAll, watchState } from './kit.ts'
-import type { FileStub } from './kit.ts'
+import { PRESENTATION, SPAWN, START, engine, engineSites, rows, setUser, stubAll, watchState } from './kit.js'
+import type { FileStub } from './kit.js'
 
 const run = async ($: Engine, command: string, args: string): Promise<string> =>
   (await $.command.run({ command, args, origin: { kind: 'composer' }, presentation: PRESENTATION })).text ?? ''

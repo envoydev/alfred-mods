@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { SPAWN, START, engine, spawns, step, stepEngine, stubAll, watchState } from './kit.ts'
+import { SPAWN, START, engine, spawns, step, stepEngine, stubAll, watchState } from './kit.js'
 import type { AgentRow, Live, Meta, ToolStat } from '../types'
 
 const complete = (turnId: string, more: object = {}) =>

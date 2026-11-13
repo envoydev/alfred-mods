@@ -4,9 +4,9 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { RenderSurface, SessionUsage } from 'claude-code'
 
-import { PRESENTATION, START, SWITCH, engine, rows, stubAll, watchState } from './kit.ts'
+import { PRESENTATION, START, SWITCH, engine, rows, stubAll, watchState } from './kit.js'
 
-import { folderOf, nextWindows } from '../hooks/startup.ts'
+import { folderOf, nextWindows } from '../hooks/startup.js'
 import type { Meta, Usage } from '../types'
 
 const SURFACES = ['terminal', 'desktop'] as const

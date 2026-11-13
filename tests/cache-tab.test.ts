@@ -2,8 +2,8 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { RenderSurface, SessionUsage } from 'claude-code'
 
-import { clock as clockText } from '../hooks/format.ts'
-import { PRESENTATION, START, SWITCH, engine, rows, step, stepEngine, stubAll, watchState } from './kit.ts'
+import { clock as clockText } from '../hooks/format.js'
+import { PRESENTATION, START, SWITCH, engine, rows, step, stepEngine, stubAll, watchState } from './kit.js'
 import type { Cache, Meta } from '../types'
 
 const SURFACES = ['terminal', 'desktop'] as const

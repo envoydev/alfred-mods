@@ -543,7 +543,8 @@ cannot hold them (the version first, then the times); `project:` shortens its fo
 out, and `usage:` drops the rules, then the agents, then the skills. When the band has fewer rows than it needs, as in
 fullscreen under a tall draft, `project:` goes first, then the info line's second row, then the open rows from the last
 (`rules:`, `agents:`, `skills:`, `tools:`), then `usage:`, then `plan:`, then the whole info line, so the line with its
-buttons stays in view. The full band keeps its colours when idle too, not only while a turn runs; `"band": "calm"`
+buttons stays in view. Once `plan:` goes, its count and score move to line 1 while something needs you
+(`PLAN 1/4 · score 85 ▲13`). The full band keeps its colours when idle too, not only while a turn runs; `"band": "calm"`
 goes back to the two lines, dim until something needs you.
 
 `"bandPlace": "under"` draws the band under the input instead. Claude Code draws its own mode line (`⏵⏵ auto mode on`)

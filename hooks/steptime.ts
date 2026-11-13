@@ -1,7 +1,7 @@
 // Where a loop's working time goes, and its $.store keys: `step:<plan>:<step id>:<session id>` holds
 // `{ ms, isShared, at }` and `overhead:<plan>:<session id>` holds `{ ms, at }`. Each session writes only its own keys,
 // so two sessions never race; a read sums them all. Pure functions; register.ts reads and writes the store.
-import { isFinishedStep, runs } from './plan.ts'
+import { isFinishedStep, runs } from './plan.js'
 import type { Credit, Outcome, Plan, Slice, StepTime, Watched } from '../types'
 
 export type Named = { plan: string | null; task: string | null }

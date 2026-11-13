@@ -2,9 +2,9 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { RenderSurface, SessionContextBreakdown, SessionUsage } from 'claude-code'
 
-import { PRESENTATION, START, engine, rows, stubAll, watchState } from './kit.ts'
-import { clock } from '../hooks/format.ts'
-import { memoryName, partsOf, ruleName } from '../hooks/parts.ts'
+import { PRESENTATION, START, engine, rows, stubAll, watchState } from './kit.js'
+import { clock } from '../hooks/format.js'
+import { memoryName, partsOf, ruleName } from '../hooks/parts.js'
 import type { Handoff, Parts } from '../types'
 
 // Spec C1: what fills the context, by category, plugin and memory file, from the breakdown A4 already reads

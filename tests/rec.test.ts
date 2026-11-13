@@ -1,9 +1,9 @@
 import { expect, test } from 'claude-code/testing'
 
-import { compile, maskText } from '../hooks/rec.ts'
-import { mask, maskForFile, maskStats, recLevel, setRec } from '../hooks/mask.ts'
-import { fitLine, oneLine, widthOf } from '../hooks/format.ts'
-import { AMOUNTS, EMAILS, KEYS, LEFT_ALONE, PHONES, strictSamples } from '../hooks/samples.ts'
+import { compile, maskText } from '../hooks/rec.js'
+import { mask, maskForFile, maskStats, recLevel, setRec } from '../hooks/mask.js'
+import { fitLine, oneLine, widthOf } from '../hooks/format.js'
+import { AMOUNTS, EMAILS, KEYS, LEFT_ALONE, PHONES, strictSamples } from '../hooks/samples.js'
 
 // REC's level lives in module memory, shared by every test of a run: each test that sets it puts it back
 function withRec(level: 'off' | 'on' | 'strict', words: string[], home: string | null, fn: () => void): void {

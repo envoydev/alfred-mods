@@ -1,7 +1,7 @@
 // What a draw hook's .catch draws when the hook itself failed: texts only, so the handlers in register.ts stay
 // one line each and read nothing that can fail again.
 
-import { printable } from './format.ts'
+import { printable } from './format.js'
 
 // A REC site whose hook failed: its row is not drawn at all, as REC could not mask it
 export const REC_HIDDEN = '‹row hidden: REC could not mask it›'

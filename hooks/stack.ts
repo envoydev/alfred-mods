@@ -1,9 +1,9 @@
 // Alfred Code's status file past Phase 4's fields (Phase 5 spec 'The reader'): each field checked alone, a bad one
 // read as unknown and named in `ignored`, the rest of the file still used.
 import type { FullContext, Stack, StackAutoCompact, StackScorer, Usage } from '../types'
-import type { Line, Seg } from './band.ts'
-import { clock, fitLine, tokens } from './format.ts'
-import { parseStatus } from './handoff.ts'
+import type { Line, Seg } from './band.js'
+import { clock, fitLine, tokens } from './format.js'
+import { parseStatus } from './handoff.js'
 
 export const NO_FILE = 'no status file for this session'
 export const UNREADABLE = 'unreadable'

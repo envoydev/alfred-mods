@@ -1,8 +1,8 @@
 import { expect, test } from 'claude-code/testing'
 
-import { parseAlfredScoring, parseAlfredStatus } from '../hooks/alfredplan.ts'
-import { planView, runs, scoresView } from '../hooks/plan.ts'
-import { SCORING_JSON, STATUS_JSON } from './plans.ts'
+import { parseAlfredScoring, parseAlfredStatus } from '../hooks/alfredplan.js'
+import { planView, runs, scoresView } from '../hooks/plan.js'
+import { SCORING_JSON, STATUS_JSON } from './plans.js'
 
 const status = (over: Record<string, unknown> = {}): string => JSON.stringify({ ...JSON.parse(STATUS_JSON), ...over })
 const scoring = (over: Record<string, unknown> = {}): string => JSON.stringify({ ...JSON.parse(SCORING_JSON), ...over })

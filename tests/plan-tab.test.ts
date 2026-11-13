@@ -2,9 +2,9 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine, MockClock } from 'claude-code/testing'
 import type { On, RenderSurface, SessionUsage } from 'claude-code'
 
-import { PRESENTATION, SPAWN, START, engine, rows, spawns, stubAll } from './kit.ts'
-import type { FileStub } from './kit.ts'
-import { MIN, NOW, PLAN_JSON, SCORES_JSON, planText } from './plans.ts'
+import { PRESENTATION, SPAWN, START, engine, rows, spawns, stubAll } from './kit.js'
+import type { FileStub } from './kit.js'
+import { MIN, NOW, PLAN_JSON, SCORES_JSON, planText } from './plans.js'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const DIR = '.claude/session-inspector'
