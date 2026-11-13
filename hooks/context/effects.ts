@@ -84,4 +84,7 @@ export async function noteLoadedRule($: EngineInterface, e: HookInput<'classic.I
   return next(e)
 }
 
-
+// Whether the context's parts were last read over a minute ago, or never
+export async function isBreakdownStale($: EngineInterface): Promise<boolean> {
+  return partsMem.lastAt === null || (await $.clock.now()) - partsMem.lastAt > 60_000
+}

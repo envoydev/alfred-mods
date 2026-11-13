@@ -95,3 +95,8 @@ export async function fillStack($: EngineInterface): Promise<string> {
   if ((await $.prompt.read()).text.trim() !== '') return STACK_TOASTS.notEmpty
   return fillToast(await $.prompt.fill({ text }))
 }
+
+// The resume prompt the status file last gave, for the Stack tab
+export function stackPrompt(): string | null {
+  return stackMem.prompt
+}

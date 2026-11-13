@@ -12,41 +12,34 @@ import { billingOf, needsTick, takeRate } from './cache/cache'
 import { drawLines, drawNote, drawUnder, drawUnderNote } from './core/draw'
 import { localDate } from './core/forecast'
 import { REC_HIDDEN, SPINNER_WORD, bandFailed, paneFailed } from './core/failsafe'
-import { clock, fingerprint, oneLine, printable, tokens, when } from './core/format'
+import { clock, fingerprint, printable, tokens, when } from './core/format'
 import { mask, recLevel } from './rec/mask'
 import { neutralDialog } from './rec/sites'
 import { DROPS_RESULT } from './tools/compact'
-import { forecastOf, handoffView } from './handoff/handoff'
+import { forecastOf } from './handoff/handoff'
 import { bannerSegs, runwayOf } from './stack/stack'
-import { PLANS_DIR, runs } from './plan/plan'
-import { planLines } from './plan/planlines'
+import { runs } from './plan/plan'
 import { staleKeys } from './plan/steptime'
-import { agentsLines, asCommands, cacheLines, nowLines, paneCommands, reportRows, tabBar, timelineLines, toolsLines, usageLines } from './inspect/tabs'
-import { numberOf } from './tools/outcome'
 import { recNote, recOf } from './rec/rec'
-import { BAND_MODES, DEFAULTS, sourceName } from './settings/settings'
 import { dropPassed } from './session/windows'
-import { countSkillPrompt, drawToolGroup, drawToolResult, drawToolUse, modeMem, notePermissionAsk, notePermissionDenied, notePromptMode, noteToolCheck, noteToolFailure, noteToolTime, readBlockers, readFailures, readStats, resetBlockers, resetFailures, resetQuiet, resetStats, trackToolCall, updateFailures } from './tools/effects'
+import { countSkillPrompt, drawToolGroup, drawToolResult, drawToolUse, modeMem, notePermissionAsk, notePermissionDenied, notePromptMode, noteToolCheck, noteToolFailure, noteToolTime, readFailures, readStats, resetBlockers, resetFailures, resetQuiet, resetStats, trackToolCall } from './tools/effects'
 import { FRESH_EVERY_MS, baseline, completeTurn, freshMem, freshUsage, pruneCost, readLive, readMeta, readPace, readTick, readTotals, readTurns, readUsage, resetLive, resetMeta, resetPace, resetTotals, resetTurns, resetUsage, seedWindows, spendMem, startTurn, takeMeasure, takeUsage, todayMem, todayUsd, trackTurnStep, updateMeta, updateTick, updateUsage, windowsMem } from './session/effects'
-import { readAgents, readLoops, resetAgents, resetLoops, trackSpawn, updateAgents } from './agents/effects'
+import { readAgents, resetAgents, resetLoops, trackSpawn, updateAgents } from './agents/effects'
 import { afterModelSwitch, armCacheClose, beforeModelSwitch, compactNow, followCompaction, readCache, readCacheConfig, resetCache, updateCache } from './cache/effects'
-import { planDraw, queueReload, readPlans, resetCredit, resetPlans, resetTasks, scheduleReload, seedMine, storedTimes, updatePlans } from './plan/effects'
-import { fillStack, readStack, readStatus, resetStack, scoreLevel, stackMem } from './stack/effects'
-import { dismissAsk, fillResume, handoffMem, readHandoff, resetHandoff, runAutoHandoffCommand, saveNow, saveThenCompact } from './handoff/effects'
+import { planDraw, queueReload, resetCredit, resetPlans, resetTasks, scheduleReload, seedMine, storedTimes, updatePlans } from './plan/effects'
+import { readStack, readStatus, resetStack, scoreLevel, stackMem } from './stack/effects'
+import { fillResume, handoffMem, readHandoff, resetHandoff, runAutoHandoffCommand, saveNow } from './handoff/effects'
 import { drawRecPane, maskAssistantMessage, maskCommandOutput, maskQuestionDialog, maskUserMessage, noteMem, readRec, recMem, resetRec, runRecCommand } from './rec/effects'
 import { bandMem, isPassingAbove, readBandSetting, statusMem, syncStatus } from './band/effects'
 import { noteLoadedRule, partsMem, readBreakdownSoon, readParts, resetParts } from './context/effects'
-import { readView, resetView, updateView } from './inspect/effects'
+import { drawInspectPane, inspectFromBand, resetView, runInspectCommand } from './inspect/effects'
 import type { BandInput } from './band/types'
-import type { Tab } from './inspect/types'
-import type { Plans } from './plan/types'
-import type { Usage } from './session/types'
 import type { Call } from './tools/types'
 import type { Held } from './core/types'
 import { pollPlace, readPlace } from './place/effects'
-import { followConfigChange, loadSettings, setField, settingsMem } from './settings/effects'
+import { followConfigChange, loadSettings } from './settings/effects'
 import { conversationMem, tickMem } from './lifecycle/effects'
-import { closePane, isNoColor, toast } from './core/effects'
+import { isNoColor, toast } from './core/effects'
 
 // What the band shows before the first reply: the model, Claude Code's version, the place, the stored windows and the
 // context's parts. Each read stands alone: a refusal leaves its value as it was.
@@ -139,104 +132,6 @@ async function resetAll($: EngineInterface): Promise<void> {
   await resetLoops($)
   partsMem.lastAt = null
 }
-
-// Opens the pane on a tab. The failures it shows are seen once a surface draws it, never while it waits undrawn.
-// The open starts before the first await: a Button's press counts as the person's only while its closure runs.
-async function openInspect($: EngineInterface, tab: Tab): Promise<UiOpenResult> {
-  // Esc at an idle, empty prompt closes it: on the terminal's main screen nothing takes a click (the user, 2026-11-12)
-  const opening = $.ui.open({ id: 'inspect', title: 'Inspect', closeOnEscape: true })
-  await updateView($, v => ({ ...v, tab }))
-  // The Usage tab reads the context's parts again when the last read is over a minute old
-  if (tab === 'usage' && (partsMem.lastAt === null || (await $.clock.now()) - partsMem.lastAt > 60_000)) readBreakdownSoon($)
-  const opened = await opening
-  if (!opened.isPlaced) return opened
-  if (tab === 'now' || tab === 'tools') {
-    await updateFailures($, list => (list.some(f => f.isNew) ? list.map(f => ({ ...f, isNew: false })) : list))
-  }
-  return opened
-}
-
-// The commands for what a click or a key does in the pane (the user, 2026-11-12: in iTerm's main screen, with tabs,
-// neither reaches the mod). Each answers with what it did, masked while REC is on.
-const INSPECT_HELP = 'Usage: /inspect [now|usage|agents|tools|cache|timeline|plan [name]] opens a tab, /inspect close closes the pane. ' +
-  '/inspect show [n] and copy [n] act on tool failure n (1 the newest), report [n] on agent report n (1 the top), ' +
-  "fill fills Alfred Code's resume prompt, band off|calm|full sets \"band\" in ~/.claude/settings.json."
-const BAND_HELP = '/inspect band off, calm or full sets "band" in ~/.claude/settings.json.'
-const COPY_WHY = { 'no-surface': 'no screen to copy on', 'no-clipboard': 'this terminal has no clipboard path', refused: 'the terminal refused it' } as const
-
-// '2' as 2; left out, 1; anything else, 0, which no item has
-const ordinal = (word: string | undefined): number => (word === undefined ? 1 : /^\d+$/.test(word) ? Number(word) : 0)
-const outOf = (what: string, word: string | undefined, count: number, first: string): string =>
-  `No ${what} ${oneLine(printable(word ?? ''), 20)}: there ${count === 1 ? 'is 1' : `are ${count}`}, 1 the ${first}.`
-
-// The pane on `tab`, unless it is open on one of `tabs` already: '' when drawn, else why not
-async function showOn($: EngineInterface, tab: Tab, tabs: Tab[]): Promise<string> {
-  const isOpen = (await $.ui.panes().catch(() => [])).some(p => p.id === 'inspect')
-  if (isOpen && tabs.includes((await readView($)).tab)) return ''
-  const opened = await openInspect($, tab)
-  return opened.isPlaced ? '' : ` The pane is open but not drawn: ${opened.reason}.`
-}
-
-// '/inspect band [off|calm|full]': writes "band" into the user file, or names the mode in force and its source
-async function bandCommand($: EngineInterface, word: string): Promise<string> {
-  const mode = BAND_MODES.find(m => m === word)
-  if (mode !== undefined) return setField($, 'band', mode)
-  await loadSettings($)
-  const r = settingsMem.resolved
-  return `Band: ${r?.values.band ?? DEFAULTS.band} - from ${sourceName(r?.from.band ?? 'default', '/band')}. ${BAND_HELP}`
-}
-
-// '/inspect show [n]' and '/inspect copy [n]': the failure whose row starts with n, the newest when n is left out
-async function failureCommand($: EngineInterface, action: 'show' | 'copy', word: string | undefined): Promise<string> {
-  const list = (await readFailures($)).map((f, i) => ({ f, n: numberOf(f, i) }))
-  const newest = list[list.length - 1]
-  if (newest === undefined) return `No tool failure to ${action}.`
-  const n = word === undefined ? newest.n : ordinal(word)
-  const f = list.find(x => x.n === n)?.f
-  const oldest = list[0]?.n ?? newest.n
-  if (f === undefined) {
-    const range = oldest === newest.n ? `the pane lists failure ${oldest}` : `the pane lists failures ${oldest} to ${newest.n}`
-    return `No failure ${oneLine(printable(word ?? ''), 20)}: ${range}.`
-  }
-  const name = `failure ${n} (${f.tool}${f.target === '' ? '' : `  ${oneLine(printable(f.target), 40)}`})`
-  if (action === 'copy') {
-    if (f.outcome !== 'error') return `Nothing to copy: ${name} was ${f.outcome}, not an error.`
-    const done = await $.ui.copy({ text: f.detail })
-    return done.isCopied ? `Copied the error of ${name}.` : `Not copied: ${COPY_WHY[done.reason]}.`
-  }
-  if (f.outcome !== 'error' && f.outcome !== 'blocked') return `Nothing to show: ${name} was ${f.outcome}.`
-  return toggleCommand($, f.id, name, 'now', ['now', 'tools'])
-}
-
-// '/inspect report [n]': report n of the agents that finished with one, in the Agents tab's order, the top first
-async function reportCommand($: EngineInterface, word: string | undefined): Promise<string> {
-  const list = reportRows(await readAgents($))
-  if (list.length === 0) return 'No agent report to show.'
-  const n = ordinal(word)
-  const r = list[n - 1]
-  if (r === undefined) return outOf('report', word, list.length, 'top')
-  return toggleCommand($, `report:${r.id}`, `report ${n} (${r.type} · ${oneLine(printable(r.description), 40)})`, 'agents', ['agents'])
-}
-
-// Show and Hide as one toggle, as the button: shown, the pane comes up on a tab that lists it
-async function toggleCommand($: EngineInterface, id: string, name: string, tab: Tab, tabs: Tab[]): Promise<string> {
-  const isShown = (await readView($)).shown.includes(id)
-  await toggleShown($, id)
-  if (isShown) return `Hid ${name}.`
-  return `Showing ${name} in the inspect pane.${await showOn($, tab, tabs)}`
-}
-
-// The band's Inspect button: a pane the surface leaves undrawn says why
-async function inspectFromBand($: EngineInterface): Promise<void> {
-  const opened = await openInspect($, 'now')
-  if (!opened.isPlaced) toast($, `Inspect pane not drawn: ${opened.reason}`)
-}
-
-async function toggleShown($: EngineInterface, id: string): Promise<void> {
-  await updateView($, v => ({ ...v, shown: v.shown.includes(id) ? v.shown.filter(x => x !== id) : [...v.shown, id] }))
-}
-
-const TABS: Tab[] = ['now', 'usage', 'agents', 'tools', 'cache', 'timeline', 'plan']
 
 // The band's lines from the session's state, for the site above or the footer (spec band-under U2): the same reads, the
 // place's own width, rows and turn
@@ -494,28 +389,7 @@ export const register: Register = (on, options) => {
   on('classic.PreModelSwitch', ($, e, next) => beforeModelSwitch($, e, next, held)).catch(($, e, next) => next(e))
 
   // '/inspect [tab]': opens the pane, never on its own. '/inspect plan <name>' pins that plan; 'plan' alone clears it.
-  on('command.run', { command: 'inspect' }, async ($, e) => {
-    const words = e.args.trim().split(/\s+/)
-    const word = (words[0] ?? '').toLowerCase()
-    if (word === 'close') return { text: await closePane($, 'inspect', 'inspect pane') }
-    if (word === 'band') return { text: mask(await bandCommand($, (words[1] ?? '').toLowerCase())) }
-    if (word === 'show' || word === 'copy') return { text: mask(await failureCommand($, word, words[1])) }
-    if (word === 'report') return { text: mask(await reportCommand($, words[1])) }
-    if (word === 'fill') return { text: await fillStack($) }
-    const tab = TABS.find(t => t === (word === '' ? 'now' : word))
-    if (tab === undefined) return { text: INSPECT_HELP }
-    if (tab === 'plan') {
-      const name = words[1] ?? null
-      const good = (await readPlans($)).plans.filter(w => w.value !== null).map(w => w.name).sort()
-      if (name !== null && !good.includes(name)) {
-        const asked = oneLine(printable(name), 40)
-        return { text: good.length === 0 ? `No plan named ${asked}. No plan file in ${PLANS_DIR}/.` : `No plan named ${asked}. Plans: ${good.join(', ')}.` }
-      }
-      await updateView($, v => (v.planSlug === name ? v : { ...v, planSlug: name }))
-    }
-    const opened = await openInspect($, tab)
-    return { text: opened.isPlaced ? 'Opened the inspect pane.' : `The inspect pane is open but not drawn: ${opened.reason}.` }
-  })
+  on('command.run', { command: 'inspect' }, ($, e) => runInspectCommand($, e))
 
   // '/rec [on|strict|off|test|words]': the level is a settings value (S5) that on, strict and off write into the user
   // file (the user's ruling, 2026-11-12); every form but words reads the files first, so a session that has not polled
@@ -618,62 +492,7 @@ export const register: Register = (on, options) => {
 
   on('ui.render', { component: 'AskUserQuestion' }, ($, e, next) => maskQuestionDialog($, e, next)).catch(($, e, next) => (recLevel() === 'off' ? next(e) : next({ ...e, props: { ...e.props, questions: neutralDialog(e.props.questions) } })))
 
-  on('ui.render', { component: 'Pane', requestId: 'inspect' }, async ($, e) => {
-    await readTick($)
-    const now = await $.clock.now()
-    const counts = await readLive($)
-    const shown = await readView($)
-    const rows = await readFailures($)
-    const d = await planDraw($, now)
-    const u = await readUsage($)
-    const h = await readHandoff($)
-    const m = await readMeta($)
-    const st = await readStack($)
-    const runway = runwayOf(st, u, m.model)
-    const input = {
-      now, columns: e.props.bodyColumns, isWorking: counts.turnId !== null, live: counts, usage: u,
-      meta: m, turns: await readTurns($), newFailures: rows.filter(f => f.isNew).length,
-      pace: await readPace($), failures: rows, stats: await readStats($), totals: await readTotals($), view: shown,
-      agents: await readAgents($), cache: await readCache($), plan: d.band, planInvalid: d.invalid, score: d.score, isPlanScore: d.isPlanScore, scoreLevel: await scoreLevel($), blockers: await readBlockers($), parts: await readParts($),
-      loops: await readLoops($),
-      rec: recOf(await readRec($)), forecast: forecastOf(h, u, runway), handoff: handoffView(h, u, counts.turnId !== null, runway),
-      stack: { view: st, prompt: stackMem.prompt, runway, sessionModel: m.model },
-    }
-    const bar = tabBar(shown.tab, counts.turnId !== null, e.props.bodyColumns)
-    const body = shown.tab === 'usage' ? usageLines(input)
-      : shown.tab === 'agents' ? agentsLines(input)
-      : shown.tab === 'cache' ? cacheLines(input)
-      : shown.tab === 'tools' ? toolsLines(input)
-      : shown.tab === 'timeline' ? timelineLines(input.turns, Math.max(3, e.props.scroll.bodyRows - 1 - bar.length), u.windows.length > 0, e.props.bodyColumns)
-      : shown.tab === 'plan' ? planLines(d.shown, d.scores, { invalid: d.invalid, others: d.others, otherScores: d.otherScores, updatedAt: d.updatedAt, now, columns: e.props.bodyColumns })
-      : nowLines(input)
-    const press: Record<string, () => unknown> = {
-      'tab-now': () => openInspect($, 'now'),
-      'tab-usage': () => openInspect($, 'usage'),
-      'tab-agents': () => openInspect($, 'agents'),
-      'tab-tools': () => openInspect($, 'tools'),
-      'tab-cache': () => openInspect($, 'cache'),
-      compact: () => compactNow($, held),
-      'handoff-save': () => saveNow($),
-      'stack-fill': async () => toast($, await fillStack($)),
-      'handoff-compact': () => saveThenCompact($, held),
-      'handoff-dismiss': () => dismissAsk($),
-      'tab-timeline': () => openInspect($, 'timeline'),
-      'tab-plan': () => openInspect($, 'plan'),
-    }
-    for (const row of rows) {
-      press[`show-${row.id}`] = () => toggleShown($, row.id)
-      press[`copy-${row.id}`] = () => $.ui.copy({ text: row.detail, surface: e.surface })
-    }
-    for (const agent of input.agents) {
-      if (agent.report !== null) press[`report-${agent.id}`] = () => toggleShown($, `report:${agent.id}`)
-    }
-    // On the terminal's main screen nothing takes a click, and the pane's keys may not reach the mod (the user,
-    // 2026-11-12): each button draws as its command
-    const isMain = e.surface === 'terminal' && e.viewport?.isFullscreen === false
-    const lines = isMain ? asCommands([...bar, ...body], paneCommands(rows, input.agents)) : [...bar, ...body]
-    return drawLines($, e, lines, { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
-  }).catch(($, e, next) => drawNote($, e, paneFailed(next.error.kind, next.error.message, recLevel() !== 'off')))
+  on('ui.render', { component: 'Pane', requestId: 'inspect' }, ($, e) => drawInspectPane($, e, held)).catch(($, e, next) => drawNote($, e, paneFailed(next.error.kind, next.error.message, recLevel() !== 'off')))
 
   // The private-words pane: words are added only here, never through a command's arguments, which the transcript echoes
   on('ui.render', { component: 'Pane', requestId: 'rec' }, ($, e) => drawRecPane($, e)).catch(($, e, next) => drawNote($, e, paneFailed(next.error.kind, next.error.message, recLevel() !== 'off')))

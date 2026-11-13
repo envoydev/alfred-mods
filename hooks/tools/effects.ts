@@ -361,3 +361,8 @@ export async function drawToolGroup($: EngineInterface, e: MatchedInput<'ui.rend
   else if (!isRec) return next(e)
   return next({ ...e, props: { ...e.props, isExpanded: true } })
 }
+
+// The failures a shown tab listed are no longer new
+export async function markFailuresSeen($: EngineInterface): Promise<void> {
+  await updateFailures($, list => (list.some(f => f.isNew) ? list.map(f => ({ ...f, isNew: false })) : list))
+}
