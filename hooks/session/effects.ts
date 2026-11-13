@@ -11,7 +11,7 @@ import type { Entries } from '../plan/types'
 import { localDate } from '../core/forecast'
 import { staleKeys } from '../plan/steptime'
 import { fingerprint, when } from '../core/format'
-import { nextWindows, storedWindows, windowsOf } from './windows'
+import { dropPassed, nextWindows, storedWindows, windowsOf } from './windows'
 import { syncStatus } from '../band/effects'
 import { agentStep, finishLoop, readAgents, readLoops, updateRow } from '../agents/effects'
 import { addMark, closeLoops, openSlice, scheduleReload } from '../plan/effects'
@@ -20,13 +20,16 @@ import { addCacheRequest, armCacheClose, readCacheConfig } from '../cache/effect
 import { markOf, statusAt } from '../agents/agents'
 import { stepHandoff } from '../handoff/effects'
 import { toast } from '../core/effects'
+import { takeRecNote } from '../rec/effects'
+import { followConversation } from '../lifecycle/effects'
+import type { Call } from '../tools/types'
 
 const INITIAL_TURNS: Turn[] = []
 const turnsAtom = atom({ plugin: 'alfred-mods', key: 'turns' } as const, INITIAL_TURNS, { shape: 'turns-1' })
 export function readTurns($: EngineInterface) {
   return read($, turnsAtom)
 }
-export function updateTurns($: EngineInterface, change: (value: Turn[]) => Turn[]) {
+function updateTurns($: EngineInterface, change: (value: Turn[]) => Turn[]) {
   return update($, turnsAtom, change)
 }
 export function resetTurns($: EngineInterface) {
@@ -38,7 +41,7 @@ const liveAtom = atom({ plugin: 'alfred-mods', key: 'live' } as const, INITIAL_L
 export function readLive($: EngineInterface) {
   return read($, liveAtom)
 }
-export function updateLive($: EngineInterface, change: (value: Live) => Live) {
+function updateLive($: EngineInterface, change: (value: Live) => Live) {
   return update($, liveAtom, change)
 }
 export function resetLive($: EngineInterface) {
@@ -52,7 +55,7 @@ const usageAtom = atom({ plugin: 'alfred-mods', key: 'usage' } as const, INITIAL
 export function readUsage($: EngineInterface) {
   return read($, usageAtom)
 }
-export function updateUsage($: EngineInterface, change: (value: Usage) => Usage) {
+function updateUsage($: EngineInterface, change: (value: Usage) => Usage) {
   return update($, usageAtom, change)
 }
 export function resetUsage($: EngineInterface) {
@@ -64,7 +67,7 @@ const totalsAtom = atom({ plugin: 'alfred-mods', key: 'totals' } as const, INITI
 export function readTotals($: EngineInterface) {
   return read($, totalsAtom)
 }
-export function updateTotals($: EngineInterface, change: (value: Totals) => Totals) {
+function updateTotals($: EngineInterface, change: (value: Totals) => Totals) {
   return update($, totalsAtom, change)
 }
 export function resetTotals($: EngineInterface) {
@@ -79,7 +82,7 @@ const metaAtom = atom({ plugin: 'alfred-mods', key: 'meta' } as const, INITIAL_M
 export function readMeta($: EngineInterface) {
   return read($, metaAtom)
 }
-export function updateMeta($: EngineInterface, change: (value: Meta) => Meta) {
+function updateMeta($: EngineInterface, change: (value: Meta) => Meta) {
   return update($, metaAtom, change)
 }
 export function resetMeta($: EngineInterface) {
@@ -91,7 +94,7 @@ const paceAtom = atom({ plugin: 'alfred-mods', key: 'pace' } as const, INITIAL_P
 export function readPace($: EngineInterface) {
   return read($, paceAtom)
 }
-export function updatePace($: EngineInterface, change: (value: Pace) => Pace) {
+function updatePace($: EngineInterface, change: (value: Pace) => Pace) {
   return update($, paceAtom, change)
 }
 export function resetPace($: EngineInterface) {
@@ -102,23 +105,23 @@ const tickAtom = atom({ plugin: 'alfred-mods', key: 'tick' } as const, 0)
 export function readTick($: EngineInterface) {
   return read($, tickAtom)
 }
-export function updateTick($: EngineInterface, change: (value: number) => number) {
+function updateTick($: EngineInterface, change: (value: number) => number) {
   return update($, tickAtom, change)
 }
 
 // The windows this session last stored for the next one, as the band shows them: a turn's measure stores them only when
 // that changed, since each store write rewrites the file every session on the machine shares (the review, 2026-11-11)
-export const windowsMem = { stored: null as string | null }
+const windowsMem = { stored: null as string | null }
 
 // When the band's figures were last read mid-turn: the tick reads them at most this often while a turn runs or an
 // agent is live, since a foreground agent holds the main loop and no main step fires until it ends
-export const freshMem = { at: -Infinity }
+const freshMem = { at: -Infinity }
 
-export const FRESH_EVERY_MS = 5000
+const FRESH_EVERY_MS = 5000
 
 // The session's cost at the main loop's turn.start, by turn id (spec C4); the main loop runs one turn at a time, so it
 // holds one. A /clear empties it: a turn across it has no start read in the new session.
-export const spendMem = new Map<string, number>()
+const spendMem = new Map<string, number>()
 
 // One more agent of this type spawned this session
 export async function countAgentType($: EngineInterface, type: string): Promise<void> {
@@ -236,7 +239,7 @@ export async function takeUsage($: EngineInterface, today?: number | null): Prom
 // Today's cost as the store last gave it, with the session's cost at that reading and the local date it was for: a
 // step adds what the session spent since, so today's figure moves mid-turn with no store work (spec B). The store is
 // written at the turn's end, and read again by the tick once the date has turned.
-export let todayMem: { cost: number; today: number; date: string } | null = null
+let todayMem: { cost: number; today: number; date: string } | null = null
 
 export async function writeUsage($: EngineInterface, reading: SessionUsage, today?: number | null): Promise<void> {
   const at = await $.clock.now()
@@ -460,4 +463,86 @@ export async function takeMeasure($: EngineInterface, e: HookInput<'session.meas
   await stepHandoff($, e.context.tokens, e.context.window)
   await syncStatus($)
   return measured
+}
+
+export async function submitPrompt($: EngineInterface, e: HookInput<'prompt.submit'>, next: HookNext<'prompt.submit'>, calls: Map<string, Call>, held: Held) {
+  // A conversation no classic.SessionStart reported starts over before its first prompt, which carries REC's note
+  // even when the start-over fails
+  await followConversation($, 'prompt', calls, held).catch(() => undefined)
+  if (e.origin.kind !== 'composer' && e.origin.kind !== 'bridge') return next(e)
+  const at = await $.clock.now()
+  const key = fingerprint(e.text)
+  await updateMeta($, m => ({ ...m, waiting: [...m.waiting, { at, key }].slice(-5) }))
+  const note = takeRecNote()
+  const entered = await next(note === null ? e : { ...e, context: [...(e.context ?? []), note] })
+  const settled = entered.drop === undefined ? fingerprint(entered.text) : null
+  if (settled !== key) {
+    await updateMeta($, m => ({
+      ...m,
+      waiting: settled === null ? m.waiting.filter(w => w.at !== at || w.key !== key)
+        : m.waiting.map(w => (w.at === at && w.key === key ? { at, key: settled } : w)),
+    }))
+  }
+  return entered
+}
+
+// The model and Claude Code's version before the first step names them; a refused read leaves its value
+export async function readModelAndVersion($: EngineInterface): Promise<void> {
+  try {
+    const model = await $.session.model()
+    await updateMeta($, m => (m.model === null ? { ...m, model } : m))
+  } catch {
+    // The first step names the model
+  }
+  try {
+    const engine = await $.session.version()
+    await updateMeta($, m => ({ ...m, version: engine.version }))
+  } catch {
+    // No version item
+  }
+}
+
+// A rate window whose reset has passed, dropped
+export async function dropPassedWindows($: EngineInterface, now: number): Promise<void> {
+  const u = await readUsage($)
+  if (dropPassed(u, now) !== null) await updateUsage($, x => dropPassed(x, now) ?? x)
+}
+
+// Past local midnight, today's cost is the new date's
+export function isTodayStale(now: number): boolean {
+  return todayMem !== null && todayMem.date !== localDate(now)
+}
+
+// Whether the band's figures are due a read while something runs
+export function isMidTurnReadDue(now: number): boolean {
+  return now - freshMem.at >= FRESH_EVERY_MS
+}
+
+// The next tick reads the band's figures at once
+export function forgetMidTurnRead(): void {
+  freshMem.at = -Infinity
+}
+
+// The clocks on screen redraw
+export async function bumpTick($: EngineInterface): Promise<void> {
+  await updateTick($, n => n + 1)
+}
+
+export async function resetTick($: EngineInterface): Promise<void> {
+  await updateTick($, () => 0)
+}
+
+// The stored windows are read afresh
+export function forgetStoredWindows(): void {
+  windowsMem.stored = null
+}
+
+// The turn's spend read at its start is dropped
+export function forgetTurnSpend(): void {
+  spendMem.clear()
+}
+
+// The conversation was resumed, not started
+export async function markResumed($: EngineInterface): Promise<void> {
+  await updateMeta($, m => ({ ...m, isResumed: true }))
 }

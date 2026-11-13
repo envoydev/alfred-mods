@@ -29,7 +29,7 @@ const handoffAtom = atom({ plugin: 'alfred-mods', key: 'handoff' } as const, INI
 export function readHandoff($: EngineInterface) {
   return read($, handoffAtom)
 }
-export function updateHandoff($: EngineInterface, change: (value: Handoff) => Handoff) {
+function updateHandoff($: EngineInterface, change: (value: Handoff) => Handoff) {
   return update($, handoffAtom, change)
 }
 export function resetHandoff($: EngineInterface) {
@@ -41,7 +41,7 @@ export function resetHandoff($: EngineInterface) {
 // compaction re-arms the steps; the model and window the compaction point was read for; the save running, which a
 // second request joins; the step the last save was made at, which c does not save again; and the last save's time,
 // which arms the resume prompt and which a /clear does not reset
-export const handoffMem = {
+const handoffMem = {
   stoodDown: false, rearm: false, pointKey: null as string | null, saving: null as Promise<SaveResult> | null,
   savedStep: null as number | null, armedAt: null as number | null,
   // The reads of the compaction point that gave no breakdown, for one model and window
@@ -303,4 +303,10 @@ export async function runAutoHandoffCommand($: EngineInterface, e: MatchedInput<
     ? ''
     : ` · mode from ${sourceName(from.handoff, '/auto-handoff')} · first ask from ${sourceName(from.handoffAt, '/auto-handoff')}`
   return { text: mask(`${state}${sources}\n${HANDOFF_USAGE}`) }
+}
+
+// A compaction's pending re-arm and the step saved at belong to the conversation before
+export function forgetHandoffSteps(): void {
+  handoffMem.rearm = false
+  handoffMem.savedStep = null
 }

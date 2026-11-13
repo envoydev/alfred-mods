@@ -8,7 +8,7 @@ import { statusPath } from '../handoff/handoff'
 import { NO_FILE, STACK_TOASTS, UNREADABLE, fillReady, fillToast, parseStack } from './stack'
 import { followStatusFile } from '../handoff/effects'
 
-export const INITIAL_STACK: Stack = {
+const INITIAL_STACK: Stack = {
   state: 'none', reason: null, fullContext: null, model: null, window: null, resumeAt: null, noOffer: false, autoRun: null, scorer: null, autoCompact: null, plan: null,
   hasPrompt: false, updatedAt: null, readAt: null, ignored: [],
 }
@@ -16,7 +16,7 @@ const stackAtom = atom({ plugin: 'alfred-mods', key: 'stack' } as const, INITIAL
 export function readStack($: EngineInterface) {
   return read($, stackAtom)
 }
-export function updateStack($: EngineInterface, change: (value: Stack) => Stack) {
+function updateStack($: EngineInterface, change: (value: Stack) => Stack) {
   return update($, stackAtom, change)
 }
 export function resetStack($: EngineInterface) {
@@ -26,7 +26,7 @@ export function resetStack($: EngineInterface) {
 // The stack's resume prompt, in module memory only (Phase 5 spec 'Where values live'); `last`, the `stack` value the
 // last read wrote, which a read inside `keepUntil` (10 s after a /clear, a resume or a fork) writes back when the new
 // id has no file yet; `reading`, the read running, so reads never interleave; `reread`, the handler's one reread
-export const stackMem = {
+const stackMem = {
   prompt: null as string | null, last: null as Stack | null, keepUntil: 0, reading: Promise.resolve(false) as Promise<boolean>,
   reread: null as Timer | null,
 }
@@ -99,4 +99,21 @@ export async function fillStack($: EngineInterface): Promise<string> {
 // The resume prompt the status file last gave, for the Stack tab
 export function stackPrompt(): string | null {
   return stackMem.prompt
+}
+
+// Until `until`, a read that finds no file keeps the last values; a re-read still pending is cancelled
+export function openKeepWindow(until: number): void {
+  stackMem.keepUntil = until
+  stackMem.reread?.cancel()
+  stackMem.reread = null
+}
+
+// After a start-over: this read, finding no file, reads once more at 2 s
+export async function readStatusAfterStartOver($: EngineInterface): Promise<void> {
+  if (!(await readStatus($, true))) {
+    stackMem.reread = $.clock.after(2000, () => {
+      stackMem.reread = null
+      readStatus($).catch(() => undefined)
+    })
+  }
 }

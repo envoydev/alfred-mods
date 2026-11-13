@@ -21,7 +21,7 @@ const plansAtom = atom({ plugin: 'alfred-mods', key: 'plans' } as const, INITIAL
 export function readPlans($: EngineInterface) {
   return read($, plansAtom)
 }
-export function updatePlans($: EngineInterface, change: (value: Plans) => Plans) {
+function updatePlans($: EngineInterface, change: (value: Plans) => Plans) {
   return update($, plansAtom, change)
 }
 export function resetPlans($: EngineInterface) {
@@ -33,7 +33,7 @@ const creditAtom = atom({ plugin: 'alfred-mods', key: 'credit' } as const, INITI
 export function readCredit($: EngineInterface) {
   return read($, creditAtom)
 }
-export function updateCredit($: EngineInterface, change: (value: Credit) => Credit) {
+function updateCredit($: EngineInterface, change: (value: Credit) => Credit) {
   return update($, creditAtom, change)
 }
 export function resetCredit($: EngineInterface) {
@@ -45,7 +45,7 @@ const tasksAtom = atom({ plugin: 'alfred-mods', key: 'tasks' } as const, INITIAL
 export function readTasks($: EngineInterface) {
   return read($, tasksAtom)
 }
-export function updateTasks($: EngineInterface, change: (value: TaskItem[]) => TaskItem[]) {
+function updateTasks($: EngineInterface, change: (value: TaskItem[]) => TaskItem[]) {
   return update($, tasksAtom, change)
 }
 export function resetTasks($: EngineInterface) {
@@ -394,4 +394,14 @@ export async function followTaskTools($: EngineInterface, held: Held, tool: stri
     if (statusesOfTasks(after) !== statusesOfTasks(list)) await closeLoops($, held, null, await $.clock.now(), true)
     await updateTasks($, items => tasksAfter(items, tool, input, result) ?? items)
   }
+}
+
+// A plan's file must be written after this to run
+export async function restartPlanWatch($: EngineInterface, now: number): Promise<void> {
+  await updatePlans($, p => ({ ...p, since: now }))
+}
+
+// The same at a session's start; a reload keeps the first start's time
+export async function startPlanWatch($: EngineInterface, now: number): Promise<void> {
+  await updatePlans($, p => (p.since === null ? { ...p, since: now } : p))
 }

@@ -14,7 +14,7 @@ const partsAtom = atom({ plugin: 'alfred-mods', key: 'parts' } as const, INITIAL
 export function readParts($: EngineInterface) {
   return read($, partsAtom)
 }
-export function updateParts($: EngineInterface, change: (value: Parts) => Parts) {
+function updateParts($: EngineInterface, change: (value: Parts) => Parts) {
   return update($, partsAtom, change)
 }
 export function resetParts($: EngineInterface) {
@@ -22,7 +22,7 @@ export function resetParts($: EngineInterface) {
 }
 
 // The time of the last breakdown read that gave one, for the Usage tab's 60-second rule (spec C1)
-export const partsMem = { lastAt: null as number | null }
+const partsMem = { lastAt: null as number | null }
 
 // The memory files a link under the project's `.claude/rules/` reaches: the breakdown names such a rule by where the
 // link lands (live, 2026-11-11), so an import there looks the same until both sides are resolved. Asked only of a file
@@ -87,4 +87,9 @@ export async function noteLoadedRule($: EngineInterface, e: HookInput<'classic.I
 // Whether the context's parts were last read over a minute ago, or never
 export async function isBreakdownStale($: EngineInterface): Promise<boolean> {
   return partsMem.lastAt === null || (await $.clock.now()) - partsMem.lastAt > 60_000
+}
+
+// The context's parts are read afresh on the next Usage tab
+export function forgetBreakdown(): void {
+  partsMem.lastAt = null
 }

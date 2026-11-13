@@ -4,7 +4,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, TurnStepInput, TurnStepResult } from 'claude-code'
 import type { AgentRow, Loop } from './types'
-import { addLoopStep, markOf, newRow, upsertSpawn } from './agents'
+import { addLoopStep, markOf, newRow, refreshAgents, upsertSpawn } from './agents'
 import { countAgentType } from '../session/effects'
 import type { HookInput, HookNext } from '../core/types'
 import { addMark } from '../plan/effects'
@@ -14,7 +14,7 @@ const agentsAtom = atom({ plugin: 'alfred-mods', key: 'agents' } as const, INITI
 export function readAgents($: EngineInterface) {
   return read($, agentsAtom)
 }
-export function updateAgents($: EngineInterface, change: (value: AgentRow[]) => AgentRow[]) {
+function updateAgents($: EngineInterface, change: (value: AgentRow[]) => AgentRow[]) {
   return update($, agentsAtom, change)
 }
 export function resetAgents($: EngineInterface) {
@@ -26,7 +26,7 @@ const loopsAtom = atom({ plugin: 'alfred-mods', key: 'loops' } as const, INITIAL
 export function readLoops($: EngineInterface) {
   return read($, loopsAtom)
 }
-export function updateLoops($: EngineInterface, change: (value: Loop[]) => Loop[]) {
+function updateLoops($: EngineInterface, change: (value: Loop[]) => Loop[]) {
   return update($, loopsAtom, change)
 }
 export function resetLoops($: EngineInterface) {
@@ -86,4 +86,12 @@ export async function trackSpawn($: EngineInterface, e: HookInput<'agent.spawn'>
 // A loop no spawn announced, done
 export async function finishLoop($: EngineInterface, id: string): Promise<void> {
   await updateLoops($, list => list.map(l => (l.id === id ? { ...l, isDone: true } : l)))
+}
+
+// The live rows moved by the engine's agent list, written only on a change
+export async function refreshLiveAgents($: EngineInterface, rows: AgentRow[], now: number): Promise<void> {
+  const listed = await $.agent.list()
+  if (JSON.stringify(refreshAgents(rows, listed, now)) !== JSON.stringify(rows)) {
+    await updateAgents($, current => refreshAgents(current, listed, now))
+  }
 }

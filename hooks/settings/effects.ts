@@ -15,7 +15,7 @@ import type { HookInput, HookNext } from '../core/types'
 // 2026-11-11 settings-values, S1-S4 and S7): read at the start, on the poll, after a /clear and after each change, one
 // run at a time as the status file's reads are. `rec`, the level in force and the source that set it; `skippedKey`,
 // the skipped values last told; `isHoldTold`, whether REC's hold was told. A new claude run starts them over.
-export const settingsMem = {
+const settingsMem = {
   resolved: null as Resolved | null, rec: null as { level: Level; from: From } | null, skippedKey: '', isHoldTold: false,
   reading: Promise.resolve() as Promise<void>,
 }

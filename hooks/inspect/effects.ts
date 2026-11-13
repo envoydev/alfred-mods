@@ -7,7 +7,7 @@ import type { Tab, View } from './types'
 import { BAND_HELP, COPY_WHY, INSPECT_HELP, TABS, ordinal, outOf } from './commands'
 import { oneLine, printable } from '../core/format'
 import { numberOf } from '../tools/outcome'
-import { loadSettings, setField, settingsMem } from '../settings/effects'
+import { loadSettings, resolvedSettings, setField } from '../settings/effects'
 import { closePane, isNoColor, toast } from '../core/effects'
 import { isBreakdownStale, readBreakdownSoon, readParts } from '../context/effects'
 import { readAgents, readLoops } from '../agents/effects'
@@ -34,7 +34,7 @@ const viewAtom = atom({ plugin: 'alfred-mods', key: 'view' } as const, INITIAL_V
 export function readView($: EngineInterface) {
   return read($, viewAtom)
 }
-export function updateView($: EngineInterface, change: (value: View) => View) {
+function updateView($: EngineInterface, change: (value: View) => View) {
   return update($, viewAtom, change)
 }
 export function resetView($: EngineInterface) {
@@ -76,7 +76,7 @@ export async function bandCommand($: EngineInterface, word: string): Promise<str
   const mode = BAND_MODES.find(m => m === word)
   if (mode !== undefined) return setField($, 'band', mode)
   await loadSettings($)
-  const r = settingsMem.resolved
+  const r = resolvedSettings()
   return `Band: ${r?.values.band ?? DEFAULTS.band} - from ${sourceName(r?.from.band ?? 'default', '/band')}. ${BAND_HELP}`
 }
 

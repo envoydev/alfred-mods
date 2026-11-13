@@ -6,7 +6,7 @@ import type { EngineInterface } from 'claude-code'
 import type { Level, RecState } from './types'
 import { mask, maskSpans, recLevel, setRec } from './mask'
 import { loadSettings, recInForce, setField } from '../settings/effects'
-import { LEVELS, REC_HELP, addWord, parseWords, recPaneLines, recStatus, recTest } from './rec'
+import { LEVELS, REC_HELP, addWord, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec'
 import { syncStatus } from '../band/effects'
 import type { MatchedInput, MatchedNext } from '../core/types'
 import { printable } from '../core/format'
@@ -20,7 +20,7 @@ const recAtom = atom({ plugin: 'alfred-mods', key: 'rec' } as const, INITIAL_REC
 export function readRec($: EngineInterface) {
   return read($, recAtom)
 }
-export function updateRec($: EngineInterface, change: (value: RecState) => RecState) {
+function updateRec($: EngineInterface, change: (value: RecState) => RecState) {
   return update($, recAtom, change)
 }
 export function resetRec($: EngineInterface) {
@@ -29,11 +29,11 @@ export function resetRec($: EngineInterface) {
 
 // The REC level the model was last told of, in module memory: the person's next prompt carries the note while the
 // level differs (Decision 11)
-export const noteMem = { told: 'off' as Level }
+const noteMem = { told: 'off' as Level }
 
 // REC's private words and the home folder, in module memory only: never in $.state, a log or a file
 // `compiled` names the level, words and home mask.ts holds, which a reload starts over at off
-export const recMem = { words: [] as string[], home: null as string | null, compiled: JSON.stringify(['off', [], null]) }
+const recMem = { words: [] as string[], home: null as string | null, compiled: JSON.stringify(['off', [], null]) }
 
 // A compaction can drop REC's note from the history, so the next prompt carries it again
 export function retellRecNote(): void {
@@ -133,4 +133,22 @@ export async function runRecCommand($: EngineInterface, e: MatchedInput<'command
 // How many private words REC holds
 export function recWordCount(): number {
   return recMem.words.length
+}
+
+// REC's note goes with the next prompt again
+export function forgetRecNote(): void {
+  noteMem.told = 'off'
+}
+
+// The note the next prompt carries, once per level: null when this level was told
+export function takeRecNote(): string | null {
+  const level = recLevel()
+  const note = level === noteMem.told ? null : recNote(level)
+  noteMem.told = level
+  return note
+}
+
+// The home folder REC's samples name as ~
+export async function readRecHome($: EngineInterface): Promise<void> {
+  recMem.home = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE')) ?? null
 }

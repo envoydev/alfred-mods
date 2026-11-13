@@ -4,7 +4,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, ModelUsage } from 'claude-code'
 import type { Cache, CacheConfig } from './types'
-import { addRequest, afterCompact, billingOf, cacheView, idleOf, minutes, pinOf, takeSwitch, toastAt } from './cache'
+import { addRequest, afterCompact, billingOf, cacheView, idleOf, minutes, pinOf, takeRate, takeSwitch, toastAt } from './cache'
 import { noteCompaction, readLive, readUsage, setModel } from '../session/effects'
 import type { Held, HookInput, HookNext } from '../core/types'
 import { toast } from '../core/effects'
@@ -22,7 +22,7 @@ const cacheAtom = atom({ plugin: 'alfred-mods', key: 'cache' } as const, INITIAL
 export function readCache($: EngineInterface) {
   return read($, cacheAtom)
 }
-export function updateCache($: EngineInterface, change: (value: Cache) => Cache) {
+function updateCache($: EngineInterface, change: (value: Cache) => Cache) {
   return update($, cacheAtom, change)
 }
 export function resetCache($: EngineInterface) {
@@ -146,4 +146,9 @@ export async function beforeModelSwitch($: EngineInterface, e: HookInput<'classi
 // A main-loop request's cache figures, at the time its step started
 export async function addCacheRequest($: EngineInterface, usage: Pick<ModelUsage, 'input_tokens' | 'cache_read_input_tokens' | 'cache_creation_input_tokens'>, at: number): Promise<void> {
   await updateCache($, c => addRequest(c, usage, at))
+}
+
+// A resumed conversation's cache rate, from its SessionStart
+export async function takeResumeRate($: EngineInterface, usd: number, tokens: number, model: string | null): Promise<void> {
+  await updateCache($, c => takeRate(c, usd, tokens, model))
 }
