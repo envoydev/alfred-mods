@@ -13,7 +13,7 @@ import type { Usage } from '../session/types'
 
 export const MODES: HandoffMode[] = ['ask', 'auto', 'off']
 
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 
 // A whole percent from 10 to 95, the only thresholds the command takes
 export function isThreshold(n: unknown): n is number {
@@ -51,17 +51,17 @@ export function stepUnder(percent: number, steps: number[]): number | null {
 // The stack's status file: valid with schema 1 and this session's id; F8 stands down when the stack handles a full
 // context itself (`fresh-session` or `compact`), runs otherwise, and says why a file it could not use was ignored
 export function parseStatus(text: string, session: string): { state: 'stood-down' | 'runs' | 'ignored'; reason: string | null } {
-  let v: unknown
+  let value: unknown
   try {
-    v = JSON.parse(text)
+    value = JSON.parse(text)
   } catch {
     return { state: 'ignored', reason: 'not JSON' }
   }
-  if (!isRecord(v)) return { state: 'ignored', reason: 'not JSON' }
-  if (v.schema === undefined) return { state: 'ignored', reason: 'no schema' }
-  if (v.schema !== 1) return { state: 'ignored', reason: `schema ${typeof v.schema === 'number' ? v.schema : 'not 1'}` }
-  if (v.session !== session) return { state: 'ignored', reason: 'another session' }
-  return v.fullContext === 'fresh-session' || v.fullContext === 'compact' ? { state: 'stood-down', reason: null } : { state: 'runs', reason: null }
+  if (!isRecord(value)) return { state: 'ignored', reason: 'not JSON' }
+  if (value.schema === undefined) return { state: 'ignored', reason: 'no schema' }
+  if (value.schema !== 1) return { state: 'ignored', reason: `schema ${typeof value.schema === 'number' ? value.schema : 'not 1'}` }
+  if (value.session !== session) return { state: 'ignored', reason: 'another session' }
+  return value.fullContext === 'fresh-session' || value.fullContext === 'compact' ? { state: 'stood-down', reason: null } : { state: 'runs', reason: null }
 }
 
 export const HANDOFF_PATH = '.claude/session-inspector/HANDOFF.md'
@@ -223,14 +223,14 @@ export function handoffLines(h: HandoffView, _columns: number): Line[] {
 export const RESUME_WINDOW_MS = 2 * 60 * 60_000
 
 // The Now tab's HANDOFF section reads the atom with F8's percent and the runway
-export function handoffViewOf(h: Handoff, u: Usage, isWorking: boolean, runway: Runway | null): HandoffView {
-  const point = h.point ?? u.window
-  return { ...h, percent: u.tokens === null || point === null ? null : percentOf(u.tokens, point), window: u.window, isWorking, runway }
+export function handoffViewOf(h: Handoff, usage: Usage, isWorking: boolean, runway: Runway | null): HandoffView {
+  const point = h.point ?? usage.window
+  return { ...h, percent: usage.tokens === null || point === null ? null : percentOf(usage.tokens, point), window: usage.window, isWorking, runway }
 }
 
 // What the forecast counts to: the stack's resume trigger over the window while the runway applies and the window is
 // known, else F8's threshold over the window, to the compaction point's moment
-export function forecastTargetOf(h: Handoff, u: Usage, runway: Runway | null): { at: number; label: string } {
+export function forecastTargetOf(h: Handoff, usage: Usage, runway: Runway | null): { at: number; label: string } {
   if (runway !== null && runway.at !== null) return { at: runway.at, label: tokensText(runway.resumeAt) }
-  return { at: h.point !== null && u.window !== null ? windowThreshold(h.threshold, h.point, u.window) : h.threshold, label: `${h.threshold}%` }
+  return { at: h.point !== null && usage.window !== null ? windowThreshold(h.threshold, h.point, usage.window) : h.threshold, label: `${h.threshold}%` }
 }

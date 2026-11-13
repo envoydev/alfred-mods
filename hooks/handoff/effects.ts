@@ -148,21 +148,21 @@ export async function isForeignFile($: EngineInterface): Promise<boolean> {
 // before this session began is none of this session's.
 export async function readSaveInput($: EngineInterface, at: number, git: string[]): Promise<SaveInput> {
   const h = await readHandoff($)
-  const u = await readUsage($)
+  const usage = await readUsage($)
   const m = await readMeta($)
-  const p = await readPlans($)
+  const plans = await readPlans($)
   const items = await readTasks($)
-  const w = creditedPlan(p, (await readView($)).planSlug, items.length > 0)
+  const w = creditedPlan(plans, (await readView($)).planSlug, items.length > 0)
   let plan: SaveInput['plan'] = w === 'tasks' ? 'tasks' : null
   let scores: ScoresPart | null = null
-  if (w !== null && w !== 'tasks' && w.value !== null && p.since !== null && w.mtimeMs >= p.since) {
-    const v = (await planViewOf($, p, items, w, at)).v
-    if (v !== null) {
-      const steps: PlanPart['steps'] = v.rows.map(r => ({
+  if (w !== null && w !== 'tasks' && w.value !== null && plans.since !== null && w.mtimeMs >= plans.since) {
+    const view = (await planViewOf($, plans, items, w, at)).v
+    if (view !== null) {
+      const steps: PlanPart['steps'] = view.rows.map(r => ({
         id: r.step.id, title: r.step.title, status: r.step.status, actualMs: r.actualMs, forecastMs: r.forecastMs, notes: r.notes.length,
       }))
-      plan = { file: `${PLANS_DIR}/${w.name}.json`, title: v.title, finished: v.finished, total: v.total, steps }
-      const own = p.scores.find(s => s.value !== null && s.value.subject.kind === 'plan' && s.value.subject.ref === w.name)
+      plan = { file: `${PLANS_DIR}/${w.name}.json`, title: view.title, finished: view.finished, total: view.total, steps }
+      const own = plans.scores.find(s => s.value !== null && s.value.subject.kind === 'plan' && s.value.subject.ref === w.name)
       const sv = own === undefined || own.value === null ? null : scoresView(own.value)
       if (own !== undefined && sv !== null) {
         scores = { name: own.name, totals: sv.totals, open: sv.open.map(f => ({ id: f.id, text: f.text, severity: f.severity })) }
@@ -171,14 +171,14 @@ export async function readSaveInput($: EngineInterface, at: number, git: string[
   }
   const counted = Object.values(await readStats($))
   const isWorking = (await readLive($)).turnId !== null
-  const point = h.point ?? u.window
+  const point = h.point ?? usage.window
   return {
-    at, percent: u.tokens === null || point === null ? null : percentOf(u.tokens, point), threshold: h.threshold,
+    at, percent: usage.tokens === null || point === null ? null : percentOf(usage.tokens, point), threshold: h.threshold,
     session: await $.session.id(), model: m.model, git, plan, scores,
     counts: {
-      turn: m.turnCount + (isWorking ? 1 : 0), durationMs: u.startedAt === null ? null : at - u.startedAt,
-      calls: counted.reduce((n, t) => n + t.calls, 0), failed: counted.reduce((n, t) => n + t.failed, 0),
-      agents: (await readAgents($)).length, costUsd: u.costUsd, isEstimate: u.windows.length > 0,
+      turn: m.turnCount + (isWorking ? 1 : 0), durationMs: usage.startedAt === null ? null : at - usage.startedAt,
+      calls: counted.reduce((n, t) => n + t.calls, 0), failed: counted.reduce((n, stat) => n + stat.failed, 0),
+      agents: (await readAgents($)).length, costUsd: usage.costUsd, isEstimate: usage.windows.length > 0,
     },
   }
 }
@@ -230,7 +230,7 @@ export async function stepHandoff($: EngineInterface, tokens: number | undefined
   if (h.mode === 'off' || h.alfred.state === 'stood-down') return
   const step = nextStep(h.handled, percent, steps)
   if (step === null) return
-  await updateHandoff($, x => ({ ...x, handled: step, isAskUp: x.mode === 'ask' }))
+  await updateHandoff($, handoff => ({ ...handoff, handled: step, isAskUp: handoff.mode === 'ask' }))
   if (h.mode === 'ask') toast($, TOASTS.ask(step))
   else void startSave($, 'auto')
 }
@@ -239,11 +239,11 @@ export async function stepHandoff($: EngineInterface, tokens: number | undefined
 // down, the runway while it applies, as the HANDOFF row
 export async function handoffStateLine($: EngineInterface): Promise<string> {
   const h = await readHandoff($)
-  const u = await readUsage($)
-  const point = h.point ?? u.window
-  const ctx = u.tokens === null || point === null ? 'ctx –' : `ctx ${percentOf(u.tokens, point)}%`
+  const usage = await readUsage($)
+  const point = h.point ?? usage.window
+  const ctx = usage.tokens === null || point === null ? 'ctx –' : `ctx ${percentOf(usage.tokens, point)}%`
   if (h.alfred.state === 'stood-down') {
-    const runway = runwayOf(await readStack($), u, (await readMeta($)).model)
+    const runway = runwayOf(await readStack($), usage, (await readMeta($)).model)
     return `${runway === null ? ctx : `ctx ${runway.percent}% of ${tokensText(runway.resumeAt)}`} · handoff by Alfred Code`
   }
   if (h.mode === 'off') return `Handoff: off · ${ctx}`
@@ -266,8 +266,8 @@ export async function followStatusFile($: EngineInterface, text: string | null, 
   // A stand-down lifted by this read steps at the last reading, so the ask returns without waiting for a turn; a
   // compaction's re-arm waits for a fresh reading instead
   if (!wasStoodDown || handoffMemory.stoodDown || handoffMemory.rearm) return
-  const u = await readUsage($)
-  if (u.tokens !== null && u.window !== null) await stepHandoff($, u.tokens, u.window)
+  const usage = await readUsage($)
+  if (usage.tokens !== null && usage.window !== null) await stepHandoff($, usage.tokens, usage.window)
 }
 
 export async function runHandoffCommand($: EngineInterface, e: MatchedInput<'command.run', { command: 'auto-handoff' }>, pending: Pending) {
