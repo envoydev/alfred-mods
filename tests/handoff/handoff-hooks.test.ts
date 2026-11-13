@@ -5,10 +5,11 @@ import type { On, RenderSurface, SessionUsage } from 'claude-code'
 import { clock as clockText } from '../../hooks/core/format'
 import { HANDOFF_USAGE as USAGE } from '../../hooks/handoff/handoff'
 import { KEYS } from '../../hooks/rec/samples'
-import type { Handoff, Meta } from '../../types'
 import { NO_READING, PRESENTATION, SPAWN, START, engine, gitResult, rows, setUser, step, stepEngine, stubAll, watchState } from '../kit'
 import type { FileStub } from '../kit'
 import { PLAN_JSON, SCORES_JSON } from '../plans'
+import type { Handoff } from '../../hooks/handoff/types'
+import type { Meta } from '../../hooks/session/types'
 
 const STATUS = '.claude/session-inspector/status/s1.json'
 const ASK = (step: number) => `Context past ${step}%: press 4 or run /auto-handoff now to save a handoff`

@@ -2,6 +2,7 @@
 // one line each and read nothing that can fail again.
 
 import { printable } from './format'
+import type { FailKind } from './types'
 
 // A REC site whose hook failed: its row is not drawn at all, as REC could not mask it
 export const REC_HIDDEN = '‹row hidden: REC could not mask it›'
@@ -9,7 +10,6 @@ export const REC_HIDDEN = '‹row hidden: REC could not mask it›'
 // The spinner's word while REC is on and its hook failed: the engine's own word can name a file
 export const SPINNER_WORD = 'Working'
 
-export type FailKind = 'throw' | 'timeout'
 
 export function bandFailed(kind: FailKind): string {
   return `alfred-mods: the band failed to draw (${kind})`

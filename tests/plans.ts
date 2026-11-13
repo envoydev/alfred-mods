@@ -1,6 +1,6 @@
 // Plan and scores fixtures shared by the plan tests
 import { parsePlan } from '../hooks/plan/plan'
-import type { Plan, PlanStep, StepStatus, StepTime } from '../types'
+import type { Plan, PlanStep, StepStatus, StepTime } from '../hooks/plan/types'
 
 // The brief's two examples ('Data contracts for the plan and scorer skills'), verbatim
 export const PLAN_JSON = `{

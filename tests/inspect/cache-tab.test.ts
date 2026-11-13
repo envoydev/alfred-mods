@@ -4,7 +4,8 @@ import type { RenderSurface, SessionUsage } from 'claude-code'
 
 import { clock as clockText } from '../../hooks/core/format'
 import { PRESENTATION, START, SWITCH, engine, rows, step, stepEngine, stubAll, watchState } from '../kit'
-import type { Cache, Meta } from '../../types'
+import type { Cache } from '../../hooks/cache/types'
+import type { Meta } from '../../hooks/session/types'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const PANE = { title: 'Inspect', isFocused: false, bodyColumns: 100, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 30 }, view: {} }

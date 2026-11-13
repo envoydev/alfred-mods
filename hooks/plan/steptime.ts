@@ -2,13 +2,10 @@
 // `{ ms, isShared, at }` and `overhead:<plan>:<session id>` holds `{ ms, at }`. Each session writes only its own keys,
 // so two sessions never race; a read sums them all. Pure functions; register.ts reads and writes the store.
 import { isFinishedStep, runs } from './plan'
-import type { Credit, Outcome, Plan, Slice, StepTime, Watched } from '../../types'
+import type { CallWait, Close, Credit, Named, Plan, Slice, StepTime, Target, Watched } from './types'
+import type { Outcome } from '../tools/types'
+import type { Entries } from '../session/types'
 
-export type Named = { plan: string | null; task: string | null }
-export type Target = { steps: string[]; isShared: boolean } | 'overhead' | null
-// The store keys a loop's span is split among, equally; none: the span is taken and goes nowhere, or to the task list
-export type Close = { loop: string; keys: string[]; isShared: boolean }
-export type Entries = Record<string, unknown>
 
 const KEPT_MS = 30 * 86_400_000
 
@@ -120,8 +117,6 @@ export function liveSpans(c: Credit, closes: Close[], now: number): Record<strin
   return spans
 }
 
-// A settled call, for the person's wait inside it
-export type CallWait = { tool: string; ms: number; isMain: boolean; isAsked: boolean; outcome: Outcome | null; durationMs: number | null }
 
 // Phase 0 answer 11: a call the person was asked about waited its time less the tool's own `duration_ms`, or all of it
 // when declined, as a declined call has none; null while its `duration_ms` has yet to arrive. An all-wait call waited

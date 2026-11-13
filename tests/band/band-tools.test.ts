@@ -6,8 +6,9 @@ import type { On, RenderSurface, SessionContextBreakdown, SessionUsage } from 'c
 
 import { PRESENTATION, START, engine, rows, setUser, step, stepEngine, stubAll, watchState } from '../kit'
 import { tokens } from '../../hooks/core/format'
+import type { Parts } from '../../hooks/context/types'
+import type { Meta } from '../../hooks/session/types'
 
-import type { Meta, Parts } from '../../types'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const NOW = Date.parse('2026-10-28T14:00:00Z')

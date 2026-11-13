@@ -1,9 +1,9 @@
 // REC on Claude Code's own rows (spec 'Where REC masks'): the strings inside a row's props masked with every key, type
 // and non-string value kept, the AskUserQuestion dialog kept inside the tool's limits, and the result blocks a rewrite
 // cannot carry drawn as the mod's own masked lines.
-import type { Line } from '../band/band'
 import { cutMasked, printable } from '../core/format'
-import type { Hit } from './rec'
+import type { Line } from '../core/types'
+import type { Hit, ResultMask } from './types'
 
 // Tools whose masked result does not draw; the live check adds any it finds (spec Risks row 1)
 export const REFUSED: readonly string[] = []
@@ -61,7 +61,6 @@ function stringsOf(value: unknown): string[] {
   return []
 }
 
-export type ResultMask = { kind: 'same' } | { kind: 'output'; output: unknown } | { kind: 'tree'; text: string }
 
 // The line an errored result draws under REC when the mod never saw its error text
 export const HIDDEN_ERROR = 'Error · text hidden while REC is on'

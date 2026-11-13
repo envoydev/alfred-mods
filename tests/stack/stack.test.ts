@@ -1,13 +1,15 @@
 import { expect, test } from 'claude-code/testing'
 
 import { bandLines } from '../../hooks/band/band'
-import type { BandInput, Line } from '../../hooks/band/band'
 import { widthOf } from '../../hooks/core/format'
 import { handoffLines } from '../../hooks/handoff/handoff'
-import type { HandoffView } from '../../hooks/handoff/handoff'
 import { STACK_TOASTS, bannerSegs, fillReady, fillToast, modelsAgree, parseStack, runwayOf } from '../../hooks/stack/stack'
 import { usageLines } from '../../hooks/inspect/tabs'
-import type { Stack, Turn, Usage } from '../../types'
+import type { BandInput } from '../../hooks/band/types'
+import type { Line } from '../../hooks/core/types'
+import type { HandoffView } from '../../hooks/handoff/types'
+import type { Turn, Usage } from '../../hooks/session/types'
+import type { Stack } from '../../hooks/stack/types'
 
 const PROMPT = 'Read docs/work/plans/inspector.md, check that branch feat/x is checked out, and continue from its Resume: line (Task 3).\nThen run npm test.'
 const FULL = {

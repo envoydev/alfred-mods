@@ -2,11 +2,11 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { EngineInterface, On, RenderElement, RenderInput, RenderPropsOf } from 'claude-code'
 
-import type { Line } from '../../hooks/band/band'
 import { callLine, groupLines } from '../../hooks/tools/compact'
-import type { CompactCall } from '../../hooks/tools/compact'
 import { KEYS } from '../../hooks/rec/samples'
 import { START, engine, rows, setUser, stubAll } from '../kit'
+import type { Line } from '../../hooks/core/types'
+import type { CompactCall } from '../../hooks/tools/types'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const KEY = KEYS[0]!

@@ -4,11 +4,15 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import type { BandSetting, Handoff, Quiet, RecState, Stack } from '../../types'
 import { HANDOFF_USAGE } from '../../hooks/handoff/handoff'
 import { REC_HELP, recStatus } from '../../hooks/rec/rec'
 import { PRESENTATION, START, engine, stubAll, watchState } from '../kit'
 import type { FileStub } from '../kit'
+import type { BandSetting } from '../../hooks/band/types'
+import type { Handoff } from '../../hooks/handoff/types'
+import type { RecState } from '../../hooks/rec/types'
+import type { Stack } from '../../hooks/stack/types'
+import type { Quiet } from '../../hooks/tools/types'
 
 const STATUS = '.claude/session-inspector/status/s1.json'
 const STATUS_FILE: FileStub = {

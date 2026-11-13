@@ -7,9 +7,11 @@ import type { On, RenderSurface, RenderViewport } from 'claude-code'
 
 import { resolve, skippedToast } from '../../hooks/settings/settings'
 import { STACK_TOASTS } from '../../hooks/stack/stack'
-import type { Handoff, Meta, View } from '../../types'
 import { PRESENTATION, SPAWN, START, engine, engineSites, rows, setUser, stubAll, watchState } from '../kit'
 import type { FileStub } from '../kit'
+import type { Handoff } from '../../hooks/handoff/types'
+import type { View } from '../../hooks/inspect/types'
+import type { Meta } from '../../hooks/session/types'
 
 const run = async ($: Engine, command: string, args: string): Promise<string> =>
   (await $.command.run({ command, args, origin: { kind: 'composer' }, presentation: PRESENTATION })).text ?? ''

@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast, writeField } from '../../hooks/settings/settings'
-import type { Field, Resolved, Skip, Source, Values } from '../../hooks/settings/settings'
+import type { Field, Resolved, Skip, Source, Values } from '../../hooks/settings/types'
 
 // A valid value for each field that differs from its default, and a second one that differs from both
 const ONE: Values = { band: 'calm', bandPlace: 'under', bandRows: false, quiet: false, rec: 'on', handoff: 'auto', handoffAt: 70 }

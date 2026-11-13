@@ -3,9 +3,10 @@
 // The rule: https://code.claude.com/docs/en/prompt-caching.md; idle compaction: settings-reference, `idleCompaction`.
 import type { ModelUsage } from 'claude-code'
 
-import type { Line, Tone } from '../band/band'
 import { bar, toneOf, tokens, usd } from '../core/format'
-import type { Billing, Cache, CacheConfig, CacheTier, Window } from '../../types'
+import type { Billing, Cache, CacheConfig, CacheTier, CacheView, TierOf } from './types'
+import type { Line, Tone } from '../core/types'
+import type { Window } from '../session/types'
 
 export const TTL_MS: Record<CacheTier, number> = { '5m': 300_000, '1h': 3_600_000 }
 // The warning's window: a 1h cache's last 5 minutes, a 5m cache's last minute
@@ -44,7 +45,6 @@ export function idleOf(v: { idleCompaction?: unknown; autoCompactEnabled?: unkno
   return { idleOff, idleMinTokens: n > 0 ? Math.max(100_000, n) : 200_000 }
 }
 
-export type TierOf = { tier: CacheTier; from: 'pin' | 'switch' | 'default'; isEstimate: boolean }
 
 // A pin, else the last switch's report while the billing it was made under holds, else the default as an estimate
 export function tierOf(c: Cache, billing: Billing): TierOf {
@@ -83,10 +83,6 @@ export function afterCompact(c: Cache): Cache {
   return { ...c, lastAt: null, last: null }
 }
 
-export type CacheView = {
-  tier: TierOf; state: 'warm' | 'cold'; leftMs: number | null; reuseLast: number | null; reuseSession: number | null
-  cached: number; rewriteUsd: number | null; isClosing: boolean
-}
 
 const cachedOf = (c: Cache): number => (c.last === null ? 0 : c.last.read + c.last.write)
 

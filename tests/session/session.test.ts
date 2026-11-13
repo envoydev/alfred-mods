@@ -4,7 +4,7 @@ import type { SessionUsage } from 'claude-code'
 import { localDate } from '../../hooks/core/forecast'
 import { when } from '../../hooks/core/format'
 import { PRESENTATION, SPAWN, START, engine, stubAll, watchState } from '../kit'
-import type { Meta, Totals, Turn, Usage } from '../../types'
+import type { Meta, Totals, Turn, Usage } from '../../hooks/session/types'
 
 const USAGE = {
   input_tokens: 2, output_tokens: 254, cache_read_input_tokens: 33603, cache_creation_input_tokens: 34287, model: 'claude-sonnet-5-5',

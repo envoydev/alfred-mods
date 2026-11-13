@@ -1,15 +1,10 @@
 // F10's compact tool rows (brief 'Compact tool rows', Decisions 4 to 8): one line per call, runs of reads folded into
 // one, and the result block's preview emptied. Every line is drawn through drawLines, so REC masks it after compacting.
-import type { Line, Seg } from '../band/band'
 import { reportLine } from '../agents/agents'
 import { duration, fitLine, tokens, widthOf } from '../core/format'
+import type { Line, Seg } from '../core/types'
+import type { CompactCall, RowContext } from './types'
 
-// `outcome` and `reason`: a call the person denied or a rule, a hook or the classifier blocked, as Phase 1 settled it
-// `isAutoAllowed`: auto mode's classifier let the call run, no one asked
-export type CompactCall = {
-  tool: string; input: unknown; output: unknown; isErrored: boolean; isInterrupted: boolean
-  outcome: 'denied' | 'blocked' | null; reason: string | null; isAutoAllowed?: boolean
-}
 
 // Tools a group folds into one reads line (Decision 8)
 const READ_ONLY = ['Read', 'Grep', 'Glob', 'LS', 'NotebookRead']
@@ -21,8 +16,6 @@ const READ_ONLY = ['Read', 'Grep', 'Glob', 'LS', 'NotebookRead']
 // (live, 2026-11-12); the row carries that line and a background run as steps of its own
 export const DROPS_RESULT: readonly string[] = ['Bash', 'Edit', 'Write', 'WebFetch', 'WebSearch', 'Agent', 'AskUserQuestion']
 
-// What a row knows besides the call: the project folder, so a path reads from it, and how many times it ran in a row
-export type RowContext = { cwd?: string | null; times?: number }
 
 // Steps a run of reads draws before `+k more`
 const READ_STEPS = 4

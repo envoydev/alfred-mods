@@ -6,15 +6,19 @@ import type { On, SessionUsage } from 'claude-code'
 
 import { newRow } from '../../hooks/agents/agents'
 import { agentSegs, bandLines, cellsOf, ruleSegs, toggleForms, toolRows } from '../../hooks/band/band'
-import type { BandInput, Line } from '../../hooks/band/band'
 import { drawLines } from '../../hooks/core/draw'
 import { widthOf } from '../../hooks/core/format'
 import { SPAWN, START, engine, rows, stubAll, watchState } from '../kit'
 import { FIVE, FIVE_OVERHEAD, FIVE_TIMES, NOW as PLAN_NOW, SCORING_JSON, STATUS_JSON, planOf } from '../plans'
 import { planView, scoresView } from '../../hooks/plan/plan'
 import { parseAlfredScoring, parseAlfredStatus } from '../../hooks/plan/alfredplan'
+import type { AgentRow, AgentStatus } from '../../hooks/agents/types'
+import type { BandInput } from '../../hooks/band/types'
+import type { Cache } from '../../hooks/cache/types'
+import type { Line } from '../../hooks/core/types'
+import type { Meta, Turn } from '../../hooks/session/types'
+import type { ToolStat } from '../../hooks/tools/types'
 
-import type { AgentRow, AgentStatus, Cache, Meta, ToolStat, Turn } from '../../types'
 
 const NOW = Date.parse('2026-10-28T14:00:00Z')
 const P = NOW - 73 * 60_000

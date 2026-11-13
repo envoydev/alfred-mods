@@ -4,8 +4,8 @@
 import type { EngineInterface } from 'claude-code'
 
 import { localDate } from '../core/forecast'
+import type { Entries } from './types'
 
-export type Entries = Record<string, unknown>
 type Last = { micros: number; at: number }
 
 const DAY = 86_400_000

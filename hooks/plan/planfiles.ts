@@ -1,8 +1,8 @@
 // The plan and scores folders: listed, and each new or changed `*.json` file read, never written. A file that does not
 // parse keeps its last good parse, marked invalid; one over 4 MiB is invalid unread, as `$.fs.read` refuses it.
 import type { EngineInterface } from 'claude-code'
+import type { Watched } from './types'
 
-import type { Watched } from '../../types'
 
 export const PLANS_DIR = '.claude/session-inspector/plans'
 export const SCORES_DIR = '.claude/session-inspector/scores'

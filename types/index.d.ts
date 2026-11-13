@@ -1,4 +1,5 @@
-// The alfred-mods's $.state contract: every value the hooks module keeps for the session.
+// The alfred-mods's $.state contract: every value the hooks module keeps for the session. It imports nothing:
+// `claude plugin validate` refuses an import here (checked 2026-11-13), so each folder's types.ts re-exports its own.
 export type Outcome = 'ok' | 'error' | 'denied' | 'blocked' | 'refused'
 export type ToolStat = { calls: number; ok: number; failed: number; stopped: number }
 export type Failure = {
@@ -33,6 +34,8 @@ export type Usage = {
 export type Totals = { input: number; output: number; cacheRead: number; cacheWrite: number; stepOutput: number; stepMs: number }
 // A prompt the person entered that no turn has answered yet, by a fingerprint of its text, never the text
 export type Waiting = { at: number; key: string }
+// Where the session works (the user, 2026-11-11)
+export type Place = { project: string; folder?: string; branch: string | null; changes?: { added: number; removed: number }; sync?: { ahead: number; behind: number } }
 export type Meta = {
   model: string | null; effort: string | null; compactions: number; lastCompactAt: number | null
   lastPromptAt: number | null; lastReplyAt: number | null; turnCount: number; waiting: Waiting[]
@@ -46,7 +49,7 @@ export type Meta = {
   // `changes`: the repository's uncommitted lines against HEAD, a new untracked file's lines as added; absent until
   // read, or when git refused
   // `sync`, commits ahead of and behind the branch's upstream as of the last fetch; absent with no upstream
-  place?: { project: string; folder?: string; branch: string | null; changes?: { added: number; removed: number }; sync?: { ahead: number; behind: number } }
+  place?: Place
   // Claude Code's version, read at start
   version?: string
   // A resumed or branched conversation: it holds skills loaded before the mod watched it, which no API lists

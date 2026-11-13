@@ -2,7 +2,8 @@ import { expect, test } from 'claude-code/testing'
 import type { Plugin } from 'claude-code/testing'
 
 import { SPAWN, stubAll, watchState } from '../kit'
-import type { Failure, Live } from '../../types'
+import type { Live } from '../../hooks/session/types'
+import type { Failure } from '../../hooks/tools/types'
 
 // Each test's own hooks stand for the engine, in the order Phase 0 saw the events
 const failed = (text: string) => ({ isError: true as const, result: text, text })

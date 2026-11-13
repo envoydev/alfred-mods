@@ -8,10 +8,7 @@ import type {
 
 import { actionOf, addLoopStep, agentTree, isLive, newRow, refreshAgents, statusAt, upsertSpawn } from './agents/agents'
 import { bandLines, spinnerSuffix, statusText, underRows } from './band/band'
-import type { BandInput } from './band/band'
-import {
-  addRequest, afterCompact, billingOf, cacheView, idleOf, minutes, needsTick, pinOf, takeRate, takeSwitch, toastAt,
-} from './cache/cache'
+import { addRequest, afterCompact, billingOf, cacheView, idleOf, minutes, needsTick, pinOf, takeRate, takeSwitch, toastAt } from './cache/cache'
 import { baseCost, pruneCost, recordCost, todayUsd } from './session/cost'
 import { drawLines, drawNote, drawUnder, drawUnderNote, drawWithInput } from './core/draw'
 import { localDate } from './core/forecast'
@@ -22,53 +19,33 @@ import { mask, maskForFile, maskSpans, recLevel, setRec, toast } from './rec/mas
 import { maskDeep, maskDialog, maskResult, neutralDialog, resultLines } from './rec/sites'
 import { DROPS_RESULT, callLine, groupLines } from './tools/compact'
 import { aheadBehind, numstatTotals, textLines, untrackedNames } from './place/changes'
-import type { CompactCall } from './tools/compact'
-import {
-  FOREIGN, HANDOFF_PATH, HANDOFF_USAGE, MARKER, MODES, RESUME_PROMPT, TOASTS, gitPart, handoffText, nextStep,
-  parseStatus, percentOf, statusPath, stepUnder, stepsOf, windowThreshold,
-} from './handoff/handoff'
-import type { HandoffView, PlanPart, SaveInput, ScoresPart } from './handoff/handoff'
+import { FOREIGN, HANDOFF_PATH, HANDOFF_USAGE, MARKER, MODES, RESUME_PROMPT, TOASTS, gitPart, handoffText, nextStep, parseStatus, percentOf, statusPath, stepUnder, stepsOf, windowThreshold } from './handoff/handoff'
 import { NO_FILE, STACK_TOASTS, UNREADABLE, bannerSegs, fillReady, fillToast, parseStack, runwayOf } from './stack/stack'
-import type { Runway } from './stack/stack'
 import { creditedPlan, isFinishedStep, isPlanDone, parsePlan, parseScores, planView, runs, scoresView, shownPlan, taskView, tasksAfter } from './plan/plan'
-import type { PlanView, ScoresView } from './plan/plan'
 import { PLANS_DIR, SCORES_DIR, readFolder, readPlanFolder } from './plan/planfiles'
 import { parseAlfredScoring, parseAlfredStatus } from './plan/alfredplan'
 import { planLines, scoresLabel } from './plan/planlines'
 import { closeOf, closeSlices, closeWait, isAllWait, liveSpans, mineOf, openWait, overheadKey, sliceMs, staleKeys, stepKey, sumTimes, waitOf } from './plan/steptime'
-import type { Close } from './plan/steptime'
 import { agentsLines, asCommands, cacheLines, nowLines, paneCommands, reportRows, tabBar, timelineLines, toolsLines, usageLines } from './inspect/tabs'
 import { classify, fold, numberOf, targetOf, toolKey } from './tools/outcome'
 import { LEVELS, REC_HELP, addWord, parseWords, recNote, recPaneLines, recStatus, recTest } from './rec/rec'
 import { BAND_MODES, DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, nameOf, resolve, skippedToast, writeField } from './settings/settings'
-import type { Field, From, Resolved, Source, Values } from './settings/settings'
 import { baseName, folderOf, gitDirOf, headBranch, parentOf } from './place/place'
 import { dropPassed, nextWindows, storedWindows } from './session/windows'
-import type { CallFacts } from './tools/outcome'
-import type {
-  AgentRow, Cache, CacheConfig, Credit, Failure, Handoff, Live, Loop, Meta, Outcome, Pace, Plan, PlanChange, Level, Plans, Quiet, BandSetting, BandMode, RecState, SaveResult, Scores, Stack, Tab, TaskItem, ToolStat, Totals, Turn, Usage, View,
-  Watched, Window,
-} from '../types'
+import type { AgentRow, Loop } from './agents/types'
+import type { BandInput, BandMode, BandSetting } from './band/types'
+import type { Cache, CacheConfig } from './cache/types'
+import type { Handoff, HandoffView, PlanPart, SaveBy, SaveInput, SaveResult, ScoresPart } from './handoff/types'
+import type { Tab, View } from './inspect/types'
+import type { Close, Credit, Plan, PlanChange, PlanDraw, PlanView, Plans, Scores, ScoresView, TaskItem, Watched } from './plan/types'
+import type { Level, RecState } from './rec/types'
+import type { Live, Meta, Pace, Totals, Turn, Usage, Window } from './session/types'
+import type { Field, From, Resolved, Source, Values } from './settings/types'
+import type { Runway, Stack } from './stack/types'
+import type { Call, CallFacts, CompactCall, Failure, Outcome, Quiet, ToolStat } from './tools/types'
+import type { Held } from './core/types'
 
-// What the events said about one call. Never drawn, so a reload losing the calls in flight costs only those.
-// `pendingMs`: a call the person was asked about, settled before its `duration_ms` arrived, waits for it.
-type Call = {
-  facts: CallFacts; key: string; tool: string; target: string; agentId: string | null
-  // `by`: the hook script its last settle counted a block for
-  settled: boolean; outcome: Outcome | null; rowId: string | null; by: string | null
-  startedAt: number | null; durationMs: number | null; pendingMs: number | null
-  // A Skill call whose skill runs forked, in a subagent of its own: never in the main context
-  isFork?: boolean
-}
 
-// What outlives one hook but is no $.state value: the cache's toast timer, a [Compact] in flight, the compactions the
-// mod's own hook counted, whether the session started in the terminal's REPL, which only session.start says and
-// /clear does not repeat, the plan folders' next read and the read running, one at a time, and the step-time writes,
-// in order
-type Held = {
-  close: Timer | null; compacting: boolean; counted: number; isTerminal: boolean; reload: Timer | null; reading: Promise<void>
-  writes: Promise<void>
-}
 
 const INITIAL = {
   stats: {} as Record<string, ToolStat>,
@@ -807,13 +784,6 @@ async function scoreLevel($: EngineInterface): Promise<number | null> {
   return s.state === 'used' && s.scorer !== null && s.scorer.on ? s.scorer.level : null
 }
 
-// What the band and the Plan tab draw of the plans (Decisions 5, 7, 18): the tab the shown plan or task list, the
-// band the one this session's time goes to, only while it runs or for 10 minutes after it finished this session;
-// their scores, else the newest; the rest
-type PlanDraw = {
-  shown: PlanView | null; band: PlanView | null; invalid: boolean; scores: ScoresView | null; score: ScoresView | null
-  isPlanScore: boolean; others: string[]; otherScores: string[]; updatedAt: number | null
-}
 
 async function planDraw($: EngineInterface, now: number): Promise<PlanDraw> {
   const p = await read($, plans)
@@ -1571,8 +1541,6 @@ async function pointOf($: EngineInterface, window: number): Promise<number> {
   return point
 }
 
-// Who asked for a save: auto mode, a press of h or 4 or `/auto-handoff now`, or c, which compacts after it
-type SaveBy = 'auto' | 'press' | 'compact'
 
 // A save runs from a 0 ms timer, so no hook waits on git; a request while one runs joins it
 function startSave($: EngineInterface, by: SaveBy): Promise<SaveResult> {

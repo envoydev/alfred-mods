@@ -1,7 +1,7 @@
 // Plan and scores files: their parse, the plan view and the scores view. The contract is the README's 'Plan and score
+import type { Finding, Plan, PlanChange, PlanStep, PlanView, Plans, ScoreRound, Scores, ScoresView, Severity, StepRow, StepStatus, StepTime, TaskItem, Watched } from './types'
 // files', from the brief's 'Data contracts for the plan and scorer skills'. What a file requires makes it invalid when
 // missing; an optional field that does not fit is dropped.
-import type { Finding, Plan, PlanChange, PlanStep, Plans, ScoreRound, Scores, Severity, StepStatus, StepTime, TaskItem, Watched } from '../../types'
 
 const STATUSES: readonly string[] = ['pending', 'in_progress', 'done', 'failed', 'blocked', 'skipped']
 const KINDS: readonly string[] = ['created', 'step_added', 'step_changed', 'step_removed', 'integrated']
@@ -91,15 +91,6 @@ export function parseScores(text: string): Scores | null {
   }
 }
 
-export type StepRow = { step: PlanStep; actualMs: number; forecastMs: number | null; isShared: boolean; notes: string[] }
-export type PlanView = {
-  title: string; finished: number; total: number; percent: number
-  running: StepRow[]; next: StepRow | null; lastFinished: StepRow | null; rows: StepRow[]
-  workedMs: number; overheadMs: number; leftMs: number; totalMs: number
-  ratio: number; isCalibrated: boolean; unestimated: number; isFinished: boolean; staleMs: number | null; planNotes: string[]
-  // Alfred Code's plan before its approval
-  isAwaiting: boolean
-}
 
 const MIN = 60_000
 const STALE_MS = 20 * MIN
@@ -177,15 +168,6 @@ export function planView(plan: Plan, times: Record<string, StepTime>, overheadMs
   }
 }
 
-// `shown`: the round whose total is the score, the released one when the writer names it, else the newest;
-// `isGrading`: Alfred Code's grading still runs, so that total may change
-export type ScoresView = {
-  scale: number; totals: { round: number; total: number }[]; delta: number | null
-  shown: { round: number; total: number }; isGrading: boolean
-  criteria: { name: string; prev: number | null; last: number }[]
-  severities: { severity: Severity; prev: number; last: number }[]
-  fixed: Finding[]; improved: Finding[]; open: Finding[]; hasStatus: boolean
-}
 
 const SEVERITY_ORDER: readonly Severity[] = ['BLOCKER', 'MATERIAL', 'MINOR']
 

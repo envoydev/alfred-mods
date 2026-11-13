@@ -2,10 +2,10 @@ import { expect, test } from 'claude-code/testing'
 
 import { parseScores, planView, scoresView } from '../../hooks/plan/plan'
 import { planLine, planLines, scoresLabel } from '../../hooks/plan/planlines'
-import type { Line } from '../../hooks/band/band'
 import { widthOf } from '../../hooks/core/format'
 import { FIVE, FIVE_OVERHEAD, FIVE_TIMES, MIN, NOW, SCORES_JSON, planOf } from '../plans'
-import type { Scores, ScoreRound } from '../../types'
+import type { Line } from '../../hooks/core/types'
+import type { ScoreRound, Scores } from '../../hooks/plan/types'
 
 const text = (line: Line): string => line.map(s => ('text' in s ? s.text : '')).join('').replace(/ +/g, ' ').trim()
 const O = { invalid: false, others: [], otherScores: [], updatedAt: null, now: NOW, columns: 120 }

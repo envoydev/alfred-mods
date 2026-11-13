@@ -2,28 +2,26 @@
 import { LOOPS_NOTE, agentTime, agentTree, isLive, laneFit, lanesOf, loopsLine, reportLine, statusGlyph, toolSummary } from '../agents/agents'
 import { REC_MARK, barSegs, cacheWarning, pctSeg, skillSegs, windowsInOrder, working, wrapRows } from '../band/band'
 import { IDLE_COMPACT_MS, billingOf, cacheLine, cacheView, selfCompacts, toastAt } from '../cache/cache'
-import type { BandInput, Line, Seg, Tone } from '../band/band'
 import { clock, duration, fitLine, modelParts, modelText, printable, tokens, usd, when } from '../core/format'
 import { pace, turnsLeft } from '../core/forecast'
 import { handoffLines } from '../handoff/handoff'
 import { numberOf } from '../tools/outcome'
 import { PARTS_LABEL, listedText, loadedTexts, partsLines } from '../context/parts'
-import type { HandoffView } from '../handoff/handoff'
 import { planSection } from '../plan/planlines'
 import { recStatus } from '../rec/rec'
 import { storedMark } from '../session/windows'
 import { stackLines } from '../stack/stack'
-import type { Runway } from '../stack/stack'
+import type { AgentRow, Loop } from '../agents/types'
+import type { BandInput } from '../band/types'
+import type { Parts } from '../context/types'
+import type { Line, Seg, Tone } from '../core/types'
+import type { HandoffView } from '../handoff/types'
+import type { Tab, TabInput, View } from './types'
+import type { Totals, Turn } from '../session/types'
+import type { Runway, Stack } from '../stack/types'
+import type { Failure, ToolStat } from '../tools/types'
 
-import type { AgentRow, Failure, Loop, Parts, Stack, Tab, ToolStat, Totals, Turn, View } from '../../types'
 
-// `stack`: Alfred Code's status as last read, its resume prompt from module memory, the runway and the session's model
-export type TabInput = BandInput & {
-  failures: Failure[]; stats: Record<string, ToolStat>; totals: Totals; view: View; handoff?: HandoffView
-  // Blocks per hook script (spec C6); what fills the context (spec C1); loops no spawn announced (spec C3)
-  blockers?: Record<string, number>; parts?: Parts; loops?: Loop[]
-  stack?: { view: Stack; prompt: string | null; runway: Runway | null; sessionModel: string | null }
-}
 
 const TABS: [Tab, string, string, Tone?][] = [
   ['now', 'Now', 'n'], ['usage', 'Usage', 'u', 'usage'], ['agents', 'Agents', 'a', 'agents'], ['tools', 'Tools', 't'],

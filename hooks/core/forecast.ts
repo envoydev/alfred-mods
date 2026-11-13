@@ -1,5 +1,5 @@
 // Forecasts from the readings so far: turns left before the context reaches 80%, a window's pace, a sparkline.
-import type { PacePoint } from '../../types'
+import type { PacePoint } from '../session/types'
 
 const BLOCKS = '▁▂▃▄▅▆▇'
 

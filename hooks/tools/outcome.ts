@@ -1,24 +1,8 @@
 // A tool call's facts, as its events reported them, to the outcome the band and the pane show.
 import { oneLine } from '../core/format'
+import type { CallFacts, Failure, Outcome } from './types'
 
-import type { Failure, Outcome } from '../../types'
 
-export type CallFacts = {
-  tool: string
-  checked: 'allow' | 'ask' | 'deny' | null
-  checkReason: string | null
-  asked: boolean
-  failedInTool: boolean
-  interrupted: boolean
-  classifierReason: string | null
-  hookDeny: string | null
-  result: { isError: boolean; deny: string | null; text: string } | null
-  // The mod's own tool.call dispatch was abandoned when the call errored (types `Next.signal`): the person's Esc, or a
-  // hook above that settled first
-  aborted: boolean
-  // The session's last seen permission mode was 'auto' when the call started
-  autoMode: boolean
-}
 
 // The first rule that holds wins. Blocked, refused and interrupted calls never count as new: Claude recovers from
 // a block by itself, and an interrupt is the person's own act. `by` names the hook script that blocked the call, when

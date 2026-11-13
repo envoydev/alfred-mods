@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { parsePlan, parseScores, planView, scoresView, taskView, tasksAfter } from '../../hooks/plan/plan'
 import { FIVE, FIVE_OVERHEAD, FIVE_TIMES, MIN, NOW, PLAN_JSON, SCORES_JSON, planOf } from '../plans'
-import type { Scores, TaskItem } from '../../types'
+import type { Scores, TaskItem } from '../../hooks/plan/types'
 
 // The plan example as an object, changed by `change` and written back as text
 const planWith = (change: (p: Record<string, any>) => void): string => {

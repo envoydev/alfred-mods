@@ -1,15 +1,14 @@
 // Alfred Code's status file past Phase 4's fields (Phase 5 spec 'The reader'): each field checked alone, a bad one
 // read as unknown and named in `ignored`, the rest of the file still used.
-import type { FullContext, Stack, StackAutoCompact, StackScorer, Usage } from '../../types'
-import type { Line, Seg } from '../band/band'
 import { clock, fitLine, tokens } from '../core/format'
 import { parseStatus } from '../handoff/handoff'
+import type { Line, Seg } from '../core/types'
+import type { Usage } from '../session/types'
+import type { FullContext, Runway, Stack, StackAutoCompact, StackRead, StackScorer } from './types'
 
 export const NO_FILE = 'no status file for this session'
 export const UNREADABLE = 'unreadable'
 
-export type StackFields = Omit<Stack, 'state' | 'reason' | 'hasPrompt' | 'readAt'>
-export type StackRead = { state: 'ignored'; reason: string } | { state: 'used'; fields: StackFields; prompt: string | null }
 
 const CONTEXTS: FullContext[] = ['fresh-session', 'compact', 'off']
 // Control characters, C0, DEL and C1
@@ -87,9 +86,6 @@ export function modelsAgree(a: string | null, b: string | null): boolean {
   return a === null || b === null || bareModel(a) === bareModel(b)
 }
 
-// The context against the stack's resume trigger (spec 'The runway'): `percent` rounded down, past 100 past the
-// trigger; `at`, the trigger over the session's window, which the forecast counts turns to, or null when unknown
-export type Runway = { percent: number; resumeAt: number; at: number | null }
 
 export function runwayOf(s: Stack, u: Usage, sessionModel: string | null): Runway | null {
   if (s.state !== 'used' || s.fullContext !== 'fresh-session' || s.resumeAt === null || u.tokens === null) return null

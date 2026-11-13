@@ -1,8 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { classify, fold, targetOf, toolKey } from '../../hooks/tools/outcome'
-import type { CallFacts } from '../../hooks/tools/outcome'
-import type { Failure } from '../../types'
+import type { CallFacts, Failure } from '../../hooks/tools/types'
 
 // Each fixture is a Phase 0 shape (the brief's question 12)
 const base: CallFacts = { tool: 'Bash', checked: null, checkReason: null, asked: false, failedInTool: false, interrupted: false, classifierReason: null, hookDeny: null, result: null, aborted: false, autoMode: false }

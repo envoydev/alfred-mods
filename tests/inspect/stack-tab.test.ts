@@ -5,9 +5,9 @@ import type { On, RenderSurface, SessionUsage } from 'claude-code'
 import { clock } from '../../hooks/core/format'
 import { EMAILS } from '../../hooks/rec/samples'
 import { stackLines } from '../../hooks/stack/stack'
-import type { Stack } from '../../types'
 import { PRESENTATION, START, engine, rows, step, stepEngine, stubAll } from '../kit'
 import type { FileStub } from '../kit'
+import type { Stack } from '../../hooks/stack/types'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const STATUS = '.claude/session-inspector/status/s1.json'

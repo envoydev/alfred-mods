@@ -1,13 +1,9 @@
 // REC's masker: the classes of what a recording hides, compiled once per level and word list, and the one pass over a
 // text that replaces each match with its token (spec 'What each class hides').
-import type { Level } from '../../types'
-import type { Line } from '../band/band'
 import { AMOUNTS, EMAILS, KEYS, LEFT_ALONE, PHONES, strictSamples } from './samples'
+import type { Line } from '../core/types'
+import type { Compiled, Hit, Klass, Level } from './types'
 
-// A match and the text it draws as: a token, or digits as dots
-export type Hit = { start: number; end: number; text: string }
-type Klass = { re: RegExp; hit: (m: RegExpExecArray) => Hit | null }
-export type Compiled = { level: Level; classes: Klass[] }
 
 const whole = (token: string) => (m: RegExpExecArray): Hit => ({ start: m.index, end: m.index + m[0].length, text: token })
 

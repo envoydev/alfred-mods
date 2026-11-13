@@ -1,7 +1,7 @@
 // What the band shows from the session's first second (the user, 2026-11-11): the 5h and 7d windows the last reading
+import type { Usage, Window } from './types'
 // on this machine stored, until this session's own, and the project and branch read from git's own files, with no git
 // process.
-import type { Usage, Window } from '../../types'
 
 // The stored windows still ahead of their reset, with the time they were read; null for a value of any other shape, or
 // with none left

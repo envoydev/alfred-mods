@@ -5,8 +5,8 @@ import type { EngineInterface, SessionContextBreakdown } from 'claude-code'
 
 import { clock, tokens } from '../core/format'
 import { baseName } from '../place/place'
-import type { Line } from '../band/band'
-import type { Parts, SkillListing } from '../../types'
+import type { Parts, SkillListing } from './types'
+import type { Line } from '../core/types'
 
 export const NO_PARTS: Parts = { at: null, categories: [], plugins: [], memory: { files: 0, tokens: 0, top: [] } }
 

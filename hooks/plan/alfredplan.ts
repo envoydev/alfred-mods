@@ -1,7 +1,7 @@
 // Alfred Code's plan folder (alfred-code's plan folder contract, schema 1, the user's ruling of 2026-11-13):
+import type { Plan, PlanStep, ScoreRound, Scores, Severity, StepStatus } from './types'
 // `status.json` read as a plan and `scoring.json` as that plan's scores, so the band, the Plan tab and the step times
 // treat them as any other plan. A file breaking the contract reads as null, which keeps its last good read.
-import type { Plan, PlanStep, ScoreRound, Scores, Severity, StepStatus } from '../../types'
 
 type Obj = Record<string, unknown>
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v)

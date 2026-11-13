@@ -1,4 +1,5 @@
 // Plain values to the strings the band and the pane draw: bars, token counts, times, money, one-line cuts.
+import type { Family } from './types'
 
 // The one bar, in the band and the pane: 5 cells of 20%, ▰ filled and ▱ empty; a cell fills only when its share is
 // reached. The two parts joined are the whole bar, so the filled part can take its own colour.
@@ -113,7 +114,6 @@ export function widthOf(line: readonly object[]): number {
   return line.reduce<number>((n, s) => n + ('text' in s && typeof s.text === 'string' ? masker(s.text).length : 0), 0)
 }
 
-export type Family = 'opus' | 'sonnet' | 'haiku' | 'fable'
 
 // A model id's family and version: 'claude-opus-5-5' is opus 5.5; an id with no known family has none
 export function modelParts(model: string): { family: Family; version: string | null } | null {

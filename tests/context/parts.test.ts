@@ -5,7 +5,8 @@ import type { RenderSurface, SessionContextBreakdown, SessionUsage } from 'claud
 import { PRESENTATION, START, engine, rows, stubAll, watchState } from '../kit'
 import { clock } from '../../hooks/core/format'
 import { memoryName, partsOf, ruleName } from '../../hooks/context/parts'
-import type { Handoff, Parts } from '../../types'
+import type { Parts } from '../../hooks/context/types'
+import type { Handoff } from '../../hooks/handoff/types'
 
 // Spec C1: what fills the context, by category, plugin and memory file, from the breakdown A4 already reads
 const SURFACES = ['terminal', 'desktop'] as const

@@ -3,10 +3,10 @@ import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { shownPlan } from '../../hooks/plan/plan'
-import type { Plans } from '../../types'
 import { START, engine, stubAll, watchState } from '../kit'
 import type { FileStub } from '../kit'
 import { PLAN_JSON, SCORING_JSON, STATUS_JSON } from '../plans'
+import type { Plans } from '../../hooks/plan/types'
 
 // The plan folder the Alfred Code status file names (alfred-code's plan folder contract, the user's ruling of
 // 2026-11-13): read only through that field, so a project without Alfred Code reads exactly what it read before

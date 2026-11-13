@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { closeSlices, liveSpans, mineOf, overheadKey, sliceMs, staleKeys, stepKey, sumTimes, targetsOf, waitOf } from '../../hooks/plan/steptime'
 import { FIVE, planOf } from '../plans'
-import type { Credit } from '../../types'
+import type { Credit } from '../../hooks/plan/types'
 
 const NAME = 'token-refresh'
 const DAY = 86_400_000

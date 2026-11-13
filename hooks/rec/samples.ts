@@ -1,6 +1,4 @@
-// The fake samples REC's `/rec test` runs and the tests pin, one set per class (spec Acceptance). Every provider-shaped
-// one is assembled from parts at runtime, so no file of this public repo holds a literal a secret scanner would flag.
-export type Sample = { text: string; masked: string }
+import type { Sample } from './types'
 
 const whole = (text: string, token: string): Sample => ({ text, masked: token })
 const key = (text: string): Sample => whole(text, '‹key›')

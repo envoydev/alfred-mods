@@ -5,7 +5,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { aheadBehind, numstatTotals, untrackedNames } from '../../hooks/place/changes'
 import { START, engine, stubAll, watchState } from '../kit'
-import type { Meta } from '../../types'
+import type { Meta } from '../../hooks/session/types'
 
 const metaOf = (state: { get(key: string): unknown }): Meta => state.get('meta') as Meta
 

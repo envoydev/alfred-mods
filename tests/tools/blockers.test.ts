@@ -4,7 +4,7 @@ import type { On, RenderSurface } from 'claude-code'
 
 import { PRESENTATION, rows, stubAll, watchState } from '../kit'
 import { blockerOf } from '../../hooks/tools/outcome'
-import type { Failure } from '../../types'
+import type { Failure } from '../../hooks/tools/types'
 
 // Spec C6: a hook's block names the script that blocked it, and the Tools tab counts blocks per script
 const SURFACES = ['terminal', 'desktop'] as const

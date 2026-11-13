@@ -1,20 +1,13 @@
 // The mod's switches as values under one "alfred-mods" key in Claude Code's settings files (spec 2026-11-11
 // settings-values, S1-S3): each field read per file, the first valid value in the order policy, flag, local, project,
 // user, then an earlier command's choice, then the default. Pure: register.ts reads the files and the store.
-import type { BandMode, HandoffMode, Level } from '../../types'
 import { MODES, isThreshold } from '../handoff/handoff'
 import { LEVELS } from '../rec/rec'
+import type { BandMode } from '../band/types'
+import type { HandoffMode } from '../handoff/types'
+import type { Level } from '../rec/types'
+import type { Field, From, Resolved, Skip, Source, Values } from './types'
 
-export type Field = 'band' | 'bandPlace' | 'bandRows' | 'quiet' | 'rec' | 'handoff' | 'handoffAt'
-export type Source = 'policy' | 'flag' | 'local' | 'project' | 'user'
-export type From = Source | 'legacy' | 'default'
-export type Values = {
-  band: BandMode; bandPlace: 'above' | 'under'; bandRows: boolean; quiet: boolean; rec: Level
-  handoff: HandoffMode; handoffAt: number
-}
-export type Skip = { field: Field; source: Source }
-// `userFields`: the fields the user's own file gives a valid value, the ones whose old store key retires (S7)
-export type Resolved = { values: Values; from: Record<Field, From>; skipped: Skip[]; userFields: Field[] }
 
 export const FIELDS: readonly Field[] = ['band', 'bandPlace', 'bandRows', 'quiet', 'rec', 'handoff', 'handoffAt']
 export const SOURCES: readonly Source[] = ['policy', 'flag', 'local', 'project', 'user']

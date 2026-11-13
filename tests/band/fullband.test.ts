@@ -4,11 +4,14 @@ import type { Engine } from 'claude-code/testing'
 import type { RenderSurface, SessionUsage } from 'claude-code'
 
 import { bandLines, cellsOf, infoLine } from '../../hooks/band/band'
-import type { BandInput, Line } from '../../hooks/band/band'
 import { clock, widthOf } from '../../hooks/core/format'
 import { START, engine, rows, step, stepEngine, stubAll } from '../kit'
+import type { BandInput } from '../../hooks/band/types'
+import type { Cache } from '../../hooks/cache/types'
+import type { Line } from '../../hooks/core/types'
+import type { Turn } from '../../hooks/session/types'
+import type { ToolStat } from '../../hooks/tools/types'
 
-import type { Cache, ToolStat, Turn } from '../../types'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const NOW = Date.parse('2026-10-28T14:00:00Z')

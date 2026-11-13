@@ -1,9 +1,8 @@
 // The Plan tab, the Now tab's PLAN section and the band's plan line, from the plan and scores views to lines of
 // styled segments. Every title, note and finding is file content: draw.tsx makes each printable and masks it.
 import { bar, fitLine, mins, widthOf } from '../core/format'
-import type { Line, Seg } from '../band/band'
-import type { PlanView, ScoresView, StepRow } from './plan'
-import type { Finding, Scores, StepStatus } from '../../types'
+import type { Line, Seg } from '../core/types'
+import type { Finding, PlanView, Scores, ScoresView, StepRow, StepStatus } from './types'
 
 const MIN = 60_000
 const NOTE = '✎ your note integrated'

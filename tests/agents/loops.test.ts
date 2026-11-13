@@ -3,7 +3,7 @@ import type { Engine } from 'claude-code/testing'
 import type { On, RenderSurface } from 'claude-code'
 
 import { PRESENTATION, SPAWN, START, engine, rows, spawns, step, stepEngine, stubAll, watchState } from '../kit'
-import type { Loop } from '../../types'
+import type { Loop } from '../../hooks/agents/types'
 
 // Spec C3: model loops no spawn announced are counted apart, as Other loops (D3: workflow agents raise agent.spawn, so
 // the note names compactions and forks)

@@ -2,8 +2,10 @@
 import type { AgentInfo } from 'claude-code'
 
 import { duration, oneLine, tokens } from '../core/format'
-import type { Lane, Line, Seg } from '../band/band'
-import type { AgentRow, AgentStatus, Loop, ToolStat, TurnEnd } from '../../types'
+import type { AgentRow, AgentStatus, LaneFit, Loop, TreeRow } from './types'
+import type { Lane, Line, Seg } from '../core/types'
+import type { TurnEnd } from '../session/types'
+import type { ToolStat } from '../tools/types'
 
 // The first word of a prompt's first `plan:` and `task:` lines; nothing else of the prompt is kept, the rest of either
 // line included, as a model may write its brief on it
@@ -93,11 +95,6 @@ export function laneLabel(r: AgentRow): string {
   return r.task === null ? what : `task ${r.task} · ${what}`
 }
 
-// A lane's text widths at `columns` (spec C2): a glyph and a space, the label and a space, the bar, a space and the time. The time
-// cell is as wide as the longest lane's, never cut; the label as wide as the longest, from 6 to 40 cells, giving way
-// down to 6 so the bar keeps 10; the bar takes the rest up to 40, so a wide pane is not a row of dots (the user,
-// 2026-11-12). Null where even that does not fit: the pane draws no lanes.
-export type LaneFit = { label: number; bar: number; time: number }
 const LANE_MAX = 40
 export function laneFit(lanes: Lane[], columns: number): LaneFit | null {
   const time = Math.max(0, ...lanes.map(l => [...l.time].length))
@@ -143,7 +140,6 @@ export function actionOf(tool: string, target: string): string {
   return target === '' ? tool : `${tool} ${target}`
 }
 
-export type TreeRow = { row: AgentRow; depth: number; isLast: boolean; prefix: string }
 
 // Depth first, siblings oldest first, under the main loop as the root. A row sits under its parent only when that is
 // a row and its parents never lead back to it; else under the root.

@@ -3,7 +3,7 @@ import type { Engine } from 'claude-code/testing'
 import type { On, RenderSurface, SessionUsage } from 'claude-code'
 
 import { PRESENTATION, SPAWN, START, engine, rows, spawns, step, stubAll, watchState } from '../kit'
-import type { Turn } from '../../types'
+import type { Turn } from '../../hooks/session/types'
 
 // Spec C4: an agent cut off at max_tokens is flagged, and each main turn shows the session's spend while it ran
 const SURFACES = ['terminal', 'desktop'] as const

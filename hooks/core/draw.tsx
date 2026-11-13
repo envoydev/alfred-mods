@@ -4,11 +4,10 @@ import type { EngineInterface, RenderElement, ResolveInput } from 'claude-code'
 
 import { mask } from '../rec/mask'
 import { laneFit, statusGlyph } from '../agents/agents'
-import type { LaneFit } from '../agents/agents'
 import { spark } from './forecast'
 import { printable } from './format'
-import type { Lane, Line, Seg, Tone } from '../band/band'
-import type { AgentStatus } from '../../types'
+import type { AgentStatus, LaneFit } from '../agents/types'
+import type { Lane, Line, Seg, Tone } from './types'
 
 const show = (text: string): string => mask(printable(text))
 

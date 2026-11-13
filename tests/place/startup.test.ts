@@ -8,7 +8,7 @@ import { PRESENTATION, START, SWITCH, engine, rows, stubAll, watchState } from '
 
 import { folderOf } from '../../hooks/place/place'
 import { nextWindows } from '../../hooks/session/windows'
-import type { Meta, Usage } from '../../types'
+import type { Meta, Usage } from '../../hooks/session/types'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const NOW = Date.parse('2026-10-28T14:00:00Z')

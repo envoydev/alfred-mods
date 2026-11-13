@@ -2,9 +2,10 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, RenderSurface, SessionUsage } from 'claude-code'
 
-import type { Handoff, Stack } from '../../types'
 import { PRESENTATION, START, engine, rows, stubAll, watchState } from '../kit'
 import type { FileStub } from '../kit'
+import type { Handoff } from '../../hooks/handoff/types'
+import type { Stack } from '../../hooks/stack/types'
 
 const STATUS = '.claude/session-inspector/status/s1.json'
 const STATUS2 = '.claude/session-inspector/status/s2.json'

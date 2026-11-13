@@ -3,7 +3,7 @@ import { expect, test } from 'claude-code/testing'
 import { runs, shownPlan } from '../../hooks/plan/plan'
 import { PRESENTATION, SPAWN, START, engine, spawns, stubAll, watchState } from '../kit'
 import { PLAN_JSON, SCORES_JSON, planText } from '../plans'
-import type { Credit, Plans, TaskItem } from '../../types'
+import type { Credit, Plans, TaskItem } from '../../hooks/plan/types'
 
 const PLAN_PATH = '.claude/session-inspector/plans/token-refresh.json'
 const SCORES_PATH = '.claude/session-inspector/scores/token-refresh.json'

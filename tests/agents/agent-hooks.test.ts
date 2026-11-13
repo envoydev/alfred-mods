@@ -1,7 +1,9 @@
 import { expect, test } from 'claude-code/testing'
 
 import { SPAWN, START, engine, spawns, step, stepEngine, stubAll, watchState } from '../kit'
-import type { AgentRow, Live, Meta, ToolStat } from '../../types'
+import type { AgentRow } from '../../hooks/agents/types'
+import type { Live, Meta } from '../../hooks/session/types'
+import type { ToolStat } from '../../hooks/tools/types'
 
 const complete = (turnId: string, more: object = {}) =>
   ({ answer: '', durationMs: 3000, isAborted: false, turnId, reason: 'answer' as const, ...more })
