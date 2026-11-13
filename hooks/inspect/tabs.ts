@@ -1,6 +1,10 @@
 // Each /inspect tab, from the session's values to lines of styled segments.
 import { LOOPS_NOTE, agentTime, agentTree, isLive, laneFit, lanesOf, loopsLine, reportLine, statusGlyph, toolSummary } from '../agents/agents'
-import { REC_MARK, barSegs, cacheWarning, pctSeg, skillSegs, windowsInOrder, working, wrapRows } from '../band/band'
+import { barSegs, pctSeg, windowsInOrder } from '../band/gauges'
+import { wrapRows } from '../band/wrap'
+import { skillSegs } from '../band/detail'
+import { cacheWarning, working } from '../band/working'
+import { REC_MARK } from '../band/band'
 import { IDLE_COMPACT_MS, billingOf, cacheLine, cacheView, selfCompacts, toastAt } from '../cache/cache'
 import { clock, duration, fitLine, modelParts, modelText, printable, tokens, usd, when } from '../core/format'
 import { pace, turnsLeft } from '../core/forecast'

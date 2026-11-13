@@ -7,7 +7,8 @@ import type {
 } from 'claude-code'
 
 import { actionOf, addLoopStep, agentTree, isLive, newRow, refreshAgents, statusAt, upsertSpawn } from './agents/agents'
-import { bandLines, spinnerSuffix, statusText, underRows } from './band/band'
+import { spinnerSuffix } from './band/working'
+import { bandLines, statusText, underRows } from './band/band'
 import { addRequest, afterCompact, billingOf, cacheView, idleOf, minutes, needsTick, pinOf, takeRate, takeSwitch, toastAt } from './cache/cache'
 import { baseCost, pruneCost, recordCost, todayUsd } from './session/cost'
 import { drawLines, drawNote, drawUnder, drawUnderNote, drawWithInput } from './core/draw'

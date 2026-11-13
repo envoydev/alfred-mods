@@ -3,7 +3,7 @@
 // HANDOFF.md, the Now tab's HANDOFF row and F8's toasts.
 import type { ProcessRunResult } from 'claude-code'
 
-import { barSegs, pctSeg } from '../band/band'
+import { barSegs, pctSeg } from '../band/gauges'
 import { clock, duration, mins, modelText, tokens, usd } from '../core/format'
 import type { Line, Seg } from '../core/types'
 import type { Handoff, HandoffMode, HandoffView, PlanPart, SaveInput, SaveResult } from './types'
