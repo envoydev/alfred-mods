@@ -32,15 +32,20 @@ Requires Claude Code 2.1.312 or later, in the terminal (`claude --version`) and 
 (`/status`). Mods load from 2.1.287, but the handoff and the compact rows use fields this mod is checked against only
 from 2.1.312.
 
-Install it from `envoydev`, the one marketplace for envoydev's plugins. It also lists Alfred Code, which the mod does
-not need:
+Install it from `envoydev`, the one marketplace for envoydev's plugins
+([envoydev/plugins-marketplaces](https://github.com/envoydev/plugins-marketplaces)). It also lists Alfred Code, which the
+mod does not need:
 
 ```bash
-claude plugin marketplace add envoydev/alfred-code
+claude plugin marketplace add envoydev/plugins-marketplaces
 claude plugin install alfred-mods@envoydev
 ```
 
 Then run `/reload-plugins`, or start a new session: `/plugin` shows `1 mod active · alfred-mods`.
+
+If you added `envoydev` from `envoydev/alfred-code` before, the catalog has moved: the
+[plugins-marketplaces README](https://github.com/envoydev/plugins-marketplaces#moving-from-the-old-marketplace) has the
+steps.
 
 It adds nothing to every session's context: `claude plugin details alfred-mods@envoydev` reads `Always-on:
 ~0 tok` (measured 2026-10-30). The one thing it ever tells Claude is Recording mode's short note.
@@ -87,9 +92,6 @@ claude plugin install alfred-mods@envoydev
 Settings the mod saved between sessions (the `/rec`
 words, `/quiet`, `/auto-handoff` and today's cost) are kept per plugin name, so they start fresh under the new id.
 The files it writes in a project keep their place under `.claude/session-inspector/`.
-
-This repo is also a marketplace of its own, `alfred-mods`, kept for development. Install through one marketplace only:
-if you added both, keep one of the two installs, as two plugin ids with the same name register its hooks only once.
 
 A mod does not load in a session started with `--safe-mode` or `--bare`, with `disableAllHooks` set, or where your
 organization's managed settings allow only its own mods
@@ -845,12 +847,12 @@ prompts) and idle time between turns do not.
 
 The repo root is the mod: `.claude-plugin/plugin.json` (the one place its version lives), `hooks/hooks.json` naming
 the hooks module `hooks/register.ts` (the wiring; each feature lives in its folder under `hooks/`), and tests under
-`tests/` at the same paths. `.claude-plugin/marketplace.json` lists the root as
-the marketplace's one plugin.
+`tests/` at the same paths. The `envoydev` marketplace (envoydev/plugins-marketplaces) lists this repo by its GitHub
+source; the repo carries no marketplace of its own.
 
 ```bash
 npm test                 # claude plugin test: hooks fired with stubs, no session, sign-in or network
-npm run validate         # claude plugin validate --strict on both manifests (the mod with --profile directory too), on a copy of the files git would ship
+npm run validate         # claude plugin validate --strict on the root and on the manifest with --profile directory, on a copy of the files git would ship
 claude --plugin-dir .    # load the working tree for one session; a save reloads the hooks
 ```
 

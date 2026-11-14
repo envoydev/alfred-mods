@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // `claude plugin validate --strict` on what an install receives: a scratch copy of the files git would ship (tracked,
 // plus untracked ones not ignored), never the folder on disk, so a Finder .DS_Store or the mod types Claude Code writes
-// for the running build never fail it. The repo root is both the marketplace and the mod, so both manifests are checked.
+// for the running build never fail it. The repo root is the mod; the envoydev catalog lives in envoydev/plugins-marketplaces.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -40,7 +40,7 @@ try
     }
     // the mod also runs the checks Anthropic's plugin directory makes (an icon, a README, no OS metadata files)
     const runs = [
-        ['marketplace', [copy, '--strict']],
+        ['plugin root', [copy, '--strict']],
         ['mod', [path.join(copy, '.claude-plugin', 'plugin.json'), '--profile', 'directory', '--strict']],
     ];
     for (const [label, args] of runs)
