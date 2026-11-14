@@ -444,7 +444,8 @@ test('two saves at once make one write', async ($, on) => {
   expect(git.calls).toBe(1)
 })
 
-test('a /clear within 2 hours fills the resume prompt once, only into an empty draft', { timeoutMs: 15_000 }, async ($, on) => {
+// An hour of the clock is 3,600 one-second ticks: 9.0 s on the Windows runner, so the limit leaves room above it
+test('a /clear within 2 hours fills the resume prompt once, only into an empty draft', { timeoutMs: 30_000 }, async ($, on) => {
   const { prompt, clock, toasts, h } = await start($, on)
   await handoff($, 'now')
   await saved(clock, h)
@@ -496,8 +497,9 @@ test('a draft that is not empty gets the fallback toast', async ($, on) => {
   expect(toasts).toContain(`Handoff saved ${clockText(at)}: ask Claude to read ${PATH}`)
 })
 
-// Two hours of the clock run every one-second timer: 1.7 s on a laptop, past 5 s on a CI runner
-test('no save, or past 2 hours, fills nothing', { timeoutMs: 15_000 }, async ($, on) => {
+// Two hours of the clock run every one-second timer, 7,201 ticks: 1.7 s on a laptop, 5.6 s on the macOS runner, 7.7 s
+// on Linux, and past the old 15 s on Windows, where the one-hour case above took 9.0 s (CI, 2026-11-14)
+test('no save, or past 2 hours, fills nothing', { timeoutMs: 45_000 }, async ($, on) => {
   const { prompt, clock, toasts, h } = await start($, on)
   await $.classic.SessionStart({ source: 'clear' })
   expect(prompt.fills).toEqual([])
