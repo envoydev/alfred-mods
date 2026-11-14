@@ -2,12 +2,10 @@
 
 ## What this repo is
 
-`alfred-mods`, a Claude Code mod (the plugin `session-inspector` until 0.5.0), and its own plugin marketplace,
-`alfred-mods`. A mod is a plugin with a hooks
+`alfred-mods`, a Claude Code mod (the plugin `session-inspector` until 0.5.0). A mod is a plugin with a hooks
 module (`hooks/hooks.json` `modules`), loaded by Claude Code 2.1.287 or later
-(https://code.claude.com/docs/en/plugins/mods/overview). The repo root is the plugin, and
-`.claude-plugin/marketplace.json` lists it with `"source": "./"`. Users install it as `alfred-mods@envoydev`; `alfred-mods@alfred-mods`
-is the development route.
+(https://code.claude.com/docs/en/plugins/mods/overview). The repo root is the plugin; it carries no marketplace of its
+own. Users install it as `alfred-mods@envoydev`; development runs it with `claude --plugin-dir .`.
 
 The mod shows session metrics, tool failures, agents, cache, plan progress, a handoff, an on-screen mask and compact
 tool rows, in one band and an `/inspect` pane. Its design record, decisions and build phases are
@@ -34,12 +32,11 @@ project names, no absolute local paths, no tokens, nothing from a user's machine
   declares no `dependencies`.
 - **One version, in `.claude-plugin/plugin.json`.** The marketplace entry carries none, and a change without a bump is
   not delivered: an installed mod is cached by version.
-- **One marketplace for users: `envoydev`.** The `envoydev` marketplace (in alfred-code) lists the mod with a GitHub
-  source on this repo's `main` and no `sha` (the user's ruling of 2026-11-04; alfred-code's lint check 49 allows that
-  only for an `envoydev/` repo on `main`). So `main` is the release branch: a merge there reaches every install on its
-  next update once `plugin.json`'s version is bumped, and nothing in alfred-code moves per release. This repo's own
-  `alfred-mods` marketplace stays for development and the install check. The README tells users to keep one: two ids
-  with the same plugin name register its hooks only once.
+- **One marketplace for users: `envoydev`.** The `envoydev` marketplace (envoydev/plugins-marketplaces, since
+  2026-11-14) lists the mod with a GitHub source on this repo's `main` and no `sha` (the user's ruling of 2026-11-04).
+  So `main` is the release branch: a merge there reaches every install on its next update once `plugin.json`'s version
+  is bumped, and nothing in plugins-marketplaces moves per release. The repo's own `alfred-mods` marketplace was
+  deleted on 2026-11-14 (the user's 'clean cut'); development and the install check use `claude --plugin-dir .`.
 - **Never rename or drop the id `alfred-mods`.** Every install goes silent and does not self-heal. The one rename,
   `session-inspector` to `alfred-mods` in 0.5.0, was the user's ruling of 2026-11-06: the `envoydev` catalog dropped
   `session-inspector` in alfred-code 3.9.2 (the same day, the user's call), so an old install goes silent until moved.
@@ -107,7 +104,11 @@ writes into `.claude-plugin/types/` for the running build win over any page when
 
 ## Related repos
 
-- alfred-code (`../alfred-code` when checked out beside this one) hosts the `envoydev` marketplace and the stack whose
-  hooks will publish the per-session status file. A change there follows its own CLAUDE.md, never an edit from this
+- plugins-marketplaces (`../plugins-marketplaces`) hosts the `envoydev` marketplace; a change to the mod's entry is a
+  commit there, on the user's word.
+- alfred-code (`../alfred-code` when checked out beside this one) is the stack whose hooks will publish the
+  per-session status file. A change there follows its own CLAUDE.md, never an edit from this
   repo.
-- preferred-tools (`../preferred-tools`) is a sibling plugin in the `envoydev` marketplace, with no tie to this mod.
+- alfred-tools (`../alfred-tools`, `preferred-tools` until 0.4.0) is a sibling plugin in the `envoydev` marketplace,
+  with no tie to this mod.
+- claude-kit (`../claude-kit`) holds the shared `.claude` rules, skills and settings synced into this repo.
