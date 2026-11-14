@@ -23,7 +23,7 @@ Adding, changing, renaming or removing anything the mod ships. `.claude/CLAUDE.m
 
 - The version lives only in `.claude-plugin/plugin.json`; the marketplace entry carries none. Bump it on every user-visible change: an installed mod is cached by version.
 - Never rename or drop the id `alfred-mods`: every install goes silent. `session-inspector` (to 0.4.0) left the `envoydev` catalog in alfred-code 3.9.2.
-- The `envoydev` marketplace in alfred-code lists the mod from this repo's `main` with no `sha`, so a merge to `main` with a version bump is the release, and nothing in alfred-code moves for it. Tag `v<version>` at the release commit. A change to that entry follows alfred-code's own CLAUDE.md.
+- The `envoydev` marketplace (envoydev/plugins-marketplaces, since 2026-11-14) lists the mod from this repo's `main` with no `sha`, so a merge to `main` with a version bump is the release, and nothing in plugins-marketplaces moves for it. Tag `v<version>` at the release commit. A change to that entry is a commit in plugins-marketplaces, on the user's word.
 
 ## Release
 

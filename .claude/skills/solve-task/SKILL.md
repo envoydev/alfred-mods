@@ -22,8 +22,8 @@ State one line before anything else: `Size: <trivial|spike|bounded|architectural
   flag, option, output or branch - is at least bounded, however short the request.
 - spike, bounded, architectural - load superpowers:brainstorming next and take its path for this size: a spike has its question
   and probe approved first, then ends in an answer and keeps nothing; a bounded change gets an in-chat design whose approval is a stop, then the build; an
-  architectural change takes every step below. Under `auto-run` a bounded design is approved by you, as a graded
-  spec is (step 3).
+  architectural change takes every step below. Under `auto-run` a bounded design's approval follows the same rule
+  and waiver as a graded spec's (step 3).
 - A design already settled by `docs/session-inspector-brief.md` or the user's rulings skips the spec and goes to the
   plan. The brief's phases are built in order, and none before its Phase 0 verdict is approved.
 
@@ -31,8 +31,8 @@ State one line before anything else: `Size: <trivial|spike|bounded|architectural
 
 1. Spec - superpowers:brainstorming writes `docs/superpowers/specs/<date>-<topic>-design.md`.
 2. Grade - `refining-plans` to 90, its own loop.
-3. Approval - the user approves the graded spec. Under `auto-run` you approve it yourself when it scored 90 or more,
-   as `auto-run`'s rule says, and report the score path in place of the ask; under 90 it waits for the user.
+3. Approval - the user approves the graded spec. Under `auto-run` it stays a stop; only the waiver `auto-run`
+   defines skips it, and then the score path is reported in place of the ask.
 4. Plan - superpowers:writing-plans writes `docs/superpowers/plans/<date>-<topic>.md`; grade it to 90; approval as in
    step 3.
 5. Build - superpowers:executing-plans by default (one context, cheapest), superpowers:subagent-driven-development
@@ -47,8 +47,8 @@ State one line before anything else: `Size: <trivial|spike|bounded|architectural
    House voice holds in every file written (single dashes, single quotes in prose). A case not run is reported NOT RUN.
 7. Review - one fresh Opus review of the whole branch, one fix pass (each fix RED then GREEN), minors deferred to
    the ledger.
-8. Commit - one commit per plan task as its commit step says, else one commit for the change; by pathspec, its
-   message with no trace of the agent (`.claude/CLAUDE.md`). No version bump, push or merge without the user's word.
+8. Commit - one commit per plan task as its commit step says, else one commit for the change; by pathspec,
+   its message with no trace of the agent (`.claude/CLAUDE.md`). No version bump, push or merge without the user's word.
 
 ## The close
 
@@ -57,5 +57,5 @@ and why - then 'Rulings I made' and 'Deferred minors' from the ledger, and `auto
 
 ## Not here
 
-- A change in a sibling repo (alfred-code hosts the `envoydev` marketplace), which follows that repo's own flow.
+- A change in a sibling repo (plugins-marketplaces hosts the `envoydev` marketplace), which follows that repo's own flow.
 - Alfred Code's `task-solve` and its seats, stamps and stops, which serve the projects that install the stack.

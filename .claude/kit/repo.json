@@ -1,0 +1,23 @@
+{
+  "name": "alfred-mods",
+  "claude_md": ".claude/CLAUDE.md",
+  "check_batch": "`npm test` and `npm run validate`",
+  "check_once": "a `claude --plugin-dir .` session in a scratch project when the change hooks or draws something",
+  "not_for": "Not for a release, which follows the Release section of `plugin-handling.md`, on the user's word.",
+  "settled": [
+    "A design already settled by `docs/session-inspector-brief.md` or the user's rulings skips the spec and goes to the",
+    "  plan. The brief's phases are built in order, and none before its Phase 0 verdict is approved."
+  ],
+  "checks": [
+    "   - per batch: `npm test` (the `*.test.ts` tests for the hooks changed, written first) and `npm run validate`;",
+    "   - when the change hooks or draws something, a `claude --plugin-dir .` session in a scratch project under an isolated",
+    "     `CLAUDE_CONFIG_DIR` and `HOME`, once without Alfred Code and once with it, reporting what each draws;",
+    "   - the Done-when checks of the brief's phase the change belongs to."
+  ],
+  "voice": "single dashes, single quotes in prose",
+  "commit": "its message with no trace of the agent (`.claude/CLAUDE.md`)",
+  "not_here": [
+    "- A change in a sibling repo (plugins-marketplaces hosts the `envoydev` marketplace), which follows that repo's own flow.",
+    "- Alfred Code's `task-solve` and its seats, stamps and stops, which serve the projects that install the stack."
+  ]
+}
