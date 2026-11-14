@@ -8,6 +8,7 @@
   "scripts": {
     "test": "claude plugin test .",
     "validate": "node scripts/validate.js",
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "kit:check": "node .claude/kit/check.mjs"
   }
 }

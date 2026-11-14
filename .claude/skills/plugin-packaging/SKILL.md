@@ -20,8 +20,8 @@ re-checked the same way at the moment of use: the docs are the authority, this f
 - A plugin's behaviour is being tested (`claude plugin eval`) or its cost read (`claude plugin details`).
 
 Not for a mod's hooks module - its events, the mods API, render sites and the `claude plugin test` kit: Claude Code's
-built-in `plugin-authoring` skill holds those for the running build, which is why this copy of alfred-code's skill is
-named `plugin-packaging` (a project skill named like a bundled one replaces it). Not for a project's own `.claude/` folder (skills, agents and hooks there load without a manifest)
+built-in `plugin-authoring` skill holds those for the running build, which is why this skill is named
+`plugin-packaging` (a project skill named like a bundled one replaces it). Not for a project's own `.claude/` folder (skills, agents and hooks there load without a manifest)
 and not for a single skill's body - that is the skills docs (code.claude.com/docs/en/skills), the same inside or
 outside a plugin.
 
