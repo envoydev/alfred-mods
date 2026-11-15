@@ -27,16 +27,29 @@ State one line before anything else: `Size: <trivial|spike|bounded|architectural
 - A design already settled by `docs/session-inspector-brief.md` or the user's rulings skips the spec and goes to the
   plan. The brief's phases are built in order, and none before its Phase 0 verdict is approved.
 
+## The three models
+
+The `kit status` line the status hook adds to each request (or `node .claude/kit/settings.mjs`) names them:
+`plan_model` writes the plan, `review_model` grades and reviews, `implement_model` builds.
+
+- They are what the settings select, not what this session runs on: a session cannot change its own model. A step
+  whose model is this session's own runs here; any other is dispatched to an agent with that `model`.
+- A dispatched agent cannot see this conversation. Its brief carries the files it works from - the approved spec,
+  the plan, this repo's `AGENTS.md` - and names what it returns; its result is read before the next step.
+- The spec is always written here, whatever the plan model: brainstorming is a conversation with the user, and an
+  agent cannot hold one.
+
 ## The steps
 
 1. Spec - superpowers:brainstorming writes `docs/superpowers/specs/<date>-<topic>-design.md`.
 2. Grade - `refining-plans` to the pass score, its own loop.
 3. Approval - the user approves the graded spec. Under `auto-run` it stays a stop; only the waiver `auto-run`
    defines skips it, and then the score path is reported in place of the ask.
-4. Plan - superpowers:writing-plans writes `docs/superpowers/plans/<date>-<topic>.md`; grade it to the pass score; approval as in
-   step 3.
-5. Build - superpowers:executing-plans by default (one context, cheapest), superpowers:subagent-driven-development
-   when the user asks for a gate per task, or when all of `execution.md`'s Mode conditions hold; with
+4. Plan - superpowers:writing-plans writes `docs/superpowers/plans/<date>-<topic>.md` from the approved spec, on the
+   plan model; grade it to the pass score; approval as in step 3.
+5. Build - on the implement model. superpowers:executing-plans when this session runs on it (one context,
+   cheapest); otherwise superpowers:subagent-driven-development, each implementer dispatched with that `model`. Also
+   subagent-driven when the user asks for a gate per task, or when all of `execution.md`'s Mode conditions hold; with
    superpowers:test-driven-development throughout. The ledger is `docs/superpowers/sdd/<plan basename>/progress.md`.
 6. Checks, in the tiers of `execution.md`:
    - per batch: `npm test` (the `*.test.ts` tests for the hooks changed, written first) and `npm run validate`;
@@ -45,7 +58,7 @@ State one line before anything else: `Size: <trivial|spike|bounded|architectural
    - the Done-when checks of the brief's phase the change belongs to.
 
    House voice holds in every file written (single dashes, single quotes in prose). A case not run is reported NOT RUN.
-7. Review - one fresh Opus review of the whole branch, one fix pass (each fix RED then GREEN), minors deferred to
+7. Review - one fresh review of the whole branch on the review model, one fix pass (each fix RED then GREEN), minors deferred to
    the ledger.
 8. Commit - one commit per plan task as its commit step says, else one commit for the change; by pathspec,
    its message with no trace of the agent (`.claude/rules/commits.md`). No version bump, push or merge without the user's word.
@@ -53,7 +66,8 @@ State one line before anything else: `Size: <trivial|spike|bounded|architectural
 ## The close
 
 `execution.md`'s close - the mode and why, what changed, each tier's command with its result, what was not verified
-and why - then 'Rulings I made' and 'Deferred minors' from the ledger, and `auto-run`'s close when it is on.
+and why - then one line per step with the model it actually ran on (`here - <this session's model>`, or the
+dispatched model), then 'Rulings I made' and 'Deferred minors' from the ledger, and `auto-run`'s close when it is on.
 
 ## Not here
 
