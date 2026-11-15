@@ -1407,7 +1407,7 @@ return { cellsOf, wrapRows, packRows };
 })();
 // ---- hooks/band/detail.ts
 __m['band/detail.ts'] = (() => {
-// The band's detail rows: tools, skills, rules and agents, each with its label
+// The band's detail rows: tools, skills, rules and agents, each with its label, and the counts above them
 const { isLive } = __m['agents/agents.ts'];
 const { listedText, loadedTexts } = __m['context/parts.ts'];
                                                
@@ -1426,8 +1426,9 @@ function toolsByCalls(stats                                      )              
 }
 
 // The counts of what the detail rows list (spec 2026-11-11, D5; settings-values S6, once a toggle): the tool calls, the
-// main chat's skills, the agents dispatched (and how many run) and the rules, each only above 0; its forms drop the
-// rules, then the agents, then the skills. None with nothing counted.
+// main chat's skills, the agents dispatched (and how many run), the rules and the session's compactions (the user,
+// 2026-11-15), each only above 0; its forms drop the compactions, then the rules, the agents and the skills. None with
+// nothing counted.
 function toggleForms(input           )         {
   const count = (amount        , one        )                => (amount === 0 ? null : `${amount} ${one}${amount === 1 ? '' : 's'}`)
   const calls = toolsByCalls(input.stats).reduce((total, [, stat]) => total + stat.calls, 0)
@@ -1438,11 +1439,11 @@ function toggleForms(input           )         {
   const skills = count(Object.keys(input.session.loadedSkills ?? {}).length, 'skill')
   const agents = count(dispatched, 'agent')
   const rules = count(drawn.always.length + drawn.byPath.length, 'rule')
-  if (tools === null && skills === null && agents === null && rules === null) return []
+  const compactions = count(input.session.compactions, 'compaction')
+  if (tools === null && skills === null && agents === null && rules === null && compactions === null) return []
   const parts = (...of                   )           => of.filter((part)                 => part !== null)
   const agentsPart = agents === null ? null : running > 0 ? `${agents} (${running} ◐)` : agents
-  const all = parts(tools, skills, agentsPart, rules)
-  const forms = [all, parts(tools, skills, agentsPart), parts(tools, skills), parts(tools)].filter(form => form.length > 0)
+  const forms = [parts(tools, skills, agentsPart, rules, compactions), parts(tools, skills, agentsPart, rules), parts(tools, skills, agentsPart), parts(tools, skills), parts(tools)].filter(form => form.length > 0)
   return [...new Set(forms.map(form => form.join(' · ')))].map(text => [{ text, tone: 'dim'          }])
 }
 
@@ -1598,7 +1599,7 @@ function placeRow(input           )         {
 
 // The usage row (the user, 2026-11-11): 'usage:   [ 45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ]', the counts of
 // what the detail rows under it list, as text: `bandRows` opens and closes those rows, not a click (spec
-// settings-values, S6); short of width its forms drop the rules, then the agents, then the skills
+// settings-values, S6); short of width its forms drop the compactions, then the rules, the agents and the skills
 function usageRow(input           )         {
   const texts = toggleForms(input).flatMap(line => line.flatMap(seg => ('text' in seg ? [`[ ${seg.text} ]`] : [])))
   const text = texts.find(candidate => widthOf([{ text: candidate }]) <= input.columns - ROW_LABEL) ?? texts[texts.length - 1]
@@ -2645,7 +2646,7 @@ const BandAdapter = (() => {
         costUsd: m.fresh ? 0 : num(d.cost), todayUsd: num(d.today), readingAt: now, ...(m.fresh ? { rateWindowsAt: now - 60 * MIN } : {}),
       },
       session: {
-        model: modelId(d.model), effort: m.fresh ? null : String(d.effort || '') || null, compactions: 0, lastCompactAt: null,
+        model: modelId(d.model), effort: m.fresh ? null : String(d.effort || '') || null, compactions: m.fresh ? 0 : 1, lastCompactAt: null,
         lastPromptAt: m.fresh ? null : youAt, lastReplyAt: m.fresh ? null : lastReply, turnCount: m.fresh ? 0 : m.running ? turnN - 1 : turnN, waitingPrompts: [],
         mainToolCalls: tools.reduce((n, t) => n + t.n, 0), loadedSkills: Object.fromEntries(skills.map(s => [s.name, s.n])),
         ...(place ? { place } : {}), ...(String(d.cc || '') ? { version: String(d.cc) } : {}),

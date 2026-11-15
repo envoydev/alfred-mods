@@ -289,6 +289,19 @@ test('the counts take all four, and their forms drop rules, then agents, then sk
   for (const form of toggleForms(TARGET)) expect(form).toEqual([{ text: expect.any(String), tone: 'dim' }])
 })
 
+// The user, 2026-11-15: the session's compactions in the usage counts row, last, and the first to drop
+test('compactions count last, only once the session compacted, and drop first', () => {
+  const compacted = (compactions: number): BandInput => ({ ...TARGET, session: { ...TARGET.session, compactions } })
+  expect(labels(compacted(0))[0]).toBe('45 tools · 2 skills · 4 agents (1 ◐) · 5 rules')
+  expect(labels(compacted(1))[0]).toBe('45 tools · 2 skills · 4 agents (1 ◐) · 5 rules · 1 compaction')
+  expect(labels(compacted(2))).toEqual([
+    '45 tools · 2 skills · 4 agents (1 ◐) · 5 rules · 2 compactions', '45 tools · 2 skills · 4 agents (1 ◐) · 5 rules',
+    '45 tools · 2 skills · 4 agents (1 ◐)', '45 tools · 2 skills', '45 tools',
+  ])
+  // A session whose only count is a compaction (a /compact before any tool call) still shows it
+  expect(labels(input({ stats: {}, session: { ...input().session, compactions: 1 } }))).toEqual(['1 compaction'])
+})
+
 test('(k ◐) only while agents run; singular forms', () => {
   const one = input({
     isToolsOpen: true, stats: { Bash: stat(1) }, agents: [agent('a1', 'Explore', 'completed')],

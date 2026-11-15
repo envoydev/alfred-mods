@@ -1,4 +1,4 @@
-// The band's detail rows: tools, skills, rules and agents, each with its label
+// The band's detail rows: tools, skills, rules and agents, each with its label, and the counts above them
 import { isLive } from '../agents/agents'
 import { listedText, loadedTexts } from '../context/parts'
 import type { AgentRow } from '../agents/types'
@@ -17,8 +17,9 @@ function toolsByCalls(stats: Record<string, ToolStat> | undefined): [string, Too
 }
 
 // The counts of what the detail rows list (spec 2026-11-11, D5; settings-values S6, once a toggle): the tool calls, the
-// main chat's skills, the agents dispatched (and how many run) and the rules, each only above 0; its forms drop the
-// rules, then the agents, then the skills. None with nothing counted.
+// main chat's skills, the agents dispatched (and how many run), the rules and the session's compactions (the user,
+// 2026-11-15), each only above 0; its forms drop the compactions, then the rules, the agents and the skills. None with
+// nothing counted.
 export function toggleForms(input: BandInput): Line[] {
   const count = (amount: number, one: string): string | null => (amount === 0 ? null : `${amount} ${one}${amount === 1 ? '' : 's'}`)
   const calls = toolsByCalls(input.stats).reduce((total, [, stat]) => total + stat.calls, 0)
@@ -29,11 +30,11 @@ export function toggleForms(input: BandInput): Line[] {
   const skills = count(Object.keys(input.session.loadedSkills ?? {}).length, 'skill')
   const agents = count(dispatched, 'agent')
   const rules = count(drawn.always.length + drawn.byPath.length, 'rule')
-  if (tools === null && skills === null && agents === null && rules === null) return []
+  const compactions = count(input.session.compactions, 'compaction')
+  if (tools === null && skills === null && agents === null && rules === null && compactions === null) return []
   const parts = (...of: (string | null)[]): string[] => of.filter((part): part is string => part !== null)
   const agentsPart = agents === null ? null : running > 0 ? `${agents} (${running} ◐)` : agents
-  const all = parts(tools, skills, agentsPart, rules)
-  const forms = [all, parts(tools, skills, agentsPart), parts(tools, skills), parts(tools)].filter(form => form.length > 0)
+  const forms = [parts(tools, skills, agentsPart, rules, compactions), parts(tools, skills, agentsPart, rules), parts(tools, skills, agentsPart), parts(tools, skills), parts(tools)].filter(form => form.length > 0)
   return [...new Set(forms.map(form => form.join(' · ')))].map(text => [{ text, tone: 'dim' as const }])
 }
 

@@ -66,7 +66,7 @@ export function placeRow(input: BandInput): Line[] {
 
 // The usage row (the user, 2026-11-11): 'usage:   [ 45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ]', the counts of
 // what the detail rows under it list, as text: `bandRows` opens and closes those rows, not a click (spec
-// settings-values, S6); short of width its forms drop the rules, then the agents, then the skills
+// settings-values, S6); short of width its forms drop the compactions, then the rules, the agents and the skills
 export function usageRow(input: BandInput): Line[] {
   const texts = toggleForms(input).flatMap(line => line.flatMap(seg => ('text' in seg ? [`[ ${seg.text} ]`] : [])))
   const text = texts.find(candidate => widthOf([{ text: candidate }]) <= input.columns - ROW_LABEL) ?? texts[texts.length - 1]

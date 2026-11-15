@@ -523,7 +523,8 @@ rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ w
 - **`plan:`** while a plan runs: its title, bar, steps done and the step in progress (the Plan tab has the percent and
   the times), then the plan's score and its change from the round before, `score 85 ▲13`.
 - **`usage:`** in aqua, counts what the rows under it list: tool calls, skills, agents dispatched (and how many run)
-  and rules. It shows whether the rows are open or not.
+  and rules, then the session's compactions once it has compacted (`2 compactions`, the first count to drop when the
+  row is narrow). It shows whether the rows are open or not.
 - **The detail rows** are open by default; `"bandRows": false` closes them ([Settings](#settings)). Each row waits for
   its first item: no `skills:` row until a skill is loaded, no `agents:` until one is dispatched, and so on, so a new
   session shows none of them, and `usage:` none until something is counted.
