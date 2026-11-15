@@ -17,7 +17,7 @@ Five to ten lines in the reply or the todo list, never a plan file unless asked:
 
 - Per batch (seconds): `npm test` and `npm run validate`; fix before the next batch.
 - Once after the whole change: a `claude --plugin-dir .` session in a scratch project when the change hooks or draws something, never after every step. A wait of minutes runs in the background.
-- Before a push: only where CI runs something locally reproducible; name what could not run here. Do not invent a check the project lacks.
+- Before a push: run here every command the repo's CI workflow runs (`.github/workflows/`), in its order, and push only when each passes - the remote run confirms the other operating systems, it is never the first run. Name what could not run here (another OS's leg, a step behind a secret). After the push, watch the run to its end; a red run is fixed before anything else is pushed. Do not invent a check the project lacks.
 
 ## Close
 

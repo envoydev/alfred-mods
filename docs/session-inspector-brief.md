@@ -1530,8 +1530,8 @@ Step 1, the gap review, 2026-10-28, against Claude Code 2.1.312. 'Types' is the 
 - F3, F4, F10 data sources. Evidence: the event rows above; types `RenderPropsOf.ToolUse.isExpanded`: 'A hook that draws a compact row of its own passes when true, so ctrl+o shows all'.
 - Layout, pane placement: docks in fullscreen from 110 columns; 144 only for an unasked open. Evidence: types `RenderPropsOf.Pane.placement`, `ui.open`; reference, 'Limits'.
 - Phase 0: signatures, `kind`, literal `on`, the config path in the sketch. Evidence: types `TurnStepChunk`; the validate line above.
-- Phase 0 session: isolated config, a guard hook, an approved prompt with a wait, a model switch, auto mode, the band and in-row buttons. Evidence: `.claude/CLAUDE.md` 'Working in this repo'; probe questions 11, 12, 13; F4.
-- Every phase, Desktop check needs the real account. Evidence: `.claude/CLAUDE.md` 'Ask before any run against the real account'.
+- Phase 0 session: isolated config, a guard hook, an approved prompt with a wait, a model switch, auto mode, the band and in-row buttons. Evidence: `AGENTS.md` 'Working in this repo'; probe questions 11, 12, 13; F4.
+- Every phase, Desktop check needs the real account. Evidence: `AGENTS.md` 'Ask before any run against the real account'.
 - Limits: VS Code minimum, `.catch` 1 s, `$.store` sharing, pane 110, `$.process.run` 30 s, test 5 s. Evidence: reference, 'Limits'; types `HookBudget.catchMs`.
 - Security, what it reads: the config path. Evidence: as F1.
 - Risks: the per-agent row rewritten (the id is declared, the window is not); version range to 2.1.312; band collapse; Desktop on the real account; the account file's place; `$.store` races. Evidence: as the rows above.
@@ -1553,14 +1553,14 @@ Steps 2 and 3, the probe and the verdict, 2026-10-28. S, I, F, M and X are the P
 - F6 data source: `duration_ms` leaves waits out. Evidence: question 11.
 - F10 data source and confidence: ToolUse and ToolResult on the main screen, ToolGroup in fullscreen's normal view; the classifier line inside ToolResult's tree. Evidence: question 10 (M 25, M 34, I 87, screen `main-1`).
 - F1 account note: the dev machine's file dates replaced by the isolated run's finding; a token sign-in has no record. Evidence: the isolated config held `.claude.json` and HOME none; I 44.
-- Phase 0 answers: rate-limit percentages left out of the quotes. Evidence: the public-repo rule in `.claude/CLAUDE.md`.
+- Phase 0 answers: rate-limit percentages left out of the quotes. Evidence: the public-repo rule in `AGENTS.md`.
 - Verdict: added; overall NO-GO by the rule, on F1's account field and F2's 'blocked' for refusals raised before the check, with both hidden recommended; F3 PARTIAL on the agent's window; F10 PARTIAL on ⊘ for those refusals; F2's classifier block shown as 'refused' until seen. Evidence: the verdict rows; types `SessionIdentity`; X 26 to 28 against I 97 to 99.
 - Phase 0 question 12: a failed Edit and a failed Read (log X) test the PostToolUseFailure rule beyond Bash. Evidence: X 26 to 28, X 47 to 50.
 - Events, `agent.spawn`, and Also report: the resume disagreement settled by the types-win rule; Phase 2 checks it. Evidence: Purpose, step 1; types `AgentSpawnInput.resume`.
 - F5 data source: a turn's calls are those with no `agentId`. Evidence: I 25, I 209 (agents in the background).
 - Also report, the prototype: what its path would add. Evidence: the user's note that it is in alfred-code; the recheck below.
 - Build phases: Phase 1 checks a guard block, the own refusals, a failed Edit and Read, and records a classifier block; Phase 2 checks a resumed agent; Phase 4 checks both layouts; Phase 5 starts on the user's word; every phase runs validate, tsc and test, shows the band and stops after its commit. Evidence: the user's request, 2026-10-28; questions 10 and 12.
-- Build phases, Rollback: disable, uninstall, and a higher-version revert release. Evidence: `claude plugin --help` (2.1.312); `.claude/CLAUDE.md` 'One version'.
+- Build phases, Rollback: disable, uninstall, and a higher-version revert release. Evidence: `claude plugin --help` (2.1.312); `AGENTS.md` 'One version'.
 - Limits, Platforms row: all three operating systems. Evidence: the user's message, 2026-10-28.
 - Risks: agents with no spawn, the cache tier, platforms, the two layouts, the classifier block, the in-row button, `!` commands. Evidence: I 266, I 240, the user's message, question 10, question 12, question 13, screen `noauth-4`.
 - Not found, rechecked after the user's note that it is in alfred-code: every local and remote branch there holds only `docs/session-inspector mod agent brief.md` (origin/main, dfb48b73) and one comment in `scripts/plan-estimate.test.js`; neither names a prototype or a runway line.

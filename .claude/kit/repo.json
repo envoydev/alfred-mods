@@ -1,6 +1,6 @@
 {
   "name": "alfred-mods",
-  "claude_md": ".claude/CLAUDE.md",
+  "agents_md": "AGENTS.md",
   "check_batch": "`npm test` and `npm run validate`",
   "check_once": "a `claude --plugin-dir .` session in a scratch project when the change hooks or draws something",
   "not_for": "Not for a release, which follows the Release section of `plugin-handling.md`, on the user's word.",
@@ -15,7 +15,7 @@
     "   - the Done-when checks of the brief's phase the change belongs to."
   ],
   "voice": "single dashes, single quotes in prose",
-  "commit": "its message with no trace of the agent (`.claude/CLAUDE.md`)",
+  "commit": "its message with no trace of the agent (`AGENTS.md`)",
   "not_here": [
     "- A change in a sibling repo (plugins-marketplaces hosts the `envoydev` marketplace), which follows that repo's own flow.",
     "- Alfred Code's `task-solve` and its seats, stamps and stops, which serve the projects that install the stack."
@@ -40,7 +40,7 @@
         "Mods limits per the repo's record (mods docs read 2026-10-28, Claude Code 2.1.312; the types in .claude-plugin/types/ win): a hook's own time 10 s (keep each under 50 ms, heavy work on a timer), a .catch 1 s, all session.end hooks 1.5 s together, $.store 4 MiB, $.fs 4 MiB per file, redraws throttled to 10 a second (30 in the terminal).",
         "claude plugin validate reads the module statically: each mods API call is written in full, each event name in on(...) is a string literal, no second on inside register, relative imports name files with no extension, and there is no require or dynamic import().",
         "The userConfig leave_out_skipped_hooks leaves out the six hooks a managed plugin can skip (classic.PostToolUseFailure, classic.PostToolUse, classic.PermissionRequest among them), the rules hook and the settings-change hook (classic.ConfigChange); check that switch's wiring parity too.",
-        "The repo ships no rules, skills or agents: hooks are read against .claude/CLAUDE.md (the why), docs/session-inspector-brief.md and the user's rulings.",
+        "The repo ships no rules, skills or agents: hooks are read against AGENTS.md (the why), docs/session-inspector-brief.md and the user's rulings.",
         "A change that hooks or draws something is proven once in a claude --plugin-dir . session in a scratch project under an isolated CLAUDE_CONFIG_DIR and HOME, once without Alfred Code and once with it, reporting what each draws.",
         "The hooks share events with Alfred Code's command hooks when both are installed; read the collision map against that stack's hook wiring where a session has both."
       ]

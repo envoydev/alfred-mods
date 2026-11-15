@@ -1,4 +1,4 @@
-# CLAUDE.md - alfred-mods
+# AGENTS.md - alfred-mods
 
 ## What this repo is
 
@@ -13,11 +13,38 @@ tool rows, in one band and an `/inspect` pane. Its design record, decisions and 
 approved.
 
 **This file is not loaded by installs.** The repo root is the plugin root, so this file ships in every install's
-cache, but Claude Code never loads a plugin's `CLAUDE.md`. It lives in `.claude/` because `claude plugin validate
---strict` fails on a `CLAUDE.md` at the plugin root. Anything the mod needs at runtime goes in its hooks module.
+cache, but Claude Code never loads a plugin's instruction file. It is `AGENTS.md` at the root (the user's ruling,
+2026-11-15): `claude plugin validate --strict` passes with it there and fails on a root `CLAUDE.md` (measured on
+2.1.325). **Never add a `CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md`:** Claude Code reads `AGENTS.md` only
+while none of the three exists and says nothing when one switches it off (https://code.claude.com/docs/en/memory);
+`npm run kit:check` fails when one appears. Anything the mod needs at runtime goes in its hooks module.
 
 **Public repo.** Everything here ships to every machine that installs the mod (the cache is the whole repo). No private
 project names, no absolute local paths, no tokens, nothing from a user's machine.
+
+## Commands
+
+```bash
+npm run validate     # claude plugin validate --strict on a copy of the files git ships
+npm test             # claude plugin test . - every *.test.ts, no session, sign-in or network
+npm run kit:check    # the files claude-kit manages are unedited, and no CLAUDE.md hides this file
+npm run typecheck    # tsc -p . - needs .claude-plugin/types/, see below
+claude --plugin-dir .   # load the working tree for one session; it reloads on save
+```
+
+The first three are what CI runs on Linux, macOS and Windows, in that order. `typecheck` is CI's fourth job, on Linux
+only: it reads `.claude-plugin/types/`, which Claude Code writes when an interactive `--plugin-dir` session loads the
+mod, so run one such session first (the folder is git-ignored and belongs to the running build).
+
+## Layout
+
+- `hooks/hooks.json` names the one module, `hooks/register.ts`: the wiring only, each `on(...)` calling one function
+  of a feature folder.
+- `hooks/<folder>/` - one feature each (`band`, `inspect`, `handoff`, `plan`, `tools`, `agents`, `cache`, ...):
+  `types.ts`, logic files that take no `$`, and `effects.ts`, the folder's only file that touches `$`.
+- `tests/` - each hook's `*.test.ts` at the same path as its source, with shared helpers in `tests/kit.ts`.
+- `types/` - the mod's own `index.d.ts`; `scripts/validate.js` - the validate run; `docs/` - the brief and the
+  band explorer.
 
 ## Invariants
 
@@ -90,12 +117,18 @@ writes into `.claude-plugin/types/` for the running build win over any page when
   of deleted scratch projects in `~/.claude/plugins/installed_plugins.json` and ended logged out. Ask before any run
   against the real account, and say it may cost a `/login`.
 - **Read the result, not the exit code.** A case not run is reported as NOT RUN, never implied as passing.
+- **CI runs the same checks, and they run here first** (`.github/workflows/ci.yml`: validate, test and kit:check on
+  Linux, macOS and Windows, plus the type check on Linux, against the Claude Code build pinned there). Before a push,
+  run them here in that order and push only when each passes; then watch the remote run to its end - it is what
+  proves Linux and Windows (the user's ruling, 2026-11-15). The Windows runner is several times slower on the timer
+  tests: a test that drives thousands of timer ticks carries its own `timeoutMs`.
 - **Check order:** `npm test` and `npm run validate` per change; before a release, a `claude --plugin-dir .` session
   in a scratch project in the terminal and in a Desktop Code tab, each with and without Alfred Code, reporting what
   each one draws; then an install from the marketplace in a clean session.
 - **Outside facts are verified, not recalled.** An event, method, field, limit or CLI flag is checked against the mods
   docs or the generated types, with its URL or path and the date.
-- **Branches.** `main` is the default branch. Work lands on a branch; commit or push only on the user's word.
+- **Branches.** `main` is the default branch and the release branch; work lands on `develop`. Commit or push only on
+  the user's word.
 - **Commits are the developer's, with no trace of the agent.** A commit message (and a PR description) never names or
   hints at the agent: no `Co-Authored-By` trailer for it, no session link, no 'Generated with' line, no mention of an AI
   in the subject or body. The author is the configured git user, as for any commit by hand. This overrides any default
@@ -107,7 +140,7 @@ writes into `.claude-plugin/types/` for the running build win over any page when
 - plugins-marketplaces (`../plugins-marketplaces`) hosts the `envoydev` marketplace; a change to the mod's entry is a
   commit there, on the user's word.
 - alfred-code (`../alfred-code` when checked out beside this one) is the stack whose hooks will publish the
-  per-session status file. A change there follows its own CLAUDE.md, never an edit from this
+  per-session status file. A change there follows its own `AGENTS.md`, never an edit from this
   repo.
 - alfred-tools (`../alfred-tools`, `preferred-tools` until 0.4.0) is a sibling plugin in the `envoydev` marketplace,
   with no tie to this mod.
