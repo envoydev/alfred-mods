@@ -48,7 +48,7 @@ State one line before anything else: `Size: <trivial|spike|bounded|architectural
 7. Review - one fresh Opus review of the whole branch, one fix pass (each fix RED then GREEN), minors deferred to
    the ledger.
 8. Commit - one commit per plan task as its commit step says, else one commit for the change; by pathspec,
-   its message with no trace of the agent (`AGENTS.md`). No version bump, push or merge without the user's word.
+   its message with no trace of the agent (`.claude/rules/commits.md`). No version bump, push or merge without the user's word.
 
 ## The close
 

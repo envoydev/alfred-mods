@@ -15,7 +15,7 @@
     "   - the Done-when checks of the brief's phase the change belongs to."
   ],
   "voice": "single dashes, single quotes in prose",
-  "commit": "its message with no trace of the agent (`AGENTS.md`)",
+  "commit": "its message with no trace of the agent (`.claude/rules/commits.md`)",
   "not_here": [
     "- A change in a sibling repo (plugins-marketplaces hosts the `envoydev` marketplace), which follows that repo's own flow.",
     "- Alfred Code's `task-solve` and its seats, stamps and stops, which serve the projects that install the stack."
