@@ -20,6 +20,16 @@
     "- A change in a sibling repo (plugins-marketplaces hosts the `envoydev` marketplace), which follows that repo's own flow.",
     "- Alfred Code's `task-solve` and its seats, stamps and stops, which serve the projects that install the stack."
   ],
+  "structure_paths": "[\"hooks/**/*.ts\", \"hooks/**/*.tsx\", \"tests/**/*.ts\"]",
+  "structure_map": [
+    "- Source root `hooks/`. The entry is `hooks/register.ts`, the wiring alone: each `on(...)` calls one function of a feature folder.",
+    "- A feature folder is `hooks/<feature>/`: `types.ts`, `constants.ts`, logic files, `effects.ts`.",
+    "- The outside world is `$`, the mods API: only `effects.ts` takes it, and each `$.state` atom is made, read and updated in its owner folder's `effects.ts`.",
+    "- Shared code: `hooks/core/`.",
+    "- Tests: `tests/<feature>/<name>.test.ts`, with the shared helpers in `tests/kit.ts`.",
+    "- Literals that stay literals, because `claude plugin validate` reads the source: the event name in each `on(...)`, and every mods API call written in full. A relative import names its file with no extension.",
+    "- The folders written before 2026-11-15 keep constants in their logic files; they follow the shape as they are changed."
+  ],
   "audit": {
     "hooks": {
       "roots": [
