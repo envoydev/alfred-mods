@@ -20,8 +20,8 @@ re-checked the same way at the moment of use: the docs are the authority, this f
 - A plugin's behaviour is being tested (`claude plugin eval`) or its cost read (`claude plugin details`).
 
 Not for a mod's hooks module - its events, the mods API, render sites and the `claude plugin test` kit: Claude Code's
-built-in `plugin-authoring` skill holds those for the running build, which is why this copy of alfred-code's skill is
-named `plugin-packaging` (a project skill named like a bundled one replaces it). Not for a project's own `.claude/` folder (skills, agents and hooks there load without a manifest)
+built-in `plugin-authoring` skill holds those for the running build, which is why this skill is named
+`plugin-packaging` (a project skill named like a bundled one replaces it). Not for a project's own `.claude/` folder (skills, agents and hooks there load without a manifest)
 and not for a single skill's body - that is the skills docs (code.claude.com/docs/en/skills), the same inside or
 outside a plugin.
 
@@ -133,7 +133,11 @@ A plugin loads at session start; `/reload-plugins` re-reads skills, agents, hook
 Run these in this order; each is cheap and each catches a class the previous one cannot.
 
 1. `claude plugin validate <plugin-dir> --strict` - schema, paths, frontmatter; `--strict` turns
-   warnings into failures. Run it on the marketplace root too when one exists.
+   warnings into failures. Run it on the marketplace root too when one exists. Validate a copy of
+   the files git ships (`git ls-files --cached --others --exclude-standard`), never the folder on
+   disk: the validator reads what is there, so a git-ignored `.mcp.json` (the kit writes one into
+   every repo) reads as a remote MCP server the plugin ships, and a Finder `.DS_Store` as a file in
+   it - both fail `--profile directory --strict` though neither reaches an install (measured 2026-11-14).
 2. `claude --plugin-dir <plugin-dir>` in a scratch project, then `/reload-plugins` after each edit.
    Check the slash list shows the entries you meant (namespaced commands, bare or namespaced
    skills) and nothing you did not.

@@ -1,0 +1,88 @@
+{
+  "name": "alfred-mods",
+  "agents_md": "AGENTS.md",
+  "check_batch": "`npm test` and `npm run validate`",
+  "check_once": "a `claude --plugin-dir .` session in a scratch project when the change hooks or draws something",
+  "not_for": "Not for a release, which follows the Release section of `plugin-handling.md`, on the user's word.",
+  "settled": [
+    "A design already settled by `docs/session-inspector-brief.md` or the user's rulings skips the spec and goes to the",
+    "  plan. The brief's phases are built in order, and none before its Phase 0 verdict is approved."
+  ],
+  "checks": [
+    "   - per batch: `npm test` (the `*.test.ts` tests for the hooks changed, written first) and `npm run validate`;",
+    "   - when the change hooks or draws something, a `claude --plugin-dir .` session in a scratch project under an isolated",
+    "     `CLAUDE_CONFIG_DIR` and `HOME`, once without Alfred Code and once with it, reporting what each draws;",
+    "   - the Done-when checks of the brief's phase the change belongs to."
+  ],
+  "voice": "single dashes, single quotes in prose",
+  "commit": "its message with no trace of the agent (`.claude/rules/commits.md`)",
+  "not_here": [
+    "- A change in a sibling repo (plugins-marketplaces hosts the `envoydev` marketplace), which follows that repo's own flow.",
+    "- Alfred Code's `task-solve` and its seats, stamps and stops, which serve the projects that install the stack."
+  ],
+  "structure_paths": "[\"hooks/**/*.ts\", \"hooks/**/*.tsx\", \"tests/**/*.ts\"]",
+  "structure_map": [
+    "- Source root `hooks/`. The entry is `hooks/register.ts`, the wiring alone: each `on(...)` calls one function of a feature folder.",
+    "- A feature folder is `hooks/<feature>/`: `types.ts`, `constants.ts`, logic files, `effects.ts`.",
+    "- The outside world is `$`, the mods API: only `effects.ts` takes it, and each `$.state` atom is made, read and updated in its owner folder's `effects.ts`.",
+    "- Shared code: `hooks/core/`.",
+    "- Tests: `tests/<feature>/<name>.test.ts`, with the shared helpers in `tests/kit.ts`.",
+    "- Literals that stay literals, because `claude plugin validate` reads the source: the event name in each `on(...)`, and every mods API call written in full. A relative import names its file with no extension.",
+    "- The folders written before 2026-11-15 keep constants in their logic files; they follow the shape as they are changed."
+  ],
+  "audit": {
+    "hooks": {
+      "roots": [
+        "hooks"
+      ],
+      "checks": [
+        "npm test",
+        "npm run validate",
+        "npm run typecheck"
+      ],
+      "notes": [
+        "The hooks module is hooks/register.ts, the one file hooks/hooks.json names under modules; it holds the wiring only, every on(...) calling one function of a feature folder under hooks/<folder>/, and parity is register.ts against the feature folders on disk.",
+        "A feature folder holds types.ts, logic files with no $ and no state, and effects.ts, which owns the folder's $.state atoms and module memory and is the folder's only file that touches $; another folder reaches an atom only through its owner's exported functions.",
+        "Each hook's test is a *.test.ts at the same path under tests/, run by claude plugin test (npm test) with every mods API call the hook makes stubbed.",
+        "A mod observes and draws: no hook approves, denies or rewrites a tool call unless the brief names the case, so the module owes no block ledger and its coverage map is what it must never do itself.",
+        "No $.http.fetch and no $.model calls, $.process only where the brief allows it and with a timeout, and no prompt, tool input, secret or account email in any log or file.",
+        "Every registration ends in .catch(($, e, next) => next(e)) so a throwing handler passes the event on.",
+        "Mods limits per the repo's record (mods docs read 2026-10-28, Claude Code 2.1.312; the types in .claude-plugin/types/ win): a hook's own time 10 s (keep each under 50 ms, heavy work on a timer), a .catch 1 s, all session.end hooks 1.5 s together, $.store 4 MiB, $.fs 4 MiB per file, redraws throttled to 10 a second (30 in the terminal).",
+        "claude plugin validate reads the module statically: each mods API call is written in full, each event name in on(...) is a string literal, no second on inside register, relative imports name files with no extension, and there is no require or dynamic import().",
+        "The userConfig leave_out_skipped_hooks leaves out the six hooks a managed plugin can skip (classic.PostToolUseFailure, classic.PostToolUse, classic.PermissionRequest among them), the rules hook and the settings-change hook (classic.ConfigChange); check that switch's wiring parity too.",
+        "The repo ships no rules, skills or agents: hooks are read against AGENTS.md (the why), docs/session-inspector-brief.md and the user's rulings.",
+        "A change that hooks or draws something is proven once in a claude --plugin-dir . session in a scratch project under an isolated CLAUDE_CONFIG_DIR and HOME, once without Alfred Code and once with it, reporting what each draws.",
+        "The hooks share events with Alfred Code's command hooks when both are installed; read the collision map against that stack's hook wiring where a session has both."
+      ]
+    },
+    "system": {
+      "roots": [
+        ".claude-plugin/plugin.json",
+        "hooks/",
+        "types/"
+      ],
+      "checks": [
+        "npm test",
+        "npm run validate"
+      ],
+      "notes": [
+        "The plugin is a mod: the repo root is the plugin root and its only component is a hooks module - `hooks/hooks.json` `modules` names `./register.ts`, which holds every `on(...)`, each calling one feature folder under `hooks/`; no skills, agents, rules, commands or MCP servers ship, so the conflict and token maps read the hook injections and draws only.",
+        "PROFILES are `without-alfred-code` and `with-alfred-code`: every check runs in a project without Alfred Code and in one with it, where the mod also reads the per-session status file under `.claude/session-inspector/` and the plan folder its `plan` field names.",
+        "No fixture or session-surface tool exists: install by hand with `claude --plugin-dir .` in a scratch project under an isolated `CLAUDE_CONFIG_DIR` and `HOME` in the session scratchpad, never the real account (it once left records in `~/.claude/plugins/installed_plugins.json` and ended logged out); ask before any run against the real account.",
+        "A mod observes and draws: it never approves, denies or rewrites a tool call unless `docs/session-inspector-brief.md` names the case, makes no `$.http.fetch` or `$.model` call, uses `$.process` only where the brief allows it with a timeout, and logs no prompt, tool input, secret or account email - S4 checks these instead of guard coverage.",
+        "The mod states no project facts by design and injects nothing into context: S5 fixes only what it promises a session - the band, the `/inspect` pane and their rows - and that it adds no context.",
+        "Mod hook limits for S3: a hook's own time 10 s (each kept under 50 ms, heavy work on a timer), a `.catch` 1 s, all `session.end` hooks 1.5 s together, `$.store` 4 MiB of JSON, `$.fs` 4 MiB per file, redraws throttled to 10 a second (30 in the terminal).",
+        "`claude plugin validate` reads the source without running it: each mods API call is written in full, each `on(...)` event name is a string literal, imports are relative with no extension, and an atom handed to another file is refused - the packaging grade reads these.",
+        "No `evals/` suite exists; `npm test` (`claude plugin test .`) is the tested surface - the packaging grade states whether `claude plugin eval` applies to a hooks-only mod or names `npm test` as the substitute, with the reason.",
+        "The version lives only in `.claude-plugin/plugin.json`; the marketplace entry carries none, and every user-visible change bumps it because an installed mod is cached by version.",
+        "MARKETPLACE is the `envoydev` catalog in envoydev/plugins-marketplaces, which lists the mod from this repo's `main` with no `sha`; a merge to `main` with a version bump is the release, tagged `v<version>`. This repo has no `.claude-plugin/marketplace.json`.",
+        "Never rename or drop the id `alfred-mods`: every install goes silent; the one rename was `session-inspector` to `alfred-mods` in 0.5.0.",
+        "The root holds only the mod's own folders: `commands/`, `agents/`, `skills/`, `output-styles/`, `workflows/`, `monitors/`, `themes/`, `bin/`, `.mcp.json`, `.lsp.json`, `settings.json` or a root `SKILL.md` appearing there is a packaging finding.",
+        "The repo-root `.mcp.json` is a git-ignored, machine-local dev file the kit sync writes; it never ships in an install but a `claude --plugin-dir .` fixture would read it as a plugin MCP server, so the map attributes it to the dev checkout, not the plugin.",
+        "`.claude-plugin/types/` is regenerated per build and git-ignored, and `probe/` is a machine-local Phase 0 probe mod; neither ships.",
+        "A release also needs a Desktop Code tab check, or it is reported NOT RUN.",
+        "The repo is public: no private project names or absolute local paths in a tracked file."
+      ]
+    }
+  }
+}

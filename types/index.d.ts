@@ -1,51 +1,55 @@
-// The alfred-mods's $.state contract: every value the hooks module keeps for the session.
+// The alfred-mods's $.state contract: every value the hooks module keeps for the session. It imports nothing:
+// `claude plugin validate` refuses an import here (checked 2026-11-13), so each folder's types.ts re-exports its own.
 export type Outcome = 'ok' | 'error' | 'denied' | 'blocked' | 'refused'
 export type ToolStat = { calls: number; ok: number; failed: number; stopped: number }
 export type Failure = {
   id: string; at: number; tool: string; target: string
   outcome: Exclude<Outcome, 'ok'>; reason: string; detail: string; count: number; isNew: boolean
   // The hook script that blocked the call (spec C6); absent in a row an earlier version kept
-  by?: string | null
+  blockedBy?: string | null
   // Its number for '/inspect show <n>', counting up through the session and never changed, so a failure that lands
   // while a turn runs moves no other row's; absent in a row an earlier version kept
-  n?: number
+  failureNumber?: number
 }
 export type TurnEnd = 'answer' | 'aborted' | 'refusal' | 'error'
 export type Turn = {
-  n: number; turnId: string; promptAt: number | null; replyAt: number; durationMs: number
-  tokensIn: number; tokensOut: number; tools: number; failures: number
-  contextPercent: number | null; end: TurnEnd
+  turnNumber: number; turnId: string; promptAt: number | null; replyAt: number; durationMs: number
+  tokensIn: number; tokensOut: number; toolCalls: number; toolFailures: number
+  contextPercent: number | null; endReason: TurnEnd
   // The session's spend while the turn ran, agents included (spec C4); absent in a turn an earlier version kept
   spendUsd?: number | null
 }
 // Every main-loop call in flight, oldest first
-export type Running = { id: string; tool: string; label: string; startedAt: number }
+export type RunningCall = { id: string; tool: string; label: string; startedAt: number }
 export type Live = {
-  turnId: string | null; startedAt: number | null; tools: number; failures: number; running: Running[]; promptAt: number | null
+  turnId: string | null; startedAt: number | null; toolCalls: number; toolFailures: number; runningCalls: RunningCall[]; promptAt: number | null
 }
-export type Window = { kind: string; percentUsed: number; resetsAt: string | null }
+export type RateWindow = { kind: string; percentUsed: number; resetsAt: string | null }
 export type Usage = {
-  tokens: number | null; window: number | null; percent: number | null; startedAt: number | null
-  windows: Window[]; costUsd: number | null; todayUsd: number | null; at: number
+  contextTokens: number | null; contextWindow: number | null; contextPercent: number | null; startedAt: number | null
+  rateWindows: RateWindow[]; costUsd: number | null; todayUsd: number | null; readingAt: number
   // When the windows shown were read by an earlier session, until this one's first reading with windows; absent after
-  windowsAt?: number
+  rateWindowsAt?: number
 }
 export type Totals = { input: number; output: number; cacheRead: number; cacheWrite: number; stepOutput: number; stepMs: number }
 // A prompt the person entered that no turn has answered yet, by a fingerprint of its text, never the text
-export type Waiting = { at: number; key: string }
-export type Meta = {
+export type WaitingPrompt = { at: number; fingerprint: string }
+// Where the session works (the user, 2026-11-11)
+export type Place = { project: string; folder?: string; branch: string | null; changes?: { added: number; removed: number }; sync?: { ahead: number; behind: number } }
+export type Session = {
   model: string | null; effort: string | null; compactions: number; lastCompactAt: number | null
-  lastPromptAt: number | null; lastReplyAt: number | null; turnCount: number; waiting: Waiting[]
+  lastPromptAt: number | null; lastReplyAt: number | null; turnCount: number; waitingPrompts: WaitingPrompt[]
   // The main loop's settled tool calls this session
-  mainCalls: number
+  mainToolCalls: number
   // The skills the main loop loaded into its context this conversation, by name, with how many times; absent before one
-  skills?: Record<string, number>
+  loadedSkills?: Record<string, number>
   // The folder holding the repository (or the working folder outside one) and its branch, read at start and every 30 s
   // `project`: the session's project root's name; `folder`: where Claude works when not that root, from it, or
   // '…/<name>' outside it; `branch`: the branch of the repository holding that folder
   // `changes`: the repository's uncommitted lines against HEAD, a new untracked file's lines as added; absent until
   // read, or when git refused
-  place?: { project: string; folder?: string; branch: string | null; changes?: { added: number; removed: number } }
+  // `sync`, commits ahead of and behind the branch's upstream as of the last fetch; absent with no upstream
+  place?: Place
   // Claude Code's version, read at start
   version?: string
   // A resumed or branched conversation: it holds skills loaded before the mod watched it, which no API lists
@@ -59,9 +63,9 @@ export type Meta = {
 }
 export type Tab = 'now' | 'usage' | 'agents' | 'tools' | 'cache' | 'timeline' | 'plan'
 // `planSlug`: the plan `/inspect plan <name>` pinned, shown while its file parses
-export type View = { tab: Tab; shown: string[]; planSlug: string | null }
+export type View = { tab: Tab; expandedIds: string[]; pinnedPlan: string | null }
 export type PacePoint = { at: number; percent: number }
-export type Pace = Record<string, { resetsAt: string | null; points: PacePoint[]; toasted: number[] }>
+export type Pace = Record<string, { resetsAt: string | null; points: PacePoint[]; toastedMarks: number[] }>
 // The engine's AgentStatus, copied: a contract imports nothing
 export type AgentStatus = 'pending' | 'running' | 'waiting' | 'idle' | 'completed' | 'failed' | 'killed'
 // An agent seen at its spawn. Its prompt is never kept: only the values of its `plan:` and `task:` lines.
@@ -78,21 +82,21 @@ export type AgentRow = {
 }
 // A model loop no spawn announced (spec C3): its steps and output tokens, first and last step, and whether its
 // turn.complete came
-export type Loop = { id: string; steps: number; output: number; firstAt: number; lastAt: number; isDone: boolean }
+export type Loop = { id: string; steps: number; outputTokens: number; firstAt: number; lastAt: number; isDone: boolean }
 export type CacheTier = '5m' | '1h'
 // Read off the 5h and 7d windows: within the plan's usage, on usage credits, or neither window (off a subscription)
 export type Billing = 'plan' | 'credits' | 'other'
 export type CacheCounts = { read: number; write: number; input: number }
 // What the variables and settings choose; `from` names the variable or key that pinned the tier.
 // `isTerminal`: the session started in the terminal's REPL, the one place idle compaction runs for every account.
-export type CacheConfig = { pin: { tier: CacheTier; from: string } | null; idleOff: boolean; idleMinTokens: number; isTerminal: boolean }
+export type CacheConfig = { pin: { tier: CacheTier; from: string } | null; isIdleCompactOff: boolean; idleMinTokens: number; isTerminal: boolean }
 export type Cache = {
   // The last model switch's report, and the billing it was made under
   tier: CacheTier | null; tierAt: number | null; tierBilling: Billing | null
   config: CacheConfig
   ratePerToken: number | null; rateModel: string | null
-  lastAt: number | null; last: CacheCounts | null; session: CacheCounts
-  toastedFor: number | null
+  lastRequestAt: number | null; lastRequest: CacheCounts | null; sessionCounts: CacheCounts
+  toastedForRequestAt: number | null
 }
 
 // A plan file and a scores file, as the README's 'Plan and score files' contract gives them; times in epoch ms
@@ -107,30 +111,49 @@ export type StepTime = { ms: number; isShared: boolean }
 // A loop's working time since its turn began: the main loop's, or an agent's by its id. `named`: the main slice's
 // `<plan>:<step>` marks, one per agent naming a step that was live during the turn; `waits`: its all-wait calls still
 // open, by call id, with their start
-export type Slice = { at: number; waitMs: number; named: string[]; waits?: Record<string, number> }
+export type Slice = { openedAt: number; waitMs: number; namedSteps: string[]; openWaits?: Record<string, number> }
 // The open slices, and this session's step and overhead totals by their $.store key
-export type Credit = { slices: Record<string, Slice>; mine: Record<string, StepTime> }
-export type Plan = { title: string; updatedAt: number | null; steps: PlanStep[]; changes: PlanChange[] }
+export type Credit = { slices: Record<string, Slice>; sessionTimes: Record<string, StepTime> }
+// `approvedAt` and `completedAt` come from Alfred Code's status.json only: null until approved, or while open
+export type Plan = {
+  title: string; updatedAt: number | null; steps: PlanStep[]; changes: PlanChange[]
+  approvedAt?: number | null; completedAt?: number | null
+}
 export type Severity = 'BLOCKER' | 'MATERIAL' | 'MINOR'
 export type Finding = { id: string | null; text: string; severity: Severity | null; status: 'open' | 'fixed' | 'improved' | 'wontfix' | null; by: string | null }
-export type ScoreRound = { round: number; at: number | null; total: number; criteria: Record<string, number>; findings: Finding[] }
-export type Scores = { subject: { kind: 'plan' | 'diagnosis' | 'reply'; ref: string }; updatedAt: number | null; scale: number; rounds: ScoreRound[] }
+// `counts`: the findings per severity as Alfred Code's scoring.json gives them, in place of the findings themselves
+export type ScoreRound = {
+  round: number; at: number | null; total: number; criteria: Record<string, number>; findings: Finding[]
+  counts?: Partial<Record<Severity, number>>
+}
+// `released`, from Alfred Code's scoring.json only: the round whose draft was kept, its total the score; null while
+// grading runs
+export type Scores = {
+  subject: { kind: 'plan' | 'diagnosis' | 'reply'; ref: string }; updatedAt: number | null; scale: number; rounds: ScoreRound[]
+  released?: number | null
+  // true when Alfred Code withheld the plan (scoring.json status 'withheld'); absent otherwise
+  isWithheld?: boolean
+}
 // A file of the folder as last read: its last good parse, kept while a newer read fails
-export type Watched<T> = { name: string; mtimeMs: number; size: number; value: T | null; isInvalid: boolean }
+// `isNamed`: the plan Alfred Code's status file names this session
+export type Watched<T> = { name: string; mtimeMs: number; size: number; value: T | null; isInvalid: boolean; isNamed?: boolean }
 // The folder's plans and scores; every session's step times summed per plan; when each plan finished this session;
 // the notes and finishes already seen; and when this session began, which a plan's file must be written after to run
 export type Plans = {
-  plans: Watched<Plan>[]; scores: Watched<Scores>[]
-  times: Record<string, Record<string, StepTime>>; overhead: Record<string, number>
-  finished: Record<string, number>; toasted: string[]; since: number | null
+  planFiles: Watched<Plan>[]; scoreFiles: Watched<Scores>[]
+  stepTimes: Record<string, Record<string, StepTime>>; overheadMs: Record<string, number>
+  finishedAt: Record<string, number>; toastedKeys: string[]; watchedSince: number | null
+  // The Alfred Code plan folder read with them, by its name: the one the status file names, or the one it let go
+  // finished, for 10 minutes (alfred-code's plan folder contract)
+  alfredFolder: { name: string; folder: string } | null
 }
 // A main-loop task list item, from TaskCreate, TaskUpdate or TodoWrite: its subject is a tool input, kept in $.state
 // only; `ms`, the working time credited to it while in progress
-export type TaskItem = { id: string; subject: string; status: 'pending' | 'in_progress' | 'completed'; ms: number }
+export type TaskItem = { id: string; subject: string; status: 'pending' | 'in_progress' | 'completed'; workedMs: number }
 // REC's level: off, on (keys, emails, phones, private words) or strict (also the account, home paths and $ amounts)
-export type Level = 'off' | 'on' | 'strict'
+export type RecLevel = 'off' | 'on' | 'strict'
 // What surfaces redraw on: the level, the word count and the pane's last refusal, never the words themselves
-export type RecState = { level: Level; count: number; note: string | null }
+export type RecState = { level: RecLevel; wordCount: number; note: string | null }
 // "quiet": compact tool rows on or off, from the settings files (spec settings-values S2)
 export type Quiet = { isOn: boolean }
 // "band": the full band with its info line, calm, its two lines, or off, none, from the settings files
@@ -143,8 +166,8 @@ export type BandSetting = { mode: BandMode; isToolsOpen?: boolean; isUnder?: boo
 export type HandoffMode = 'ask' | 'auto' | 'off'
 export type SaveResult = { at: number; isOk: boolean; reason: string | null }
 export type Handoff = {
-  mode: HandoffMode; threshold: number; point: number | null; handled: number | null; isAskUp: boolean
-  lastSave: SaveResult | null; alfred: { state: 'none' | 'stood-down' | 'ignored'; reason: string | null }
+  mode: HandoffMode; threshold: number; compactPoint: number | null; handledStep: number | null; isAskUp: boolean
+  lastSave: SaveResult | null; stackStatus: { state: 'none' | 'stood-down' | 'ignored'; reason: string | null }
 }
 
 // The stack's status file past Phase 4's fields (Phase 5): `state` none (no file), used, or ignored with `reason`;
@@ -152,18 +175,23 @@ export type Handoff = {
 // The resume prompt's text is never here: module memory only, `hasPrompt` says whether it is known.
 export type FullContext = 'fresh-session' | 'compact' | 'off'
 export type StackScorer = { on: boolean; level: number; rounds: number }
+// Auto-compact as the stack reports it (alfred-code's status file, schema 1, add-only): `on` while the project's
+// ALFRED_CODE_AUTO_COMPACT or auto-run is on, `at` Claude Code's compaction point for the session's model, null unknown
+export type StackAutoCompact = { on: boolean; at: number | null }
 export type Stack = {
   state: 'none' | 'used' | 'ignored'; reason: string | null
-  fullContext: FullContext | null; model: string | null; window: number | null; resumeAt: number | null; noOffer: boolean
-  autoRun: boolean | null; scorer: StackScorer | null; hasPrompt: boolean
-  updatedAt: number | null; readAt: number | null; ignored: string[]
+  fullContext: FullContext | null; model: string | null; window: number | null; resumeAt: number | null; hasNoOffer: boolean
+  autoRun: boolean | null; scorer: StackScorer | null; autoCompact: StackAutoCompact | null; hasPrompt: boolean
+  // The plan folder the session works on, relative to the project root, no trailing slash (alfred-code's plan folder contract)
+  plan: string | null
+  updatedAt: number | null; readAt: number | null; ignoredFields: string[]
 }
 
 // What fills the context (spec C1), from the last breakdown read: `at` null before one. Categories of kind `used` only;
 // plugins by name, from their agents and skills; memory files named inside the project, else by type and base name.
 export type PartsPlugin = { name: string; agents: number; agentTokens: number; skills: number; skillTokens: number }
 export type Parts = {
-  at: number | null; categories: { name: string; tokens: number }[]; plugins: PartsPlugin[]
+  breakdownAt: number | null; categories: { name: string; tokens: number }[]; plugins: PartsPlugin[]
   memory: { files: number; tokens: number; top: { name: string; tokens: number }[] }
   // The skill listing: the skills it carries, of the session's, and its tokens; absent when the breakdown has none
   skills?: SkillListing
@@ -176,7 +204,7 @@ declare module 'claude-code' {
   interface PluginState {
     'alfred-mods': {
       stats: Shaped<Record<string, ToolStat>>; failures: Shaped<Failure[]>; turns: Shaped<Turn[]>
-      live: Shaped<Live>; usage: Shaped<Usage>; totals: Shaped<Totals>; meta: Shaped<Meta>
+      live: Shaped<Live>; usage: Shaped<Usage>; totals: Shaped<Totals>; session: Shaped<Session>
       view: Shaped<View>; pace: Shaped<Pace>; agents: Shaped<AgentRow[]>; cache: Shaped<Cache>; tick: number
       plans: Shaped<Plans>; credit: Shaped<Credit>; tasks: Shaped<TaskItem[]>; rec: Shaped<RecState>; quiet: Shaped<Quiet>; handoff: Shaped<Handoff>
       band: Shaped<BandSetting>

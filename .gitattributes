@@ -1,0 +1,4 @@
+# LF everywhere, in the repo and in the working tree, on every platform. Without this, git's core.autocrlf (on by
+# default on Windows) checks text files out with CRLF, and the kit check then reads every synced .claude file as
+# edited here: its lock holds the hash of the LF bytes (seen on CI, windows-latest, 2026-11-14).
+* text=auto eol=lf

@@ -72,7 +72,7 @@ The mod is one plugin named `session-inspector`, built without Claude HUD, that 
 - **One plugin, one hooks module.** Every feature shares one state, and REC must see everything the plugin draws. Split code into sibling files only if the probe confirms the hooks module can import them.
 - **Standalone plugin.** It is its own plugin in its own repo, with its own marketplace, so it installs and works in any project. The envoydev marketplace lists it as a second entry with a GitHub source pinned by both `ref` (the release tag) and `sha`, bumped together per release. The version lives only in `plugin.json`. The README tells users to install it through one marketplace only, because two ids with the same plugin name register hooks only once.
 - **Commands.** `/inspect [tab]`, `/auto-handoff ...`, `/rec ...`, `/quiet on|off`. The deck lists `/agents` and `/goal` as built in, so never use those.
-- **Core and Alfred Code integration.** The core works from the Claude Code mods API alone and is built first. The integration waits until the stack's workspace releases settle its paths. Besides the plugin's public contracts (the plan file and the plan: and task: prompt lines), its only input from the stack is one small versioned status file that the stack's own hooks publish (schema, session, model, auto-run, scorer, resume trigger, window, handoff prompt), one file per session in the plugin's fixed folder. The mod reads nothing else from the stack, ignores an unknown schema or another session's file, and shows nothing when unsure, with the reason in a dim diagnostics row under \[Inspect\]. With the file present, it adds the mode banner, measures the runway against the stack's resume trigger ahead of the engine's threshold, and makes \[Handoff\] fill the stack's ready handoff prompt verbatim, without sending it and only into an empty prompt. Without Alfred Code, \[Handoff\] uses the mod's own extractive resume prompt (HANDOFF.md, then a resume prompt filled after `/clear`), so each environment has exactly one handoff home; from Phase 4, F8 stands down for a session with a valid status file whose `fullContext` is not `off` (agent). In Alfred Code it can later replace `claude-hud`; it never replaces the `instrument-tool-usage` hook.
+- **Core and Alfred Code integration.** The core works from the Claude Code mods API alone and is built first. The integration waits until the stack's workspace releases settle its paths. Besides the plugin's public contracts (the plan file and the plan: and task: prompt lines), its only input from the stack is one small versioned status file that the stack's own hooks publish (schema, session, model, auto-run, scorer, resume trigger, window, handoff prompt), one file per session in the plugin's fixed folder. The mod reads nothing else from the stack but, since the user's ruling of 2026-11-13 ('alfred mods must learn Alfred's code plans'), the plan folder that file's `plan` field names (`status.json` and `scoring.json`, alfred-code's plan folder contract, schema 1), ignores an unknown schema or another session's file, and shows nothing when unsure, with the reason in a dim diagnostics row under \[Inspect\]. With the file present, it adds the mode banner, measures the runway against the stack's resume trigger ahead of the engine's threshold, and makes \[Handoff\] fill the stack's ready handoff prompt verbatim, without sending it and only into an empty prompt. Without Alfred Code, \[Handoff\] uses the mod's own extractive resume prompt (HANDOFF.md, then a resume prompt filled after `/clear`), so each environment has exactly one handoff home; from Phase 4, F8 stands down for a session with a valid status file whose `fullContext` is not `off` (agent). In Alfred Code it can later replace `claude-hud`; it never replaces the `instrument-tool-usage` hook.
 - **Parity.** Claude Code only: Cursor has no mods, so the Cursor half of the stack gets no twin. The plan and score file format is a public contract in the plugin's README, so any skill can write it; Alfred Code's plan and scorer skills are one writer.
 
 **Mods from the source deck (claude\_code\_mods.pptx)**
@@ -143,7 +143,7 @@ Hooks only update the shared state. Every surface reads that state and passes it
 
 **Design rules**
 
-- **Calm by default:** idle and healthy, the band is one dim line. Colour appears only when a threshold is crossed. (Until 2026-11-10; the user then chose the full band by default, `/band calm` for this rule's band.)
+- **Calm by default:** idle and healthy, the band is one dim line. Colour appears only when a threshold is crossed. (Until 2026-11-10; the user then chose the full band by default, `/band calm` for this rule's band. Since 2026-11-12 the full band keeps its colours when idle, the user's 'colors by default ... not only when active work'; this rule holds for the calm band alone.)
 - **Now first:** while Claude works, line 1 shows what is running: the plan step, each agent's current action, and a running Bash command with its elapsed time. When idle, it shows the last turn: duration, tool calls, failures, and the time of your last prompt and of Claude's reply.
 - **Room left:** line 2 holds the gauges. Context and 5h get bars because they move within a session; the 7d window and cost are numbers. Each window shows when it resets after its percent, as its day, month and clock in brackets, such as (31.10 09:00) (the user, 2026-10-28).
 - **Bars:** one bar everywhere, in the band and the pane: 5 cells of 20%, one character each, ▰ filled and ▱ empty, with no gaps, such as ▰▰▱▱▱ at 40% (the user, 2026-10-28). A cell fills only when its share is reached, the filled part takes the threshold colour and the empty part stays dim, so the shape reads without colour.
@@ -228,7 +228,7 @@ rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ w
   in a `PromptHint` hook on the terminal, composing Claude Code's own footer element first, then the band's lines at
   the site above's width; the site above passes once the footer has drawn this session. No key arms the footer, so the
   buttons name their commands - clicked in fullscreen, drawn as text on the main screen - `/band rows on|off` stands in
-  for `t`, and the action row follows the gauges, so a cut at the screen's edge takes the detail rows first. The
+  for `t`, and the action row comes first, right under the input (the user, 2026-11-12: '✗ 3 new /inspect' over '✓ Turn 18'; it followed the gauges before), so a cut at the screen's edge takes the detail rows first. The
   fullscreen budget is half the screen less 6 rows, 2 for a set `statusLine` and 1 for the pinned line. A Desktop tab
   keeps the band above until its footer is probed. Design, probes and rulings: the machine-local spec
   `docs/superpowers/specs/2026-11-11-band-under-design.md`. (agent)
@@ -301,8 +301,9 @@ rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ w
   empties the skills; the list outlives a compaction, as the mod has no word of what one drops. A resume or a branch
   (`classic.SessionStart`, a start-over that is not a /clear, or a process whose first `$.state` holds no reading while
   `$.session.turns()` is above 0) sets `meta.isResumed`: the context holds skills loaded before, which no API lists,
-  so the row reads `none seen since resume`, or the skills since with `since resume` after them; the agents and by-path
-  rules rows count from it the same way. Where a managed plugin
+  so the row shows the skills since with `since resume` after them; the agents and by-path rules rows count from it
+  the same way. Each detail row waits for its category's first item (the user, 2026-11-12: 'leave empty until at
+  least one of category is appeared'): a skills listing alone is no skill, and no row reads `none`. Where a managed plugin
   skips `skill.prompt`, a `/name` is missing from the list (README). Idle and healthy, the band is the gauge line and the info
   line, both dim, the times on the info line only. Today's cost follows the session's while line 2 fits, never on the
   narrow form; it is the mod's own count (F1 note).
@@ -527,6 +528,8 @@ F6 and F7 read JSON files from one fixed folder in the project, `.claude/session
 
 **In Alfred Code.** Plans stay Markdown at `<docs root>/work/plans/<feature>.md` (or the older `<docs root>/plans`), written by the model and kept permanently. The JSON is a generated view, never edited by hand or by the model: a PostToolUse hook on the plan files regenerates `plans/<feature>.json` and stamps `startedAt` and `doneAt` when a step's status changes. Lines added to the plan's Asked or Decisions sections become `integrated` changes with `source: user`, which keeps ✎ working. A card's estimate line becomes `estimateMin`, and the card's number becomes the step id. The designer subagents report an estimate with each card, and the approval guard that already checks `plan:` also requires `task:` on every dispatch that carries `plan:`. Scores stay session-scoped in the scorer folder, and the graded output can be a plan, a diagnosis or an inline reply: the scorecard script publishes each round to `scores/<slug>.json` with its subject, so rounds outlive the session. The stack resolves its own data root, including the workspace lookup order, before it writes, so the mod never repeats that logic. The stack's stale sweep should also prune the published folder, keeping each plan's JSON while its Markdown exists.
 
+**Alfred Code's plan folder (the user's ruling, 2026-11-13).** Alfred Code's folder per plan, `<docs root>/work/plans/<feature>/`, holds the frozen Markdown plan beside two JSON files a script writes: `status.json` (schema 1: `title`, `updatedAt`, `approvedAt`, `completedAt`, and per task `id`, `title`, `status` of `todo`, `in_progress`, `blocked`, `done` or `failed`, `estimateMin`, `startedAt`, `doneAt`) and `scoring.json` (schema 1: `scale`, `released`, and per round `round`, `at`, `total`, `severities`). The status file's `plan` field names the folder the session works on, relative to the project root, or null. The mod reads that folder only, never the Markdown and never a folder the field does not name; it shows that plan before any other (a pinned plan aside), from its approval to 10 minutes after it is let go finished. The score is the `released` round's total, its arrow against the round graded before it; while `released` is null, the newest total marked `grading`; green at or above `scorer.level`, amber under it, no colour while scoring is off. A file with another schema, or one that will not parse, keeps its last good read. A status file that will not read, or whose `plan` will not, leaves the named plan named. The named plan takes this session's time once a task has begun, however old its file; before its approval no task has begun, so that time goes to no step, and the task list stays out of the band while the named plan shows (a ruling of 2026-11-13).
+
 **What the mod does with the file**
 
 - **When it reloads:** after each Write or Edit call completes and again at the end of the turn, because a writer's hook may regenerate the JSON after the tool call, and on a 30 s `$.fs.stat` check of the folder for changes made outside Claude.
@@ -567,7 +570,7 @@ plan-file poll (Phase 3's timer). Each `/auto-handoff` change reads `settings:ha
 changes only the field it names, so a session that has not polled yet never writes back an old mode or threshold. Two
 writes in the same instant can still race, as a `$.store` get then set is not atomic, and the second wins; for a value
 the person types by hand that is acceptable. The context forecast on band line 2 (`≈6 turns`, `turnsLeft` in
-`hooks/forecast.ts`) counts the turns left to this threshold instead of a fixed 80, converted as the next section says.
+`hooks/forecast.ts` [now `hooks/core/forecast.ts`]) counts the turns left to this threshold instead of a fixed 80, converted as the next section says.
 
 #### Steps, asks and saves
 
@@ -585,7 +588,7 @@ would come only after the compaction F8 exists to get ahead of.
   only when the model or the window changes.
 - **Auto-compaction off** (`isAutoCompactEnabled` false, no threshold): the point is the window.
 - **The row** adds the point when it is not the window: `ctx ▰▰▰▰▱ 79% of 390k · asks at 80% · h: save now`.
-- **The forecast** on band line 2 and in the Now tab (both call `turnsLeft`, `hooks/band.ts` and `hooks/tabs.ts`)
+- **The forecast** on band line 2 and in the Now tab (both call `turnsLeft`, `hooks/band.ts` and `hooks/tabs.ts` [now `hooks/band/band.ts` and `hooks/inspect/tabs.ts`])
   takes F8's threshold over the window, so its turns run to the same moment: 80% of a 390k point on a 1M window is 31%
   of the window.
 
@@ -627,10 +630,10 @@ The Now tab draws a HANDOFF section, its heading violet, after PLAN and before A
   95 is handled.
 - **h** hands off: it saves HANDOFF.md and arms the resume prompt (below).
 - **c** saves a handoff first, unless a save happened at this step already, then compacts through Phase 2's
-  `compactNow` (`hooks/register.ts`), which already reports a skip, a failure and a second press. `c` is drawn only
+  `compactNow` (`hooks/register.ts` [now `hooks/cache/effects.ts`]), which already reports a skip, a failure and a second press. `c` is drawn only
   while no main-loop turn runs, since `$.session.compact` rejects while a turn runs.
 - **r** takes the ask down until the next step.
-- **Hotkey clash.** The pane's Cache tab uses hotkey `c` (`hooks/tabs.ts` TABS), and of two Buttons on one hotkey the
+- **Hotkey clash.** The pane's Cache tab uses hotkey `c` (`hooks/tabs.ts` [now `hooks/inspect/tabs.ts`] TABS), and of two Buttons on one hotkey the
   one drawn later wins. So the Cache tab moves to `k`. Phase 2 is not released, so no installed copy changes.
 
 #### What a save writes
@@ -708,7 +711,7 @@ This is the brief's 'extractive resume prompt' ('Decisions already made', Core a
 only into an empty prompt.
 
 - Each save, by h, 4, c, `now` or auto mode, arms it. The mod keeps the save's time in its module memory (`held` in
-  `hooks/register.ts`), which `/clear` does not reset, unlike `$.state`.
+  `hooks/register.ts` [now `handoffMemory.armedAt` in `hooks/handoff/effects.ts`]), which `/clear` does not reset, unlike `$.state`.
 - On `classic.SessionStart` with `source` `clear` within 2 hours of the last save, the mod reads the prompt with
   `$.prompt.read()`. If the draft is empty, it fills `Read .claude/session-inspector/HANDOFF.md, check that the branch
   it names is checked out, and continue from its Next section.` with `$.prompt.fill`, once, then disarms. Claude does
@@ -734,7 +737,7 @@ only into an empty prompt.
 | A save fails                                | `Handoff not saved: <reason>`                                             |
 
 The ask's toast names `/auto-handoff now` because band digits do not fire while the band is collapsed (brief, design
-rules). Every toast goes through `toast()` in `hooks/mask.ts`, so REC masks it.
+rules). Every toast goes through `toast()` in `hooks/mask.ts` [now `hooks/core/effects.ts`], so REC masks it.
 
 #### With Alfred Code installed
 
@@ -802,6 +805,7 @@ which then reads as unknown. Phase 5's reader and what it draws follow the table
 | `resumeAt`      | whole tokens over 0, or `null`                                 | The stack's fresh-session trigger after its clamps, a trigger and not a promise; `null` with no offer at this window tier |
 | `autoRun`       | boolean                                                        | The stack's auto-run is on for the session's current prompt, by `guard-answer.js` `autoRunNow()`          |
 | `scorer`        | `{ "on": boolean, "level": 1-100, "rounds": 1-10 }`, or `null` | The stack's output scorer for the current prompt, by `scorerNow()`; `null` when not usable                |
+| `autoCompact`   | `{ "on": boolean, "at": whole tokens over 0, or null }`, or `null` | Added in alfred-code 3.11.0, add-only: `on` while the project's `ALFRED_CODE_AUTO_COMPACT` is 1 or auto-run is on; `at` Claude Code's compaction point for the session's model, `null` when unknown |
 | `handoffPrompt` | string of 1 to 1000 characters, or `null`                      | A prompt for a fresh session, ready to send as it is, composed by the stack; `null` with no plan in progress |
 
 - **The prompt's text:** `Read <plan path>, check that branch <branch> is checked out, and continue from its Resume:
@@ -823,7 +827,8 @@ which then reads as unknown. Phase 5's reader and what it draws follow the table
   ALFRED CODE section's `ignored:` list; the rest of the file still counts. `model`: 1 to 100 characters, no control
   characters. `window`: a whole number from 1,000 to 10,000,000. `resumeAt`: a whole number from 1,000 up to and not
   including the file's own valid `window` (10,000,000 when `window` is unknown). `autoRun`: a boolean. `scorer`: `on`
-  a boolean, `level` a whole number from 1 to 100, `rounds` from 1 to 10. `handoffPrompt`: 1 to 1000 characters whose
+  a boolean, `level` a whole number from 1 to 100, `rounds` from 1 to 10. `autoCompact`: `on` a boolean, `at` a whole number from 1 to 10,000,000 or
+  `null`. `handoffPrompt`: 1 to 1000 characters whose
   only control characters are line feeds and tabs. Each but `autoRun` may be `null`; a missing field is unknown and
   not listed; a number sent as a string fails its rule; an `updatedAt` that does not parse shows no written time.
 - **The prompt's text** stays in module memory: never in `$.state`, `$.store`, a toast, a log or a file.
@@ -832,8 +837,13 @@ which then reads as unknown. Phase 5's reader and what it draws follow the table
   `ctx ▰▰▰▱▱ 62% of 150k`, past 100% past the trigger. Its tone, the band's hot state and the `≈N turns` forecast go
   by it, and the Usage tab counts turns to `150k`. Otherwise the core item: `compact` already measures against Claude
   Code's own compaction point, which the stack's installer seeds.
-- **The mode banner:** `auto-run` (warn tone) and `scorer 80`, joined by ` · ` and followed by ` │ `, lead band line
-  1 after `● REC` while the file is used and a mode is on, never dropped for width. Where the band's first line does
+- **The mode banner:** `auto-run` (warn tone), `auto-compact 490k` and `scoring 80`, in that order, joined by ` · ` and
+  followed by ` │ `, lead band line 1 after `● REC` from the session's first used file while a mode is on (the owner,
+  2026-11-12: '"auto-run | auto-compact 490k | scorer 80"'). `auto-compact` shows while `autoCompact.on`, its `at`
+  rounded to whole thousands, or alone when `at` is `null`; the ALFRED CODE section spells it out as `auto-compact on
+  (at 490k)` or `auto-compact off`. The scorer shows as `scoring`, as alfred-code 3.11.0
+  names it (the user, 2026-11-12), `scoring on (level 80, 3 rounds)` or `scoring off` in the section; the status
+  file's field keeps its schema 1 name, `scorer`. The banner is never dropped for width. Where the band's first line does
   not fit beside the marks, they take line 1 alone and the body keeps the full width, so no gauge, reset or the cost
   drops for them (agent).
 - **The ALFRED CODE section,** after HANDOFF in the Now tab, drawn in every session whatever `/auto-handoff`'s mode:
@@ -1437,7 +1447,7 @@ The Claude Code limits below are from the mods reference; the right column is ho
 
 **Security**
 
-- **Network and processes:** no `$.http.fetch` and no `$.model` calls. The `$.process` calls allowed are fixed, read-only git commands, each with a 2 s timeout and `--no-optional-locks`, run off the hooks: one `git status` for the extractive handoff, and for the project row's change counts (the user, 2026-11-12: 'project: alfred-mods │ git:(web-steps) +5323 -123') `git diff --numstat HEAD` and `git ls-files --others --exclude-standard -z` from the repository's folder, after a main-thread Bash call, edit or write and on the 30 s poll. A new untracked file's lines count as added: up to 200 files of 1 MiB or less are read through `$.fs.read`, and only their line counts are kept, in memory.
+- **Network and processes:** no `$.http.fetch` and no `$.model` calls. The `$.process` calls allowed are fixed, read-only git commands, each with a 2 s timeout and `--no-optional-locks`, run off the hooks: one `git status` for the extractive handoff, and for the project row's change counts (the user, 2026-11-12: 'project: alfred-mods │ git:(web-steps) +5323 -123') `git diff --numstat HEAD` and `git ls-files --others --exclude-standard -z` from the repository's folder, and for its commits ahead of and behind the upstream (the user, 2026-11-12: 'git:(band-order) arrow-up-symbol 1 arrow-down-symbol 2') `git rev-list --left-right --count @{upstream}...HEAD`, as of the last fetch (no `git fetch`, ever), after a main-thread Bash call, edit or write and on the 30 s poll. A new untracked file's lines count as added: up to 200 files of 1 MiB or less are read through `$.fs.read`, and only their line counts are kept, in memory.
 - **Approvals:** the mod never approves, denies or rewrites a tool call; F8 writes HANDOFF.md and fills an empty prompt, and F9 rewrites only what rows draw, as the 'F8 and F9 behaviour' section says. (agent)
 - **Files written:** one `$.fs.write`, of `.claude/session-inspector/HANDOFF.md`, and never over a file without its marker. (agent)
 - **Private data:** private words live only in `$.store`, never in code, logs or `$.state`.
@@ -1520,8 +1530,8 @@ Step 1, the gap review, 2026-10-28, against Claude Code 2.1.312. 'Types' is the 
 - F3, F4, F10 data sources. Evidence: the event rows above; types `RenderPropsOf.ToolUse.isExpanded`: 'A hook that draws a compact row of its own passes when true, so ctrl+o shows all'.
 - Layout, pane placement: docks in fullscreen from 110 columns; 144 only for an unasked open. Evidence: types `RenderPropsOf.Pane.placement`, `ui.open`; reference, 'Limits'.
 - Phase 0: signatures, `kind`, literal `on`, the config path in the sketch. Evidence: types `TurnStepChunk`; the validate line above.
-- Phase 0 session: isolated config, a guard hook, an approved prompt with a wait, a model switch, auto mode, the band and in-row buttons. Evidence: `.claude/CLAUDE.md` 'Working in this repo'; probe questions 11, 12, 13; F4.
-- Every phase, Desktop check needs the real account. Evidence: `.claude/CLAUDE.md` 'Ask before any run against the real account'.
+- Phase 0 session: isolated config, a guard hook, an approved prompt with a wait, a model switch, auto mode, the band and in-row buttons. Evidence: `AGENTS.md` 'Working in this repo'; probe questions 11, 12, 13; F4.
+- Every phase, Desktop check needs the real account. Evidence: `AGENTS.md` 'Ask before any run against the real account'.
 - Limits: VS Code minimum, `.catch` 1 s, `$.store` sharing, pane 110, `$.process.run` 30 s, test 5 s. Evidence: reference, 'Limits'; types `HookBudget.catchMs`.
 - Security, what it reads: the config path. Evidence: as F1.
 - Risks: the per-agent row rewritten (the id is declared, the window is not); version range to 2.1.312; band collapse; Desktop on the real account; the account file's place; `$.store` races. Evidence: as the rows above.
@@ -1543,14 +1553,14 @@ Steps 2 and 3, the probe and the verdict, 2026-10-28. S, I, F, M and X are the P
 - F6 data source: `duration_ms` leaves waits out. Evidence: question 11.
 - F10 data source and confidence: ToolUse and ToolResult on the main screen, ToolGroup in fullscreen's normal view; the classifier line inside ToolResult's tree. Evidence: question 10 (M 25, M 34, I 87, screen `main-1`).
 - F1 account note: the dev machine's file dates replaced by the isolated run's finding; a token sign-in has no record. Evidence: the isolated config held `.claude.json` and HOME none; I 44.
-- Phase 0 answers: rate-limit percentages left out of the quotes. Evidence: the public-repo rule in `.claude/CLAUDE.md`.
+- Phase 0 answers: rate-limit percentages left out of the quotes. Evidence: the public-repo rule in `AGENTS.md`.
 - Verdict: added; overall NO-GO by the rule, on F1's account field and F2's 'blocked' for refusals raised before the check, with both hidden recommended; F3 PARTIAL on the agent's window; F10 PARTIAL on ⊘ for those refusals; F2's classifier block shown as 'refused' until seen. Evidence: the verdict rows; types `SessionIdentity`; X 26 to 28 against I 97 to 99.
 - Phase 0 question 12: a failed Edit and a failed Read (log X) test the PostToolUseFailure rule beyond Bash. Evidence: X 26 to 28, X 47 to 50.
 - Events, `agent.spawn`, and Also report: the resume disagreement settled by the types-win rule; Phase 2 checks it. Evidence: Purpose, step 1; types `AgentSpawnInput.resume`.
 - F5 data source: a turn's calls are those with no `agentId`. Evidence: I 25, I 209 (agents in the background).
 - Also report, the prototype: what its path would add. Evidence: the user's note that it is in alfred-code; the recheck below.
 - Build phases: Phase 1 checks a guard block, the own refusals, a failed Edit and Read, and records a classifier block; Phase 2 checks a resumed agent; Phase 4 checks both layouts; Phase 5 starts on the user's word; every phase runs validate, tsc and test, shows the band and stops after its commit. Evidence: the user's request, 2026-10-28; questions 10 and 12.
-- Build phases, Rollback: disable, uninstall, and a higher-version revert release. Evidence: `claude plugin --help` (2.1.312); `.claude/CLAUDE.md` 'One version'.
+- Build phases, Rollback: disable, uninstall, and a higher-version revert release. Evidence: `claude plugin --help` (2.1.312); `AGENTS.md` 'One version'.
 - Limits, Platforms row: all three operating systems. Evidence: the user's message, 2026-10-28.
 - Risks: agents with no spawn, the cache tier, platforms, the two layouts, the classifier block, the in-row button, `!` commands. Evidence: I 266, I 240, the user's message, question 10, question 12, question 13, screen `noauth-4`.
 - Not found, rechecked after the user's note that it is in alfred-code: every local and remote branch there holds only `docs/session-inspector mod agent brief.md` (origin/main, dfb48b73) and one comment in `scripts/plan-estimate.test.js`; neither names a prototype or a runway line.

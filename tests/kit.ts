@@ -35,6 +35,8 @@ type Options = {
   // What `git diff --numstat HEAD` and `git ls-files --others` print for the project row's changes; each absent
   // refuses, so a test before the counts drew as it was written for
   diff?: string; untracked?: string
+  // What `git rev-list --left-right --count @{upstream}...HEAD` prints; absent refuses, as for a branch with no upstream
+  revList?: string
   // What a read of `settings:band` answers while the test stored none: 'calm' by default, the band every test before
   // /band was written for; 'unset' answers nothing, as a fresh install's store does. The key is never added to the store.
   band?: 'full' | 'calm' | 'unset'
@@ -69,7 +71,7 @@ export function stubAll(on: On, o: Options = {}): {
   listed: { current: AgentInfo[]; calls: number }; files: { current: Record<string, FileStub>; reads: string[]; writes: string[]; exists: string[]; lists: string[] }
   // `git.current` and `git.calls`; the draft a test types and the texts the mod filled
   git: { current: ProcessRunResult | string; calls: number; argv: readonly string[] | null; timeoutMs: number | null }
-  changes: { diff: string | undefined; untracked: string | undefined; argv: (readonly string[])[]; cwd: string | null; timeoutMs: number | null }; prompt: { draft: string; fills: string[] }
+  changes: { diff: string | undefined; untracked: string | undefined; revList: string | undefined; argv: (readonly string[])[]; cwd: string | null; timeoutMs: number | null }; prompt: { draft: string; fills: string[] }
   // Each `$.ui.invalidate` event the mod raised, in order
   invalidates: string[]
   // Each `$.ui.status` text the mod set, in order; undefined is a clear
@@ -220,9 +222,13 @@ export function stubAll(on: On, o: Options = {}): {
     return { value: undefined }
   })
   const git = { current: o.git ?? gitResult('## main\n'), calls: 0, argv: null as readonly string[] | null, timeoutMs: null as number | null }
-  const changes = { diff: o.diff, untracked: o.untracked, argv: [] as (readonly string[])[], cwd: null as string | null, timeoutMs: null as number | null }
+  const changes = { diff: o.diff, untracked: o.untracked, revList: o.revList, argv: [] as (readonly string[])[], cwd: null as string | null, timeoutMs: null as number | null }
   on('process.run', (_, e) => {
     const isDiff = e.argv.includes('diff')
+    if (e.argv.includes('rev-list')) {
+      changes.argv.push(e.argv)
+      return changes.revList === undefined ? { deny: 'test: no upstream' } : { value: gitResult(changes.revList) }
+    }
     if (isDiff || e.argv.includes('ls-files')) {
       changes.argv.push(e.argv)
       changes.cwd = e.init?.cwd ?? null

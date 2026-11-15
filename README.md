@@ -32,15 +32,20 @@ Requires Claude Code 2.1.312 or later, in the terminal (`claude --version`) and 
 (`/status`). Mods load from 2.1.287, but the handoff and the compact rows use fields this mod is checked against only
 from 2.1.312.
 
-Install it from `envoydev`, the one marketplace for envoydev's plugins. It also lists Alfred Code, which the mod does
-not need:
+Install it from `envoydev`, the one marketplace for envoydev's plugins
+([envoydev/plugins-marketplaces](https://github.com/envoydev/plugins-marketplaces)). It also lists Alfred Code, which the
+mod does not need:
 
 ```bash
-claude plugin marketplace add envoydev/alfred-code
+claude plugin marketplace add envoydev/plugins-marketplaces
 claude plugin install alfred-mods@envoydev
 ```
 
 Then run `/reload-plugins`, or start a new session: `/plugin` shows `1 mod active · alfred-mods`.
+
+If you added `envoydev` from `envoydev/alfred-code` before, the catalog has moved: the
+[plugins-marketplaces README](https://github.com/envoydev/plugins-marketplaces#moving-from-the-old-marketplace) has the
+steps.
 
 It adds nothing to every session's context: `claude plugin details alfred-mods@envoydev` reads `Always-on:
 ~0 tok` (measured 2026-10-30). The one thing it ever tells Claude is Recording mode's short note.
@@ -87,9 +92,6 @@ claude plugin install alfred-mods@envoydev
 Settings the mod saved between sessions (the `/rec`
 words, `/quiet`, `/auto-handoff` and today's cost) are kept per plugin name, so they start fresh under the new id.
 The files it writes in a project keep their place under `.claude/session-inspector/`.
-
-This repo is also a marketplace of its own, `alfred-mods`, kept for development. Install through one marketplace only:
-if you added both, keep one of the two installs, as two plugin ids with the same name register its hooks only once.
 
 A mod does not load in a session started with `--safe-mode` or `--bare`, with `disableAllHooks` set, or where your
 organization's managed settings allow only its own mods
@@ -140,7 +142,9 @@ organization's managed settings allow only its own mods
 A command writes its field into `~/.claude/settings.json` for you. For one project only, put the field in that
 project's `.claude/settings.local.json`, which wins over your user file there ([Which file wins](#which-file-wins)).
 The [Band Explorer](docs/band-explorer.html), one page that runs in a browser, offline too, previews each setting on
-the band and gives each file's block to copy.
+the band and gives each file's block to copy. Its live terminal has example transcripts (reading and testing, editing,
+agents and skills, web research, questions and planning, failures), drawn as compact rows by the mod's own code or as
+Claude Code's own rows with `"quiet": false`.
 
 ## Commands
 
@@ -506,19 +510,24 @@ rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ w
   tool calls, and the gauges add today's cost. Today's cost is the mod's own count on this machine: sessions it did not
   run in are not in it, so it can read lower than a status line's that counts every session.
 - **`project:`** the folder the session started in, then `git:(<branch>)`, the branch of the repository holding the
-  folder Claude works in (left out outside a repository), then that repository's uncommitted changes as `+added
-  −removed` lines against the last commit, a new untracked file's lines counted as added (left out when there are
+  folder Claude works in (left out outside a repository), then `↑1 ↓2`, the commits the branch is ahead of and behind
+  its upstream as of your last fetch (the mod never fetches; a side at 0, or a branch with no upstream, is left out),
+  then that repository's uncommitted changes as `+added −removed` lines against the last commit, a new untracked file's lines counted as added (left out when there are
   none), then `folder:`, that folder when it is not the project's
   root. The folder follows Claude: where a Bash `cd` went, or the folder of the last file Claude edited or wrote,
   whichever came last (a folder outside the project shows as `…/<name>`); it is re-read after each Bash call, edit and
-  write, and every 30 s. `git:(` and `)` are purple, the branch yellow, the added lines green and the removed red, the
-  project and the folder in your text's own colour. The counts come from `git diff --numstat HEAD` and `git ls-files`,
-  each with a 2 s timeout; short of width the folder goes first, then the counts.
+  write, and every 30 s. `git:(`, `)` and the arrows are purple, the branch yellow, the added lines green and the removed red, the
+  project and the folder in your text's own colour. The counts come from `git diff --numstat HEAD`, `git ls-files` and
+  `git rev-list --left-right --count @{upstream}...HEAD`, each with a 2 s timeout; short of width the folder goes first,
+  then the changes, then the arrows.
 - **`plan:`** while a plan runs: its title, bar, steps done and the step in progress (the Plan tab has the percent and
-  the times).
+  the times), then the plan's score and its change from the round before, `score 85 ▲13`.
 - **`usage:`** in aqua, counts what the rows under it list: tool calls, skills, agents dispatched (and how many run)
-  and rules. It shows whether the rows are open or not.
-- **The detail rows** are open by default; `"bandRows": false` closes them ([Settings](#settings)).
+  and rules, then the session's compactions once it has compacted (`2 compactions`, the first count to drop when the
+  row is narrow). It shows whether the rows are open or not.
+- **The detail rows** are open by default; `"bandRows": false` closes them ([Settings](#settings)). Each row waits for
+  its first item: no `skills:` row until a skill is loaded, no `agents:` until one is dispatched, and so on, so a new
+  session shows none of them, and `usage:` none until something is counted.
 
 `×N` on these rows is how many times this session. `tools:` lists every tool by name with its calls, agents' calls
 included, an MCP tool as `<server>:<tool>`. `skills:`
@@ -528,24 +537,26 @@ then how many skills the context's listing carries, of the session's. `agents:` 
 was first dispatched, with how many times: `◐` while one of it runs, `✗` once one failed or was stopped, else `✓`,
 then how many run. `rules:` lists the rule files in the main context: those loaded at start (from `.claude/rules/`, a
 link there named by the file it reaches, and your own rules folder), then those loaded by path, when Claude reads,
-writes or edits a file their `paths:` match, in violet while the band is coloured, then how many of each; a compaction
+writes or edits a file their `paths:` match, in violet, then how many of each; a compaction
 keeps them. A resumed or branched conversation still holds the skills, agents and by-path rules from before it, which no
-mods API lists, so those rows count from the resume: `none seen since resume`, or what came since with `since resume`.
+mods API lists, so those rows count from the resume: what came since, with `since resume`, and no row until then.
 
 When the width runs out, the info line wraps onto a second row between items, and items drop whole only when two rows
 cannot hold them (the version first, then the times); `project:` shortens its folder to the last part, then leaves it
 out, and `usage:` drops the rules, then the agents, then the skills. When the band has fewer rows than it needs, as in
 fullscreen under a tall draft, `project:` goes first, then the info line's second row, then the open rows from the last
 (`rules:`, `agents:`, `skills:`, `tools:`), then `usage:`, then `plan:`, then the whole info line, so the line with its
-buttons stays in view. `"band": "calm"` goes back to the two lines.
+buttons stays in view. Once `plan:` goes, its count and score move to line 1 while something needs you
+(`PLAN 1/4 · score 85 ▲13`). The full band keeps its colours when idle too, not only while a turn runs; `"band": "calm"`
+goes back to the two lines, dim until something needs you.
 
 `"bandPlace": "under"` draws the band under the input instead. Claude Code draws its own mode line (`⏵⏵ auto mode on`)
 as the first row under the prompt whatever a mod does, so with `"above"` it is the bottom row, under the band and the
 prompt, and with `"under"` it sits between the prompt and the band. Under the input is the terminal's only (a Desktop
 tab keeps the band above), and it takes no keys, so each button becomes the command that does its job: in fullscreen a
 click presses it, `[ /inspect ]`, `[ /compact ]`, `[ /auto-handoff now ]`; on the main screen
-(`CLAUDE_CODE_NO_FLICKER=0`), where nothing takes a click, it is that command as text. There the action row comes right
-after the gauges. In fullscreen the room under the input is about half the screen, less the prompt, two rows when a
+(`CLAUDE_CODE_NO_FLICKER=0`), where nothing takes a click, it is that command as text. There the action row (new failures, a cache
+warning, the handoff ask) comes first, right under the input, over the turn line and the gauges. In fullscreen the room under the input is about half the screen, less the prompt, two rows when a
 status line is set and one for the mod's pinned line; whatever else takes room, a draft of several lines or a taller
 status line, cuts the band at the screen's edge from its last row, `rules:` first. It was built on Claude Code 2.1.322.
 
@@ -706,13 +717,21 @@ In a project where [Alfred Code](https://github.com/envoydev/alfred-code) publis
 `.claude/session-inspector/status/<session id>.json` for the session, the mod reads that one file at the session's
 start, every 30 seconds and after `/clear`, and shows more:
 
-- **The mode banner:** `auto-run · scorer 80 │` leads the band while the stack's auto-run or its scorer is on, after
-  `● REC` while recording. Where the band's first line does not fit beside it, the banner takes that line alone.
+- **The mode banner:** `auto-run · auto-compact 490k · scoring 80 │` leads the band from the session's start while the
+  stack's auto-run, auto-compact or scoring is on, after `● REC` while recording. `490k` is where Claude Code compacts
+  for the session's model; `auto-compact` alone when the stack does not know it. Where the band's first line does not fit beside it, the banner takes that line alone.
 - **The runway:** while the stack offers a fresh session at a full context, the band's context gauge measures against
   the stack's trigger instead of the window, `ctx ▰▰▰▱▱ 62% of 150k`, and the turns forecast counts to it.
-- **The ALFRED CODE section** in `/inspect`'s Now tab: what the stack does at a full context, its auto-run and scorer,
+- **The ALFRED CODE section** in `/inspect`'s Now tab: what the stack does at a full context, its auto-run, auto-compact and scoring,
   the model it judges the session by, its resume prompt's first line and when it last wrote the file. A field the mod
   cannot use is named as ignored, and the rest still shows.
+- **The plan and its score:** when the status file names the plan folder Alfred Code works on
+  (`"plan": ".alfred/docs/work/plans/<feature>/"`), the plan row shows that plan from the folder's `status.json`,
+  before any other plan, from `awaiting approval` to `done ✓`. It ends with the score from the folder's
+  `scoring.json`: the kept round's total, `▲` or `▼` against the round graded before it, green at or above the scoring
+  level and amber under it, `grading` while the grading still runs, and `withheld` once
+  Alfred Code withheld the plan (its `scoring.json` `status`, from alfred-code 3.12). A plan let go finished stays 10 minutes. No
+  folder named, or a file with another schema, and the plan row shows what it would without Alfred Code.
 - **The resume prompt:** while the pane has the focus (Ctrl+X Tab, or a click in fullscreen), `f` fills the stack's
   prompt into an empty prompt box, never sending it. Enter in the prompt box sends it; in the terminal the focus is
   back there after the fill. `/inspect fill` does the same from the prompt. With something already typed, a toast says
@@ -724,7 +743,8 @@ agents' tokens, the Tools tab names its guards (`blocked by shell-guards.js: …
 
 Without Alfred Code, or when the file is missing, has another schema or names another session, the band shows none of
 this, and the ALFRED CODE section shows one dim line with the reason, such as `Alfred Code: no status file for this
-session`. The file is the stack's: the mod never writes it and reads nothing else of the stack.
+session`. The file is the stack's: the mod never writes it, and reads nothing else of the stack but the two files of the
+plan folder it names.
 
 ## Plan and score files
 
@@ -734,7 +754,8 @@ scored output. Any skill or tool can write them; writers resolve their own paths
 reads the folder, except HANDOFF.md, which it writes. Keep the folder gitignored.
 
 The mod reads both folders after each Write, Edit or NotebookEdit call completes, at the end of each turn, and every
-30 seconds. It shows the plan with a step in progress written this session, else the task list, else the newest plan;
+30 seconds. It shows the plan with a step in progress written this session, else the task list, else the newest plan
+(with Alfred Code, the plan its status file names comes first: see With Alfred Code);
 `/inspect plan <slug>` pins one. A file that does not parse keeps its last good version and shows `plan file invalid`.
 Files with LF or CRLF line ends, and with or without a byte-order mark, read the same.
 
@@ -826,12 +847,13 @@ prompts) and idle time between turns do not.
 ## Development
 
 The repo root is the mod: `.claude-plugin/plugin.json` (the one place its version lives), `hooks/hooks.json` naming
-the hooks module `hooks/register.ts`, and tests under `tests/`. `.claude-plugin/marketplace.json` lists the root as
-the marketplace's one plugin.
+the hooks module `hooks/register.ts` (the wiring; each feature lives in its folder under `hooks/`), and tests under
+`tests/` at the same paths. The `envoydev` marketplace (envoydev/plugins-marketplaces) lists this repo by its GitHub
+source; the repo carries no marketplace of its own.
 
 ```bash
 npm test                 # claude plugin test: hooks fired with stubs, no session, sign-in or network
-npm run validate         # claude plugin validate --strict on both manifests (the mod with --profile directory too), on a copy of the files git would ship
+npm run validate         # claude plugin validate --strict on the root and on the manifest with --profile directory, on a copy of the files git would ship
 claude --plugin-dir .    # load the working tree for one session; a save reloads the hooks
 ```
 
@@ -840,7 +862,7 @@ against the types the pinned Claude Code build writes.
 
 The first interactive `--plugin-dir` session writes the mod types for the running build into
 `.claude-plugin/types/` (git-ignored), which editors and `tsc` read. Requires Node 22 for the scripts (built-ins
-only) and the `claude` CLI on PATH. This repo's own rules are in `.claude/CLAUDE.md`; the
+only) and the `claude` CLI on PATH. This repo's own rules are in `AGENTS.md`; the
 design, the features and the build phases are in [the session-inspector brief](docs/session-inspector-brief.md).
 
 ## License
