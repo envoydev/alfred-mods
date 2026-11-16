@@ -141,10 +141,12 @@ organization's managed settings allow only its own mods
 
 A command writes its field into `~/.claude/settings.json` for you. For one project only, put the field in that
 project's `.claude/settings.local.json`, which wins over your user file there ([Which file wins](#which-file-wins)).
-The [Band Explorer](docs/band-explorer.html), one page that runs in a browser, offline too, previews each setting on
-the band and gives each file's block to copy. Its live terminal has example transcripts (reading and testing, editing,
-agents and skills, web research, questions and planning, failures), drawn as compact rows by the mod's own code or as
-Claude Code's own rows with `"quiet": false`.
+The [alfred-mods page](docs/band-explorer.html), which runs in a browser, offline too, explains what the mod
+draws, in tabs: near the message box (each band row, what it shows and how it works, and the handoff), in the terminal
+(the compact tool rows beside Claude Code's own, each `/inspect` tab and Recording mode), and the settings, where a
+live terminal previews each field and each file's block is ready to copy. Its example transcripts (reading and testing,
+editing, agents and skills, web research, questions and planning, failures) are drawn as compact rows by the mod's own
+code.
 
 ## Commands
 
@@ -202,9 +204,9 @@ tab's Compact are Claude Code's own `/compact`. Every switch is a settings value
 ## Settings
 
 The mod's switches are values under one key, `"alfred-mods"`, in Claude Code's own settings files. Add the key to a
-file, save it, and the band redraws. The [Band Explorer](docs/band-explorer.html), one page that runs in a browser,
-offline too, previews each setting on the band and gives each file's block to copy: download the file, or clone the
-repo, and open it.
+file, save it, and the band redraws. The [alfred-mods page](docs/band-explorer.html), which runs in a browser,
+offline too, previews each setting on a live terminal in its settings tab and gives each file's block to copy:
+download the file, or clone the repo, and open it.
 
 ### Where to put them
 
