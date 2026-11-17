@@ -121,7 +121,9 @@ organization's managed settings allow only its own mods
    ```
 
    Keep the JSON valid: Claude Code drops a file that does not parse, its permission rules with it. The band redraws
-   as soon as you save.
+   as soon as you save. Edit the file in your own editor, or let the commands write it (`/inspect band ...`, `/rec`,
+   `/auto-handoff`): Claude Code loads the key, but its own Edit and Write tools check a settings file against Claude
+   Code's schema and refuse it (`Unrecognized field: alfred-mods`), so asking Claude to make the edit fails.
 
 ### Common setups
 
@@ -593,28 +595,32 @@ under `Blocked by hooks`.
 
 An administrator's managed plugin can send events on past the plugins you install, and Claude Code then tells the
 model, once per event and conversation, `alfred-mods: its classic.SessionStart hook was skipped. "<plugin>" runs first
-and sent the event on past it.` One did so for six of the mod's hooks: `classic.SessionStart`, `classic.PostToolUse`,
-`classic.PermissionRequest`, `classic.PostToolUseFailure`, `classic.PermissionDenied` and `skill.prompt`. On such a
-machine, turn on the mod's option `Leave out hooks a managed plugin skips` (`leave_out_skipped_hooks`) in `/config`:
-the mod leaves those six hooks out, so the notices stop, and loses nothing, as they never ran there. It also leaves out
-the hook that sees a rule load by path, `classic.InstructionsLoaded`, which such a plugin may skip too, and the one
-that sees a settings file change, `classic.ConfigChange`. A new install
+and sent the event on past it.` One did so for nine of the mod's hooks: `classic.SessionStart`,
+`classic.UserPromptSubmit`, `classic.PostToolUse`, `classic.PermissionRequest`, `classic.PostToolUseFailure`,
+`classic.PermissionDenied` and `skill.prompt`, and after a `/model`, `classic.PreModelSwitch` and
+`classic.PostModelSwitch`. On such a machine, turn on the mod's option `Leave out hooks a managed plugin skips`
+(`leave_out_skipped_hooks`) in `/config`: the mod leaves those nine hooks out, so the notices stop, and loses nothing,
+as they never ran there. It also leaves out the hook that sees a rule load by path, `classic.InstructionsLoaded`,
+which such a plugin may skip too, and the one that sees a settings file change, `classic.ConfigChange`. A new install
 asks for it once; leave it off anywhere else. Either way the mod reads a `/clear`, a resume or a branch off the session
 id, so the band starts over within a second and the first prompt carries REC's note. A `/clear` after a saved handoff
 still fills the resume prompt, unless you send a prompt first; resuming a conversation of one prompt fills it too, into
 the empty box, never sent. What it cannot tell without those hooks:
 
-- outside auto mode, a call you were asked about reads `refused`, whether you denied it, it failed after you allowed
-  it, or another plugin's permission hook denied it;
-- a classifier block counts as a new failure;
+- the permission mode is never seen, so auto mode reads as any other: a call that asked for permission and then
+  failed reads `refused` and counts as no new failure - whether you denied it, it failed after you allowed it, another
+  plugin's permission hook denied it or auto mode's classifier blocked it - and no row says `⎿ allowed by auto mode`;
 - a skill typed as `/name` is not counted, and is missing from the band's `skills` row and the Usage tab's `Skills`
   row; one Claude loads with its Skill tool is there;
 - time you spend at a permission prompt counts toward a plan step's time;
-- after a resume, the cache's rewrite cost (`rewrite ≈ $…`) is missing until you switch models;
+- the cache's rewrite cost (`rewrite ≈ $…`) is never shown;
+- after a `/model`, the band names the new model at its first reply, not at once, and until then the cache reads as
+  the old model's, its cold-cache toast included;
 - the band's `rules:` row lists only the rules loaded at start, and ends `by path not tracked`;
 - a change to the mod's [settings](#settings) shows within 30 seconds, not at once.
 
-A call that fails in auto mode still counts as new, and an interrupt is read from the mod's own tool hook.
+Where those hooks run, a call that fails in auto mode counts as new; an interrupt is read from the mod's own tool hook
+either way.
 
 While something needs you - recording mode on, the context at 60% or more, new failures - the mod pins one line under
 the prompt, `⚠ alfred-mods: ● REC · ctx 82% · ✗ 2 new`, which stays while the band is collapsed (Ctrl+X Ctrl+A) or off (`"band": "off"`).

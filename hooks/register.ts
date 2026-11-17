@@ -28,7 +28,7 @@ import { followSessionStart, startSession } from './lifecycle/effects'
 export const register: Register = (on, options) => {
   // The person's word that a managed plugin sends these events on past the mod: Claude Code then tells the model, once
   // per event and conversation, that the mod's hook was skipped. Left out, the hooks never join the chain; they never ran
-  // there anyway, and a new conversation is read off the session id. The rules hook goes with the six on the safe side
+  // there anyway, and a new conversation is read off the session id. The rules hook goes with the others on the safe side
   // (spec 2026-11-11, D4, A1): such a plugin may skip it too, and the rules row then says by path is not tracked.
   const isLeftOut = options.leave_out_skipped_hooks === true
   // Keyed by call id, at most 100, the oldest dropped first
@@ -43,12 +43,13 @@ export const register: Register = (on, options) => {
 
   on('tool.check', ($, e, next) => noteToolCheck($, e, next, calls)).catch(($, e, next) => next(e))
 
-  // The permission mode only: the prompt itself is never read or kept
-  on('classic.UserPromptSubmit', ($, e, next) => notePromptMode($, e, next)).catch(($, e, next) => next(e))
-
-  // The six hooks a managed plugin's notices named (2026-11-10), each of which it can send on past the mod. Left out
-  // with `leave_out_skipped_hooks`, as they never run there: Claude Code then has no skipped hook to tell the model of.
+  // The hooks a managed plugin's notices named (2026-11-10, and UserPromptSubmit on 2026-11-16), each of which it can
+  // send on past the mod. Left out with `leave_out_skipped_hooks`, as they never run there: Claude Code then has no
+  // skipped hook to tell the model of.
   if (!isLeftOut) {
+    // The permission mode only: the prompt itself is never read or kept
+    on('classic.UserPromptSubmit', ($, e, next) => notePromptMode($, e, next)).catch(($, e, next) => next(e))
+
     on('classic.PostToolUseFailure', ($, e, next) => noteToolFailure($, e, next, calls)).catch(($, e, next) => next(e))
 
     // The tool's own time, without the permission prompt or hooks: a call the person was asked about waited the rest
@@ -99,11 +100,14 @@ export const register: Register = (on, options) => {
 
   on('session.compact', ($, e, next) => trackCompaction($, e, next, pending)).catch(($, e, next) => next(e))
 
-  // A switch forfeits the cache; its report gives the tier under the billing now and prices the rewrite
-  on('classic.PostModelSwitch', ($, e, next) => trackModelSwitch($, e, next, pending)).catch(($, e, next) => next(e))
+  // The two a managed plugin's notices named after a /model (2026-11-16): left out with the hooks above
+  if (!isLeftOut) {
+    // A switch forfeits the cache; its report gives the tier under the billing now and prices the rewrite
+    on('classic.PostModelSwitch', ($, e, next) => trackModelSwitch($, e, next, pending)).catch(($, e, next) => next(e))
 
-  // Claude Code may still ask to confirm the switch, so the cache stays warm; a switch a hook stops reports nothing
-  on('classic.PreModelSwitch', ($, e, next) => trackModelSwitchAsk($, e, next, pending)).catch(($, e, next) => next(e))
+    // Claude Code may still ask to confirm the switch, so the cache stays warm; a switch a hook stops reports nothing
+    on('classic.PreModelSwitch', ($, e, next) => trackModelSwitchAsk($, e, next, pending)).catch(($, e, next) => next(e))
+  }
 
   // '/inspect [tab]': opens the pane, never on its own. '/inspect plan <name>' pins that plan; 'plan' alone clears it.
   on('command.run', { command: 'inspect' }, ($, e) => runInspectCommand($, e))

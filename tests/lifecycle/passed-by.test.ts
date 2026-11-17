@@ -1,16 +1,17 @@
 // A managed plugin that sends events on past the user tier (`next.to`), as an organization's did on 2026-11-10: Claude
 // Code then tells the model, once per event and conversation, that the mod's hook was skipped. The mod spots a new
-// conversation by its session id, and its `leave_out_skipped_hooks` option leaves the six hooks out.
+// conversation by its session id, and its `leave_out_skipped_hooks` option leaves those hooks out. The sessions of
+// 2026-11-16/17 added three it named: classic.UserPromptSubmit and, after a /model, Pre- and PostModelSwitch.
 import { expect, test } from 'claude-code/testing'
 import type { Engine, Plugin } from 'claude-code/testing'
 import type { On, SessionUsage } from 'claude-code'
 
-import { PRESENTATION, START, engine, rows, stubAll, watchState } from '../kit'
+import { PRESENTATION, START, SWITCH, engine, rows, stubAll, watchState } from '../kit'
 import type { Session, Turn } from '../../hooks/session/types'
 
 const ON = 'Screen recording is on (alfred-mods REC). Until told it is off, do not write secret values, API keys, tokens, passwords, email addresses or phone numbers in replies; refer to them by name, such as "the token in .env". Work on the task as usual.'
 
-// Stands in for the managed plugin: each of the six events the notices named goes on past the user tier, and a toast
+// Stands in for the managed plugin: each of the nine events the notices named goes on past the user tier, and a toast
 // names the plugins whose links it skipped
 const MANAGED: Plugin = {
   name: 'managed-stand-in',
@@ -48,10 +49,28 @@ const MANAGED: Plugin = {
       await $.ui.toast(`skill.prompt skipped: ${skipped(next.trace)}`)
       return r
     })
+    on('classic.UserPromptSubmit', async ($, e, next) => {
+      const r = await next.to(e, 'builtin')
+      await $.ui.toast(`classic.UserPromptSubmit skipped: ${skipped(next.trace)}`)
+      return r
+    })
+    on('classic.PreModelSwitch', async ($, e, next) => {
+      const r = await next.to(e, 'builtin')
+      await $.ui.toast(`classic.PreModelSwitch skipped: ${skipped(next.trace)}`)
+      return r
+    })
+    on('classic.PostModelSwitch', async ($, e, next) => {
+      const r = await next.to(e, 'builtin')
+      await $.ui.toast(`classic.PostModelSwitch skipped: ${skipped(next.trace)}`)
+      return r
+    })
   },
 }
 
-const EVENTS = ['classic.SessionStart', 'classic.PostToolUse', 'classic.PermissionRequest', 'classic.PostToolUseFailure', 'classic.PermissionDenied', 'skill.prompt']
+const EVENTS = [
+  'classic.SessionStart', 'classic.PostToolUse', 'classic.PermissionRequest', 'classic.PostToolUseFailure', 'classic.PermissionDenied', 'skill.prompt',
+  'classic.UserPromptSubmit', 'classic.PreModelSwitch', 'classic.PostModelSwitch',
+]
 
 // Claude Code's answers beneath: no hook answered the request, so the person is asked; the skill's prompt as it is
 function answerBeneath(on: On): void {
@@ -66,13 +85,16 @@ async function raiseAll($: Engine): Promise<void> {
   await $.classic.PostToolUseFailure({ tool_name: 'Bash', tool_input: {}, tool_use_id: 't1', error: 'Exit code 1' })
   await $.classic.PermissionDenied({ tool_name: 'Bash', tool_input: {}, tool_use_id: 't1', reason: 'destructive' })
   await $.skill.prompt({ skill: 'watch', text: 'x', frontmatter: {}, source: 'projectSettings' })
+  await $.classic.UserPromptSubmit({ prompt: 'q', permission_mode: 'default' })
+  await $.classic.PreModelSwitch(SWITCH)
+  await $.classic.PostModelSwitch(SWITCH)
 }
 
 // The plugins each event skipped, by event, from the stand-in's toasts
 const skippedBy = (toasts: string[]): Record<string, string> =>
   Object.fromEntries(toasts.filter(t => t.includes(' skipped: ')).map(t => t.split(' skipped: ') as [string, string]))
 
-test('a managed plugin that passes the six events on skips each of the mod\'s hooks', { plugins: [MANAGED] }, async ($, on) => {
+test('a managed plugin that passes the nine events on skips each of the mod\'s hooks', { plugins: [MANAGED] }, async ($, on) => {
   const { toasts } = stubAll(on)
   answerBeneath(on)
   engine(on)
@@ -82,7 +104,7 @@ test('a managed plugin that passes the six events on skips each of the mod\'s ho
   for (const event of EVENTS) expect(by[event]?.split(',')).toContain('alfred-mods')
 })
 
-test('with leave_out_skipped_hooks on, the six events reach no hook of the mod', { plugins: [MANAGED], options: { leave_out_skipped_hooks: true } }, async ($, on) => {
+test('with leave_out_skipped_hooks on, the nine events reach no hook of the mod', { plugins: [MANAGED], options: { leave_out_skipped_hooks: true } }, async ($, on) => {
   const { toasts } = stubAll(on)
   answerBeneath(on)
   engine(on)
@@ -216,3 +238,19 @@ test('with leave_out_skipped_hooks on, a by-path load reaches no hook of the mod
   expect(await rows(ui)).toContain('rules:   always.md │ 1 always-on · by path not tracked')
   await ui.unmount()
 })
+
+// With no managed plugin ahead of the mod, the band draws whether the option is on or off: on, the rules row alone says
+// the by-path rules are not tracked
+for (const isLeftOut of [false, true]) {
+  test(`with no managed plugin and leave_out_skipped_hooks ${isLeftOut ? 'on' : 'off'}, the band draws`, { options: { leave_out_skipped_hooks: isLeftOut } }, async ($, on) => {
+    const { clock } = stubAll(on, { band: 'full', usage: ALWAYS })
+    engine(on)
+    await $.session.start(START)
+    await clock.advance(1)
+    const ui = await $.ui.mount({ plugin: 'alfred-mods', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+    const drawn = await rows(ui)
+    expect(drawn.some(row => row.startsWith('ctx'))).toBe(true)
+    expect(drawn.some(row => row.includes('by path not tracked'))).toBe(isLeftOut)
+    await ui.unmount()
+  })
+}
