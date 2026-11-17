@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { actionOf, agentTree, isLive, keepRows, newRow, promptLines, refreshAgents, statusAt, toolSummary, upsertSpawn } from '../../hooks/agents/agents'
 import { modelParts, modelText } from '../../hooks/core/format'
-import { SPAWN, engine, spawns, stubAll, watchState } from '../kit'
+import { SPAWN, agentInfo, engine, spawns, stubAll, watchState } from '../kit'
 import type { AgentRow } from '../../hooks/agents/types'
 import type { ToolStat } from '../../hooks/tools/types'
 
@@ -78,7 +78,7 @@ test('fifty rows are kept, the oldest ended dropped first, never a live one', ()
 
 test('the list moves live rows only', () => {
   const info = (id: string, status: AgentRow['status'], parentId?: string) =>
-    ({ id, description: id, type: 'Explore', status, ...(parentId === undefined ? {} : { parentId }) })
+    agentInfo({ id, description: id, type: 'Explore', status, ...(parentId === undefined ? {} : { parentId }) })
   const rows = [
     row('w', null, 1), row('f', null, 2), row('c', null, 3, 'completed'),
     { ...row('gone', null, 4), isListed: true }, row('never', null, 5),

@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { SPAWN, START, engine, spawns, step, stepEngine, stubAll, watchState } from '../kit'
+import { SPAWN, START, agentInfo, engine, spawns, step, stepEngine, stubAll, watchState } from '../kit'
 import type { AgentRow } from '../../hooks/agents/types'
 import type { Live, Session } from '../../hooks/session/types'
 import type { ToolStat } from '../../hooks/tools/types'
@@ -107,7 +107,7 @@ test('a resumed agent runs again on its one row', async ($, on) => {
 })
 
 test('the list is read each second while an agent runs, and not otherwise', async ($, on) => {
-  const { clock, listed } = stubAll(on, { agents: [{ id: 'a1', description: 'a look', type: 'general-purpose', status: 'waiting' }] })
+  const { clock, listed } = stubAll(on, { agents: [agentInfo({ id: 'a1', description: 'a look', type: 'general-purpose', status: 'waiting' })] })
   const state = watchState(on)
   engine(on)
 
@@ -123,7 +123,7 @@ test('the list is read each second while an agent runs, and not otherwise', asyn
 })
 
 test('a live agent the list stops naming ends', async ($, on) => {
-  const { clock, listed } = stubAll(on, { agents: [{ id: 'a1', description: 'a look', type: 'general-purpose', status: 'running' }] })
+  const { clock, listed } = stubAll(on, { agents: [agentInfo({ id: 'a1', description: 'a look', type: 'general-purpose', status: 'running' })] })
   const state = watchState(on)
   engine(on)
 

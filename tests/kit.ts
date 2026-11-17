@@ -336,6 +336,17 @@ export function engine(on: On, except: string[] = []): void {
 
 export const START = { cwd: '/w', surface: 'terminal', isInteractive: true } as const
 
+// The task fields Claude Code 2.1.326 made required on AgentInfo. They come in through a spread, which takes no
+// excess-property check, so the record type-checks on a build whose AgentInfo lacks them too (CI's pin, 2.1.322)
+const AGENT_TASK: {
+  kind: 'local_agent'; taskStatus: 'running'; label: string; startTime: number; cwd: string; tokenCount: number; tokenSamples: number[]; hasRow: boolean
+} = { kind: 'local_agent', taskStatus: 'running', label: '', startTime: 0, cwd: '/w', tokenCount: 0, tokenSamples: [], hasRow: false }
+
+// One `$.agent.list()` entry from the fields the mod reads
+export function agentInfo(fields: Pick<AgentInfo, 'id' | 'description' | 'type' | 'status'> & Pick<Partial<AgentInfo>, 'parentId'>): AgentInfo {
+  return { ...AGENT_TASK, ...fields }
+}
+
 // A person's edit to their user settings file mid-session: the fields merged under "alfred-mods", then Claude Code's
 // ConfigChange and the clock's next tick, when the mod reads the files again (spec settings-values S4)
 export async function setUser(
