@@ -38,6 +38,10 @@ mod, so run one such session first (the folder is git-ignored and belongs to the
 `npm install` once in a fresh clone: `typescript` and `@types/node`, pinned exactly in `devDependencies` with no
 lockfile, check `scripts/` under `tsconfig.scripts.json` (nodenext, Node's types). Nothing the mod ships imports them.
 
+`npm run validate` runs `scripts/validate.ts` on Node's type stripping, so a maintainer's Node is 22.18 or newer
+on the 22 line, or 23.6 or newer (https://nodejs.org/api/typescript.md); `engines` stays `>=22`. CI's
+`node-version: 22` takes the newest 22.x.
+
 ## Layout
 
 - `hooks/hooks.json` names the one module, `hooks/register.ts`: the wiring only, each `on(...)` calling one function
@@ -45,8 +49,8 @@ lockfile, check `scripts/` under `tsconfig.scripts.json` (nodenext, Node's types
 - `hooks/<folder>/` - one feature each (`band`, `inspect`, `handoff`, `plan`, `tools`, `agents`, `cache`, ...):
   `types.ts`, logic files that take no `$`, and `effects.ts`, the folder's only file that touches `$`.
 - `tests/` - each hook's `*.test.ts` at the same path as its source, with shared helpers in `tests/kit.ts`.
-- `types/` - the mod's own `index.d.ts`; `scripts/validate.js` - the validate run; `docs/` - the brief and the
-  band explorer.
+- `types/` - the mod's own `index.d.ts`; `scripts/validate.ts` - the validate run, on Node's type stripping;
+  `docs/` - the brief and the band explorer.
 
 ## Invariants
 
