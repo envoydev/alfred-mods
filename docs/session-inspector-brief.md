@@ -960,6 +960,11 @@ band's fit-or-drop, the pane's step rows) measure the masked text, not the raw t
 2. **Claude Code's message rows**, through `ui.render` rewrites made only while REC is on:
    - `UserMessage.text`, `AssistantMessage.text` and `CommandOutput.text`, for every command's output.
    - Every string inside `ToolUse.input` and `ToolResult.output`, with the object's shape and non-string values kept.
+   - A running `ToolUse` row is the mod's own line, `⏺ <tool> · <input> · running…`, never Claude Code's row: when a
+     call ends, Claude Code repaints its own row from its own state - an errored Bash call's error text under the
+     masked header - a frame before it asks the mod again (live, 2/2 runs, 2026-11-19). The cost: a running call's
+     live output, its timer, an agent's live steps and its ctrl+o detail stay hidden until it ends. A finished Bash
+     row, a finished Agent row and the ctrl+o transcript drew no secret in the same probe. (agent)
    - An errored `ToolResult` draws its error text, not `output` (types), and live its `output` was no string (a Bash
      run that exited 3, read 2026-10-28). So the mod keeps each errored call's error text in memory, from the call's
      result or from its `ToolUse` row, and draws it masked as its own lines; a call whose text it never saw draws
@@ -1075,7 +1080,8 @@ Unit and hook tests (`claude plugin test`):
   - `Acme` hides in `AcmeCorp` and `acme-api`.
   - A word `key` leaves `‹key›` whole.
   - A word under 3 characters, the 101st word and a duplicate are refused.
-- **Message sites:** with REC on, a `ToolGroup` is drawn expanded, and `AskUserQuestion` questions and the `Spinner`
+- **Message sites:** with REC on, a running `ToolUse` row draws the mod's own `running…` line and passes nothing to
+  Claude Code, with /quiet on or off and in the expanded view; a `ToolGroup` is drawn expanded, and `AskUserQuestion` questions and the `Spinner`
   word are masked; with REC off, each site passes `next(e)` untouched. A masked `ToolResult` output for Bash and Read
   keeps every key and type of the original, and its lines without a sample unchanged. An errored `ToolResult` whose
   `output` holds no text draws the error text the call returned, or its row carried, masked, and one whose text the

@@ -25,6 +25,10 @@ test('a Bash call draws ⏺ Bash · Show CI failure lines 1038-1042 · 30 lines 
   expect(text(callLine(call, 120))).toEqual(['⏺ Bash · Show CI failure lines 1038-1042 · 30 lines ✓'])
 })
 
+test('a call still running draws running… in place of its result', () => {
+  expect(text(callLine(bash({ command: 'npm test', description: 'Run the suite' }, { isRunning: true }), 120))).toEqual(['⏺ Bash · Run the suite · running…'])
+})
+
 test("no description falls back to the command's first 60 characters", () => {
   const long = `sleep 25; gh run list --limit 5 --json status,conclusion,name,headBranch`
   expect(text(callLine(bash({ command: long }, { output: bashOut('') }), 120))).toEqual([`⏺ Bash · ${long.slice(0, 59)}… · ✓`])
@@ -237,6 +241,9 @@ for (const surface of SURFACES) {
       const running = await draw($, surface, 'ToolUse', { ...USE, tool: 'Bash', input: { command: `export T=${KEY.text}` }, isRunning: true })
       expect(running.props).toBeNull()
       expect(running.lines).toEqual([`⏺ Bash · export T=${KEY.masked} · running…`])
+      // ctrl+o's expanded view draws the same line: Claude Code's own row there repaints the same way
+      const expanded = await draw($, surface, 'ToolUse', { ...USE, tool: 'Bash', input: { command: `export T=${KEY.text}` }, isRunning: true, isExpanded: true })
+      expect(expanded).toEqual({ props: null, lines: [`⏺ Bash · export T=${KEY.masked} · running…`] })
     })
   }
 
