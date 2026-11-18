@@ -1,6 +1,9 @@
 import { expect, test } from 'claude-code/testing'
 
+import { stubAll } from '../kit'
+
 test('a tool call reaches Claude Code untouched', async ($, on) => {
+  stubAll(on)
   // Answer the tool call in Claude Code's place, so no tool runs
   on('tool.call', () => ({ result: 'claude code answered' }))
 

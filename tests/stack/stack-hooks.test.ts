@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, RenderSurface, SessionUsage } from 'claude-code'
 
-import { PRESENTATION, START, engine, rows, stubAll, watchState } from '../kit'
+import { PRESENTATION, START, engine, rows, stubAll, until, watchState } from '../kit'
 import type { FileStub } from '../kit'
 import type { Handoff } from '../../hooks/handoff/types'
 import type { Stack } from '../../hooks/stack/types'
@@ -349,7 +349,7 @@ for (const surface of SURFACES) {
     const { ui, prompt, clock, h, session } = await filling($, on, surface, { files: { [STATUS]: status({ fullContext: 'off' }) } })
     expect(await ui.find({ key: 'stack-fill' })).toBe(undefined)
     await $.command.run({ command: 'auto-handoff', args: 'now', origin: { kind: 'composer' }, presentation: PRESENTATION })
-    for (let i = 0; i < 50 && h().lastSave === null; i++) await clock.settle()
+    await until(clock, () => h().lastSave !== null)
     expect(h().lastSave).toMatchObject({ isOk: true })
     session.id = 's2'
     await $.classic.SessionStart({ source: 'clear' })

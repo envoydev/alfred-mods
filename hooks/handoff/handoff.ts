@@ -5,6 +5,7 @@ import type { ProcessRunResult } from 'claude-code'
 
 import { barSegs, percentSeg } from '../band/gauges'
 import { clockText, durationText, minutesText, modelText, tokensText, usdText } from '../core/format'
+import { isRecord } from '../core/guards'
 import type { Line, Seg } from '../core/types'
 import { joinPath } from '../place/place'
 import type { Handoff, HandoffMode, HandoffView, PlanPart, SaveInput, SaveResult } from './types'
@@ -12,8 +13,6 @@ import type { Runway } from '../stack/types'
 import type { Usage } from '../session/types'
 
 export const MODES: HandoffMode[] = ['ask', 'auto', 'off']
-
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 
 // A whole percent from 10 to 95, the only thresholds the command takes
 export function isThreshold(value: unknown): value is number {

@@ -2,13 +2,12 @@
 // neither the mouse nor the pane's keys reach the mod): "band": "off" and /inspect band, /inspect show, copy, report and
 // fill, /auto-handoff later and compact
 import { expect, test } from 'claude-code/testing'
-import type { Engine, MockClock } from 'claude-code/testing'
+import type { Engine } from 'claude-code/testing'
 import type { On, RenderSurface, RenderViewport } from 'claude-code'
 
 import { resolveSettings, skippedToast } from '../../hooks/settings/settings'
 import { STACK_TOASTS } from '../../hooks/stack/stack'
-import { PRESENTATION, SPAWN, START, engine, engineSites, rows, setUser, stubAll, watchState } from '../kit'
-import type { FileStub } from '../kit'
+import { PRESENTATION, SPAWN, START, engine, engineSites, fileAt, rows, setUser, stubAll, until, watchState } from '../kit'
 import type { Handoff } from '../../hooks/handoff/types'
 import type { View } from '../../hooks/inspect/types'
 import type { Session } from '../../hooks/session/types'
@@ -41,8 +40,8 @@ const isBand = (lines: string[]): boolean => lines.some(l => l.startsWith('ctx '
 
 test('"band" takes "off", and a bad value names it', () => {
   expect(resolveSettings({ user: { band: 'off' } }, {}).values.band).toBe('off')
-  const r = resolveSettings({ local: { band: 'none' } }, {})
-  expect(skippedToast(r.skipped[0]!, r)).toBe('"band" in .claude/settings.local.json takes "full", "calm" or "off" - using "full" from the default')
+  const resolved = resolveSettings({ local: { band: 'none' } }, {})
+  expect(resolved.skipped.map(skip => skippedToast(skip, resolved))).toEqual(['"band" in .claude/settings.local.json takes "full", "calm" or "off" - using "full" from the default'])
 })
 
 test('"band": "off" draws no band above, and "full" brings it back', async ($, on) => {
@@ -88,8 +87,6 @@ test('"band": "off" counts the band as not shown, so the pinned line carries the
 const HOME = { HOME: '/home/u' }
 const USER = '/home/u/.claude/settings.json'
 const USER_TEXT = '{\n  "theme": "dark"\n}\n'
-const fileAt = (files: { current: Record<string, FileStub> }, path: string): string | undefined =>
-  Object.entries(files.current).find(([key]) => key === path || key.endsWith(path))?.[1].text
 
 test('/inspect band off, calm and full write "band" in the user file', async ($, on) => {
   const { files } = await start($, on, { env: HOME, files: { [USER]: { text: USER_TEXT, mtimeMs: 0 } } })
@@ -232,9 +229,6 @@ test('/inspect fill with no resume prompt says so', async ($, on) => {
 
 const at = ($: Engine, percent: number) =>
   $.session.measure({ context: { tokens: percent * 2000, window: 200_000, percent }, rateLimits: [], changed: ['context'] })
-async function until(clock: MockClock, isDone: () => boolean): Promise<void> {
-  for (let i = 0; i < 50 && !isDone(); i++) await clock.settle()
-}
 
 test('/auto-handoff later takes the ask down until the next step', async ($, on) => {
   const { handoff } = await start($, on)
@@ -275,9 +269,9 @@ test('each failure row starts with its number, the newest the highest and on top
   await failing($, on)
   await run($, 'inspect', 'now')
   const now = await look($)
-  const at = (re: RegExp): number => now.findIndex(l => re.test(l))
-  expect(at(/^2 ✗ \S+ Bash +false two/)).toBeGreaterThan(-1)
-  expect(at(/^1 ✗ \S+ Bash +false one/)).toBe(at(/^2 ✗ /) + 1)
+  const rowIndex = (re: RegExp): number => now.findIndex(l => re.test(l))
+  expect(rowIndex(/^2 ✗ \S+ Bash +false two/)).toBeGreaterThan(-1)
+  expect(rowIndex(/^1 ✗ \S+ Bash +false one/)).toBe(rowIndex(/^2 ✗ /) + 1)
   await run($, 'inspect', 'tools')
   const tools = await look($)
   expect(tools.some(l => /^2 ✗ \S+ Bash +false two/.test(l))).toBe(true)

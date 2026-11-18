@@ -6,15 +6,13 @@ import type { BandInput } from './types'
 import type { Usage, RateWindow } from '../session/types'
 import type { Runway } from '../stack/types'
 import type { Line, Seg } from '../core/types'
-import { ROW_JOIN } from './constants'
+import { ROW_JOIN, WINDOW_LABEL } from './constants'
 
 const ORDER = ['five_hour', 'seven_day']
 
-const LABEL: Record<string, string> = { five_hour: '5h', seven_day: '7d' }
-
 // A window's short name, '5h' or '7d'; a kind with none keeps its own
 export function windowLabel(kind: string): string {
-  return LABEL[kind] ?? kind
+  return WINDOW_LABEL[kind] ?? kind
 }
 
 // When a window resets, as a time; null while it reports none or a time that does not parse

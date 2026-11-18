@@ -2,7 +2,8 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, RenderSurface, SessionUsage } from 'claude-code'
 
-import { PRESENTATION, SPAWN, START, engine, rows, spawns, step, stubAll, watchState } from '../kit'
+import { PRESENTATION, SPAWN, START, engine, isDrawn, rows, seedState, spawns, step, stubAll, watchState } from '../kit'
+import type { Drawn } from '../kit'
 import type { Turn } from '../../hooks/session/types'
 
 // Spec C4: an agent cut off at max_tokens is flagged, and each main turn shows the session's spend while it ran
@@ -18,10 +19,8 @@ const complete = (turnId: string, more: object = {}) =>
 const costing = (usd: number, rateLimits: SessionUsage['rateLimits'] = []): SessionUsage =>
   ({ startedAt: 0, context: { window: 200_000 }, rateLimits, cost: { usd } })
 
-type Drawn = { type: string; props?: Record<string, unknown>; children?: unknown[] }
-const isDrawn = (n: unknown): n is Drawn => typeof n === 'object' && n !== null && typeof (n as Drawn).type === 'string'
-const textOf = (n: unknown): string =>
-  typeof n === 'string' ? n : isDrawn(n) ? (n.children ?? []).map(textOf).join('') : ''
+const textOf = (node: unknown): string =>
+  typeof node === 'string' ? node : isDrawn(node) ? (node.children ?? []).map(textOf).join('') : ''
 // Every Text in a drawn tree whose text is `text`
 function textsOf(tree: unknown, text: string): Drawn[] {
   if (!isDrawn(tree)) return []
@@ -159,17 +158,7 @@ test('an old atom without the fields reads as null', { timeoutMs: 15_000 }, asyn
     effort: null, status: 'completed', isListed: false, startedAt: 0, endedAt: 1000, action: null, report: 'found it', contextTokens: null, tools: {},
   }
   const seeded: Record<string, unknown> = { turns: { shape: 'turns-2', value: [oldTurn] }, agents: { shape: 'agents-2', value: [oldRow] } }
-  const written = new Set<string>()
-  on('state.set', async ($$, e, next) => {
-    written.add(e.key)
-    return next(e)
-  })
-  on('state.get', async ($$, e, next) => {
-    const r = await next(e)
-    const seed = seeded[e.key]
-    if (seed === undefined || written.has(e.key) || r.value === undefined) return r
-    return { value: { ...r.value, value: seed } }
-  })
+  seedState(on, seeded)
   stubAll(on)
   engine(on)
 

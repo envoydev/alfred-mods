@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { TOASTS, gitPart, handoffLines, handoffText, nextStep, parseStatus, percentOf, statusPaths, stepsOf, windowThreshold } from '../../hooks/handoff/handoff'
+import { TOASTS, gitPart, handoffLines, handoffPercent, handoffText, nextStep, parseStatus, percentOf, statusPaths, stepsOf, windowThreshold } from '../../hooks/handoff/handoff'
 import { gitResult } from '../kit'
 import type { Line } from '../../hooks/core/types'
 import type { HandoffView, SaveInput } from '../../hooks/handoff/types'
@@ -27,6 +27,14 @@ test('the percent is over the compaction point, and the forecast threshold over 
   expect(percentOf(311_999, 390_000)).toBe(79)
   expect(windowThreshold(80, 390_000, 1_000_000)).toBe(31)
   expect(windowThreshold(80, 200_000, 200_000)).toBe(80)
+})
+
+test('handoffPercent reads the tokens over the compaction point, else the window, and is null while either side is unknown', () => {
+  expect(handoffPercent({ compactPoint: 390_000 }, { contextTokens: 312_000, contextWindow: 1_000_000 })).toBe(80)
+  expect(handoffPercent({ compactPoint: null }, { contextTokens: 160_000, contextWindow: 200_000 })).toBe(80)
+  expect(handoffPercent({ compactPoint: 390_000 }, { contextTokens: null, contextWindow: 1_000_000 })).toBe(null)
+  expect(handoffPercent({ compactPoint: null }, { contextTokens: null, contextWindow: 200_000 })).toBe(null)
+  expect(handoffPercent({ compactPoint: null }, { contextTokens: 160_000, contextWindow: null })).toBe(null)
 })
 
 test('a status file stands F8 down only when valid and the stack handles a full context', () => {

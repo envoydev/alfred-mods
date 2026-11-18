@@ -2,8 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { RenderSurface } from 'claude-code'
 
-import type { Cache } from '../../types'
-import { PRESENTATION, engine, rows, stubAll } from '../kit'
+import { PRESENTATION, engine, rows, seedState, stubAll } from '../kit'
 
 // The other atoms' renamed fields move their shape tags: a session reloaded over a value an earlier version stored drops
 // it once and starts that atom from its start value
@@ -21,7 +20,7 @@ test("state stored under the other atoms' old tags is dropped once", { timeoutMs
     tier: '1h', tierAt: 0, tierBilling: 'plan', config: { pin: null, idleOff: false, idleMinTokens: 200_000, isTerminal: true },
     ratePerToken: 0.000008, rateModel: 'claude-opus-5-5', lastAt: 0, last: { read: 169_200, write: 10_800, input: 0 },
     session: { read: 169_200, write: 10_800, input: 0 }, toastedFor: null,
-  } as unknown as Cache
+  }
   const failure = { id: 'f0', at: 0, tool: 'Bash', target: 'Push', outcome: 'failed', reason: 'exit 1', detail: '', count: 1, isNew: true, by: null, n: 1 }
   const old: Record<string, unknown> = {
     failures: { shape: 'failures-1', value: [failure] },
@@ -29,16 +28,7 @@ test("state stored under the other atoms' old tags is dropped once", { timeoutMs
     rec: { shape: 'rec-1', value: { level: 'on', count: 3, note: null } },
     cache: { shape: 'cache-1', value: warm },
   }
-  const written = new Set<string>()
-  on('state.set', async (_, e, next) => {
-    written.add(e.key)
-    return next(e)
-  })
-  on('state.get', async (_, e, next) => {
-    const r = await next(e)
-    const seed = old[e.key]
-    return seed === undefined || written.has(e.key) || r.value === undefined ? r : { value: { ...r.value, value: seed } }
-  })
+  seedState(on, old)
   stubAll(on)
   engine(on)
   // The pane mounted before any command draws the stored tab, and the Tools tab lists the stored failure rows

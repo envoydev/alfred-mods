@@ -22,9 +22,9 @@ const STORE = {
 }
 // The scores example with round 2 marking F1 fixed by S3
 const SCORES_FIXED = (() => {
-  const s = JSON.parse(SCORES_JSON) as { rounds: { findings: object[] }[] }
-  s.rounds[1]?.findings.unshift({ id: 'F1', text: 'No migration rollback', severity: 'BLOCKER', status: 'fixed', by: 'S3' })
-  return JSON.stringify(s)
+  const scores = JSON.parse(SCORES_JSON) as { rounds: { findings: object[] }[] }
+  scores.rounds[1]?.findings.unshift({ id: 'F1', text: 'No migration rollback', severity: 'BLOCKER', status: 'fixed', by: 'S3' })
+  return JSON.stringify(scores)
 })()
 const PLAN_LINE = 'Token refresh ▰▰▰▱▱ 3/5 · 60% · 1h 12m · ≈30m left │ ▶ Update interceptor'
 
@@ -138,8 +138,8 @@ for (const surface of SURFACES) {
     expect((await rows(await band($, surface, true, 100)))[0]).toBe(`${PLAN_LINE} +2 agents`)
 
     const long = 'Update the interceptor and every caller of the refresh endpoint'
-    files.current[PLAN_PATH] = file(planText({}, [], p => {
-      const s4 = p.steps[3]
+    files.current[PLAN_PATH] = file(planText({}, [], plan => {
+      const s4 = plan.steps[3]
       if (s4 !== undefined) s4.title = long
     }), NOW + 1)
     await clock.advance(30_000)
@@ -191,10 +191,10 @@ for (const surface of SURFACES) {
   test(`idle and calm, the plan adds nothing; idle with something to look at, PLAN and the score join line 1 (${surface})`, async ($, on) => {
     await begin($, on, {
       files: { [PLAN_PATH]: file(PLAN_JSON), [SCORES_PATH]: file(SCORES_JSON) },
-      answer: o => {
-        o('tool.call', (_, e) =>
+      answer: onEvent => {
+        onEvent('tool.call', (_, e) =>
           e.tool === 'Bash' && e.command.startsWith('false') ? { isError: true as const, result: 'Exit code 1', text: 'Exit code 1' } : { result: 'ok', text: 'ok' })
-        engine(o, ['tool.call'])
+        engine(onEvent, ['tool.call'])
       },
     })
     const calm = await rows(await band($, surface, false))
@@ -220,8 +220,8 @@ for (const surface of SURFACES) {
   })
 
   test(`a stale plan shows its age in amber (${surface})`, async ($, on) => {
-    const stale = planText({}, [], p => {
-      p.updatedAt = new Date(NOW - 25 * MIN).toISOString()
+    const stale = planText({}, [], plan => {
+      plan.updatedAt = new Date(NOW - 25 * MIN).toISOString()
     })
     await begin($, on, { files: { [PLAN_PATH]: file(stale) } })
     await inspect($, 'plan')
@@ -256,8 +256,8 @@ for (const surface of SURFACES) {
   })
 
   test(`/inspect plan <name> pins a plan, and an unknown name lists the plans (${surface})`, async ($, on) => {
-    const titled = (title: string, statuses: Record<string, string> = {}) => planText(statuses, [], p => {
-      p.title = title
+    const titled = (title: string, statuses: Record<string, string> = {}) => planText(statuses, [], plan => {
+      plan.title = title
     })
     const { files, clock } = await begin($, on, {
       files: { [`${DIR}/plans/old.json`]: file(titled('Old plan'), NOW), [`${DIR}/plans/new.json`]: file(titled('New plan'), NOW + 1) },

@@ -6,7 +6,7 @@ import type { On } from 'claude-code'
 
 import { HANDOFF_USAGE } from '../../hooks/handoff/handoff'
 import { REC_HELP, recStatus } from '../../hooks/rec/rec'
-import { PRESENTATION, START, engine, stubAll, watchState } from '../kit'
+import { PRESENTATION, START, engine, fileAt, stubAll, watchState } from '../kit'
 import type { FileStub } from '../kit'
 import type { BandSetting } from '../../hooks/band/types'
 import type { Handoff } from '../../hooks/handoff/types'
@@ -379,8 +379,6 @@ test('/rec reads the files first', async ($, on) => {
 const HOME = { HOME: '/home/u' }
 const USER = '/home/u/.claude/settings.json'
 const USER_TEXT = '{\n  "theme": "dark",\n  "alfred-mods": {\n    "rec": "off"\n  }\n}\n'
-const fileAt = (files: { current: Record<string, FileStub> }, path: string): string | undefined =>
-  Object.entries(files.current).find(([key]) => key === path || key.endsWith(path))?.[1].text
 
 test('/rec on, strict and off write "rec" in the user file', async ($, on) => {
   const { files, store } = await start($, on, { env: HOME, files: { [USER]: { text: USER_TEXT, mtimeMs: 0 } } })

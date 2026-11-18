@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { SessionUsage } from 'claude-code'
 
-import { SPAWN, START, SWITCH, engine, step, stepEngine, stubAll, watchState } from '../kit'
+import { SPAWN, START, SWITCH, engine, seedState, step, stepEngine, stubAll, watchState } from '../kit'
 import type { Cache } from '../../hooks/cache/types'
 import type { Session } from '../../hooks/session/types'
 
@@ -135,16 +135,7 @@ test('after a reload, a warm 1h cache still gets its toast', { timeoutMs: 15_000
     ratePerToken: 0.000008, rateModel: 'claude-opus-5-5', lastRequestAt: 0, lastRequest: { read: 169_200, write: 10_800, input: 0 },
     sessionCounts: { read: 169_200, write: 10_800, input: 0 }, toastedForRequestAt: null,
   }
-  let isWritten = false
-  on('state.set', async ($, e, next) => {
-    if (e.key === 'cache') isWritten = true
-    return next(e)
-  })
-  on('state.get', async ($, e, next) => {
-    const r = await next(e)
-    if (e.key !== 'cache' || isWritten || r.value === undefined) return r
-    return { value: { ...r.value, value: { shape: 'cache-2', value: warm } } }
-  })
+  seedState(on, { cache: { shape: 'cache-2', value: warm } })
 
   await $.session.start(START)
   await clock.advance(299_000)

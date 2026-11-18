@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { barText, durationText, elapsedText, minutesText, oneLine, printable, tokensText, usdText, whenText } from '../../hooks/core/format'
+import { barText, buttonCells, durationText, elapsedText, isPlainButton, minutesText, oneLine, printable, tokensText, usdText, whenText } from '../../hooks/core/format'
 
 test('a bar is 5 cells of 20%, one character each, a cell filled only when its share is reached', () => {
   expect(barText(45)).toEqual(['▰▰', '▱▱▱'])
@@ -46,4 +46,19 @@ test('drawn text keeps tab and newline as its only control characters', () => {
 
 test('plan times are whole minutes', () => {
   expect([30_000, 720_000, 5_820_000, 7_200_000].map(minutesText)).toEqual(['<1m', '12m', '1h 37m', '2h'])
+})
+
+test('a button draws plain when asked to, or on a one-digit hotkey', () => {
+  expect(isPlainButton({ plain: true })).toBe(true)
+  expect(isPlainButton({ hotkey: '3' })).toBe(true)
+  expect(isPlainButton({ hotkey: 'c' })).toBe(false)
+  expect(isPlainButton({ hotkey: '12' })).toBe(false)
+  expect(isPlainButton({})).toBe(false)
+})
+
+test("a button's cells: plain, its hotkey, ': ' and the label, or the label alone with no hotkey; framed, the label and 4", () => {
+  expect(buttonCells(7, '1', true)).toBe(10)
+  expect(buttonCells(7, undefined, true)).toBe(7)
+  expect(buttonCells(7, '1', false)).toBe(11)
+  expect(buttonCells(7, undefined, false)).toBe(11)
 })

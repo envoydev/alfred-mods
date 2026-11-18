@@ -21,9 +21,9 @@ const FULL = {
 }
 const status = (o: Record<string, unknown> = {}): FileStub => ({ text: JSON.stringify({ ...FULL, ...o }), mtimeMs: 1 })
 const without = (...names: string[]): FileStub => {
-  const v: Record<string, unknown> = { ...FULL }
-  for (const n of names) delete v[n]
-  return { text: JSON.stringify(v), mtimeMs: 1 }
+  const fields: Record<string, unknown> = { ...FULL }
+  for (const name of names) delete fields[name]
+  return { text: JSON.stringify(fields), mtimeMs: 1 }
 }
 const READ = `read ${clockText(NOW)} · written ${clockText(Date.parse(WRITTEN))}`
 const reading = (tokens: number, window = 1_000_000): SessionUsage =>
@@ -59,14 +59,14 @@ for (const surface of SURFACES) {
   })
 
   test(`each not-used reason draws its one dim line, and HANDOFF no longer draws it (${surface})`, async ($, on) => {
-    const { ui, files, clock: c } = await now($, on, surface, { files: { [STATUS]: { text: '{oops', mtimeMs: 1 } } })
+    const { ui, files, clock } = await now($, on, surface, { files: { [STATUS]: { text: '{oops', mtimeMs: 1 } } })
     const cases: [FileStub, string][] = [
       [{ text: '{oops', mtimeMs: 1 }, 'not JSON'], [{ text: JSON.stringify({ session: 's1' }), mtimeMs: 1 }, 'no schema'],
       [status({ schema: 2 }), 'schema 2'], [status({ session: 's9' }), 'another session'], [{ ...status(), size: 5 * 1024 * 1024 }, 'unreadable'],
     ]
     for (const [file, reason] of cases) {
       files.current[STATUS] = file
-      await c.advance(30_000)
+      await clock.advance(30_000)
       expect(await section(ui)).toEqual(['ALFRED CODE', `Alfred Code status file not used: ${reason}`])
       expect((await rows(ui)).filter(l => l.includes('not used')).length).toBe(1)
     }
@@ -78,9 +78,10 @@ for (const surface of SURFACES) {
     expect(lines.slice(0, 4)).toEqual([
       'ALFRED CODE', 'fresh session offered from 150k of 1.0M · ctx 62% of it', 'auto-run on · scoring on (level 80, 3 rounds)', 'model claude-opus-5-5',
     ])
-    expect(lines[4]!.startsWith('resume: Read docs/work/plans/inspector.md, check that branch feat/x is checke')).toBe(true)
-    expect(lines[4]!.endsWith('…  fill prompt')).toBe(true)
-    expect(lines[4]!.length - 'fill prompt'.length + 'f: fill prompt'.length).toBeLessThanOrEqual(120)
+    const resume = lines[4] ?? ''
+    expect(resume.startsWith('resume: Read docs/work/plans/inspector.md, check that branch feat/x is checke')).toBe(true)
+    expect(resume.endsWith('…  fill prompt')).toBe(true)
+    expect(resume.length - 'fill prompt'.length + 'f: fill prompt'.length).toBeLessThanOrEqual(120)
     expect(lines[5]).toBe(READ)
     expect(lines).toHaveLength(6)
     const button = await ui.find({ key: 'stack-fill' })
@@ -91,10 +92,10 @@ for (const surface of SURFACES) {
   })
 
   test(`the reduced forms (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
-    const { ui, files, clock: c } = await now($, on, surface, { files: { [STATUS]: status({ resumeAt: null }) } })
+    const { ui, files, clock } = await now($, on, surface, { files: { [STATUS]: status({ resumeAt: null }) } })
     const at = async (file: FileStub): Promise<string[]> => {
       files.current[STATUS] = file
-      await c.advance(30_000)
+      await clock.advance(30_000)
       return section(ui)
     }
     expect((await section(ui))[1]).toBe('fresh session: no offer at this window')
@@ -134,11 +135,11 @@ for (const surface of SURFACES) {
   })
 
   test(`off with a prompt draws no line 5; compact with a prompt draws it (${surface})`, async ($, on) => {
-    const { ui, files, clock: c } = await now($, on, surface, { files: { [STATUS]: status({ fullContext: 'off' }) } })
+    const { ui, files, clock } = await now($, on, surface, { files: { [STATUS]: status({ fullContext: 'off' }) } })
     expect((await section(ui)).some(l => l.startsWith('resume: '))).toBe(false)
     expect(await ui.find({ key: 'stack-fill' })).toBe(undefined)
     files.current[STATUS] = status({ fullContext: 'compact' })
-    await c.advance(30_000)
+    await clock.advance(30_000)
     expect((await section(ui)).some(l => l.startsWith('resume: Read docs/work'))).toBe(true)
   })
 
@@ -160,7 +161,7 @@ for (const surface of SURFACES) {
 // Task 7: REC
 for (const surface of SURFACES) {
   test(`with REC on, a fake email in the prompt draws ‹email› in line 5 (${surface})`, async ($, on) => {
-    const email = EMAILS[0]!.text
+    const email = EMAILS[0]?.text ?? ''
     const { ui } = await now($, on, surface, { files: { [STATUS]: status({ handoffPrompt: `Mail ${email} the plan` }) }, store: { 'settings:rec': 'on' } })
     const line = (await section(ui)).find(l => l.startsWith('resume: '))
     expect(line).toBe('resume: Mail ‹email› the plan  fill prompt')
@@ -169,7 +170,7 @@ for (const surface of SURFACES) {
 
   test(`the banner draws unchanged under /rec strict (${surface})`, async ($, on) => {
     await now($, on, surface, { files: { [STATUS]: status() }, store: { 'settings:rec': 'strict' } })
-    expect((await rows(await band($, surface)))[0]!.startsWith('● REC │ auto-run · scoring 80 │ ctx ▰▰▰▱▱ 62% of 150k')).toBe(true)
+    expect((await rows(await band($, surface)))[0]?.startsWith('● REC │ auto-run · scoring 80 │ ctx ▰▰▰▱▱ 62% of 150k')).toBe(true)
   })
 }
 
@@ -192,7 +193,7 @@ test('the heading is bold violet, the reason line and line 6 dim, the model warn
 
 test('a narrow pane cuts line 5 to fit beside the button', () => {
   const lines = stackLines(STACK, { prompt: PROMPT, runway: null, sessionModel: null, columns: 60 })
-  const row = lines[4]!
+  const row = lines[4] ?? []
   const width = row.reduce((n, s) => n + ('text' in s ? s.text.length : 'button' in s ? `${s.button.hotkey}: ${s.button.label}`.length : 0), 0)
   expect(width).toBeLessThanOrEqual(60)
   expect(row.some(s => 'button' in s && s.button.key === 'stack-fill' && s.button.hotkey === 'f')).toBe(true)

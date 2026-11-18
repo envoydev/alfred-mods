@@ -29,7 +29,7 @@ for (const surface of SURFACES) {
     const lines = await rows(narrow)
     expect(lines[0]).toBe('Now Usage  Agents  Tools ')
     expect(lines[1]).toBe('Cache Timeline Plan ')
-    narrow.unmount()
+    await narrow.unmount()
 
     expect((await rows(await pane($, surface)))[0]).toBe('Now Usage  Agents  Tools Cache Timeline Plan ')
   })

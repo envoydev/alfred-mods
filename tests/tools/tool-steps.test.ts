@@ -12,14 +12,14 @@ const CALL: CompactCall = { tool: 'Bash', input: {}, output: undefined, isErrore
 const call = (tool: string, input: unknown, output?: unknown, more: Partial<CompactCall> = {}): CompactCall => ({ ...CALL, tool, input, output, ...more })
 const CWD = '/w/app'
 
-const agentDone = (o: Record<string, unknown> = {}) => ({
+const agentDone = (more: Record<string, unknown> = {}) => ({
   status: 'completed', agentId: 'a1', agentType: 'alfred-code:output-scorer', prompt: 'p', totalToolUseCount: 12, totalTokens: 31_200,
-  totalDurationMs: 80_000, content: [{ type: 'text', text: '## Verdict\n\nC1.1 yes - the plan names every file it touches\nmore' }], ...o,
+  totalDurationMs: 80_000, content: [{ type: 'text', text: '## Verdict\n\nC1.1 yes - the plan names every file it touches\nmore' }], ...more,
 })
 
 test('an Agent names its type, then what it was asked, what it found and what it took', () => {
-  const c = call('Agent', { description: 'Review plan round 1', prompt: 'p', subagent_type: 'alfred-code:output-scorer' }, agentDone())
-  expect(text(callLine(c, 120))).toEqual([
+  const agent = call('Agent', { description: 'Review plan round 1', prompt: 'p', subagent_type: 'alfred-code:output-scorer' }, agentDone())
+  expect(text(callLine(agent, 120))).toEqual([
     '⏺ Agent · alfred-code:output-scorer · ✓',
     '  ⎿ asked: Review plan round 1',
     '  ⎿ result: C1.1 yes - the plan names every file it touches',
@@ -49,9 +49,9 @@ test('a Write says what it wrote and where, from the project folder', () => {
 
 test('an Edit says where and how many lines it added and removed', () => {
   const patch = [{ oldStart: 4, oldLines: 1, newStart: 4, newLines: 3, lines: ['-x', '+y', '+z', '+w'] }]
-  const c = call('Edit', { file_path: `${CWD}/src/a.ts`, old_string: 'x', new_string: 'y' }, { filePath: `${CWD}/src/a.ts`, structuredPatch: patch, replaceAll: false })
-  expect(text(callLine(c, 120, { cwd: CWD }))).toEqual(['⏺ Edit · a.ts · ✓', '  ⎿ changed src/a.ts · +3 −1'])
-  expect(text(callLine({ ...c, output: { ...(c.output as object), replaceAll: true } }, 120, { cwd: CWD }))[1]).toBe('  ⎿ changed src/a.ts · +3 −1 · every match')
+  const edit = call('Edit', { file_path: `${CWD}/src/a.ts`, old_string: 'x', new_string: 'y' }, { filePath: `${CWD}/src/a.ts`, structuredPatch: patch, replaceAll: false })
+  expect(text(callLine(edit, 120, { cwd: CWD }))).toEqual(['⏺ Edit · a.ts · ✓', '  ⎿ changed src/a.ts · +3 −1'])
+  expect(text(callLine({ ...edit, output: { ...(edit.output as object), replaceAll: true } }, 120, { cwd: CWD }))[1]).toBe('  ⎿ changed src/a.ts · +3 −1 · every match')
 })
 
 test('a TodoWrite counts its todos and names the one in progress', () => {
@@ -71,16 +71,16 @@ test('a ToolSearch names its query and what it found', () => {
 
 test('an AskUserQuestion draws each question, its options numbered, and the answer it got with its number', () => {
   const questions = [{ question: 'Which band mode?', header: 'Band', options: [{ label: 'Full', description: '' }, { label: 'Calm', description: '' }], multiSelect: false }]
-  const c = call('AskUserQuestion', { questions }, { questions, answers: { 'Which band mode?': 'Calm' } })
-  expect(text(callLine(c, 120))).toEqual(['⏺ AskUserQuestion · ✓', '  ⎿ Which band mode?', '  ⎿ options: 1. Full; 2. Calm', '  ⎿ answered: 2. Calm'])
+  const ask = call('AskUserQuestion', { questions }, { questions, answers: { 'Which band mode?': 'Calm' } })
+  expect(text(callLine(ask, 120))).toEqual(['⏺ AskUserQuestion · ✓', '  ⎿ Which band mode?', '  ⎿ options: 1. Full; 2. Calm', '  ⎿ answered: 2. Calm'])
   // Still open: the question and its options
-  expect(text(callLine({ ...c, output: undefined }, 120))).toEqual(['⏺ AskUserQuestion · ✓', '  ⎿ Which band mode?', '  ⎿ options: 1. Full; 2. Calm'])
+  expect(text(callLine({ ...ask, output: undefined }, 120))).toEqual(['⏺ AskUserQuestion · ✓', '  ⎿ Which band mode?', '  ⎿ options: 1. Full; 2. Calm'])
 })
 
 test('a multi-select answer numbers each option picked, in the answer\'s order', () => {
   const questions = [{ question: 'Which checks?', header: 'Checks', options: [{ label: 'Partial restore' }, { label: 'NF/PP restore' }, { label: 'Both' }], multiSelect: true }]
-  const c = call('AskUserQuestion', { questions }, { questions, answers: { 'Which checks?': ['Partial restore', 'NF/PP restore'] } })
-  expect(text(callLine(c, 120))).toContain('  ⎿ answered: 1. Partial restore, 2. NF/PP restore')
+  const ask = call('AskUserQuestion', { questions }, { questions, answers: { 'Which checks?': ['Partial restore', 'NF/PP restore'] } })
+  expect(text(callLine(ask, 120))).toContain('  ⎿ answered: 1. Partial restore, 2. NF/PP restore')
 })
 
 test('an answer that matches no option is drawn as typed, and a question with no options draws no options step', () => {
@@ -88,8 +88,8 @@ test('an answer that matches no option is drawn as typed, and a question with no
     { question: 'Which database?', header: 'DB', options: [{ label: 'Postgres (Recommended)' }, { label: 'SQLite' }], multiSelect: false },
     { question: 'What name?', header: 'Name', multiSelect: false },
   ]
-  const c = call('AskUserQuestion', { questions }, { questions, answers: { 'Which database?': 'MySQL', 'What name?': 'Alpha 2' } })
-  expect(text(callLine(c, 120))).toEqual([
+  const ask = call('AskUserQuestion', { questions }, { questions, answers: { 'Which database?': 'MySQL', 'What name?': 'Alpha 2' } })
+  expect(text(callLine(ask, 120))).toEqual([
     '⏺ AskUserQuestion · ✓',
     '  ⎿ Which database?', '  ⎿ options: 1. Postgres (Recommended); 2. SQLite', '  ⎿ answered: MySQL',
     '  ⎿ What name?', '  ⎿ answered: Alpha 2',
@@ -98,8 +98,8 @@ test('an answer that matches no option is drawn as typed, and a question with no
 
 test('two options with one label take the first one\'s number; an option with no label is left out but keeps the count', () => {
   const questions = [{ question: 'Pick', header: 'P', options: [{ label: 'Same' }, { description: 'no label' }, { label: 'Same' }], multiSelect: false }]
-  const c = call('AskUserQuestion', { questions }, { questions, answers: { Pick: 'Same' } })
-  expect(text(callLine(c, 120))).toEqual(['⏺ AskUserQuestion · ✓', '  ⎿ Pick', '  ⎿ options: 1. Same; 3. Same', '  ⎿ answered: 1. Same'])
+  const ask = call('AskUserQuestion', { questions }, { questions, answers: { Pick: 'Same' } })
+  expect(text(callLine(ask, 120))).toEqual(['⏺ AskUserQuestion · ✓', '  ⎿ Pick', '  ⎿ options: 1. Same; 3. Same', '  ⎿ answered: 1. Same'])
 })
 
 test('a long options line is cut to the width', () => {
@@ -110,8 +110,8 @@ test('a long options line is cut to the width', () => {
 })
 
 test('an MCP call draws its arguments, one step each', () => {
-  const c = call('mcp__context7__query-docs', { libraryId: '/vercel/next.js', query: 'app router caching', tokens: 2000, nested: { a: 1 } }, 'text\nmore')
-  expect(text(callLine(c, 120))).toEqual([
+  const mcp = call('mcp__context7__query-docs', { libraryId: '/vercel/next.js', query: 'app router caching', tokens: 2000, nested: { a: 1 } }, 'text\nmore')
+  expect(text(callLine(mcp, 120))).toEqual([
     '⏺ mcp__context7__query-docs · 2 lines ✓',
     '  ⎿ libraryId: /vercel/next.js',
     '  ⎿ query: app router caching',
@@ -146,8 +146,8 @@ test('a long run of reads draws 4 steps and how many more', () => {
 test('a repeat says it ran N times in a row; two agents of one type with different jobs stay two rows', () => {
   const ls = call('Bash', { command: 'git status', description: 'Show working tree status' }, { stdout: 'x', stderr: '' })
   expect(text(groupLines([ls, ls, ls], 120))).toEqual(['⏺ Bash · Show working tree status · 1 line ✓ · 3 times in a row'])
-  const a = (d: string) => call('Agent', { description: d, prompt: 'p' })
-  expect(text(groupLines([a('One'), a('Two')], 120)).filter(l => l.startsWith('⏺'))).toEqual(['⏺ Agent · general-purpose · ✓', '⏺ Agent · general-purpose · ✓'])
+  const agent = (description: string) => call('Agent', { description, prompt: 'p' })
+  expect(text(groupLines([agent('One'), agent('Two')], 120)).filter(l => l.startsWith('⏺'))).toEqual(['⏺ Agent · general-purpose · ✓', '⏺ Agent · general-purpose · ✓'])
 })
 
 test('Agent and AskUserQuestion results draw nothing under their steps', () => {
@@ -160,8 +160,8 @@ const BASH_OUT = { stdout: 'a\nb', stderr: '', interrupted: false }
 
 test('a Bash result draws nothing; its row says when auto mode allowed it', () => {
   expect(DROPS_RESULT.includes('Bash')).toBe(true)
-  const c = call('Bash', { command: 'git status', description: 'Show status' }, BASH_OUT, { isAutoAllowed: true })
-  expect(text(callLine(c, 120))).toEqual(['⏺ Bash · Show status · 2 lines ✓', '  ⎿ allowed by auto mode'])
+  const allowed = call('Bash', { command: 'git status', description: 'Show status' }, BASH_OUT, { isAutoAllowed: true })
+  expect(text(callLine(allowed, 120))).toEqual(['⏺ Bash · Show status · 2 lines ✓', '  ⎿ allowed by auto mode'])
   // A tool whose result block still draws keeps Claude Code's own line, so its row adds none
   expect(text(callLine(call('Read', { file_path: '/w/a.ts' }, { type: 'text' }, { isAutoAllowed: true }), 120))).toEqual(['⏺ Read · a.ts · ✓'])
 })

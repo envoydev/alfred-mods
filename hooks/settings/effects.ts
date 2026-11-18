@@ -35,7 +35,7 @@ export function loadSettings($: EngineInterface, isStart = false): Promise<void>
 
 // Each source read on its own, so a file that does not parse falls to the files below rather than taking the rest
 // with it (S1); a refused read, or a store key that throws, counts as absent
-export async function readSettingsNow($: EngineInterface, isStart: boolean): Promise<void> {
+async function readSettingsNow($: EngineInterface, isStart: boolean): Promise<void> {
   if (isStart) {
     settingsMemory.rec = null
     settingsMemory.skippedKey = ''
@@ -83,7 +83,7 @@ export async function readSettingsNow($: EngineInterface, isStart: boolean): Pro
 
 // S7: a field the user's own file sets, machine-wide as the store is, drops its old value; a project or local value
 // overrides the old one without retiring it. A refused delete is tried at the next read.
-export async function retireLegacyKeys($: EngineInterface, resolved: ResolvedSettings, legacy: Partial<SettingsValues>, rawHandoff: unknown): Promise<void> {
+async function retireLegacyKeys($: EngineInterface, resolved: ResolvedSettings, legacy: Partial<SettingsValues>, rawHandoff: unknown): Promise<void> {
   for (const field of resolved.userFields) {
     const key = LEGACY_KEYS[field]
     if (key !== undefined && legacy[field] !== undefined) await $.store.delete(key).catch(() => undefined)
@@ -100,7 +100,7 @@ export async function retireLegacyKeys($: EngineInterface, resolved: ResolvedSet
 
 // S7's toast, at a run's first read, once per machine: the earlier commands' choices still in force. A refused read of
 // the mark counts as told, so a failing store never repeats it.
-export async function toastMovedOnce($: EngineInterface, resolved: ResolvedSettings): Promise<void> {
+async function toastMovedOnce($: EngineInterface, resolved: ResolvedSettings): Promise<void> {
   const kept: Partial<Record<Field, unknown>> = {}
   for (const field of FIELDS) if (resolved.from[field] === 'legacy' && resolved.values[field] !== DEFAULTS[field]) kept[field] = resolved.values[field]
   if (Object.keys(kept).length === 0 || (await $.store.get('settings:moved').catch(() => true)) === true) return
@@ -111,7 +111,7 @@ export async function toastMovedOnce($: EngineInterface, resolved: ResolvedSetti
 
 // The user settings file Claude Code reads: settings.json in CLAUDE_CONFIG_DIR when set, else in ~/.claude; null with no
 // home to find it from
-export async function userSettingsPath($: EngineInterface): Promise<string | null> {
+async function userSettingsPath($: EngineInterface): Promise<string | null> {
   const dir = (await $.env.get('CLAUDE_CONFIG_DIR')) ?? ''
   if (dir !== '') return `${dir.replace(/[\\/]+$/, '')}/settings.json`
   const home = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE')) ?? ''

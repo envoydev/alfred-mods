@@ -2,6 +2,7 @@
 // one, and the result block's preview emptied. Every line is drawn through drawLines, so REC masks it after compacting.
 import { reportLine } from '../agents/agents'
 import { durationText, fitLine, tokensText, widthOf } from '../core/format'
+import { isRecord } from '../core/guards'
 import type { Line, Seg } from '../core/types'
 import type { CompactCall, RowContext } from './types'
 
@@ -20,7 +21,6 @@ export const DROPS_RESULT: readonly string[] = ['Bash', 'Edit', 'Write', 'WebFet
 // Steps a run of reads draws before `+k more`
 const READ_STEPS = 4
 
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 const str = (value: unknown): string => (typeof value === 'string' ? value : '')
 const basename = (path: string): string => path.split(/[\\/]/).filter(segment => segment !== '').pop() ?? path
 const lineCount = (text: string): number => (text.trimEnd() === '' ? 0 : text.trimEnd().split('\n').length)
@@ -96,8 +96,8 @@ function status(call: CompactCall): Seg[] {
     const exit = /^Exit code (\d+)/.exec(errorText(call))
     return [{ text: exit === null ? '✗' : `✗ exit ${exit[1]}`, tone: 'fail' }]
   }
-  const lineCount = countOf(call)
-  return [...(lineCount === null || lineCount === 0 ? [] : [{ text: `${lineCount} ${lineCount === 1 ? 'line' : 'lines'} ` }]), { text: '✓', tone: 'ok' }]
+  const count = countOf(call)
+  return [...(count === null || count === 0 ? [] : [{ text: `${count} ${count === 1 ? 'line' : 'lines'} ` }]), { text: '✓', tone: 'ok' }]
 }
 
 // Up to 3 indented lines under a failure: the last non-empty lines of stderr, else of the error text past its exit code
@@ -111,14 +111,12 @@ function errorLines(call: CompactCall): Line[] {
 const sizeOf = (bytes: number): string =>
   bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`
 
-// A web call's steps, one `⎿` line each (the user, 2026-11-12: 'what source is agent fatching'): WebFetch what came
-// back, from where when it moved, and what it took from the page; WebSearch how many results and their sites. A failed
-// or stopped call has its error lines instead of what came back.
+// One step under a call: a dim `⎿` line, cut to `columns`
 const stepOf = (text: string, columns: number): Line => [{ text: `  ⎿ ${fitLine(text, Math.max(1, columns - 4))}`, tone: 'dim' }]
 
-// Any other call's steps (the user, 2026-11-12: 'What agent ... what job is done; What skill; What and where writing;
-// What is asking and what is the responce; What doc mcp queryng; What monitoring'): what it was given, then what came
-// back once it has
+// A call's steps, one `⎿` line each (the user, 2026-11-12: 'What agent ... what job is done; What skill; What and where
+// writing; What is asking and what is the responce; What doc mcp queryng; What monitoring'): what it was given, then
+// what came back once it has
 function stepLines(call: CompactCall, columns: number, cwd?: string | null): Line[] {
   const step = (text: string): Line => stepOf(text, columns)
   const input = isRecord(call.input) ? call.input : {}
@@ -195,6 +193,9 @@ function stepLines(call: CompactCall, columns: number, cwd?: string | null): Lin
     const watched = str(input.command).trim() || (isRecord(input.ws) ? str(input.ws.url) : '')
     return watched === '' ? [] : [step(`watches: ${watched}`)]
   }
+  // A web call (the user, 2026-11-12: 'what source is agent fatching'): WebFetch what came back, from where when it
+  // moved, and what it took from the page; WebSearch how many results and their sites. A failed or stopped call has its
+  // error lines instead of what came back.
   if (call.tool === 'WebFetch') {
     const lines: Line[] = []
     if (out !== null && typeof out.bytes === 'number') {
@@ -257,8 +258,8 @@ function readsLines(run: CompactCall[], columns: number, cwd: string | null | un
   return [head, ...shown.map(i => stepOf(i, columns)), ...(more > 0 ? [stepOf(`+${more} more`, columns)] : [])]
 }
 
-// A repeat: the same tool, description and outcome, back to back
-// back to back, its steps the same too (two agents of one type with different jobs stay two rows)
+// A repeat: the same tool, description and outcome back to back, its steps the same too (two agents of one type with
+// different jobs stay two rows)
 const sameAs = (left: CompactCall, right: CompactCall): boolean =>
   left.tool === right.tool && describe(left) === describe(right) && left.outcome === right.outcome && left.isErrored === right.isErrored
   && left.isInterrupted === right.isInterrupted &&
@@ -268,6 +269,7 @@ const sameAs = (left: CompactCall, right: CompactCall): boolean =>
 // as `N times in a row`
 export function groupLines(calls: CompactCall[], columns: number, at: RowContext = {}): Line[] {
   const out: Line[] = []
+  // i and j stay under calls.length, so calls[i] and calls[j] each hold a call
   for (let i = 0; i < calls.length;) {
     const call = calls[i]!
     let j = i + 1

@@ -54,7 +54,7 @@ export function readStatusFile($: EngineInterface, keep = false): Promise<boolea
 // The stack's status file for this session, one read for both atoms. F8's stand-down (Decision 13): a missing or
 // unreadable file is no file, unless `keep` or the window holds a stand-down across a /clear until a later read. The
 // `stack` atom (Phase 5): no file, unreadable, ignored with Phase 4's reason, or used field by field.
-export async function readStatusFileNow($: EngineInterface, keep: boolean): Promise<boolean> {
+async function readStatusFileNow($: EngineInterface, keep: boolean): Promise<boolean> {
   const id = await $.session.id()
   const root = await $.session.root().catch(() => null)
   const now = await $.clock.now()
@@ -80,17 +80,17 @@ export async function readStatusFileNow($: EngineInterface, keep: boolean): Prom
 
 // The `stack` atom from one read: inside the window a missing file writes back the last value and keeps the prompt;
 // every other read writes its own value, and `last` with it
-export async function writeStackFrom(
-  $: EngineInterface, read: { exists: boolean; text: string | null; id: string; now: number; inWindow: boolean },
+async function writeStackFrom(
+  $: EngineInterface, reading: { exists: boolean; text: string | null; id: string; now: number; inWindow: boolean },
 ): Promise<void> {
-  if (!read.exists && read.inWindow) {
+  if (!reading.exists && reading.inWindow) {
     const last = stackMemory.last
     if (last !== null) await updateStack($, stored => (JSON.stringify(stored) === JSON.stringify(last) ? stored : last))
     return
   }
-  const parsed = read.text === null ? null : parseStack(read.text, read.id)
-  const base: Stack = { ...INITIAL_STACK, readAt: read.now }
-  const next: Stack = !read.exists ? { ...base, reason: NO_FILE }
+  const parsed = reading.text === null ? null : parseStack(reading.text, reading.id)
+  const base: Stack = { ...INITIAL_STACK, readAt: reading.now }
+  const next: Stack = !reading.exists ? { ...base, reason: NO_FILE }
     : parsed === null ? { ...base, state: 'ignored', reason: UNREADABLE }
     : parsed.state === 'ignored' ? { ...base, state: 'ignored', reason: parsed.reason }
     : { ...base, ...parsed.fields, state: 'used', hasPrompt: parsed.prompt !== null }

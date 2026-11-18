@@ -5,7 +5,7 @@ import type { On, RenderSurface, SessionUsage } from 'claude-code'
 import { clockText } from '../../hooks/core/format'
 import { HANDOFF_USAGE as USAGE } from '../../hooks/handoff/handoff'
 import { KEYS } from '../../hooks/rec/samples'
-import { NO_READING, PRESENTATION, SPAWN, START, engine, gitResult, rows, setUser, step, stepEngine, stubAll, watchState } from '../kit'
+import { NO_READING, PRESENTATION, SPAWN, START, engine, gitResult, rows, setUser, step, stepEngine, stubAll, until, watchState } from '../kit'
 import type { FileStub } from '../kit'
 import { PLAN_JSON, SCORES_JSON } from '../plans'
 import type { Handoff } from '../../hooks/handoff/types'
@@ -38,10 +38,7 @@ async function start($: Engine, on: On, o: Parameters<typeof stubAll>[1] = {}, e
   return { ...kit, h, state }
 }
 
-// A save runs on a 0 ms timer, off the hook path: the clock settles until its work lands, or 50 times
-async function until(clock: MockClock, isDone: () => boolean): Promise<void> {
-  for (let i = 0; i < 50 && !isDone(); i++) await clock.settle()
-}
+// A save runs on a 0 ms timer, off the hook path: `saved` settles the clock until its work lands
 const saved = (clock: MockClock, h: () => Handoff, before: number | null = null) => until(clock, () => (h()?.lastSave?.at ?? null) !== before || h()?.lastSave?.isOk === false)
 
 test('readings of 70 then 88 ask once, at 85', async ($, on) => {

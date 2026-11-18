@@ -66,6 +66,10 @@ export const gitResult = (stdout: string, exitCode = 0, stderr = ''): ProcessRun
 // A file the mod lists and reads; `size` stands in for the text's length when given
 export type FileStub = { text: string; mtimeMs: number; size?: number }
 
+// The text of the file at `path` a test gave or the mod wrote, matched as the end of its key
+export const fileAt = (files: { current: Record<string, FileStub> }, path: string): string | undefined =>
+  Object.entries(files.current).find(([key]) => key === path || key.endsWith(path))?.[1].text
+
 export function stubAll(on: On, o: Options = {}): {
   clock: MockClock; toasts: string[]; toastMs: (number | undefined)[]; opened: string[]; escapes: string[]; closed: string[]; copied: string[]; usage: { current: SessionUsage; breakdowns: number; refuse: boolean; fail: boolean }; panes: UiPane[]
   listed: { current: AgentInfo[]; calls: number }; files: { current: Record<string, FileStub>; reads: string[]; writes: string[]; exists: string[]; lists: string[] }
@@ -411,6 +415,10 @@ export function watchState(on: On): { get(key: string): unknown; writes: string[
   return { get: key => latest.get(key), writes }
 }
 
+// A node of a drawn tree as a test reads it, and the guard that tells one from a string or a hole
+export type Drawn = { type: string; props?: Record<string, unknown>; children?: unknown[] }
+export const isDrawn = (node: unknown): node is Drawn => typeof node === 'object' && node !== null && typeof (node as Drawn).type === 'string'
+
 function textOf(n: unknown): string {
   if (typeof n === 'string') return n
   if (typeof n !== 'object' || n === null) return ''
@@ -504,8 +512,28 @@ export function failState(on: On): { key: string | null } {
   return fail
 }
 
+// Reads each key of `seeds` as the value an earlier version stored under it, until the mod writes that key: a session
+// reloaded over state a test sets
+export function seedState(on: On, seeds: Record<string, unknown>): void {
+  const written = new Set<string>()
+  on('state.set', async (_, e, next) => {
+    written.add(e.key)
+    return next(e)
+  })
+  on('state.get', async (_, e, next) => {
+    const stored = await next(e)
+    const seed = seeds[e.key]
+    return seed === undefined || written.has(e.key) || stored.value === undefined ? stored : { value: { ...stored.value, value: seed } }
+  })
+}
+
 // A call a test leaves held past its end: the kit rejects it once the test's stubs are gone, which is expected, so the
 // rejection is caught rather than left for the file's end
 export function held(call: Promise<unknown>): void {
   void call.catch(() => undefined)
+}
+
+// Settles the clock until `isDone` holds, or 50 times: a hook's work on a 0 ms timer lands off the hook path
+export async function until(clock: MockClock, isDone: () => boolean): Promise<void> {
+  for (let i = 0; i < 50 && !isDone(); i++) await clock.settle()
 }

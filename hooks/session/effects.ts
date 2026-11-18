@@ -2,7 +2,7 @@
 // ref handed to another module. Change a shape tag when that value's fields change: it declines what an earlier version
 // stored, which outlives a reload.
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, SessionRateLimit, SessionUsage } from 'claude-code'
+import type { EngineInterface, SessionUsage } from 'claude-code'
 import type { Live, Session, Pace, RunningCall, Totals, Turn, Usage, RateWindow } from './types'
 import type { Place } from '../place/types'
 import { withPlace } from '../place/place'
@@ -13,6 +13,8 @@ import { staleKeys } from '../plan/steptime'
 import { fingerprint, whenText } from '../core/format'
 import { dropPassed, nextWindows, storedWindows, rateWindowsOf } from './windows'
 import { syncStatusLine } from '../band/effects'
+import { WINDOW_LABEL } from '../band/constants'
+import { resetAtOf } from '../band/gauges'
 import { trackAgentStep, finishLoop, readAgents, readLoops, updateAgentRow } from '../agents/effects'
 import { addStepMark, closeLoopSlices, openLoopSlice, schedulePlanReload } from '../plan/effects'
 import type { Pending, HookInput, HookNext } from '../core/types'
@@ -192,7 +194,7 @@ export async function addRunningCall($: EngineInterface, call: RunningCall): Pro
 }
 
 // The cost keys `keep` names, with their values; no other value is read, as the store holds 7 days of sessions
-export async function readCostEntries($: EngineInterface, keep: (key: string) => boolean): Promise<TimeEntries> {
+async function readCostEntries($: EngineInterface, keep: (key: string) => boolean): Promise<TimeEntries> {
   const entries: TimeEntries = {}
   for (const key of await $.store.keys()) {
     if (keep(key)) entries[key] = await $.store.get(key)
@@ -200,16 +202,16 @@ export async function readCostEntries($: EngineInterface, keep: (key: string) =>
   return entries
 }
 
-export async function writeCostEntries($: EngineInterface, writes: TimeEntries): Promise<void> {
+async function writeCostEntries($: EngineInterface, writes: TimeEntries): Promise<void> {
   for (const [key, value] of Object.entries(writes)) await $.store.set(key, value)
 }
 
-export async function baseCost($: EngineInterface, sessionId: string, usd: number, now: number): Promise<void> {
+async function baseCost($: EngineInterface, sessionId: string, usd: number, now: number): Promise<void> {
   const last = `cost-last:${sessionId}`
   await writeCostEntries($, baseWrites(await readCostEntries($, key => key === last), sessionId, usd, now))
 }
 
-export async function recordCost($: EngineInterface, sessionId: string, usd: number, now: number): Promise<void> {
+async function recordCost($: EngineInterface, sessionId: string, usd: number, now: number): Promise<void> {
   const last = `cost-last:${sessionId}`
   const day = `cost:${localDate(now)}:${sessionId}`
   await writeCostEntries($, recordWrites(await readCostEntries($, key => key === last || key === day), sessionId, usd, now))
@@ -242,7 +244,7 @@ export async function refreshUsage($: EngineInterface, today?: number | null): P
 // written at the turn's end, and read again by the tick once the date has turned.
 let todayCostMemory: { cost: number; today: number; date: string } | null = null
 
-export async function writeUsageReading($: EngineInterface, reading: SessionUsage, today?: number | null): Promise<void> {
+async function writeUsageReading($: EngineInterface, reading: SessionUsage, today?: number | null): Promise<void> {
   const at = await $.clock.now()
   if (typeof today === 'number') todayCostMemory = reading.cost === undefined ? null : { cost: reading.cost.usd, today, date: localDate(at) }
   const fresh = rateWindowsOf(reading.rateLimits)
@@ -253,7 +255,7 @@ export async function writeUsageReading($: EngineInterface, reading: SessionUsag
   }))
 }
 
-export async function storeRateWindows($: EngineInterface, windows: RateWindow[], at: number): Promise<void> {
+async function storeRateWindows($: EngineInterface, windows: RateWindow[], at: number): Promise<void> {
   const json = JSON.stringify(windows.map(rateWindow => [rateWindow.kind, Math.round(rateWindow.percentUsed), rateWindow.resetsAt]))
   if (windows.length === 0 || json === storedWindowsMemory.stored) return
   storedWindowsMemory.stored = json
@@ -272,9 +274,9 @@ export async function seedRateWindows($: EngineInterface): Promise<void> {
 export async function refreshUsageMidTurn($: EngineInterface): Promise<void> {
   midTurnMemory.at = await $.clock.now()
   const reading = await $.session.usage()
-  const mem = todayCostMemory
-  const isToday = mem !== null && mem.date === localDate(midTurnMemory.at)
-  const today = isToday && reading.cost !== undefined ? mem.today + Math.max(0, reading.cost.usd - mem.cost) : undefined
+  const todayCost = todayCostMemory
+  const isToday = todayCost !== null && todayCost.date === localDate(midTurnMemory.at)
+  const today = isToday && reading.cost !== undefined ? todayCost.today + Math.max(0, reading.cost.usd - todayCost.cost) : undefined
   await writeUsageReading($, reading, today)
   await syncStatusLine($)
 }
@@ -284,28 +286,26 @@ export async function setCostBaseline($: EngineInterface, reading: SessionUsage)
   if (reading.cost !== undefined) await baseCost($, await $.session.id(), reading.cost.usd, await $.clock.now())
 }
 
-export const PACE_LABEL: Record<string, string> = { five_hour: '5h', seven_day: '7d' }
-
 // Appends each window's reading while its reset is unchanged; a new reset starts it over. Returns the toasts due:
 // the highest of 75 and 90 that the 5h or weekly window crossed upward since its last reading, once per window.
-export async function trackPace($: EngineInterface, limits: readonly SessionRateLimit[], now: number): Promise<string[]> {
+async function trackPace($: EngineInterface, windows: RateWindow[], now: number): Promise<string[]> {
   let due: string[] = []
   await updatePace($, pace => {
     due = []
     const out = { ...pace }
-    for (const rateWindow of limits) {
-      const resetsAt = rateWindow.resetsAt ?? null
+    for (const rateWindow of windows) {
+      const resetsAt = rateWindow.resetsAt
       const prev = pace[rateWindow.kind]
       const same = prev !== undefined && prev.resetsAt === resetsAt
       const points = same ? prev.points : []
       const toasted = same ? prev.toastedMarks : []
       const last = points[points.length - 1]
-      const marks = PACE_LABEL[rateWindow.kind] !== undefined && last !== undefined
+      const marks = WINDOW_LABEL[rateWindow.kind] !== undefined && last !== undefined
         ? [75, 90].filter(mark => last.percent < mark && rateWindow.percentUsed >= mark && !toasted.includes(mark))
         : []
       if (marks.length > 0) {
-        const reset = resetsAt === null ? NaN : Date.parse(resetsAt)
-        due.push(`${PACE_LABEL[rateWindow.kind]} limit at ${Math.max(...marks)}%, resets ${Number.isNaN(reset) ? 'later' : whenText(reset)}`)
+        const reset = resetAtOf(rateWindow)
+        due.push(`${WINDOW_LABEL[rateWindow.kind]} limit at ${Math.max(...marks)}%, resets ${reset === null ? 'later' : whenText(reset)}`)
       }
       out[rateWindow.kind] = { resetsAt, points: [...points, { at: now, percent: rateWindow.percentUsed }].slice(-20), toastedMarks: [...toasted, ...marks] }
     }
@@ -315,7 +315,7 @@ export async function trackPace($: EngineInterface, limits: readonly SessionRate
 }
 
 // The main loop's turn ends: it joins the timeline, the live counts start over, and today's cost is brought up
-export async function endMainTurn($: EngineInterface, turnId: string, durationMs: number, endReason: Turn['endReason'], used: { tokensIn: number; tokensOut: number }): Promise<void> {
+async function endMainTurn($: EngineInterface, turnId: string, durationMs: number, endReason: Turn['endReason'], used: { tokensIn: number; tokensOut: number }): Promise<void> {
   const reading = await $.session.usage()
   const now = await $.clock.now()
   const before = await readSession($)
@@ -460,7 +460,7 @@ export async function trackMeasure($: EngineInterface, e: HookInput<'session.mea
     }
   })
   await storeRateWindows($, fresh, at)
-  for (const text of await trackPace($, e.rateLimits, at)) toast($, text)
+  for (const text of await trackPace($, fresh, at)) toast($, text)
   await stepHandoff($, e.context.tokens, e.context.window)
   await syncStatusLine($)
   return measured

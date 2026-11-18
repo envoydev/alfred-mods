@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { RenderSurface } from 'claude-code'
 
-import { PRESENTATION, engine, rows, stubAll } from '../kit'
+import { PRESENTATION, engine, rows, seedState, stubAll } from '../kit'
 
 // A stored field renamed moves its atom's shape tag: a session reloaded over a value an earlier version stored drops it
 // once and starts that atom from its start value, rather than reading a field that is no longer there
@@ -21,16 +21,7 @@ test('state stored under the tags before the field renames is dropped once', { t
     usage: { shape: 'usage-1', value: { tokens: 150_000, window: 200_000, percent: 75, startedAt: 0, windows: [], costUsd: 9.99, todayUsd: 9.99, at: 0 } },
     pace: { shape: 'pace-1', value: { five_hour: { resetsAt: null, points: [], toasted: [50] } } },
   }
-  const written = new Set<string>()
-  on('state.set', async (_, e, next) => {
-    written.add(e.key)
-    return next(e)
-  })
-  on('state.get', async (_, e, next) => {
-    const r = await next(e)
-    const seed = old[e.key]
-    return seed === undefined || written.has(e.key) || r.value === undefined ? r : { value: { ...r.value, value: seed } }
-  })
+  seedState(on, old)
   stubAll(on)
   engine(on)
   await inspect($, 'timeline')

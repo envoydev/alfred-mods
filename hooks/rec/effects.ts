@@ -69,35 +69,39 @@ export async function isRecOn($: EngineInterface): Promise<boolean> {
 }
 
 // An add or a remove reads the stored words again, applies its one change and writes, so no stale copy is written back
-export async function addRecWord($: EngineInterface, raw: string): Promise<void> {
+async function addRecWord($: EngineInterface, raw: string): Promise<void> {
   const added = addWord(parseWords(await $.store.get('rec:words')), raw)
   if ('reason' in added) return applyRec($, added.reason)
   await $.store.set('rec:words', added.words)
   await applyRec($)
 }
 
-export async function removeRecWord($: EngineInterface, word: string): Promise<void> {
+async function removeRecWord($: EngineInterface, word: string): Promise<void> {
   const words = parseWords(await $.store.get('rec:words'))
   await $.store.set('rec:words', words.filter(listed => listed.toLowerCase() !== word.toLowerCase()))
   await applyRec($)
 }
 
+// A message row's text under REC: masked and printable, or null while REC is off or masking changes nothing
+async function maskedRowText($: EngineInterface, text: string): Promise<string | null> {
+  if (!(await isRecOn($))) return null
+  const masked = mask(text)
+  return masked === text ? null : printable(masked)
+}
+
 export async function maskUserMessage($: EngineInterface, e: MatchedInput<'ui.render', { component: 'UserMessage' }>, next: MatchedNext<'ui.render', { component: 'UserMessage' }>) {
-  if (!(await isRecOn($))) return next(e)
-  const text = mask(e.props.text)
-  return text === e.props.text ? next(e) : next({ ...e, props: { ...e.props, text: printable(text) } })
+  const text = await maskedRowText($, e.props.text)
+  return text === null ? next(e) : next({ ...e, props: { ...e.props, text } })
 }
 
 export async function maskAssistantMessage($: EngineInterface, e: MatchedInput<'ui.render', { component: 'AssistantMessage' }>, next: MatchedNext<'ui.render', { component: 'AssistantMessage' }>) {
-  if (!(await isRecOn($))) return next(e)
-  const text = mask(e.props.text)
-  return text === e.props.text ? next(e) : next({ ...e, props: { ...e.props, text: printable(text) } })
+  const text = await maskedRowText($, e.props.text)
+  return text === null ? next(e) : next({ ...e, props: { ...e.props, text } })
 }
 
 export async function maskCommandOutput($: EngineInterface, e: MatchedInput<'ui.render', { component: 'CommandOutput' }>, next: MatchedNext<'ui.render', { component: 'CommandOutput' }>) {
-  if (!(await isRecOn($))) return next(e)
-  const text = mask(e.props.text)
-  return text === e.props.text ? next(e) : next({ ...e, props: { ...e.props, text: printable(text) } })
+  const text = await maskedRowText($, e.props.text)
+  return text === null ? next(e) : next({ ...e, props: { ...e.props, text } })
 }
 
 export async function maskQuestions($: EngineInterface, e: MatchedInput<'ui.render', { component: 'AskUserQuestion' }>, next: MatchedNext<'ui.render', { component: 'AskUserQuestion' }>) {

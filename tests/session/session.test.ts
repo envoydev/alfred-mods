@@ -4,7 +4,7 @@ import type { SessionUsage } from 'claude-code'
 import { localDate } from '../../hooks/core/forecast'
 import { whenText } from '../../hooks/core/format'
 import { PRESENTATION, SPAWN, START, engine, stubAll, watchState } from '../kit'
-import type { Session, Totals, Turn, Usage } from '../../hooks/session/types'
+import type { Session, Turn, Usage } from '../../hooks/session/types'
 
 const USAGE = {
   input_tokens: 2, output_tokens: 254, cache_read_input_tokens: 33603, cache_creation_input_tokens: 34287, model: 'claude-sonnet-5-5',
@@ -80,6 +80,17 @@ test('the 7d window toasts as 7d with its reset date', async ($, on) => {
   }
 
   expect(toasts).toEqual([`7d limit at 75%, resets ${whenText(Date.parse('2026-10-31T09:00:00Z'))}`])
+})
+
+test('a window with no reset toasts that it resets later', async ($, on) => {
+  const { toasts } = stubAll(on, { usage: READING })
+  engine(on)
+
+  for (const percentUsed of [70, 76]) {
+    await $.session.measure({ context: { window: 200_000 }, rateLimits: [{ kind: 'five_hour', percentUsed }], changed: ['rateLimits'] })
+  }
+
+  expect(toasts).toEqual(['5h limit at 75%, resets later'])
 })
 
 test('a precompute or skipped compaction is not counted', async ($, on) => {
@@ -257,5 +268,5 @@ test('a window with no reading leaves the usage figures null', async ($, on) => 
   await $.session.start(START)
 
   expect(state.get('usage')).toMatchObject({ contextTokens: null, contextPercent: null, contextWindow: 200_000, rateWindows: [], costUsd: null })
-  expect(state.get('totals') as Totals | undefined).toBeUndefined()
+  expect(state.get('totals')).toBeUndefined()
 })

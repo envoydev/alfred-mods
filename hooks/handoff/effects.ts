@@ -158,7 +158,7 @@ async function readSaveInput($: EngineInterface, at: number, git: string[]): Pro
   let plan: SaveInput['plan'] = credited === 'tasks' ? 'tasks' : null
   let scores: ScoresPart | null = null
   if (credited !== null && credited !== 'tasks' && credited.value !== null && plans.watchedSince !== null && credited.mtimeMs >= plans.watchedSince) {
-    const view = (await planViewOf($, plans, items, credited, at)).v
+    const view = (await planViewOf($, plans, items, credited, at)).view
     if (view !== null) {
       const steps: PlanPart['steps'] = view.rows.map(row => ({
         id: row.step.id, title: row.step.title, status: row.step.status, actualMs: row.actualMs, forecastMs: row.forecastMs, notes: row.notes.length,

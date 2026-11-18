@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, RenderSurface } from 'claude-code'
 
-import { PRESENTATION, rows, stubAll, watchState } from '../kit'
+import { PRESENTATION, rows, seedState, stubAll, watchState } from '../kit'
 import { blockerOf } from '../../hooks/tools/outcome'
 import type { Failure } from '../../hooks/tools/types'
 
@@ -112,19 +112,10 @@ test("a PermissionRequest hook's deny is named too, and a later PermissionDenied
   expect(state.get('blockers')).toEqual({})
 })
 
-// Spec 'Backward compatibility': a failure an earlier version kept has no `by`, and there is no blockers atom
-test('an old failure without by reads as null, and no blockers atom draws no line', { timeoutMs: 15_000 }, async ($, on) => {
+// Spec 'Backward compatibility': a failure an earlier version kept has no `blockedBy`, and there is no blockers atom
+test('an old failure without blockedBy reads as null, and no blockers atom draws no line', { timeoutMs: 15_000 }, async ($, on) => {
   const old = { id: 'f0', at: 0, tool: 'Bash', target: 'Push', outcome: 'blocked', reason: 'PreToolUse:Bash hook error: Blocked: use Monitor', detail: '', count: 1, isNew: false }
-  const written = new Set<string>()
-  on('state.set', async ($$, e, next) => {
-    written.add(e.key)
-    return next(e)
-  })
-  on('state.get', async ($$, e, next) => {
-    const r = await next(e)
-    if (e.key !== 'failures' || written.has(e.key) || r.value === undefined) return r
-    return { value: { ...r.value, value: { shape: 'failures-2', value: [old] } } }
-  })
+  seedState(on, { failures: { shape: 'failures-2', value: [old] } })
   stubAll(on)
 
   for (const surface of SURFACES) {

@@ -93,11 +93,11 @@ for (const surface of SURFACES) {
     await rows(ui)
     const drawn = asked.at(-1) as { questions: typeof question[] }
     expect(JSON.stringify(drawn)).not.toContain(EMAIL)
-    const q = drawn.questions[0]!
-    expect(q.question).toBe('‹hidden›')
-    expect(q.header).toBe('‹hidden›')
-    expect(q.options.map(o => o.label)).toEqual(['Yes', 'No'])
-    expect(q.options.map(o => o.description)).toEqual(['‹hidden›', '‹hidden›'])
+    const hidden = drawn.questions[0]!
+    expect(hidden.question).toBe('‹hidden›')
+    expect(hidden.header).toBe('‹hidden›')
+    expect(hidden.options.map(o => o.label)).toEqual(['Yes', 'No'])
+    expect(hidden.options.map(o => o.description)).toEqual(['‹hidden›', '‹hidden›'])
   })
 
   test(`the band that throws names its failure (${surface})`, async ($, on) => {
