@@ -95,15 +95,21 @@ test("HANDOFF's key class gains the forms", () => {
   expect(maskForFile('postgres://admin:hunter2@localhost')).toBe('postgres://admin:‹key›@localhost')
 })
 
-test('a 100 kB line of each form masks in under 50 ms', () => {
+// A pattern that backtracks takes seconds on such a line; the best of five runs keeps a busy machine's pause (258 ms
+// once, 2026-11-19, under a parallel copy) from failing a pattern that is fast
+test('a 100 kB line of each form masks in under 50 ms, the best of five runs', () => {
   const c = compile('on', [], null)
   const forms = ['password=hunter2 ', '--password hunter2 ', 'Authorization: Basic dXNlcjpwYXNz ', 'postgres://admin:hunter2@localhost ']
   for (const form of forms) {
     const text = form.repeat(Math.ceil(100_000 / form.length))
     maskText(c, text)
-    const at = performance.now()
-    maskText(c, text)
-    expect({ form, fast: performance.now() - at < 50 }).toEqual({ form, fast: true })
+    let bestMs = Infinity
+    for (let run = 0; run < 5; run++) {
+      const at = performance.now()
+      maskText(c, text)
+      bestMs = Math.min(bestMs, performance.now() - at)
+    }
+    expect({ form, fast: bestMs < 50 }).toEqual({ form, fast: true })
   }
 })
 
