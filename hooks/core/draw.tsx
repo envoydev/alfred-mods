@@ -5,7 +5,7 @@ import type { RenderElement, ResolveInput } from 'claude-code'
 import { mask } from '../rec/mask'
 import { laneFit, statusGlyph } from '../agents/agents'
 import { spark } from './forecast'
-import { printable } from './format'
+import { buttonCells, isPlainButton, printable } from './format'
 import type { AgentStatus, LaneFit } from '../agents/types'
 import type { Lane, Line, Seg, Tone, Ui } from './types'
 
@@ -96,7 +96,7 @@ function lanesSvg(lanes: Lane[], now: number, noColor: boolean): string {
 // wide)
 function chart(ui: Ui, e: ResolveInput, values: number[], noColor: boolean): RenderElement {
   const alt = show(spark(values))
-  if ((e.surface === 'desktop' || e.surface === 'vscode') && 'Svg' in ui) {
+  if (drawsSvg(e) && 'Svg' in ui) {
     const { Svg } = ui
     return <Svg source={polyline(values, noColor)} alt={alt} width={120} height={24} />
   }
@@ -161,18 +161,18 @@ function piecesOf(line: Line, isSvg: boolean): Piece[] {
     }
     // A digit also answers from the empty prompt, so the terminal shows it plain, '3: Compact', where '[ Compact ]'
     // hides it; a letter answers only in the focused pane, and its button keeps the brackets
-    const isPlain = seg.button.plain === true || seg.button.isText === true || /^\d$/.test(seg.button.hotkey ?? '')
+    const isPlain = seg.button.isText === true || isPlainButton(seg.button)
     return [{ kind: 'button', button: seg.button, label: show(seg.button.label), isPlain }]
   })
 }
 
 // How many cells a piece takes (Decision 12): a button as the tab bar counts it, a chart its sparkline; a code block
 // is alone on its line and kept whole, outside the fit
-function widthOf(p: Piece): number {
+function pieceCells(p: Piece): number {
   switch (p.kind) {
     case 'text': return p.ml + cellsOf(p.text) + p.mr
     case 'gap': case 'cell': return p.width
-    case 'button': return p.isPlain ? (p.button.hotkey === undefined ? 0 : p.button.hotkey.length + 2) + cellsOf(p.label) : cellsOf(p.label) + 4
+    case 'button': return buttonCells(cellsOf(p.label), p.button.hotkey, p.isPlain)
     case 'chart': return p.cells
     case 'code': return 0
   }
@@ -191,7 +191,7 @@ function fitFromStart(pieces: Piece[], columns: number): Fitted[] {
       out.push({ piece: p })
       continue
     }
-    const width = widthOf(p)
+    const width = pieceCells(p)
     if (used + width <= columns) {
       out.push({ piece: p })
       used += width
@@ -216,7 +216,7 @@ function fit(pieces: Piece[], columns: number): Fitted[] {
   while (k > 0 && (pieces[k - 1]?.kind === 'button' || pieces[k - 1]?.kind === 'gap')) k--
   const tail = pieces.slice(k)
   if (k === 0 || !tail.some(p => p.kind === 'button') || (whole.length === pieces.length && whole.every(f => f.cut === undefined))) return whole
-  const room = columns - tail.reduce((sum, p) => sum + widthOf(p), 0)
+  const room = columns - tail.reduce((sum, p) => sum + pieceCells(p), 0)
   const head = fitFromStart(pieces.slice(0, k), room)
   const last = head[head.length - 1]
   if (room <= 0 || last?.piece.kind !== 'text' || last.cut === undefined || last.cut < 4) return whole
@@ -268,7 +268,7 @@ export function drawLines(
   // Agents on a time axis (spec C2): one SVG where the surface draws one beside text, else a text line per lane, in
   // the monospaced face on mobile so the bars line up
   const laneRows = (seg: Extract<Seg, { lanes: Lane[] }>, n: number): RenderElement[] => {
-    if ((e.surface === 'desktop' || e.surface === 'vscode') && 'Svg' in ui) {
+    if (drawsSvg(e) && 'Svg' in ui) {
       const { Svg } = ui
       const alt = show(`${seg.lanes.length} agents on a time axis`)
       // Straight in a Box as wide as the pane, the slot an unsized Svg scales down to (a Box that cannot shrink gave it

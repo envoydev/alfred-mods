@@ -5,8 +5,9 @@ import { durationText, elapsedText, fitLine, tokensText, usdText, widthOf } from
 import { narrowPlan, planLine, scoreSeg } from '../plan/planlines'
 import type { AgentRow } from '../agents/types'
 import type { BandInput } from './types'
-import type { Live, Turn } from '../session/types'
+import type { Live } from '../session/types'
 import type { Line, Seg } from '../core/types'
+import { ROW_JOIN } from './constants'
 import { percentText, times } from './gauges'
 
 type ButtonSeg = Extract<Seg, { button: unknown }>['button']
@@ -60,7 +61,7 @@ function planTail(input: BandInput, isRowDrawn: boolean): Line {
   if (input.plan !== null && !hasRow) parts.push([{ text: 'PLAN', tone: 'plan' }, { text: ` ${input.plan.finished}/${input.plan.total}` }])
   if (input.score !== null && !(hasRow && input.isPlanScore !== false)) parts.push(scoreSeg(input.score, input.scoreLevel ?? null))
   if (parts.length === 0) return []
-  return [{ text: ' │ ', tone: 'dim' }, ...parts.flatMap((line, i) => (i === 0 ? line : [{ text: ' · ' }, ...line]))]
+  return [{ text: ROW_JOIN, tone: 'dim' }, ...parts.flatMap((line, i) => (i === 0 ? line : [{ text: ' · ' }, ...line]))]
 }
 
 // The turn, or the agents while only they run, or the plan line while a plan runs; then each live agent's action and

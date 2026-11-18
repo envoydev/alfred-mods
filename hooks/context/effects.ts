@@ -27,7 +27,7 @@ const breakdownMemory = { lastAt: null as number | null }
 // The memory files a link under the project's `.claude/rules/` reaches: the breakdown names such a rule by where the
 // link lands (live, 2026-11-11), so an import there looks the same until both sides are resolved. Asked only of a file
 // that is no CLAUDE.md, no rule by its folder and no auto memory, so a session with none lists no folder.
-export async function findLinkedRules($: EngineInterface, breakdown: SessionContextBreakdown, cwd: string): Promise<Set<string>> {
+async function findLinkedRules($: EngineInterface, breakdown: SessionContextBreakdown, cwd: string): Promise<Set<string>> {
   const unplaced = (breakdown.memoryFiles ?? []).filter(memoryFile =>
     memoryFile.type !== 'AutoMem' && ruleName(memoryFile.path, memoryFile.type) === null && !/^CLAUDE(\.local)?\.md$/.test(baseName(memoryFile.path)))
   if (unplaced.length === 0) return new Set()

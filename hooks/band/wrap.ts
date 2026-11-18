@@ -1,6 +1,7 @@
 // Fitting a band row to the width: cells, wrapped rows and rows packed to the band's height
-import { widthOf } from '../core/format'
+import { buttonCells, isPlainButton, widthOf } from '../core/format'
 import type { Line, Seg } from '../core/types'
+import { ROW_JOIN } from './constants'
 
 // A line's cells as the terminal draws it: its text, and each button `[ label ]`, or `1: label` when plain
 export function cellsOf(line: Line): number {
@@ -8,9 +9,7 @@ export function cellsOf(line: Line): number {
     if ('text' in seg && seg.width !== undefined) return cells + seg.width
     if (!('button' in seg)) return cells + widthOf([seg])
     const button = seg.button
-    const label = widthOf([{ text: button.label }])
-    return cells + (button.plain === true || /^\d$/.test(button.hotkey ?? '')
-      ? (button.hotkey === undefined ? 0 : button.hotkey.length + 2) + label : label + 4)
+    return cells + buttonCells(widthOf([{ text: button.label }]), button.hotkey, isPlainButton(button))
   }, 0)
 }
 
@@ -50,7 +49,7 @@ export function packRows(items: Line[], columns: number): Line[] | null {
   let row: Line = []
   for (const item of items) {
     if (cellsOf(item) > columns) return null
-    const joined: Line = row.length === 0 ? item : [...row, { text: ' │ ', tone: 'dim' }, ...item]
+    const joined: Line = row.length === 0 ? item : [...row, { text: ROW_JOIN, tone: 'dim' }, ...item]
     if (cellsOf(joined) <= columns) row = joined
     else {
       rows.push(row)

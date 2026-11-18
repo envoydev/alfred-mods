@@ -66,7 +66,7 @@ export async function armCacheToast($: EngineInterface, pending: Pending): Promi
 
 // The toast, once per warm stretch, while the main loop is idle and the cache is still 1h and warm by then; a
 // compaction of Claude Code's own has made it cold
-export async function toastCacheClosing($: EngineInterface): Promise<void> {
+async function toastCacheClosing($: EngineInterface): Promise<void> {
   const stored = await readCache($)
   const usage = await readUsage($)
   const cacheState = cacheView(stored, billingOf(usage.rateWindows), await $.clock.now(), usage.contextTokens)
@@ -80,7 +80,7 @@ export async function toastCacheClosing($: EngineInterface): Promise<void> {
 
 // A main-loop compaction that stands: counted, and the cache cold, as its cached prefix is gone; a compaction can drop
 // REC's note from the history, so the next prompt carries it again
-export async function countCompaction($: EngineInterface, pending: Pending): Promise<void> {
+async function countCompaction($: EngineInterface, pending: Pending): Promise<void> {
   pending.compactionsCounted++
   retellRecNote()
   await rearmAfterCompaction($)
@@ -120,26 +120,29 @@ export async function trackCompaction($: EngineInterface, e: HookInput<'session.
   return compacted
 }
 
+// A model switch's report under the billing now, made (PostModelSwitch) or still to confirm, then the toast set afresh
+async function takeSwitchReport(
+  $: EngineInterface, e: HookInput<'classic.PostModelSwitch'> | HookInput<'classic.PreModelSwitch'>, hasSwitched: boolean, pending: Pending,
+): Promise<void> {
+  const billing = billingOf((await readUsage($)).rateWindows)
+  const now = await $.clock.now()
+  const change = { ttl: e.cache_ttl, contextTokens: e.context_tokens, usd: e.estimated_cache_write_usd, model: e.to_model, billing }
+  await updateCache($, cache => takeSwitch(cache, change, now, hasSwitched))
+  await armCacheToast($, pending)
+}
+
 export async function trackModelSwitch($: EngineInterface, e: HookInput<'classic.PostModelSwitch'>, next: HookNext<'classic.PostModelSwitch'>, pending: Pending) {
   const done = await next(e)
   // The band names the model before the first step does (the review, 2026-11-11)
   await setModel($, e.to_model)
-  const billing = billingOf((await readUsage($)).rateWindows)
-  const now = await $.clock.now()
-  const change = { ttl: e.cache_ttl, contextTokens: e.context_tokens, usd: e.estimated_cache_write_usd, model: e.to_model, billing }
-  await updateCache($, cache => takeSwitch(cache, change, now, true))
-  await armCacheToast($, pending)
+  await takeSwitchReport($, e, true, pending)
   return done
 }
 
 export async function trackModelSwitchAsk($: EngineInterface, e: HookInput<'classic.PreModelSwitch'>, next: HookNext<'classic.PreModelSwitch'>, pending: Pending) {
   const done = await next(e)
   if (done.block !== undefined || done.permissionDecision === 'deny' || done.permissionDecision === 'ask') return done
-  const billing = billingOf((await readUsage($)).rateWindows)
-  const now = await $.clock.now()
-  const change = { ttl: e.cache_ttl, contextTokens: e.context_tokens, usd: e.estimated_cache_write_usd, model: e.to_model, billing }
-  await updateCache($, cache => takeSwitch(cache, change, now, false))
-  await armCacheToast($, pending)
+  await takeSwitchReport($, e, false, pending)
   return done
 }
 

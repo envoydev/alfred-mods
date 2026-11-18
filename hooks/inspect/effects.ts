@@ -49,7 +49,7 @@ export async function isInspectDrawn($: EngineInterface): Promise<boolean> {
 
 // Opens the pane on a tab. The failures it shows are seen once a surface draws it, never while it waits undrawn.
 // The open starts before the first await: a Button's press counts as the person's only while its closure runs.
-export async function openInspect($: EngineInterface, tab: Tab): Promise<UiOpenResult> {
+async function openInspect($: EngineInterface, tab: Tab): Promise<UiOpenResult> {
   // Esc at an idle, empty prompt closes it: on the terminal's main screen nothing takes a click (the user, 2026-11-12)
   const opening = $.ui.open({ id: 'inspect', title: 'Inspect', closeOnEscape: true })
   await updateView($, view => ({ ...view, tab }))
@@ -64,7 +64,7 @@ export async function openInspect($: EngineInterface, tab: Tab): Promise<UiOpenR
 }
 
 // The pane on `tab`, unless it is open on one of `tabs` already: '' when drawn, else why not
-export async function showPaneOn($: EngineInterface, tab: Tab, tabs: Tab[]): Promise<string> {
+async function showPaneOn($: EngineInterface, tab: Tab, tabs: Tab[]): Promise<string> {
   const isOpen = (await $.ui.panes().catch(() => [])).some(pane => pane.id === 'inspect')
   if (isOpen && tabs.includes((await readView($)).tab)) return ''
   const opened = await openInspect($, tab)
@@ -72,7 +72,7 @@ export async function showPaneOn($: EngineInterface, tab: Tab, tabs: Tab[]): Pro
 }
 
 // '/inspect band [off|calm|full]': writes "band" into the user file, or names the mode in force and its source
-export async function runBandCommand($: EngineInterface, word: string): Promise<string> {
+async function runBandCommand($: EngineInterface, word: string): Promise<string> {
   const mode = BAND_MODES.find(bandMode => bandMode === word)
   if (mode !== undefined) return writeUserField($, 'band', mode)
   await loadSettings($)
@@ -81,7 +81,7 @@ export async function runBandCommand($: EngineInterface, word: string): Promise<
 }
 
 // '/inspect show [n]' and '/inspect copy [n]': the failure whose row starts with n, the newest when n is left out
-export async function runFailureCommand($: EngineInterface, action: 'show' | 'copy', word: string | undefined): Promise<string> {
+async function runFailureCommand($: EngineInterface, action: 'show' | 'copy', word: string | undefined): Promise<string> {
   const list = (await readFailures($)).map((failure, i) => ({ f: failure, n: failureNumberOf(failure, i) }))
   const newest = list[list.length - 1]
   if (newest === undefined) return `No tool failure to ${action}.`
@@ -103,7 +103,7 @@ export async function runFailureCommand($: EngineInterface, action: 'show' | 'co
 }
 
 // '/inspect report [n]': report n of the agents that finished with one, in the Agents tab's order, the top first
-export async function runReportCommand($: EngineInterface, word: string | undefined): Promise<string> {
+async function runReportCommand($: EngineInterface, word: string | undefined): Promise<string> {
   const list = reportRows(await readAgents($))
   if (list.length === 0) return 'No agent report to show.'
   const ordinal = ordinalOf(word)
@@ -113,7 +113,7 @@ export async function runReportCommand($: EngineInterface, word: string | undefi
 }
 
 // Show and Hide as one toggle, as the button: shown, the pane comes up on a tab that lists it
-export async function runToggleCommand($: EngineInterface, id: string, name: string, tab: Tab, tabs: Tab[]): Promise<string> {
+async function runToggleCommand($: EngineInterface, id: string, name: string, tab: Tab, tabs: Tab[]): Promise<string> {
   const isShown = (await readView($)).expandedIds.includes(id)
   await toggleExpanded($, id)
   if (isShown) return `Hid ${name}.`
@@ -126,7 +126,7 @@ export async function openInspectFromBand($: EngineInterface): Promise<void> {
   if (!opened.isPlaced) toast($, `Inspect pane not drawn: ${opened.reason}`)
 }
 
-export async function toggleExpanded($: EngineInterface, id: string): Promise<void> {
+async function toggleExpanded($: EngineInterface, id: string): Promise<void> {
   await updateView($, view => ({ ...view, expandedIds: view.expandedIds.includes(id)
     ? view.expandedIds.filter(expandedId => expandedId !== id) : [...view.expandedIds, id] }))
 }

@@ -5,7 +5,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 import type { Handoff, PlanPart, SaveTrigger, SaveInput, SaveResult, ScoresPart } from './types'
 import { PLANS_DIR, creditedPlan, scoresView } from '../plan/plan'
-import { FOREIGN, HANDOFF_PATH, HANDOFF_USAGE, MARKER, MODES, RESUME_WINDOW_MS, RESUME_PROMPT, TOASTS, gitPart, handoffText, nextStep, parseStatus, percentOf, stepUnder, stepsOf } from './handoff'
+import { FOREIGN, HANDOFF_PATH, HANDOFF_USAGE, MARKER, MODES, RESUME_WINDOW_MS, RESUME_PROMPT, TOASTS, gitPart, handoffPercent, handoffText, isThreshold, nextStep, parseStatus, percentOf, stepUnder, stepsOf } from './handoff'
 import { readBreakdown } from '../context/effects'
 import { readLive, readSession, readUsage } from '../session/effects'
 import { readStack } from '../stack/effects'
@@ -67,7 +67,7 @@ export async function applyHandoffSetting($: EngineInterface): Promise<void> {
 // window; read at the first reading and again when the model or the window changes. A read with no breakdown, or one
 // that fails, gives the window for that reading alone and counts a miss; the third miss for one model and window
 // keeps the window as the point and asks no more.
-export async function compactPointOf($: EngineInterface, window: number): Promise<number> {
+async function compactPointOf($: EngineInterface, window: number): Promise<number> {
   const key = `${(await readSession($)).model ?? ''}:${window}`
   const known = (await readHandoff($)).compactPoint
   if (handoffMemory.pointKey === key && known !== null) return known
@@ -87,7 +87,7 @@ export async function compactPointOf($: EngineInterface, window: number): Promis
 }
 
 // A save runs from a 0 ms timer, so no hook waits on git; a request while one runs joins it
-export function startSave($: EngineInterface, by: SaveTrigger): Promise<SaveResult> {
+function startSave($: EngineInterface, by: SaveTrigger): Promise<SaveResult> {
   if (handoffMemory.saving !== null) return handoffMemory.saving
   const saving = new Promise<SaveResult>(resolve => {
     $.clock.after(0, () => {
@@ -102,7 +102,7 @@ export function startSave($: EngineInterface, by: SaveTrigger): Promise<SaveResu
 
 // What a save writes (spec 'What a save writes'): never over a file without the marker; the one git call; the text
 // masked for keys, emails and phones whatever REC's level. A save arms the resume prompt unless the stack stood F8 down.
-export async function writeHandoffFile($: EngineInterface, by: SaveTrigger): Promise<SaveResult> {
+async function writeHandoffFile($: EngineInterface, by: SaveTrigger): Promise<SaveResult> {
   const at = await $.clock.now()
   const before = await readHandoff($)
   let result: SaveResult
@@ -135,7 +135,7 @@ export async function writeHandoffFile($: EngineInterface, by: SaveTrigger): Pro
 
 // A file at the path whose first line is not the marker is the person's own; no file is none
 // A file there that the mod cannot read (over 4 MiB, locked, no access) is foreign too: only a missing file is none
-export async function isForeignFile($: EngineInterface): Promise<boolean> {
+async function isForeignFile($: EngineInterface): Promise<boolean> {
   if (!(await $.fs.exists(HANDOFF_PATH))) return false
   let text: string
   try {
@@ -148,7 +148,7 @@ export async function isForeignFile($: EngineInterface): Promise<boolean> {
 
 // What a save copies: the plan this session works on, its scores, git and the mod's counts. A plan file written
 // before this session began is none of this session's.
-export async function readSaveInput($: EngineInterface, at: number, git: string[]): Promise<SaveInput> {
+async function readSaveInput($: EngineInterface, at: number, git: string[]): Promise<SaveInput> {
   const stored = await readHandoff($)
   const usage = await readUsage($)
   const session = await readSession($)
@@ -174,9 +174,8 @@ export async function readSaveInput($: EngineInterface, at: number, git: string[
   }
   const counted = Object.values(await readStats($))
   const isWorking = (await readLive($)).turnId !== null
-  const point = stored.compactPoint ?? usage.contextWindow
   return {
-    at, percent: usage.contextTokens === null || point === null ? null : percentOf(usage.contextTokens, point), threshold: stored.threshold,
+    at, percent: handoffPercent(stored, usage), threshold: stored.threshold,
     session: await $.session.id(), model: session.model, git, plan, scores,
     counts: {
       turn: session.turnCount + (isWorking ? 1 : 0), durationMs: usage.startedAt === null ? null : at - usage.startedAt,
@@ -240,11 +239,11 @@ export async function stepHandoff($: EngineInterface, tokens: number | undefined
 
 // The state line a bare /auto-handoff prints: the mode, the threshold, F8's context percent and the last save; stood
 // down, the runway while it applies, as the HANDOFF row
-export async function handoffStateLine($: EngineInterface): Promise<string> {
+async function handoffStateLine($: EngineInterface): Promise<string> {
   const stored = await readHandoff($)
   const usage = await readUsage($)
-  const point = stored.compactPoint ?? usage.contextWindow
-  const ctx = usage.contextTokens === null || point === null ? 'ctx –' : `ctx ${percentOf(usage.contextTokens, point)}%`
+  const percent = handoffPercent(stored, usage)
+  const ctx = percent === null ? 'ctx –' : `ctx ${percent}%`
   if (stored.stackStatus.state === 'stood-down') {
     const runway = runwayOf(await readStack($), usage, (await readSession($)).model)
     return `${runway === null ? ctx : `ctx ${runway.percent}% of ${tokensText(runway.resumeAt)}`} · handoff by Alfred Code`
@@ -296,7 +295,7 @@ export async function runHandoffCommand($: EngineInterface, e: MatchedInput<'com
   if (at !== null) {
     const word = at[1] ?? at[2] ?? ''
     const percent = /^\d+$/.test(word) ? Number(word) : NaN
-    if (!(percent >= 10 && percent <= 95)) return { text: `The first ask takes a whole number from 10 to 95.\n${HANDOFF_USAGE}` }
+    if (!isThreshold(percent)) return { text: `The first ask takes a whole number from 10 to 95.\n${HANDOFF_USAGE}` }
     return { text: mask(await writeUserField($, 'handoffAt', percent)) }
   }
   await loadSettings($)

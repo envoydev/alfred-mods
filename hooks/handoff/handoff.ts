@@ -8,7 +8,6 @@ import { clockText, durationText, minutesText, modelText, tokensText, usdText } 
 import type { Line, Seg } from '../core/types'
 import { joinPath } from '../place/place'
 import type { Handoff, HandoffMode, HandoffView, PlanPart, SaveInput, SaveResult } from './types'
-import type { Severity, StepStatus } from '../plan/types'
 import type { Runway } from '../stack/types'
 import type { Usage } from '../session/types'
 
@@ -70,8 +69,8 @@ export const HANDOFF_USAGE = 'Usage: /auto-handoff [ask|auto|off|at <percent>|no
 
 // Where the stack publishes the session's status file: under `.alfred/state/` from the release after alfred-code 3.12.1,
 // under `.claude/session-inspector/` through it (and, relative to each turn's cwd, from older stacks)
-export const STATUS_DIR = '.alfred/state/sessions/status'
-export const OLD_STATUS_DIR = '.claude/session-inspector/status'
+const STATUS_DIR = '.alfred/state/sessions/status'
+const OLD_STATUS_DIR = '.claude/session-inspector/status'
 
 // The old relative status path for a session id; an id that could leave the folder has none
 export function statusPath(id: string): string | null {
@@ -247,10 +246,15 @@ export function handoffLines(view: HandoffView, _columns: number): Line[] {
 
 export const RESUME_WINDOW_MS = 2 * 60 * 60_000
 
+// F8's context percent: the tokens in use over the compaction point, else over the window; null while either is unknown
+export function handoffPercent(handoff: Pick<Handoff, 'compactPoint'>, usage: Pick<Usage, 'contextTokens' | 'contextWindow'>): number | null {
+  const point = handoff.compactPoint ?? usage.contextWindow
+  return usage.contextTokens === null || point === null ? null : percentOf(usage.contextTokens, point)
+}
+
 // The Now tab's HANDOFF section reads the atom with F8's percent and the runway
 export function handoffViewOf(handoff: Handoff, usage: Usage, isWorking: boolean, runway: Runway | null): HandoffView {
-  const point = handoff.compactPoint ?? usage.contextWindow
-  return { ...handoff, percent: usage.contextTokens === null || point === null ? null : percentOf(usage.contextTokens, point), window: usage.contextWindow, isWorking, runway }
+  return { ...handoff, percent: handoffPercent(handoff, usage), window: usage.contextWindow, isWorking, runway }
 }
 
 // What the forecast counts to: the stack's resume trigger over the window while the runway applies and the window is

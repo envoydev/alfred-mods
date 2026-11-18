@@ -1,5 +1,5 @@
 // Agents as rows: what a spawn says, how a run ends, which rows are kept, the tree they draw and their tool counts.
-import type { AgentInfo } from 'claude-code'
+import type { AgentInfo, ModelUsage } from 'claude-code'
 
 import { durationText, oneLine, tokensText } from '../core/format'
 import type { AgentRow, AgentStatus, LaneFit, Loop, TreeRow } from './types'
@@ -92,7 +92,7 @@ export function lanesOf(rows: AgentRow[], now: number): Lane[] {
 
 // A lane's label: what the agent was asked, its task id first, or its type when it was asked nothing (the user,
 // 2026-11-12: 'I want to see what agents are doing or did'; the type alone left eight lanes all 'general-purpo…')
-export function laneLabel(row: AgentRow): string {
+function laneLabel(row: AgentRow): string {
   const asked = oneLine(row.description, 200)
   const what = asked === '' ? row.type : asked
   return row.task === null ? what : `task ${row.task} · ${what}`
@@ -141,6 +141,11 @@ export function statusAt(reason: TurnEnd, isTeammate: boolean): AgentStatus {
 
 export function actionOf(tool: string, target: string): string {
   return target === '' ? tool : `${tool} ${target}`
+}
+
+// An agent's context after a step: the sum the engine's own `context_tokens` uses
+export function contextTokensOf(usage: Pick<ModelUsage, 'input_tokens' | 'cache_read_input_tokens' | 'cache_creation_input_tokens' | 'output_tokens'>): number {
+  return usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens + usage.output_tokens
 }
 
 

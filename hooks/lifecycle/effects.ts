@@ -29,7 +29,7 @@ const tickMemory = { minute: -1 }
 
 // What the band shows before the first reply: the model, Claude Code's version, the place, the stored windows and the
 // context's parts. Each read stands alone: a refusal leaves its value as it was.
-export async function readStartFacts($: EngineInterface): Promise<void> {
+async function readStartFacts($: EngineInterface): Promise<void> {
   await readModelAndVersion($)
   await readPlace($).catch(() => undefined)
   await seedRateWindows($).catch(() => undefined)
@@ -40,7 +40,7 @@ export async function readStartFacts($: EngineInterface): Promise<void> {
 
 // Once a second: the engine's list moves the live agent rows, the band's figures are read every 5 seconds and the
 // clocks on screen redraw while anything runs, and the clocks redraw once a minute while the band is full
-export async function runTick($: EngineInterface): Promise<void> {
+async function runTick($: EngineInterface): Promise<void> {
   const rows = await readAgents($)
   const anyLive = rows.some(row => isLive(row.status))
   const now = await $.clock.now()
@@ -71,7 +71,7 @@ export async function runTick($: EngineInterface): Promise<void> {
   await syncStatusLine($)
 }
 
-export async function resetState($: EngineInterface): Promise<void> {
+async function resetState($: EngineInterface): Promise<void> {
   forgetTurnSpend()
   await resetStats($)
   await resetFailures($)
@@ -105,7 +105,7 @@ export async function resetState($: EngineInterface): Promise<void> {
 // as one too, and gets the resume prompt in an empty draft, never sent. A prompt that found the id has left the box,
 // which is not filled after it. No session.end hook tells them apart: a managed plugin that skips the mod's hooks may
 // skip that one too, and the mod hooks no event it did not hook before.
-export function startOver($: EngineInterface, source: string | null, calls: Map<string, ToolCall>, pending: Pending): Promise<void> {
+function startOver($: EngineInterface, source: string | null, calls: Map<string, ToolCall>, pending: Pending): Promise<void> {
   const run = (conversationMemory.starting ?? Promise.resolve()).catch(() => undefined).then(async () => {
     conversationMemory.id = await $.session.id()
     const isClear = source === 'clear' || (source === null && (await $.session.turns()) <= 1)

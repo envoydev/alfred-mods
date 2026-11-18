@@ -1,11 +1,11 @@
 // The types every folder shares: the band's drawn segments, a hook's held timers, and the hook helper types
 import type { EngineInterface, EventName, Hook, MatchedHook, Timer } from 'claude-code'
 import type { AgentStatus } from '../agents/types'
+import type { FAMILIES } from './constants'
 
-// A hook's input, its next and its result, as a feature function takes them (the form probe P2 passed)
+// A hook's input and its next, as a feature function takes them (the form probe P2 passed)
 export type HookInput<E extends EventName> = Parameters<Hook<E>>[1]
 export type HookNext<E extends EventName> = Parameters<Hook<E>>[2]
-export type HookResult<E extends EventName> = ReturnType<Hook<E>>
 // The same under a matcher, narrowed by it as on(event, matcher, hook) narrows them
 export type MatchedInput<E extends EventName, M> = Parameters<MatchedHook<E, M>>[1]
 export type MatchedNext<E extends EventName, M> = Parameters<MatchedHook<E, M>>[2]
@@ -13,7 +13,7 @@ export type MatchedNext<E extends EventName, M> = Parameters<MatchedHook<E, M>>[
 // The surface's elements, as $.ui.resolve(e) gives them in an effects file: the draw helpers take this, never $
 export type Ui = ReturnType<EngineInterface['ui']['resolve']>
 
-export type Tone = 'ok' | 'warn' | 'fail' | 'dim' | 'usage' | 'skill' | 'agents' | 'cache' | 'plan' | 'handoff' | 'opus' | 'sonnet' | 'haiku' | 'fable' | 'git' | 'branch' | 'counts'
+export type Tone = 'ok' | 'warn' | 'fail' | 'dim' | 'usage' | 'skill' | 'agents' | 'cache' | 'plan' | 'handoff' | Family | 'git' | 'branch' | 'counts'
 
 export type Seg =
   // With a `width`, a table cell: that many cells wide, its text cut with '…' when longer, at its end with `align: 'end'`
@@ -34,7 +34,7 @@ export type Lane = { label: string; startAt: number; endAt: number | null; statu
 
 export type FailKind = 'throw' | 'timeout'
 
-export type Family = 'opus' | 'sonnet' | 'haiku' | 'fable'
+export type Family = (typeof FAMILIES)[number]
 
 // What outlives one hook but is no $.state value: the cache's toast timer, a [Compact] in flight, the compactions the
 // mod's own hook counted, whether the session started in the terminal's REPL, which only session.start says and
