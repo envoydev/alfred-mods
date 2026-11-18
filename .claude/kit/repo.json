@@ -83,6 +83,31 @@
         "A release also needs a Desktop Code tab check, or it is reported NOT RUN.",
         "The repo is public: no private project names or absolute local paths in a tracked file."
       ]
+    },
+    "code": {
+      "roots": [
+        "hooks",
+        "tests",
+        "scripts",
+        "types"
+      ],
+      "scope_with": [
+        "tsconfig.json"
+      ],
+      "checks": [
+        "npm run typecheck",
+        "npm test",
+        "npm run validate"
+      ],
+      "notes": [
+        "A mods module: ES modules in TypeScript, built and loaded by Claude Code. claude plugin validate reads the source statically, so the event name in each on(...) and every mods API call stay written in full.",
+        "tsconfig.json extends .claude-plugin/types/tsconfig.json, which Claude Code generates and git ignores: its include is hooks, types and tests under moduleResolution bundler, and a relative import names its file with no extension.",
+        "scripts/validate.js is the one JavaScript file - what npm run validate runs, on the repo's own Node. Converted, it needs a config of its own (nodenext against the mods config's bundler) and Node's types, which the repo does not have: it takes no dev dependency today.",
+        "npm test is claude plugin test . - the mods test kit, not Node's runner.",
+        "hooks is also the hooks audit's root: that audit owns each registration's event, chain, .catch and time limit, this one the rest.",
+        "types/index.d.ts holds declarations only.",
+        "The repo is public: no private project names or absolute local paths in a tracked file."
+      ]
     }
   }
 }
