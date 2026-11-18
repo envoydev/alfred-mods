@@ -139,7 +139,7 @@ const BASE: BandInput = {
   session: { model: null, effort: null, compactions: 0, lastCompactAt: null, lastPromptAt: null, lastReplyAt: null, turnCount: 0, waitingPrompts: [], mainToolCalls: 0 },
   turns: [], newFailures: 0, pace: {}, agents: [],
   cache: {
-    tier: null, tierAt: null, tierBilling: null, config: { pin: null, isIdleCompactOff: false, idleMinTokens: 200_000, isTerminal: false },
+    tier: null, tierAt: null, tierBilling: null, config: { pin: null, isIdleCompactOff: false, idleMinTokens: 200_000, isIdleSurface: false },
     ratePerToken: null, rateModel: null, lastRequestAt: null, lastRequest: null, sessionCounts: { read: 0, write: 0, input: 0 }, toastedForRequestAt: null,
   },
   plan: null, isPlanInvalid: false, score: null,

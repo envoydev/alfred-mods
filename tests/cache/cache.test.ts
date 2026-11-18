@@ -1,18 +1,18 @@
 import { expect, test } from 'claude-code/testing'
 
-import { addRequest, afterCompact, billingOf, cacheLine, cacheView, idleOf, minutesLeftText, needsTick, pinOf, reuseTone, selfCompacts, takeSwitch, tierOf, toastAt } from '../../hooks/cache/cache'
+import { addRequest, afterCompact, billingOf, cacheLine, cacheView, idleOf, isIdleSurfaceOf, minutesLeftText, needsTick, pinOf, reuseTone, selfCompacts, takeSwitch, tierOf, toastAt } from '../../hooks/cache/cache'
 import type { Cache } from '../../hooks/cache/types'
 import type { Line } from '../../hooks/core/types'
 
 // INITIAL.cache in register.ts, which does not export it
 const C0: Cache = {
   tier: null, tierAt: null, tierBilling: null,
-  config: { pin: null, isIdleCompactOff: false, idleMinTokens: 200_000, isTerminal: false },
+  config: { pin: null, isIdleCompactOff: false, idleMinTokens: 200_000, isIdleSurface: false },
   ratePerToken: null, rateModel: null, lastRequestAt: null, lastRequest: null, sessionCounts: { read: 0, write: 0, input: 0 }, toastedForRequestAt: null,
 }
 // The deck's slide: a 1h cache from a switch, 180k cached, 94% of the last request read from it
 const SLIDE: Cache = {
-  ...C0, tier: '1h', tierBilling: 'plan', config: { ...C0.config, isTerminal: true }, lastRequestAt: 0,
+  ...C0, tier: '1h', tierBilling: 'plan', config: { ...C0.config, isIdleSurface: true }, lastRequestAt: 0,
   lastRequest: { read: 169_200, write: 10_800, input: 0 }, sessionCounts: { read: 169_200, write: 10_800, input: 0 }, ratePerToken: 0.000008,
 }
 const FIVE: Cache = { ...SLIDE, tier: '5m' }
@@ -172,8 +172,17 @@ test('Claude Code compacts a large idle 1h conversation itself', () => {
   expect(selfCompacts(SLIDE, 'plan', 190_000)).toBe(false)
   expect(selfCompacts(FIVE, 'plan', 210_000)).toBe(false)
   expect(selfCompacts({ ...SLIDE, config: { ...SLIDE.config, isIdleCompactOff: true } }, 'plan', 210_000)).toBe(false)
-  expect(selfCompacts({ ...SLIDE, config: { ...SLIDE.config, isTerminal: false } }, 'plan', 210_000)).toBe(false)
+  expect(selfCompacts({ ...SLIDE, config: { ...SLIDE.config, isIdleSurface: false } }, 'plan', 210_000)).toBe(false)
   expect(selfCompacts(SLIDE, 'plan', null)).toBe(false)
+})
+
+test('Claude Code compacts while idle in the terminal, VS Code and the desktop app, and nowhere a -p run draws', () => {
+  expect(isIdleSurfaceOf(['terminal'])).toBe(true)
+  expect(isIdleSurfaceOf(['vscode'])).toBe(true)
+  expect(isIdleSurfaceOf(['desktop'])).toBe(true)
+  expect(isIdleSurfaceOf(['mobile'])).toBe(false)
+  expect(isIdleSurfaceOf([])).toBe(false)
+  expect(isIdleSurfaceOf(['mobile', 'terminal'])).toBe(true)
 })
 
 test("the reuse bar takes the miss rate's colour", () => {

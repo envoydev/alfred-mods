@@ -37,10 +37,9 @@ export type FailKind = 'throw' | 'timeout'
 export type Family = (typeof FAMILIES)[number]
 
 // What outlives one hook but is no $.state value: the cache's toast timer, a [Compact] in flight, the compactions the
-// mod's own hook counted, whether the session started in the terminal's REPL, which only session.start says and
-// /clear does not repeat, the plan folders' next read and the read running, one at a time, and the step-time writes,
+// mod's own hook counted, the plan folders' next read and the read running, one at a time, and the step-time writes,
 // in order
 export type Pending = {
-  cacheToast: Timer | null; isCompacting: boolean; compactionsCounted: number; isTerminal: boolean; planReload: Timer | null; planRead: Promise<void>
+  cacheToast: Timer | null; isCompacting: boolean; compactionsCounted: number; planReload: Timer | null; planRead: Promise<void>
   timeWrites: Promise<void>
 }

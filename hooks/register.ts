@@ -34,7 +34,7 @@ export const register: Register = (on, options) => {
   // Keyed by call id, at most 100, the oldest dropped first
   const calls = new Map<string, ToolCall>()
   const pending: Pending = {
-    cacheToast: null, isCompacting: false, compactionsCounted: 0, isTerminal: false, planReload: null, planRead: Promise.resolve(), timeWrites: Promise.resolve(),
+    cacheToast: null, isCompacting: false, compactionsCounted: 0, planReload: null, planRead: Promise.resolve(), timeWrites: Promise.resolve(),
   }
 
   on('agent.spawn', ($, e, next) => trackSpawn($, e, next)).catch(($, e, next) => next(e))

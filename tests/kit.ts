@@ -2,8 +2,8 @@
 import { mock } from 'claude-code/testing'
 import type { Engine, MockClock } from 'claude-code/testing'
 import type {
-  AgentInfo, ClassicResult, EngineInterface, On, ProcessRunResult, RenderElement, RenderInput, SessionUsage, Settings, SettingsSource, TurnStepInput, TurnStepResult,
-  TurnUsage, UiPane,
+  AgentInfo, ClassicResult, EngineInterface, On, ProcessRunResult, RenderElement, RenderInput, RenderSurface, SessionUsage, Settings, SettingsSource,
+  TurnStepInput, TurnStepResult, TurnUsage, UiPane,
 } from 'claude-code'
 
 export const NO_READING: SessionUsage = { startedAt: 0, context: { window: 200_000 }, rateLimits: [] }
@@ -14,6 +14,8 @@ type Options = {
   // The session's project root (`$.session.root()`); absent, the folder `cwd` names at each call, as a session that
   // never moved off its root; null, a root the call rejects
   root?: string | null
+  // What `$.session.surfaces()` answers: absent, the terminal alone, as under the REPL; empty, a plain -p run
+  surfaces?: RenderSurface[]
   store?: Record<string, unknown>
   // A read of `key` waits for `until` while it is set, as a slow store would
   holdStore?: { key: string; until: Promise<void> | null }
@@ -114,6 +116,7 @@ export function stubAll(on: On, o: Options = {}): {
   const session = { id: o.sessionId ?? 's1', turns: 0, root: undefined as string | null | undefined }
   on('session.id', () => ({ value: session.id }))
   on('session.turns', () => ({ value: session.turns }))
+  on('session.surfaces', () => ({ value: o.surfaces ?? ['terminal'] }))
   on('session.cwd', () => ({ value: o.cwd ?? '/w' }))
   on('session.root', () => {
     const root = session.root === undefined ? o.root : session.root

@@ -809,11 +809,12 @@ function cacheView(cache       , billing         , now        , contextTokens   
   }
 }
 
-// Claude Code should compact the conversation itself at about 54 minutes idle: the terminal's REPL, the 1h tier, idle
-// compaction not turned off, and a context at its threshold. A feature flag it fetches gates it too, which the mod
+// Claude Code should compact the conversation itself at about 54 minutes idle: a surface where it does (the terminal,
+// VS Code's chat panel, the desktop app's Code tab), the 1h tier, idle compaction not turned off, and a context at its
+// threshold. A feature flag it fetches gates it too, which the mod
 // cannot see, so this delays the warning and never withholds it.
 function selfCompacts(cache       , billing         , contextTokens               )          {
-  return cache.config.isTerminal && tierOf(cache, billing).tier === '1h' && !cache.config.isIdleCompactOff && contextTokens !== null
+  return cache.config.isIdleSurface && tierOf(cache, billing).tier === '1h' && !cache.config.isIdleCompactOff && contextTokens !== null
     && contextTokens >= cache.config.idleMinTokens
 }
 
@@ -2821,7 +2822,7 @@ const BandAdapter = (() => {
       },
       turns, newFailures: num(d.failures), pace: {}, agents,
       cache: {
-        tier: '1h', tierAt: null, tierBilling: null, config: { pin: null, isIdleCompactOff: false, idleMinTokens: 200_000, isTerminal: false },
+        tier: '1h', tierAt: null, tierBilling: null, config: { pin: null, isIdleCompactOff: false, idleMinTokens: 200_000, isIdleSurface: false },
         ratePerToken: null, rateModel: null, lastRequestAt: m.fresh ? null : now - Math.max(0, 60 - num(d.cacheMin)) * MIN,
         lastRequest: { read: 1000, write: 0, input: 10 }, sessionCounts: m.fresh ? { read: 0, write: 0, input: 0 } : { read: 1000, write: 0, input: 10 }, toastedForRequestAt: null,
       },

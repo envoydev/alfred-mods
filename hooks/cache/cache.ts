@@ -1,11 +1,12 @@
 // The prompt cache (F4): its tier by Claude Code's own rule, its warmth, reuse and rewrite cost, the line the band and
 // the Cache tab draw, the warning's window and whether Claude Code compacts an idle conversation itself.
 // The rule: https://code.claude.com/docs/en/prompt-caching.md; idle compaction: settings-reference, `idleCompaction`.
-import type { ModelUsage } from 'claude-code'
+import type { ModelUsage, RenderSurface } from 'claude-code'
 
 import { barText, toneOf, tokensText, usdText } from '../core/format'
 import type { Billing, Cache, CacheConfig, CacheTier, CacheView, TierOf } from './types'
 import type { Line, Tone } from '../core/types'
+import { IDLE_COMPACT_SURFACES } from './constants'
 import type { RateWindow } from '../session/types'
 
 const TTL_MS: Record<CacheTier, number> = { '5m': 300_000, '1h': 3_600_000 }
@@ -109,12 +110,16 @@ export function cacheView(cache: Cache, billing: Billing, now: number, contextTo
   }
 }
 
-// Claude Code compacts an idle conversation itself where settings-reference's `idleCompaction` says it does; the mod
-// counts it on the terminal's REPL alone, as `isTerminal` records, with the 1h tier, idle compaction not turned off and
-// a context at its threshold. A feature flag it fetches gates it too, which the mod cannot see, so this delays the
-// warning and never withholds it.
+// Whether the session draws where Claude Code compacts an idle conversation itself; a plain -p run draws nowhere
+export function isIdleSurfaceOf(surfaces: readonly RenderSurface[]): boolean {
+  return surfaces.some(surface => IDLE_COMPACT_SURFACES.has(surface))
+}
+
+// Claude Code compacts an idle conversation itself where settings-reference's `idleCompaction` says it does: on a
+// surface `isIdleSurface` records, with the 1h tier, idle compaction not turned off and a context at its threshold. A
+// feature flag it fetches gates it too, which the mod cannot see, so this delays the warning and never withholds it.
 export function selfCompacts(cache: Cache, billing: Billing, contextTokens: number | null): boolean {
-  return cache.config.isTerminal && tierOf(cache, billing).tier === '1h' && !cache.config.isIdleCompactOff && contextTokens !== null
+  return cache.config.isIdleSurface && tierOf(cache, billing).tier === '1h' && !cache.config.isIdleCompactOff && contextTokens !== null
     && contextTokens >= cache.config.idleMinTokens
 }
 

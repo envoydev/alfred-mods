@@ -4,7 +4,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, ModelUsage } from 'claude-code'
 import type { Cache, CacheConfig } from './types'
-import { addRequest, afterCompact, billingOf, cacheView, idleOf, minutesLeftText, pinOf, takeRate, takeSwitch, toastAt } from './cache'
+import { addRequest, afterCompact, billingOf, cacheView, idleOf, isIdleSurfaceOf, minutesLeftText, pinOf, takeRate, takeSwitch, toastAt } from './cache'
 import { noteCompaction, readLive, readUsage, setModel } from '../session/effects'
 import type { Pending, HookInput, HookNext } from '../core/types'
 import { toast } from '../core/effects'
@@ -15,10 +15,10 @@ import { readBreakdownSoon } from '../context/effects'
 
 const INITIAL_CACHE: Cache = {
   tier: null, tierAt: null, tierBilling: null,
-  config: { pin: null, isIdleCompactOff: false, idleMinTokens: 200_000, isTerminal: false },
+  config: { pin: null, isIdleCompactOff: false, idleMinTokens: 200_000, isIdleSurface: false },
   ratePerToken: null, rateModel: null, lastRequestAt: null, lastRequest: null, sessionCounts: { read: 0, write: 0, input: 0 }, toastedForRequestAt: null,
 }
-const cacheAtom = atom({ plugin: 'alfred-mods', key: 'cache' } as const, INITIAL_CACHE, { shape: 'cache-2' })
+const cacheAtom = atom({ plugin: 'alfred-mods', key: 'cache' } as const, INITIAL_CACHE, { shape: 'cache-3' })
 export function readCache($: EngineInterface) {
   return read($, cacheAtom)
 }
@@ -30,7 +30,7 @@ export function resetCache($: EngineInterface) {
 }
 
 // The variables and settings that pin the cache's tier or turn idle compaction off, written only on a change
-export async function readCacheConfig($: EngineInterface, pending: Pending): Promise<void> {
+export async function readCacheConfig($: EngineInterface): Promise<void> {
   const config: CacheConfig = {
     pin: pinOf({
       force5m: await $.env.get('FORCE_PROMPT_CACHING_5M'),
@@ -44,7 +44,7 @@ export async function readCacheConfig($: EngineInterface, pending: Pending): Pro
       disableAutoCompact: await $.env.get('DISABLE_AUTO_COMPACT'),
       minTokens: await $.env.get('CLAUDE_CODE_IDLE_COMPACT_MIN_TOKENS'),
     }),
-    isTerminal: pending.isTerminal,
+    isIdleSurface: isIdleSurfaceOf(await $.session.surfaces()),
   }
   if (JSON.stringify((await readCache($)).config) !== JSON.stringify(config)) await updateCache($, cache => ({ ...cache, config }))
 }

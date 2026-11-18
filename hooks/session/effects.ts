@@ -441,7 +441,7 @@ export async function trackTurnEnd($: EngineInterface, e: HookInput<'turn.comple
   if (e.agentId === undefined) {
     const tokensIn = turnUsage === undefined ? 0 : turnUsage.input_tokens + turnUsage.cache_read_input_tokens + turnUsage.cache_creation_input_tokens
     await endMainTurn($, e.turnId, e.durationMs, e.reason, { tokensIn, tokensOut: turnUsage?.output_tokens ?? 0 })
-    await readCacheConfig($, pending)
+    await readCacheConfig($)
     await armCacheToast($, pending)
     schedulePlanReload($, pending)
   }

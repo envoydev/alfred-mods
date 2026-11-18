@@ -88,9 +88,10 @@ export type CacheTier = '5m' | '1h'
 export type Billing = 'plan' | 'credits' | 'other'
 export type CacheCounts = { read: number; write: number; input: number }
 // What the variables and settings choose; `from` names the variable or key that pinned the tier.
-// `isTerminal`: the session started in the terminal's REPL, the one surface where the mod counts Claude Code's idle
-// compaction (settings-reference's `idleCompaction` names the others).
-export type CacheConfig = { pin: { tier: CacheTier; from: string } | null; isIdleCompactOff: boolean; idleMinTokens: number; isTerminal: boolean }
+// `isIdleSurface`: the session draws on a surface where Claude Code compacts an idle conversation itself - the terminal,
+// VS Code's chat panel or the desktop app's Code tab, when the session runs on the machine or over SSH (settings-reference, `idleCompaction`, read
+// 2026-11-19).
+export type CacheConfig = { pin: { tier: CacheTier; from: string } | null; isIdleCompactOff: boolean; idleMinTokens: number; isIdleSurface: boolean }
 export type Cache = {
   // The last model switch's report, and the billing it was made under
   tier: CacheTier | null; tierAt: number | null; tierBilling: Billing | null

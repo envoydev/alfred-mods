@@ -27,7 +27,7 @@ const turn = (n: number, contextPercent: number | null = null): Turn => ({
   turnNumber: n, turnId: `t${n}`, promptAt: P, replyAt: R, durationMs: 3000, tokensIn: 0, tokensOut: 0, toolCalls: 19, toolFailures: 0, contextPercent, endReason: 'answer',
 })
 const CACHE: Cache = {
-  tier: '1h', tierAt: null, tierBilling: 'plan', config: { pin: null, isIdleCompactOff: false, idleMinTokens: 200_000, isTerminal: false },
+  tier: '1h', tierAt: null, tierBilling: 'plan', config: { pin: null, isIdleCompactOff: false, idleMinTokens: 200_000, isIdleSurface: false },
   ratePerToken: null, rateModel: null, lastRequestAt: NOW - 6 * 60_000, lastRequest: { read: 1000, write: 0, input: 10 },
   sessionCounts: { read: 1000, write: 0, input: 10 }, toastedForRequestAt: null,
 }

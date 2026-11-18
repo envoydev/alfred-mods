@@ -162,7 +162,7 @@ export async function followSessionStart($: EngineInterface, e: HookInput<'class
       await takeResumeRate($, cost, tokens, model)
     }
   }
-  await readCacheConfig($, pending)
+  await readCacheConfig($)
   if (e.source !== 'startup') return next(e)
   // A start: the stack's own SessionStart hook, beneath, writes this session's file, so it is read once those hooks
   // have run, not at the next poll. A compaction's rewrite waits for the poll: read here, it would step the handoff
@@ -199,8 +199,7 @@ export async function startSession($: EngineInterface, e: HookInput<'session.sta
   await setCostBaseline($, reading)
   await readStartFacts($)
   if (isFresh && (await $.session.turns().catch(() => 0)) > 0) await markResumed($)
-  pending.isTerminal = e.surface === 'terminal' && e.isInteractive
-  await readCacheConfig($, pending)
+  await readCacheConfig($)
   // A reload keeps $.state but not the module's timer: a cache still warm gets its toast armed again
   await armCacheToast($, pending)
   // A plan's file must be written after this to run; a reload keeps the first start's time

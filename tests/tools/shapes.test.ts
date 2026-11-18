@@ -41,3 +41,18 @@ test("state stored under the other atoms' old tags is dropped once", { timeoutMs
   await inspect($, 'cache')
   expect((await rows(view)).some(l => l.includes('last request'))).toBe(false)
 })
+
+test('a cache stored under cache-2, when the config said isTerminal, is dropped once', { timeoutMs: 15_000 }, async ($, on) => {
+  // The warm cache of tests/cache/cache-hooks.test.ts under cache-2's field names, before isIdleSurface
+  const warm = {
+    tier: '1h', tierAt: 0, tierBilling: 'plan', config: { pin: null, isIdleCompactOff: false, idleMinTokens: 200_000, isTerminal: true },
+    ratePerToken: 0.000008, rateModel: 'claude-opus-5-5', lastRequestAt: 0, lastRequest: { read: 169_200, write: 10_800, input: 0 },
+    sessionCounts: { read: 169_200, write: 10_800, input: 0 }, toastedForRequestAt: null,
+  }
+  seedState(on, { cache: { shape: 'cache-2', value: warm } })
+  stubAll(on)
+  engine(on)
+  const view = await pane($, 'terminal')
+  await inspect($, 'cache')
+  expect((await rows(view)).some(l => l.includes('last request'))).toBe(false)
+})
