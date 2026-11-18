@@ -4,14 +4,14 @@ import type { SessionUsage, TurnUsage } from 'claude-code'
 import { PRESENTATION, SPAWN, START, engine, step, stepEngine, stubAll } from '../kit'
 import { GOLDEN } from './trace-golden'
 
-// The reading tests/fresh.test.ts builds: a cost and one five_hour limit
+// The reading tests/session/fresh.test.ts builds: a cost and one five_hour limit
 const READING: SessionUsage = {
   startedAt: 0,
   context: { window: 200_000, tokens: 20_000, percent: 10 },
   rateLimits: [{ kind: 'five_hour', percentUsed: 20, resetsAt: '2026-10-28T17:00:00Z' }],
   cost: { usd: 0.5 },
 }
-// The TurnUsage tests/agent-hooks.test.ts's stepEngine gives
+// The TurnUsage tests/agents/agent-hooks.test.ts's stepEngine gives
 const STEP_USAGE: TurnUsage = {
   input_tokens: 1000, output_tokens: 200, cache_read_input_tokens: 20_000, cache_creation_input_tokens: 10_000, model: 'claude-haiku-5-5',
 }
