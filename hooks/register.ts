@@ -5,7 +5,7 @@
 import type { Register } from 'claude-code'
 
 import { drawNote } from './core/draw'
-import { REC_HIDDEN, SPINNER_WORD, paneFailed } from './core/failsafe'
+import { REC_HIDDEN, SPINNER_WORD, commandFailed, paneFailed } from './core/failsafe'
 import { clockText, whenText } from './core/format'
 import { recLevel } from './rec/mask'
 import { neutralDialog } from './rec/sites'
@@ -98,10 +98,12 @@ export const register: Register = (on, options) => {
 
   on('session.measure', ($, e, next) => trackMeasure($, e, next)).catch(($, e, next) => next(e))
 
-  on('session.compact', ($, e, next) => trackCompaction($, e, next, pending)).catch(($, e, next) => next(e))
-
-  // The two a managed plugin's notices named after a /model (2026-11-16): left out with the hooks above
+  // The two a managed plugin's notices named after a /model (2026-11-16), and the compaction, whose hook Claude Code's
+  // built-in guard passes over too (code.claude.com/docs/en/plugins/mods/admin, read 2026-11-18): left out with the
+  // hooks above
   if (!isLeftOut) {
+    on('session.compact', ($, e, next) => trackCompaction($, e, next, pending)).catch(($, e, next) => next(e))
+
     // A switch forfeits the cache; its report gives the tier under the billing now and prices the rewrite
     on('classic.PostModelSwitch', ($, e, next) => trackModelSwitch($, e, next, pending)).catch(($, e, next) => next(e))
 
@@ -110,17 +112,17 @@ export const register: Register = (on, options) => {
   }
 
   // '/inspect [tab]': opens the pane, never on its own. '/inspect plan <name>' pins that plan; 'plan' alone clears it.
-  on('command.run', { command: 'inspect' }, ($, e) => runInspectCommand($, e))
+  on('command.run', { command: 'inspect' }, ($, e) => runInspectCommand($, e)).catch(($, e, next) => ({ text: commandFailed('/inspect', next.error.kind) }))
 
   // '/rec [on|strict|off|test|words]': the level is a settings value (S5) that on, strict and off write into the user
   // file (the user's ruling, 2026-11-12); every form but words reads the files first, so a session that has not polled
   // answers with the level in force, never its own copy
-  on('command.run', { command: 'rec' }, ($, e) => runRecCommand($, e))
+  on('command.run', { command: 'rec' }, ($, e) => runRecCommand($, e)).catch(($, e, next) => ({ text: commandFailed('/rec', next.error.kind) }))
 
   // '/auto-handoff [ask|auto|off|at <percent>|now]': the mode and the first ask are settings values (S5) that ask, auto,
   // off and at <percent> write into the user file (the user's ruling, 2026-11-12); a bare form reads the files first
   // and prints the state with each value's source, and while Alfred Code owns the handoff, its state alone
-  on('command.run', { command: 'auto-handoff' }, ($, e) => runHandoffCommand($, e, pending))
+  on('command.run', { command: 'auto-handoff' }, ($, e) => runHandoffCommand($, e, pending)).catch(($, e, next) => ({ text: commandFailed('/auto-handoff', next.error.kind) }))
 
   on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => drawBandAbove($, e, next, pending, isLeftOut)).catch(($, e, next) => drawBandAboveFailed($, e, next))
 

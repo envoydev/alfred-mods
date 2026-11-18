@@ -1,7 +1,9 @@
 // A managed plugin that sends events on past the user tier (`next.to`), as an organization's did on 2026-11-10: Claude
 // Code then tells the model, once per event and conversation, that the mod's hook was skipped. The mod spots a new
 // conversation by its session id, and its `leave_out_skipped_hooks` option leaves those hooks out. The sessions of
-// 2026-11-16/17 added three it named: classic.UserPromptSubmit and, after a /model, Pre- and PostModelSwitch.
+// 2026-11-16/17 added three it named: classic.UserPromptSubmit and, after a /model, Pre- and PostModelSwitch. Claude
+// Code's docs add session.compact, which its built-in guard passes over too
+// (code.claude.com/docs/en/plugins/mods/admin, read 2026-11-18).
 import { expect, test } from 'claude-code/testing'
 import type { Engine, Plugin } from 'claude-code/testing'
 import type { On, SessionUsage } from 'claude-code'
@@ -11,8 +13,8 @@ import type { Session, Turn } from '../../hooks/session/types'
 
 const ON = 'Screen recording is on (alfred-mods REC). Until told it is off, do not write secret values, API keys, tokens, passwords, email addresses or phone numbers in replies; refer to them by name, such as "the token in .env". Work on the task as usual.'
 
-// Stands in for the managed plugin: each of the nine events the notices named goes on past the user tier, and a toast
-// names the plugins whose links it skipped
+// Stands in for the managed plugin: each of the nine events the notices named, and session.compact, goes on past the
+// user tier, and a toast names the plugins whose links it skipped
 const MANAGED: Plugin = {
   name: 'managed-stand-in',
   tier: 'prepend',
@@ -64,12 +66,17 @@ const MANAGED: Plugin = {
       await $.ui.toast(`classic.PostModelSwitch skipped: ${skipped(next.trace)}`)
       return r
     })
+    on('session.compact', async ($, e, next) => {
+      const r = await next.to(e, 'builtin')
+      await $.ui.toast(`session.compact skipped: ${skipped(next.trace)}`)
+      return r
+    })
   },
 }
 
 const EVENTS = [
   'classic.SessionStart', 'classic.PostToolUse', 'classic.PermissionRequest', 'classic.PostToolUseFailure', 'classic.PermissionDenied', 'skill.prompt',
-  'classic.UserPromptSubmit', 'classic.PreModelSwitch', 'classic.PostModelSwitch',
+  'classic.UserPromptSubmit', 'classic.PreModelSwitch', 'classic.PostModelSwitch', 'session.compact',
 ]
 
 // Claude Code's answers beneath: no hook answered the request, so the person is asked; the skill's prompt as it is
@@ -88,13 +95,14 @@ async function raiseAll($: Engine): Promise<void> {
   await $.classic.UserPromptSubmit({ prompt: 'q', permission_mode: 'default' })
   await $.classic.PreModelSwitch(SWITCH)
   await $.classic.PostModelSwitch(SWITCH)
+  await $.session.compact({ trigger: 'auto', messages: [{ role: 'user', text: 'summary', toolUses: [] }] })
 }
 
 // The plugins each event skipped, by event, from the stand-in's toasts
 const skippedBy = (toasts: string[]): Record<string, string> =>
   Object.fromEntries(toasts.filter(t => t.includes(' skipped: ')).map(t => t.split(' skipped: ') as [string, string]))
 
-test('a managed plugin that passes the nine events on skips each of the mod\'s hooks', { plugins: [MANAGED] }, async ($, on) => {
+test('a managed plugin that passes the ten events on skips each of the mod\'s hooks', { plugins: [MANAGED] }, async ($, on) => {
   const { toasts } = stubAll(on)
   answerBeneath(on)
   engine(on)
@@ -104,7 +112,7 @@ test('a managed plugin that passes the nine events on skips each of the mod\'s h
   for (const event of EVENTS) expect(by[event]?.split(',')).toContain('alfred-mods')
 })
 
-test('with leave_out_skipped_hooks on, the nine events reach no hook of the mod', { plugins: [MANAGED], options: { leave_out_skipped_hooks: true } }, async ($, on) => {
+test('with leave_out_skipped_hooks on, the ten events reach no hook of the mod', { plugins: [MANAGED], options: { leave_out_skipped_hooks: true } }, async ($, on) => {
   const { toasts } = stubAll(on)
   answerBeneath(on)
   engine(on)

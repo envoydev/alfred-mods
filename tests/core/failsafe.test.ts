@@ -2,10 +2,10 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, RenderPropsOf } from 'claude-code'
 
-import { REC_HIDDEN, bandFailed, paneFailed } from '../../hooks/core/failsafe'
+import { REC_HIDDEN, bandFailed, commandFailed, paneFailed } from '../../hooks/core/failsafe'
 import { neutralDialog } from '../../hooks/rec/sites'
 import { EMAILS, KEYS } from '../../hooks/rec/samples'
-import { SPINNER, START, engine, engineSites, failState, rows, stubAll } from '../kit'
+import { PRESENTATION, SPINNER, START, engine, engineSites, failState, rows, stubAll } from '../kit'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const KEY = KEYS[0]!.text
@@ -132,6 +132,24 @@ test('the failure texts', () => {
   expect(paneFailed('throw', undefined, false)).toBe('alfred-mods: the pane failed to draw (throw)')
   expect(paneFailed('throw', 'boom', true)).toBe('alfred-mods: the pane failed to draw (throw)')
   expect(paneFailed('timeout', 'boom', false)).toBe('alfred-mods: the pane failed to draw (timeout): boom')
+  expect(commandFailed('/rec', 'timeout')).toBe('alfred-mods: /rec failed (timeout)')
+})
+
+// A registered command has no core beneath it: with no .catch, a hook that throws leaves the run with no answer at all
+test('a command whose hook throws answers with its name and the failure kind, never its message', async ($, on) => {
+  const { fail } = await start($, on, 'off')
+  const run = async (command: string, args: string): Promise<string | undefined> =>
+    (await $.command.run({ command, args, origin: { kind: 'composer' }, presentation: PRESENTATION })).text
+  fail.key = 'agents'
+  expect(await run('inspect', 'report')).toBe('alfred-mods: /inspect failed (throw)')
+  fail.key = 'handoff'
+  expect(await run('auto-handoff', 'later')).toBe('alfred-mods: /auto-handoff failed (throw)')
+})
+
+test('a /rec whose pane is refused answers with its name and the failure kind, never the message', async ($, on) => {
+  on('ui.open', () => { throw new Error(`test: open refused, ${KEY}`) })
+  const ran = await $.command.run({ command: 'rec', args: 'words', origin: { kind: 'composer' }, presentation: PRESENTATION })
+  expect(ran.text).toBe('alfred-mods: /rec failed (throw)')
 })
 
 test('a pane message is cut to 120 characters and printable', () => {

@@ -598,14 +598,17 @@ model, once per event and conversation, `alfred-mods: its classic.SessionStart h
 and sent the event on past it.` One did so for nine of the mod's hooks: `classic.SessionStart`,
 `classic.UserPromptSubmit`, `classic.PostToolUse`, `classic.PermissionRequest`, `classic.PostToolUseFailure`,
 `classic.PermissionDenied` and `skill.prompt`, and after a `/model`, `classic.PreModelSwitch` and
-`classic.PostModelSwitch`. On such a machine, turn on the mod's option `Leave out hooks a managed plugin skips`
-(`leave_out_skipped_hooks`) in `/config`: the mod leaves those nine hooks out, so the notices stop, and loses nothing,
-as they never ran there. It also leaves out the hook that sees a rule load by path, `classic.InstructionsLoaded`,
-which such a plugin may skip too, and the one that sees a settings file change, `classic.ConfigChange`. A new install
-asks for it once; leave it off anywhere else. Either way the mod reads a `/clear`, a resume or a branch off the session
-id, so the band starts over within a second and the first prompt carries REC's note. A `/clear` after a saved handoff
-still fills the resume prompt, unless you send a prompt first; resuming a conversation of one prompt fills it too, into
-the empty box, never sent. What it cannot tell without those hooks:
+`classic.PostModelSwitch`. Claude Code's documentation names a tenth, the compaction hook `session.compact`: where its
+built-in guard `sec-default@builtin` loads - on a machine with managed settings or a `managed-mcp.json` file, or in a
+session signed in to a Team or Enterprise plan - that hook of a mod you install never runs, and `/plugin` says so
+([Manage mods for your organization](https://code.claude.com/docs/en/plugins/mods/admin)). On such a machine, turn on
+the mod's option `Leave out hooks a managed plugin skips` (`leave_out_skipped_hooks`) in `/config`: the mod leaves those
+ten hooks out, so the notices stop, and loses nothing, as they never ran there. It also leaves out the hook that sees a
+rule load by path, `classic.InstructionsLoaded`, which such a plugin may skip too, and the one that sees a settings file
+change, `classic.ConfigChange`. A new install asks for it once; leave it off anywhere else. Either way the mod reads a
+`/clear`, a resume or a branch off the session id, so the band starts over within a second and the first prompt carries
+REC's note. A `/clear` after a saved handoff still fills the resume prompt, unless you send a prompt first; resuming a
+conversation of one prompt fills it too, into the empty box, never sent. What it cannot tell without those hooks:
 
 - the permission mode is never seen, so auto mode reads as any other: a call that asked for permission and then
   failed reads `refused` and counts as no new failure - whether you denied it, it failed after you allowed it, another
@@ -617,6 +620,9 @@ the empty box, never sent. What it cannot tell without those hooks:
 - after a `/model`, the band names the new model at its first reply, not at once, and until then the cache reads as
   the old model's, its cold-cache toast included;
 - the band's `rules:` row lists only the rules loaded at start, and ends `by path not tracked`;
+- a compaction Claude Code runs is not counted: the cache is not marked cold, the handoff's ask is not re-armed and the
+  next prompt does not carry REC's note again; one the mod starts (its compact button or key, or
+  `/auto-handoff compact`) still counts;
 - a change to the mod's [settings](#settings) shows within 30 seconds, not at once.
 
 Where those hooks run, a call that fails in auto mode counts as new; an interrupt is read from the mod's own tool hook
