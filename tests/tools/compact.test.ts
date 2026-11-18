@@ -229,10 +229,20 @@ for (const surface of SURFACES) {
     expect((await draw($, surface, 'ToolUse', BASH_USE)).lines).toEqual(['⏺ Bash · List files · 2 lines ✓'])
   })
 
-  test(`REC on and /quiet on: a running row, an expanded row and an MCP result holding a fake key draw ‹key› (${surface})`, async ($, on) => {
+  // Live, 2026-11-19: when a call ends, Claude Code repaints its own running row from its own state - the error text
+  // under a masked header - a frame before it asks the mod again; a row the mod draws itself leaves nothing to repaint
+  for (const isQuiet of [true, false]) {
+    test(`REC on: a running row is the mod's own line, never Claude Code's row (${surface}, quiet ${isQuiet})`, async ($, on) => {
+      await start($, on, { ...(isQuiet ? QUIET : {}), 'settings:rec': 'on' })
+      const running = await draw($, surface, 'ToolUse', { ...USE, tool: 'Bash', input: { command: `export T=${KEY.text}` }, isRunning: true })
+      expect(running.props).toBeNull()
+      expect(running.lines).toEqual([`⏺ Bash · export T=${KEY.masked} · running…`])
+    })
+  }
+
+  test(`REC on and /quiet on: an expanded row and an MCP result holding a fake key draw ‹key› (${surface})`, async ($, on) => {
     await start($, on, { ...QUIET, 'settings:rec': 'on' })
     const running = await draw($, surface, 'ToolUse', { ...USE, tool: 'Bash', input: { command: `export T=${KEY.text}` }, isRunning: true })
-    expect(JSON.stringify(running.props)).toContain('‹key›')
     const expanded = await draw($, surface, 'ToolUse', { ...BASH_USE, output: bashOut(KEY.text), isExpanded: true })
     expect(JSON.stringify(expanded.props)).toContain('‹key›')
     const mcp = await draw($, surface, 'ToolResult', { tool_use_id: 'm1', tool: 'mcp__vault__read', output: { secret: KEY.text }, isErrored: false })

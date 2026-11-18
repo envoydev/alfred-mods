@@ -313,9 +313,17 @@ export async function drawToolUse($: EngineInterface, e: MatchedInput<'ui.render
     return drawLines($.ui.resolve(e), e, lines, { noColor: await isNoColor($), press: {}, columns , fill: true })
   }
   if (!(await isRecOn($))) return next(e)
+  // When a call ends, Claude Code repaints its own row from its own state - the error text, a Bash call's output -
+  // a frame before it asks the mod again (live, 2026-11-19): under REC a running row is the mod's own, so that frame
+  // shows this line
+  if (e.props.isRunning) {
+    const columns = e.viewport?.columns ?? DEFAULT_COLUMNS
+    const lines = callLine({ ...compactCallOf(e.props.tool_use_id, e.props), isRunning: true }, columns, { cwd: workingFolder() })
+    return drawLines($.ui.resolve(e), e, lines, { noColor: await isNoColor($), press: {}, columns, fill: true })
+  }
   // An unfolded group's errored row draws its error text inline, and Claude Code draws that text, not `output` (live,
   // fullscreen, 2026-10-28): with a sample in it, the row draws its compact head and the masked text itself, once
-  if (e.props.isErrored && !e.props.isRunning) {
+  if (e.props.isErrored) {
     const failed = maskResult({ tool: e.props.tool, output: e.props.output, isErrored: true, error: errorTexts.get(e.props.tool_use_id) ?? null }, mask)
     if (failed.kind === 'tree') {
       errorRowIds.delete(e.props.tool_use_id)

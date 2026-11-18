@@ -24,6 +24,8 @@ export type CallFacts = {
 export type CompactCall = {
   tool: string; input: unknown; output: unknown; isErrored: boolean; isInterrupted: boolean
   outcome: 'denied' | 'blocked' | null; reason: string | null; isAutoAllowed?: boolean
+  // A call not yet ended, which REC draws as the mod's own row
+  isRunning?: boolean
 }
 
 // What a row knows besides the call: the project folder, so a path reads from it, and how many times it ran in a row

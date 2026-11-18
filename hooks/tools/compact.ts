@@ -4,6 +4,7 @@ import { reportLine } from '../agents/agents'
 import { durationText, fitLine, tokensText, widthOf } from '../core/format'
 import { isRecord } from '../core/guards'
 import type { Line, Seg } from '../core/types'
+import { RUNNING_STATUS } from './constants'
 import type { CompactCall, RowContext } from './types'
 
 
@@ -91,6 +92,7 @@ function status(call: CompactCall): Seg[] {
     const reason = firstSentence((call.reason ?? '').replace(/^blocked:\s*/, ''))
     return [{ text: reason === '' ? '⊘ blocked' : /^blocked\b/.test(reason) ? `⊘ ${reason}` : `⊘ blocked: ${reason}`, tone: 'warn' }]
   }
+  if (call.isRunning === true) return [{ text: RUNNING_STATUS, tone: 'dim' }]
   if (call.isInterrupted) return [{ text: '✗ interrupted', tone: 'fail' }]
   if (call.isErrored) {
     const exit = /^Exit code (\d+)/.exec(errorText(call))

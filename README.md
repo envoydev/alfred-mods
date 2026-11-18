@@ -650,7 +650,8 @@ and `/rec off` set it in your user file ([Settings](#settings), [Commands](#comm
 - **It holds** across sessions and restarts while a settings file gives it. Mid-session it never goes down because a
   file stopped giving it, a typo included ([REC holds](#rec-holds)). A red `● REC` leads the band while it is on.
 - **Where it masks:** the band, every pane tab, toasts, the spinner, the mod's own command output, Claude's messages,
-  command output, tool rows (each call drawn as its own row while REC is on) and Claude's question dialogs. Masked
+  command output, tool rows (each call drawn as its own row while REC is on; a call still running reads
+  `running…`, its live output hidden until it ends) and Claude's question dialogs. Masked
   values read `‹key›`, `‹email›`, `‹phone›` and `‹private›`. Only the drawing changes: the stored messages and what
   Claude reads stay as they are.
 - **Claude is told:** while REC is on, your next prompt carries a short note asking Claude not to write secret values,
