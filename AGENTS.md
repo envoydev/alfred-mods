@@ -67,8 +67,11 @@ mod, so run one such session first (the folder is git-ignored and belongs to the
 - **Never rename or drop the id `alfred-mods`.** Every install goes silent and does not self-heal. The one rename,
   `session-inspector` to `alfred-mods` in 0.5.0, was the user's ruling of 2026-11-06: the `envoydev` catalog dropped
   `session-inspector` in alfred-code 3.9.2 (the same day, the user's call), so an old install goes silent until moved.
-  The project paths under `.claude/session-inspector/` and the handoff marker kept their names: the stack writes the
-  status file there.
+  The handoff file `.claude/session-inspector/HANDOFF.md` and its marker kept their names. The stack's per-session
+  status file moved: it writes `<project root>/.alfred/state/sessions/status/<session id>.json` from the release after
+  alfred-code 3.12.1, which wrote `.claude/session-inspector/status/<session id>.json`. The mod reads, first found wins,
+  the new path under the root, under the root read at session start, the old path under the root, then the old path
+  relative to the working folder (`statusPaths` in `hooks/handoff/handoff.ts`).
 - **The root holds only the mod's own plugin folders.** Claude Code scans a plugin root's default folders whatever the
   manifest says, so `commands/`, `agents/`, `skills/`, `output-styles/`, `workflows/`, `monitors/`, `themes/`, `bin/`,
   `.mcp.json`, `.lsp.json`, `settings.json` and a root `SKILL.md` never appear here unless the mod ships them.

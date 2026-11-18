@@ -710,8 +710,8 @@ the ask comes before that compaction.
   check that the branch it names is checked out, and continue from its Next section.` into an empty prompt, never
   sending it. With something already typed, a toast names the file instead. A new session started elsewhere gets no
   fill; ask Claude to read the file.
-- **With Alfred Code:** in a project whose stack publishes `.claude/session-inspector/status/<session id>.json` with
-  `fullContext` `fresh-session` or `compact`, the stack handles a full context and the mod stands down for that
+- **With Alfred Code:** in a project whose stack publishes `.alfred/state/sessions/status/<session id>.json` (`.claude/session-inspector/status/<session id>.json` through
+  alfred-code 3.12.1) with `fullContext` `fresh-session` or `compact`, the stack handles a full context and the mod stands down for that
   session: no ask, no automatic save and no resume prompt, while `/auto-handoff now` still saves. With `fullContext`
   `off`, or no file, the mod's handoff runs. A file that does not parse, has another schema or names another session
   leaves the handoff running, and the ALFRED CODE section in `/inspect` says why.
@@ -722,8 +722,8 @@ the ask comes before that compaction.
 ## With Alfred Code
 
 In a project where [Alfred Code](https://github.com/envoydev/alfred-code) publishes
-`.claude/session-inspector/status/<session id>.json` for the session, the mod reads that one file at the session's
-start, every 30 seconds and after `/clear`, and shows more:
+`.alfred/state/sessions/status/<session id>.json` for the session (`.claude/session-inspector/status/<session id>.json`
+through alfred-code 3.12.1, which the mod still reads), the mod reads that one file at the session's start, every 30 seconds and after `/clear`, and shows more:
 
 - **The mode banner:** `auto-run · auto-compact 490k · scoring 80 │` leads the band from the session's start while the
   stack's auto-run, auto-compact or scoring is on, after `● REC` while recording. `490k` is where Claude Code compacts

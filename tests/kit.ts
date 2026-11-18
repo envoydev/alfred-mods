@@ -12,8 +12,8 @@ export const NO_READING: SessionUsage = { startedAt: 0, context: { window: 200_0
 type Options = {
   usage?: SessionUsage; sessionId?: string; cwd?: string; env?: Record<string, string>; now?: number; unplaced?: string
   // The session's project root (`$.session.root()`); absent, the folder `cwd` names at each call, as a session that
-  // never moved off its root
-  root?: string
+  // never moved off its root; null, a root the call rejects
+  root?: string | null
   store?: Record<string, unknown>
   // A read of `key` waits for `until` while it is set, as a slow store would
   holdStore?: { key: string; until: Promise<void> | null }
@@ -81,7 +81,7 @@ export function stubAll(on: On, o: Options = {}): {
   store: { get(key: string): unknown; keys(): string[]; set(key: string, value: unknown): void; writes: string[] }
   // A test changes the session id mid-test, as a /clear does, through `session.id`; `turns` is how many prompts the
   // session's transcript holds, 1 right after a /clear (its own row) and more after a resume
-  session: { id: string; turns: number }
+  session: { id: string; turns: number; root: string | null | undefined }
   // Each settings file by source, which a test changes mid-test, as an edit would: `sources.local['alfred-mods'] = ...`
   sources: Record<SettingsSource, Record<string, unknown>>
   // The names of the commands the mod registered, in order
@@ -106,11 +106,15 @@ export function stubAll(on: On, o: Options = {}): {
     usage.breakdowns++
     return usage.refuse ? { deny: 'test: usage refused' } : { value: usage.current }
   })
-  const session = { id: o.sessionId ?? 's1', turns: 0 }
+  // `root`, once set, is what `$.session.root()` answers, as a `/cd` moves it; null makes the call reject
+  const session = { id: o.sessionId ?? 's1', turns: 0, root: undefined as string | null | undefined }
   on('session.id', () => ({ value: session.id }))
   on('session.turns', () => ({ value: session.turns }))
   on('session.cwd', () => ({ value: o.cwd ?? '/w' }))
-  on('session.root', () => ({ value: o.root ?? o.cwd ?? '/w' }))
+  on('session.root', () => {
+    const root = session.root === undefined ? o.root : session.root
+    return root === null ? { deny: 'test: no root' } : { value: root ?? o.cwd ?? '/w' }
+  })
   on('session.model', () => (o.model === undefined ? { deny: 'test: no model' } : { value: o.model }))
   on('session.version', () => (o.version === undefined ? { deny: 'test: no version' } : { value: { version: o.version } }))
   on('session.repo', () => (o.repo === undefined ? { deny: 'test: no repo' } : { value: (o.repo === null ? null : { remote: null, internal: false, ...o.repo }) as never }))

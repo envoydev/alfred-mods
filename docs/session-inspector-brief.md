@@ -749,7 +749,8 @@ Without Alfred Code, F8 handles a full context. With Alfred Code, the stack's ow
 - `history-session.js` puts the last sessions on the branch, with their plan's state, into each new session's context.
 
 The mod learns that the stack is there only from the stack's per-session status file,
-`.claude/session-inspector/status/<session id>.json`, the one input the brief allows from the stack ('Decisions already made', Core and Alfred Code integration). The
+`.alfred/state/sessions/status/<session id>.json` (`.claude/session-inspector/status/<session id>.json` through alfred-code
+3.12.1, still read as the fallback), the one input the brief allows from the stack ('Decisions already made', Core and Alfred Code integration). The
 user's ruling brought this one read into Phase 4 (F8 and F9 choice 14); Phase 5 reads the rest ('The reader, Phase
 5', below).
 
@@ -818,7 +819,7 @@ which then reads as unknown. Phase 5's reader and what it draws follow the table
 - **Writes:** at SessionStart for every source; at UserPromptSubmit when `autoRun` or `scorer` changed; at Stop when
   any other value changed; each atomic (a temp file, then a rename), failing open.
 - **Housekeeping:** status files older than 7 days are removed at SessionStart, never another live session's.
-- **Out of git:** the stack appends `/.claude/session-inspector/status/` to `info/exclude` in the repository's git
+- **Out of git:** the stack appends `/.alfred/state/sessions/status/` (`/.claude/session-inspector/status/` through alfred-code 3.12.1) to `info/exclude` in the repository's git
   common dir, once, as alfred-code writes one .gitignore only, at its data root.
 
 #### The reader, Phase 5

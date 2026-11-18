@@ -4,7 +4,7 @@ import { armCacheToast, readCache, readCacheConfig, resetCache, takeResumeRate }
 import { setCostBaseline, bumpTick, dropPassedWindows, forgetMidTurnRead, forgetStoredWindows, forgetTurnSpend, refreshUsageMidTurn, isMidTurnReadDue, isTodayStale, markResumed, pruneCost, readLive, readModelAndVersion, readUsage, resetLive, resetSession, resetPace, resetTick, resetTotals, resetTurns, resetUsage, seedRateWindows, refreshUsage, readTodayUsd } from '../session/effects'
 import { readAgents, refreshLiveAgents, resetAgents, resetLoops } from '../agents/effects'
 import { notePermissionMode, resetBlockers, resetFailures, resetQuiet, resetStats } from '../tools/effects'
-import { openKeepWindow, readStatusFile, readStatusAfterStartOver, resetStack } from '../stack/effects'
+import { openKeepWindow, readStatusFile, readStatusAfterStartOver, rememberStartRoot, resetStack } from '../stack/effects'
 import { queuePlanReload, resetCredit, resetPlans, resetTasks, restartPlanWatch, schedulePlanReload, seedSessionTimes, startPlanWatch, readStoredTimes } from '../plan/effects'
 import { forgetRecNote, readRecHome, resetRec } from '../rec/effects'
 import { fillResumePrompt, forgetHandoffSteps, resetHandoff } from '../handoff/effects'
@@ -179,6 +179,7 @@ export async function startSession($: EngineInterface, e: HookInput<'session.sta
   await $.command.register({ name: 'auto-handoff', description: 'Save a handoff now, set the handoff mode or first ask in ~/.claude/settings.json, or show them', argumentHint: '[ask|auto|off|at <percent>|now|compact|later]' })
   await readRecHome($)
   await loadSettings($, true)
+  await rememberStartRoot($)
   await readStatusFile($)
   forgetMidTurnRead()
   conversationMemory.id = await $.session.id()

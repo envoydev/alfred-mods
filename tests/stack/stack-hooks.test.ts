@@ -28,7 +28,12 @@ async function start($: Engine, on: On, o: Parameters<typeof stubAll>[1] = {}, b
   const h = (): Handoff => state.get('handoff') as Handoff
   return { ...kit, s, h, state, written: state.writes }
 }
-const asked = (exists: string[], path: string): number => exists.filter(p => p === path || p.endsWith(`/${path}`)).length
+// The paths a run asked about, in order: one under a root (`/w`, `/moved`) as the mod built it with the drive Windows adds
+// dropped, and the relative path, which the kit resolves against the mod's own folder, as `RELATIVE`
+const RELATIVE = 'relative'
+const seen = (exists: string[]): string[] => exists.map(p => p.replace(/^[A-Za-z]:/, '')).map(p => (/^\/(w|moved)\//.test(p) ? p : RELATIVE))
+// How many reads asked for the relative file: the read order's last candidate, so a read that finds nothing asks it once
+const asked = (exists: string[], path: string): number => exists.filter(p => p.endsWith(`/${path}`) && seen([p])[0] === RELATIVE).length
 
 test('a valid file fills the stack atom at session start', async ($, on) => {
   const { s } = await start($, on, { files: { [STATUS]: status() }, now: 5000 })
@@ -360,4 +365,48 @@ test('no toast carries the prompt', async ($, on) => {
   await ui.press({ key: 'stack-fill' })
   expect(toasts.length).toBe(3)
   for (const t of toasts) expect(Object.values(TOAST)).toContain(t)
+})
+
+const NEW_DIR = '.alfred/state/sessions/status'
+const OLD_DIR = '.claude/session-inspector/status'
+
+test('the new path wins when both it and the old file exist', async ($, on) => {
+  const { s, files } = await start($, on, { files: {
+    [`/w/${NEW_DIR}/s1.json`]: status({ model: 'claude-sonnet-5-5' }), [`/w/${OLD_DIR}/s1.json`]: status(), [STATUS]: status({ model: 'claude-haiku-5-5' }),
+  } })
+  expect(s()).toMatchObject({ state: 'used', model: 'claude-sonnet-5-5' })
+  expect(seen(files.exists)).toEqual([`/w/${NEW_DIR}/s1.json`])
+})
+
+test('only the old file under the root is read, as a stack on 3.12.1 writes it', async ($, on) => {
+  const { s, files } = await start($, on, { files: { [`/w/${OLD_DIR}/s1.json`]: status({ model: 'claude-sonnet-5-5' }) } })
+  expect(s()).toMatchObject({ state: 'used', model: 'claude-sonnet-5-5' })
+  expect(seen(files.exists)).toEqual([`/w/${NEW_DIR}/s1.json`, `/w/${OLD_DIR}/s1.json`])
+})
+
+test('only the relative file is read when the root is refused, with no throw', async ($, on) => {
+  const { s, files } = await start($, on, { root: null, files: { [STATUS]: status({ model: 'claude-sonnet-5-5' }) } })
+  expect(s()).toMatchObject({ state: 'used', model: 'claude-sonnet-5-5' })
+  expect(seen(files.exists)).toEqual([RELATIVE])
+})
+
+test('a root refused after the start leaves the start root and the relative file', async ($, on) => {
+  const { s, session, clock, files } = await start($, on)
+  session.root = null
+  files.current[STATUS] = status({ model: 'claude-sonnet-5-5' })
+  files.exists.length = 0
+  await clock.advance(30_000)
+  expect(s()).toMatchObject({ state: 'used', model: 'claude-sonnet-5-5' })
+  expect(seen(files.exists)).toEqual([`/w/${NEW_DIR}/s1.json`, RELATIVE])
+})
+
+test('a root that moved after the start still finds the file under the start root', async ($, on) => {
+  const { s, session, clock, files } = await start($, on)
+  expect(s().state).toBe('none')
+  session.root = '/moved'
+  files.current[`/w/${NEW_DIR}/s1.json`] = status({ model: 'claude-sonnet-5-5' })
+  files.exists.length = 0
+  await clock.advance(30_000)
+  expect(s()).toMatchObject({ state: 'used', model: 'claude-sonnet-5-5' })
+  expect(seen(files.exists)).toEqual([`/moved/${NEW_DIR}/s1.json`, `/w/${NEW_DIR}/s1.json`])
 })

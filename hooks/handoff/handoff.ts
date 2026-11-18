@@ -6,6 +6,7 @@ import type { ProcessRunResult } from 'claude-code'
 import { barSegs, percentSeg } from '../band/gauges'
 import { clockText, durationText, minutesText, modelText, tokensText, usdText } from '../core/format'
 import type { Line, Seg } from '../core/types'
+import { joinPath } from '../place/place'
 import type { Handoff, HandoffMode, HandoffView, PlanPart, SaveInput, SaveResult } from './types'
 import type { Severity, StepStatus } from '../plan/types'
 import type { Runway } from '../stack/types'
@@ -67,9 +68,30 @@ export function parseStatus(text: string, session: string): { state: 'stood-down
 export const HANDOFF_PATH = '.claude/session-inspector/HANDOFF.md'
 export const HANDOFF_USAGE = 'Usage: /auto-handoff [ask|auto|off|at <percent>|now|compact|later]. The mode is the "handoff" field of "alfred-mods" in a settings file ("ask", "auto" or "off"), the first ask "handoffAt" (10 to 95); ask, auto, off and at <percent> set them in ~/.claude/settings.json. now saves a handoff, compact saves one then compacts, later puts the ask off until the next step.'
 
-// The status path for a session id; an id that could leave the folder has none
+// Where the stack publishes the session's status file: under `.alfred/state/` from the release after alfred-code 3.12.1,
+// under `.claude/session-inspector/` through it (and, relative to each turn's cwd, from older stacks)
+export const STATUS_DIR = '.alfred/state/sessions/status'
+export const OLD_STATUS_DIR = '.claude/session-inspector/status'
+
+// The old relative status path for a session id; an id that could leave the folder has none
 export function statusPath(id: string): string | null {
-  return /^[\w-]+$/.test(id) ? `.claude/session-inspector/status/${id}.json` : null
+  return /^[\w-]+$/.test(id) ? `${OLD_STATUS_DIR}/${id}.json` : null
+}
+
+// The places to look for a session's status file, first found wins: the new path under the root now, under the root
+// read at session start (a root that moved mid-session; skipped when it is the same), the old path under the root now (a
+// stack on 3.12.1 or older), then the old relative path, which `$.fs` resolves against the working folder. A refused
+// root gives no root path; an id that could leave the folder gives no path at all.
+export function statusPaths(id: string, roots: { root: string | null; startRoot: string | null }): string[] {
+  const relative = statusPath(id)
+  if (relative === null) return []
+  const { root, startRoot } = roots
+  const paths: string[] = []
+  if (root !== null) paths.push(joinPath(root, `${STATUS_DIR}/${id}.json`))
+  if (startRoot !== null && startRoot !== root) paths.push(joinPath(startRoot, `${STATUS_DIR}/${id}.json`))
+  if (root !== null) paths.push(joinPath(root, relative))
+  paths.push(relative)
+  return paths
 }
 
 export const MARKER = '<!-- session-inspector handoff v1 -->'

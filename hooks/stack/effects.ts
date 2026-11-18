@@ -4,7 +4,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Timer } from 'claude-code'
 import type { Stack } from './types'
-import { statusPath } from '../handoff/handoff'
+import { statusPaths } from '../handoff/handoff'
 import { NO_FILE, STACK_TOASTS, UNREADABLE, fillReady, fillToast, parseStack } from './stack'
 import { followStatusFile } from '../handoff/effects'
 
@@ -29,12 +29,19 @@ export function resetStack($: EngineInterface) {
 const stackMemory = {
   prompt: null as string | null, last: null as Stack | null, keepUntil: 0, reading: Promise.resolve(false) as Promise<boolean>,
   reread: null as Timer | null,
+  // The project root `$.session.root()` gave at session.start, which a root that moves mid-session leaves behind
+  startRoot: null as string | null,
 }
 
 // Alfred Code's scoring level while its status file is in use and scoring is on, which colours the band's score
 export async function readScoreLevel($: EngineInterface): Promise<number | null> {
   const stack = await readStack($)
   return stack.state === 'used' && stack.scorer !== null && stack.scorer.on ? stack.scorer.level : null
+}
+
+// The root at session start, kept for the session so a status file under it is still found after the root moves
+export async function rememberStartRoot($: EngineInterface): Promise<void> {
+  stackMemory.startRoot = await $.session.root().catch(() => null)
 }
 
 // Reads run one at a time; each resolves to whether the session's status file exists
@@ -49,18 +56,22 @@ export function readStatusFile($: EngineInterface, keep = false): Promise<boolea
 // `stack` atom (Phase 5): no file, unreadable, ignored with Phase 4's reason, or used field by field.
 export async function readStatusFileNow($: EngineInterface, keep: boolean): Promise<boolean> {
   const id = await $.session.id()
-  const path = statusPath(id)
+  const root = await $.session.root().catch(() => null)
   const now = await $.clock.now()
   const inWindow = keep || now < stackMemory.keepUntil
   let exists = false
   let text: string | null = null
-  if (path !== null) {
+  // The first candidate that exists wins; one that cannot be checked is skipped, one that exists and cannot be read
+  // stands as an unreadable file
+  for (const path of statusPaths(id, { root, startRoot: stackMemory.startRoot })) {
     try {
-      exists = await $.fs.exists(path)
-      if (exists) text = await $.fs.read(path)
+      if (!(await $.fs.exists(path))) continue
     } catch {
-      text = null
+      continue
     }
+    exists = true
+    text = await $.fs.read(path).catch(() => null)
+    break
   }
   await writeStackFrom($, { exists, text, id, now, inWindow })
   await followStatusFile($, text, id, inWindow)
