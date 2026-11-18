@@ -92,7 +92,8 @@
         "types"
       ],
       "scope_with": [
-        "tsconfig.json"
+        "tsconfig.json",
+        "tsconfig.scripts.json"
       ],
       "checks": [
         "npm run typecheck",

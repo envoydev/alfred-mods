@@ -28,13 +28,15 @@ project names, no absolute local paths, no tokens, nothing from a user's machine
 npm run validate     # claude plugin validate --strict on a copy of the files git ships
 npm test             # claude plugin test . - every *.test.ts, no session, sign-in or network
 npm run kit:check    # the files claude-kit manages are unedited, and no CLAUDE.md hides this file
-npm run typecheck    # tsc -p . - needs .claude-plugin/types/, see below
+npm run typecheck    # tsc on tsconfig.json and tsconfig.scripts.json - needs npm install and .claude-plugin/types/
 claude --plugin-dir .   # load the working tree for one session; it reloads on save
 ```
 
 The first three are what CI runs on Linux, macOS and Windows, in that order. `typecheck` is CI's fourth job, on Linux
 only: it reads `.claude-plugin/types/`, which Claude Code writes when an interactive `--plugin-dir` session loads the
-mod, so run one such session first (the folder is git-ignored and belongs to the running build).
+mod, so run one such session first (the folder is git-ignored and belongs to the running build). It also needs
+`npm install` once in a fresh clone: `typescript` and `@types/node`, pinned exactly in `devDependencies` with no
+lockfile, check `scripts/` under `tsconfig.scripts.json` (nodenext, Node's types). Nothing the mod ships imports them.
 
 ## Layout
 

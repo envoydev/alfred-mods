@@ -1,8 +1,9 @@
 # macOS
 .DS_Store
 
-# Node, for the repo's own scripts (they have no dependencies)
+# Node, for the repo's own checks: typescript and @types/node, pinned exactly in package.json, with no lockfile
 node_modules/
+package-lock.json
 *.log
 *.tgz
 *.tsbuildinfo
