@@ -211,6 +211,30 @@ test('old Alfred Code status files print their count while the new folder exists
   ])
 })
 
+test('this session\'s own status file in the old folder is never called safe to delete, and names the old stack', async ($, on) => {
+  await start($, on, {
+    files: {
+      '.alfred/state/sessions/status/s.json': stub('{}'),
+      '.claude/session-inspector/status/a.json': stub('{}'), '.claude/session-inspector/status/s1.json': stub('{}'),
+    },
+  })
+  expect(await alfred($, 'update')).toEqual([
+    '1 status files from Alfred Code 3.12.1 or older in .claude/session-inspector/status/ - safe to delete',
+    'this session\'s Alfred Code still writes .claude/session-inspector/status/ - update Alfred Code to 3.13 or later',
+    'update done',
+  ])
+})
+
+test('only this session\'s own file in the old folder prints the update line alone', async ($, on) => {
+  await start($, on, {
+    files: { '.alfred/state/sessions/status/s.json': stub('{}'), '.claude/session-inspector/status/s1.json': stub('{}') },
+  })
+  expect(await alfred($, 'update')).toEqual([
+    'this session\'s Alfred Code still writes .claude/session-inspector/status/ - update Alfred Code to 3.13 or later',
+    'update done',
+  ])
+})
+
 test('old status files print nothing while the new folder is missing', async ($, on) => {
   await start($, on, { files: { '.claude/session-inspector/status/a.json': stub('{}') } })
   expect(await alfred($, 'update')).toEqual(['nothing to update'])

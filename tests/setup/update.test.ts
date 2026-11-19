@@ -4,7 +4,7 @@ import { parsePlan } from '../../hooks/plan/plan'
 import {
   changedLine, closeReport, copiedLine, copyFailureLine, coversRoot, earlierChoicesLine, folderRelation, gitignoreAppend, gitignoreLine, isLivePlan,
   isSeparateCopy, isUtf8Text, keptBothLine, leftInPlaceLine, liveReason, movedLine, moveQueue, notMovedLine, notUtf8Line, oldInstallKeys, oldInstallLine,
-  leftLine, sameFolderLine, statusFilesLine, unknownFolderLine, unreadablePlanLine, unreadPlanLine,
+  leftLine, sameFolderLine, oldStackLine, statusFilesLine, unknownFolderLine, unreadablePlanLine, unreadPlanLine,
 } from '../../hooks/setup/update'
 import { MORE_LINE } from '../../hooks/setup/constants'
 import { planText } from '../plans'
@@ -143,6 +143,7 @@ test('the report lines read as the spec gives them', () => {
     'an old session-inspector install is still on - claude plugin uninstall session-inspector@envoydev',
   )
   expect(statusFilesLine(4)).toBe('4 status files from Alfred Code 3.12.1 or older in .claude/session-inspector/status/ - safe to delete')
+  expect(oldStackLine()).toBe('this session\'s Alfred Code still writes .claude/session-inspector/status/ - update Alfred Code to 3.13 or later')
 })
 
 test('closeReport ends on update done, or nothing to update when no step printed', () => {

@@ -20,7 +20,7 @@ import type { Copy, CopyResult, ListedFile, LiveReason } from './types'
 import {
   changedLine, closeReport, copiedLine, copyFailureLine, copyPath, coversRoot, earlierChoicesLine, failureLine, folderPathOf, folderRelation, gitignoreAppend,
   gitignoreByHandLine, gitignoreLine, isSeparateCopy, isUtf8Text, keptBothLine, leftLine, liveReason, movedLine, moveQueue, notUtf8Line, oldInstallKeys,
-  oldInstallLine, probeLeftLine, probeName, sameFolderLine, statusFilesLine, unknownFolderLine,
+  oldInstallLine, oldStackLine, probeLeftLine, probeName, sameFolderLine, statusFilesLine, unknownFolderLine,
 } from './update'
 
 // What the pane draws: the last update's report, and the folder a press just wrote (the settings in force are stale
@@ -328,11 +328,13 @@ async function oldInstalls($: EngineInterface): Promise<string[]> {
 }
 
 // Spec D4 step 5: the old stack's status files, counted only while the new folder exists; an old stack still writes
-// there
+// there. This session's own file is never counted as safe to delete: its stack is 3.12.1 or older and is told to update
 async function oldStatusFiles($: EngineInterface): Promise<string[]> {
   if (!(await $.fs.list(NEW_STATUS_DIR).then(() => true, () => false))) return []
-  const count = (await $.fs.list(OLD_STATUS_DIR).catch(() => [])).filter(isJsonFile).length
-  return count === 0 ? [] : [statusFilesLine(count)]
+  const own = `${await $.session.id()}${JSON_SUFFIX}`
+  const names = (await $.fs.list(OLD_STATUS_DIR).catch(() => [])).filter(isJsonFile).map(file => file.name)
+  const count = names.filter(name => name !== own).length
+  return [...(count === 0 ? [] : [statusFilesLine(count)]), ...(names.includes(own) ? [oldStackLine()] : [])]
 }
 
 const reasonOf = (error: unknown): string => oneLine(error instanceof Error ? error.message : 'unknown error', REASON_MAX)

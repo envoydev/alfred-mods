@@ -136,6 +136,9 @@ export const oldInstallLine = (key: string): string => `an old session-inspector
 
 export const statusFilesLine = (count: number): string => `${count} status files from Alfred Code 3.12.1 or older in ${folderOf(OLD_STATUS_DIR)} - safe to delete`
 
+// This session's own status file is in the old folder: its stack is 3.12.1 or older and writes there still
+export const oldStackLine = (): string => `this session's Alfred Code still writes ${folderOf(OLD_STATUS_DIR)} - update Alfred Code to 3.13 or later`
+
 export const gitignoreByHandLine = (root: string): string => `could not update .gitignore - add ${folderOf(root)} by hand`
 
 export const failureLine = (reason: string): string => `[could not update: ${reason}]`

@@ -243,6 +243,8 @@ code.
        session-inspector@<marketplace>`.
     5. Status files of Alfred Code 3.12.1 or older are counted while the new status folder exists:
        `<n> status files from Alfred Code 3.12.1 or older in .claude/session-inspector/status/ - safe to delete`.
+       This session's own file is never counted. Where it is there, this session's stack is 3.12.1 or older: `this
+       session's Alfred Code still writes .claude/session-inspector/status/ - update Alfred Code to 3.13 or later`.
        Nothing is removed: an old stack may still write there.
   - The confirm lines of `init <value>`, `configure <value>` and a pane press add, for a folder other than
     `.alfred-mods`, `new plans land there once each writer reads plansFolder - claude-kit does from its 0b09406 sync`.
