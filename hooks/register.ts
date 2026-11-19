@@ -20,6 +20,7 @@ import { drawRecPane, maskAssistantMessage, maskCommandOutput, maskQuestions, ma
 import { drawBandAbove, drawBandAboveFailed, drawBandUnder, drawBandUnderFailed, drawSpinner } from './band/effects'
 import { trackRuleLoad } from './context/effects'
 import { drawInspectPane, runInspectCommand } from './inspect/effects'
+import { drawSetupPane, runSetupCommand } from './setup/effects'
 import type { ToolCall } from './tools/types'
 import type { Pending } from './core/types'
 import { reloadSettingsSoon } from './settings/effects'
@@ -125,6 +126,10 @@ export const register: Register = (on, options) => {
   // answers with the level in force, never its own copy
   on('command.run', { command: 'rec' }, ($, e) => runRecCommand($, e)).catch(($, e, next) => ({ text: commandFailed('/rec', next.error.kind) }))
 
+  // '/alfred-mods init|configure [folder]|update': the plans folder, a project setting written only here; the pane offers
+  // the same choices as buttons and closes only when the person closes it
+  on('command.run', { command: 'alfred-mods' }, ($, e) => runSetupCommand($, e)).catch(($, e, next) => ({ text: commandFailed('/alfred-mods', next.error.kind) }))
+
   // '/auto-handoff [ask|auto|off|at <percent>|now]': the mode and the first ask are settings values (S5) that ask, auto,
   // off and at <percent> write into the user file (the user's ruling, 2026-11-12); a bare form reads the files first
   // and prints the state with each value's source, and while Alfred Code owns the handoff, its state alone
@@ -171,4 +176,7 @@ export const register: Register = (on, options) => {
 
   // The private-words pane: words are added only here, never through a command's arguments, which the transcript echoes
   on('ui.render', { component: 'Pane', requestId: 'rec' }, ($, e) => drawRecPane($, e)).catch(($, e, next) => drawNote($.ui.resolve(e), paneFailed(next.error.kind, next.error.message, recLevel() !== 'off')))
+
+  // The plans folder pane: one button per choice, the last update's report under them
+  on('ui.render', { component: 'Pane', requestId: 'alfred-mods-setup' }, ($, e) => drawSetupPane($, e)).catch(($, e, next) => drawNote($.ui.resolve(e), paneFailed(next.error.kind, next.error.message, recLevel() !== 'off')))
 }

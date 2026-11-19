@@ -12,7 +12,7 @@ export async function readTextFile($: EngineInterface, path: string): Promise<st
 }
 
 // '/inspect close' and '/rec words close': a pane closes from the prompt, as the main screen takes no click on its mark
-export async function closePane($: EngineInterface, id: 'inspect' | 'rec', name: string): Promise<string> {
+export async function closePane($: EngineInterface, id: 'inspect' | 'rec' | 'alfred-mods-setup', name: string): Promise<string> {
   const panes = await $.ui.panes().catch(() => [])
   if (!panes.some(p => p.id === id)) return `The ${name} is not open.`
   await $.ui.close({ id })

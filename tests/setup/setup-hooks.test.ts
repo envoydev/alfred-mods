@@ -1,0 +1,141 @@
+// /alfred-mods init and configure: the field written into the project's settings file, the choices as text and as a
+// pane, and the update a choice runs (Task 4 gives update its body; here it answers 'nothing to update for <folder>')
+import { expect, test } from 'claude-code/testing'
+import type { Engine } from 'claude-code/testing'
+import type { On } from 'claude-code'
+
+import { PRESENTATION, START, engine, fileAt, rows, stubAll } from '../kit'
+
+const PROJECT = '.claude/settings.json'
+const PANE = { title: 'Plans folder', isFocused: false, bodyColumns: 100, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 30 }, view: {} }
+const NOTE = 'new plans land there once each writer reads plansFolder - claude-kit from its next release'
+const mod = (fields: Record<string, unknown>): Record<string, unknown> => ({ 'alfred-mods': fields })
+
+async function start($: Engine, on: On, o: Parameters<typeof stubAll>[1] = {}) {
+  const kit = stubAll(on, { band: 'unset', quiet: 'unset', ...o })
+  engine(on)
+  await $.session.start(START)
+  return kit
+}
+const alfred = async ($: Engine, args: string): Promise<string> =>
+  (await $.command.run({ command: 'alfred-mods', args, origin: { kind: 'composer' }, presentation: PRESENTATION })).text ?? ''
+const setupPane = ($: Engine) =>
+  $.ui.mount({ plugin: 'alfred-mods', surface: 'terminal', component: 'Pane', requestId: 'alfred-mods-setup', props: PANE })
+// The kit's invalidate only records the call, so the pane is mounted again to draw what a press left
+async function again($: Engine, ui: { unmount: () => Promise<void> }): Promise<string[]> {
+  await ui.unmount()
+  return rows(await setupPane($))
+}
+const fieldIn = (text: string | undefined): unknown => (JSON.parse(text ?? '{}') as Record<string, Record<string, unknown>>)['alfred-mods']?.plansFolder
+
+test('the command is registered', async ($, on) => {
+  const { registered } = await start($, on)
+  expect(registered).toContain('alfred-mods')
+})
+
+test('init with a folder writes the project file, runs update on it and prints the writer note', async ($, on) => {
+  const { files } = await start($, on)
+  const text = await alfred($, 'init .alfred')
+  expect(fieldIn(fileAt(files, PROJECT))).toBe('.alfred')
+  expect(text.split('\n')).toEqual([
+    'Plans live in .alfred/alfred-mods/ (plansFolder ".alfred" in .claude/settings.json)', NOTE, 'nothing to update for .alfred',
+  ])
+})
+
+test('init with the recommended folder prints no writer note', async ($, on) => {
+  const { files } = await start($, on)
+  const text = await alfred($, 'init .alfred-mods')
+  expect(fieldIn(fileAt(files, PROJECT))).toBe('.alfred-mods')
+  expect(text).not.toContain('claude-kit')
+})
+
+test('init with a folder passes the folder just written to update while the settings in force are stale', async ($, on) => {
+  await start($, on, { sources: { project: mod({ plansFolder: 'default' }) } })
+  expect((await alfred($, 'init .alfred')).split('\n').pop()).toBe('nothing to update for .alfred')
+})
+
+test('init with the field set in a file prints where plans live and runs update, writing nothing', async ($, on) => {
+  const { files, opened } = await start($, on, { sources: { project: mod({ plansFolder: '.alfred' }) } })
+  expect(await alfred($, 'init')).toBe('Plans live in .alfred/alfred-mods/ (plansFolder ".alfred" in .claude/settings.json) - /alfred-mods configure changes it\nnothing to update for .alfred')
+  expect(files.writes).toEqual([])
+  expect(opened).not.toContain('alfred-mods-setup')
+})
+
+test('init with the field unset prints the three choices and opens the pane', async ($, on) => {
+  const { files, opened, escapes } = await start($, on)
+  const text = await alfred($, 'init')
+  expect(text).toContain('/alfred-mods init .alfred-mods (recommended - no permission asks)')
+  expect(text).toContain("/alfred-mods init .alfred (beside Alfred Code's state)")
+  expect(text).toContain('/alfred-mods init default (.claude/session-inspector - Claude Code asks before each write)')
+  expect(text).not.toContain('(now)')
+  expect(opened).toContain('alfred-mods-setup')
+  expect(escapes).toContain('alfred-mods-setup')
+  expect(files.writes).toEqual([])
+})
+
+test('configure with a local value marks it (now) and opens the pane', async ($, on) => {
+  const { opened } = await start($, on, { sources: { local: mod({ plansFolder: '.alfred' }) } })
+  const text = await alfred($, 'configure')
+  expect(text).toContain("/alfred-mods init .alfred (beside Alfred Code's state) (now)")
+  expect(text.match(/\(now\)/g)).toHaveLength(1)
+  expect(opened).toContain('alfred-mods-setup')
+})
+
+test('configure with a folder writes it, moves nothing and says how to move the files', async ($, on) => {
+  const { files } = await start($, on)
+  const text = await alfred($, 'configure .alfred')
+  expect(fieldIn(fileAt(files, PROJECT))).toBe('.alfred')
+  expect(text.split('\n')).toEqual([NOTE, 'plansFolder is ".alfred" - /alfred-mods update moves the files'])
+  expect(text).not.toContain('nothing to update')
+})
+
+test('a higher file that wins over the value written is named, and update follows the one in force', async ($, on) => {
+  await start($, on, { sources: { local: mod({ plansFolder: 'default' }) } })
+  const text = await alfred($, 'init .alfred')
+  expect(text.split('\n')).toEqual([
+    'plansFolder is "default" in .claude/settings.local.json, which wins over the value written', NOTE, 'nothing to update for default',
+  ])
+})
+
+test('a project file that does not parse is refused and nothing is written', async ($, on) => {
+  const { files } = await start($, on, { files: { [PROJECT]: { text: '{ bad', mtimeMs: 0 } } })
+  for (const args of ['init .alfred', 'configure .alfred']) expect(await alfred($, args)).toBe('.claude/settings.json does not parse - plansFolder not written')
+  expect(files.writes).toEqual([])
+})
+
+test('an unknown verb or folder prints the usage line', async ($, on) => {
+  await start($, on)
+  for (const args of ['frob', '', 'init bogus']) expect(await alfred($, args)).toBe('Usage: /alfred-mods init | configure [default|.alfred|.alfred-mods] | update')
+})
+
+test('update prints its report for the folder in force', async ($, on) => {
+  await start($, on, { sources: { user: mod({ plansFolder: 'default' }) } })
+  expect(await alfred($, 'update')).toBe('nothing to update for default')
+})
+
+test('the pane draws one button per choice, and a press writes the field and shows the update report', async ($, on) => {
+  const { files, closed, clock, invalidates } = await start($, on)
+  await alfred($, 'configure')
+  const ui = await setupPane($)
+  const before = await rows(ui)
+  expect(before.filter(l => l.includes('.alfred-mods') || l.includes('.alfred') || l.includes('default'))).toHaveLength(3)
+  expect(before.join('\n')).not.toContain('nothing to update')
+  await ui.press({ key: 'choose-.alfred-mods' })
+  await clock.settle()
+  expect(fieldIn(fileAt(files, PROJECT))).toBe('.alfred-mods')
+  expect(invalidates).toContain('ui.render')
+  const after = (await again($, ui)).join('\n')
+  expect(after).toContain('nothing to update for .alfred-mods')
+  expect(after).toContain('(now)')
+  expect(closed).toEqual([])
+})
+
+test('a press on a project file that does not parse shows the refusal in the pane', async ($, on) => {
+  const { files, clock } = await start($, on, { files: { [PROJECT]: { text: '{ bad', mtimeMs: 0 } } })
+  await alfred($, 'configure')
+  const ui = await setupPane($)
+  await ui.press({ key: 'choose-.alfred' })
+  await clock.settle()
+  expect((await again($, ui)).join('\n')).toContain('.claude/settings.json does not parse - plansFolder not written')
+  expect(files.writes).toEqual([])
+})

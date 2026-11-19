@@ -150,24 +150,24 @@ export async function writeUserField<F extends Field>($: EngineInterface, field:
   return `Set ${shown} in ${user}.${isFirst ? ` ${sourceFileName(from)} gives ${JSON.stringify(resolved.values[field])}, which comes first.` : ''}`
 }
 
-const PROJECT_SETTINGS_PATH = '.claude/settings.json'
 const SHADOWING_SOURCES: readonly From[] = ['policy', 'flag', 'local']
 
 // One field into the project's .claude/settings.json (made when missing), every other key kept. The layers are read
 // first, so `shadow` names a higher source that gives the field a valid value and keeps coming first; nothing is read
 // again after the write - Claude Code's ConfigChange brings the new value in, as for writeUserField.
 export async function writeProjectField<F extends Field>($: EngineInterface, field: F, value: SettingsValues[F]): Promise<{ ok: true; shadow: From | null } | { ok: false; why: string }> {
+  // The file's name is also its path, relative to the working folder
   const name = sourceFileName('project')
   await loadSettings($)
   const from = settingsMemory.resolved?.from[field] ?? 'default'
   const shadow = SHADOWING_SOURCES.includes(from) ? from : null
   // A refused check is no proof the file is missing: only a check that answers false makes the file
-  const isThere = await $.fs.exists(PROJECT_SETTINGS_PATH).catch(() => undefined)
-  const text = isThere === false ? null : isThere === true ? await $.fs.read(PROJECT_SETTINGS_PATH).catch(() => undefined) : undefined
+  const isThere = await $.fs.exists(name).catch(() => undefined)
+  const text = isThere === false ? null : isThere === true ? await $.fs.read(name).catch(() => undefined) : undefined
   if (text === undefined) return { ok: false, why: `${name} could not be read - ${field} not written` }
   const next = writeField(text, field, value)
   if ('why' in next) return { ok: false, why: next.why === 'parse' ? `${name} does not parse - ${field} not written` : `"alfred-mods" in ${name} is not an object - ${field} not written` }
-  const isWritten = await $.fs.write(PROJECT_SETTINGS_PATH, next.text).then(() => true, () => false)
+  const isWritten = await $.fs.write(name, next.text).then(() => true, () => false)
   return isWritten ? { ok: true, shadow } : { ok: false, why: `${name} refused the write - ${field} not written` }
 }
 
