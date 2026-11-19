@@ -778,8 +778,9 @@ shows its values. The mod does not depend on claude-kit: without the line, none 
   naming only the modes that are on (`scoring` carries the pass score). With none on, there is no banner. Where it
   would change anything else in the band, it shortens to `kit`, and where even that would, it drops out.
 - **The CLAUDE-KIT section** in the Now tab, after ALFRED CODE: a row each for auto-run, scoring and auto-approve with
-  its value and the file it comes from (`auto-run on · from .claude/kit/settings.json`), the pass score, the five
-  models (`plan opus · audit opus · review opus · implement sonnet · search haiku`), the hook's `saved:` or
+  its value and the file it comes from (`auto-run on · from .claude/kit/settings.json`), where the scoring row also
+  carries the pass score (`scoring on · pass 90 · from .claude/kit/settings.json`), one `models:` row for the five
+  models (`models: plan opus · audit opus · review opus · implement sonnet · search haiku`), the hook's `saved:` or
   `not saved -` note when it gave one, and `seen <time> ago`. A turn that carries no line leaves the last one shown,
   so the `seen` age tells how old the values are. A `/clear` keeps the values until the next line.
 - **The score's colour:** Alfred Code's scoring level where it gives one, else the kit's pass score while scoring is on,
@@ -788,8 +789,8 @@ shows its values. The mod does not depend on claude-kit: without the line, none 
   [Plan and score files](#plan-and-score-files), once claude-kit publishes them. That is asked of claude-kit and is not
   done yet: until it is, the Plan tab shows no kit plan.
 
-The mod never writes any of this. Add `.claude/session-inspector/` to a project's `.gitignore`, as the plan and score
-files the kit publishes there are not for the repository.
+The mod never writes any of this. Add `.alfred-mods/` to a project's `.gitignore`, as the plan and score files the kit
+publishes there are not for the repository.
 
 ### The Prompt tab
 
@@ -803,20 +804,25 @@ text. Subagents' turns are left out. The first line reads `Last turn · <time> �
 
 The turn starts at your prompt and runs to the next one, so a hook's context or a file's note inside it belongs to it.
 A record keeps the newest 60 parts (`<n> dropped` counts the rest) and each part's first 4,000 characters; a cut text
-ends `… (<chars> chars)`. Before a first turn the tab reads `No turn yet in this session.`
+ends `… (<chars> chars)`. Attachments raised before a first turn show under a `before the first turn` header; only an
+empty record, such as one after a `/clear`, shows the dim line `No turn yet in this session.`
 
 The text stays in the session's memory (`$.state`) and nothing of it goes to a file, a log or the store. `/clear`, a
-resume and a fork empty the tab. Any plugin can read a `$.state` value, which gives it nothing it could not read from
-the same event.
+resume and a fork empty it, and after a resume the next turn lists the earlier parts the engine asks again too. Any
+plugin can read a `$.state` value, which gives it nothing it could not read from the same event.
 
 ## Plan and score files
 
 The Plan tab and the band's plan line read JSON files from one fixed folder in the project:
-`.claude/session-inspector/plans/<slug>.json` for each plan and `.claude/session-inspector/scores/<slug>.json` for each
-scored output. Any skill or tool can write them; writers resolve their own paths and publish there. The mod only
-reads the folder, except HANDOFF.md, which it writes. Keep the folder gitignored.
+`.alfred-mods/plans/<slug>.json` for each plan and `.alfred-mods/scores/<slug>.json` for each scored output. Any skill
+or tool can write them; writers resolve their own paths and publish there. Claude Code asks before each write under
+`.claude/`, which stalls a run nobody watches, so the files live outside it.
 
-The mod reads both folders after each Write, Edit or NotebookEdit call completes, at the end of each turn, and every
+The mod reads the old folders, `.claude/session-inspector/plans/` and `.claude/session-inspector/scores/`, as a
+fallback: a file of the new folder wins over a same-named one of the old. The mod never writes a plan or scores file.
+Keep `.alfred-mods/` gitignored.
+
+The mod reads the folders after each Write, Edit or NotebookEdit call completes, at the end of each turn, and every
 30 seconds. It shows the plan with a step in progress written this session, else the task list, else the newest plan
 (with Alfred Code, the plan its status file names comes first: see With Alfred Code);
 `/inspect plan <slug>` pins one. A file that does not parse keeps its last good version and shows `plan file invalid`.

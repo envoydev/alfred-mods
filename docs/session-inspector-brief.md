@@ -462,7 +462,7 @@ last update 2m ago
 
 ## Data contracts for the plan and scorer skills
 
-F6 and F7 read JSON files from one fixed folder in the project, `.claude/session-inspector/`, so the mod never works out where a writer keeps its own data: `plans/<slug>.json` for each plan, `scores/<slug>.json` for each scored output. Writers resolve their own paths and publish there. Alfred Code's per-session status file is not in this folder: the stack writes `.alfred/state/sessions/status/<session id>.json` under the project root (`status/<session id>.json` here through alfred-code 3.12.1, still read as the fallback; 'With Alfred Code installed'), and the mod only reads, except HANDOFF.md, which F8 writes (agent). The folder is gitignored.
+F6 and F7 read JSON files from one fixed folder in the project, `.alfred-mods/` (since 2026-11-19; the folder was `.claude/session-inspector/`, which Claude Code protects: it asks before each write under `.claude/`, so a skill writing there stalls an away run), so the mod never works out where a writer keeps its own data: `plans/<slug>.json` for each plan, `scores/<slug>.json` for each scored output. The old folder's `plans/` and `scores/` are still read as a fallback, a same-named file of `.alfred-mods/` winning. Writers resolve their own paths and publish there. Alfred Code's per-session status file is not in this folder: the stack writes `.alfred/state/sessions/status/<session id>.json` under the project root (`status/<session id>.json` here through alfred-code 3.12.1, still read as the fallback; 'With Alfred Code installed'), and the mod only reads, except HANDOFF.md, which F8 writes (agent). The folder is gitignored.
 
 ```json
 {
@@ -679,7 +679,7 @@ S4 Update interceptor - in progress, 12m of ≈24m.
 
 ## Plan - Token refresh, 3/5
 
-From .claude/session-inspector/plans/token-refresh.json.
+From .alfred-mods/plans/token-refresh.json.
 
 - [x] S1 Add refresh endpoint - done in 20m
 - [x] S2 Rotate tokens - done in 24m - ✎ 1 note
@@ -1459,7 +1459,7 @@ The Claude Code limits below are from the mods reference; the right column is ho
 - **Approvals:** the mod never approves, denies or rewrites a tool call; F8 writes HANDOFF.md and fills an empty prompt, and F9 rewrites only what rows draw and adds its note to the person's next own prompt, as the 'F8 and F9 behaviour' section says. (agent)
 - **Files written:** `.claude/session-inspector/HANDOFF.md`, never over a file without its marker (agent); and, on a command the person types, the one field it sets under `"alfred-mods"` in the user settings file (`$CLAUDE_CONFIG_DIR/settings.json`, else `~/.claude/settings.json`), every other key kept and a file that does not parse never rewritten (the user, 2026-11-12, 'Switches as settings values' under 'Layout').
 - **Private data:** private words live only in `$.store`, never in code, logs or `$.state`.
-- **What it reads:** Claude Code's settings files, through `$.settings.read`, and the user file itself before a command's write; the files under `.claude/session-inspector/` in the project; the stack's status file and the two files of the plan folder it names ('With Alfred Code installed'); the repository's `.git` and `HEAD` files and, for the project row's counts, untracked files of 1 MiB or less, keeping only their line counts in memory; and the links under the project's `.claude/rules/` that the rules breakdown resolves. Never the global config file (`~/.claude.json`): the mod shows no account. (agent)
+- **What it reads:** Claude Code's settings files, through `$.settings.read`, and the user file itself before a command's write; the plan and score files under `.alfred-mods/` in the project (and the old `.claude/session-inspector/plans/` and `scores/` as a fallback); the stack's status file and the two files of the plan folder it names ('With Alfred Code installed'); the repository's `.git` and `HEAD` files and, for the project row's counts, untracked files of 1 MiB or less, keeping only their line counts in memory; and the links under the project's `.claude/rules/` that the rules breakdown resolves. Never the global config file (`~/.claude.json`): the mod shows no account. (agent)
 
 ## Risks and open questions
 

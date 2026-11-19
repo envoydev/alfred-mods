@@ -26,3 +26,4 @@ probe/
 
 # Plan and score files claude-kit's flows publish for the mod's Plan tab: local, never committed
 .claude/session-inspector/
+.alfred-mods/
