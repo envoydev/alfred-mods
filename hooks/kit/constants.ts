@@ -25,3 +25,9 @@ export const KIT_NAMES = { autoRun: 'auto_run', scoring: 'scoring', passScore: '
 export const KIT_MODEL_ROLES = [
   ['plan', 'plan_model'], ['audit', 'audit_model'], ['review', 'review_model'], ['implement', 'implement_model'], ['search', 'search_model'],
 ] as const
+
+// What the band and the Now tab call the kit, and how a setting reads there
+export const KIT_SECTION_HEAD = 'CLAUDE-KIT'
+export const KIT_BANNER_LABEL = 'kit'
+export const KIT_SETTING_ROWS = [['auto-run', 'auto_run'], ['scoring', 'scoring'], ['auto-approve', 'auto_approve']] as const
+export const KIT_DEFAULT_SOURCE = 'default'

@@ -5,7 +5,7 @@ import { widthOf } from '../core/format'
 import type { BandInput } from './types'
 import type { RecLevel } from '../rec/types'
 import type { Line, Seg } from '../core/types'
-import { ROW_JOIN } from './constants'
+import { KIT_SHORT, ROW_JOIN } from './constants'
 import { fiveHourPace, gauges, narrowGauges, percentText } from './gauges'
 import { cellsOf } from './wrap'
 import { toolRows } from './detail'
@@ -66,13 +66,28 @@ export function bandLines(input: BandInput): Line[] {
   return bandRows(input, { infoUpTo: 0, isPlaceKept: false, toolRowsKept: 0, isUsageKept: false, isPlanKept: false })
 }
 
+const MARK_SEP: Seg = { text: ROW_JOIN, tone: 'dim' }
+const joinMarks = (marks: Line[]): Line => marks.flatMap((mark, i) => (i === 0 ? mark : [MARK_SEP, ...mark]))
+
+// REC, Alfred Code's banner, then claude-kit's. The kit's yields first: wider than the band, it shortens to `kit`, and
+// wider still it is left out, so REC and Alfred Code's banner stay as they are and no gauge, reset or the cost drops
+function marksOf(input: BandInput): Line[] {
+  const base: Line[] = [input.rec !== undefined && input.rec.level !== 'off' ? [REC_MARK] : [], input.banner ?? []].filter(segs => segs.length > 0)
+  const full = input.kitBanner ?? []
+  if (full.length === 0) return base
+  for (const kit of [full, KIT_SHORT]) {
+    const marks = [...base, kit]
+    if (widthOf(joinMarks(marks)) <= input.columns) return marks
+  }
+  return base
+}
+
 function bandRows(input: BandInput, keep: Keep): Line[] {
   const isNarrow = input.columns < 100
-  const marks: Line[] = [input.rec !== undefined && input.rec.level !== 'off' ? [REC_MARK] : [], input.banner ?? []].filter(segs => segs.length > 0)
+  const marks = marksOf(input)
   if (marks.length === 0) return bandBody(input, isNarrow, keep)
-  const sep: Seg = { text: ROW_JOIN, tone: 'dim' }
-  const alone: Line = marks.flatMap((mark, i) => (i === 0 ? mark : [sep, ...mark]))
-  const lead: Line = [...alone, sep]
+  const alone = joinMarks(marks)
+  const lead: Line = [...alone, MARK_SEP]
   // Only line 1 shares its row with the marks: the lines under it are fitted to the band's whole width
   const [first] = bandBody({ ...input, columns: input.columns - widthOf(lead) }, isNarrow, keep)
   if (first === undefined) return [alone]

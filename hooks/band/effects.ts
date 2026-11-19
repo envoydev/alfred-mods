@@ -12,6 +12,8 @@ import { settingsInForce } from '../settings/effects'
 import { readRec } from '../rec/effects'
 import { readFailures, readStats } from '../tools/effects'
 import { bannerSegs, runwayOf } from '../stack/stack'
+import { readKit, readKitScoreLevel } from '../kit/effects'
+import { kitBannerSegs } from '../kit/kitlines'
 import { readHandoff, saveNow } from '../handoff/effects'
 import { recSummary } from '../rec/rec'
 import { openInspectFromBand } from '../inspect/effects'
@@ -102,8 +104,8 @@ async function readBandInput(
     now, columns: at.columns, ...(at.maxRows === undefined ? {} : { maxRows: at.maxRows }), isWorking: at.isWorking,
     live: await readLive($), usage, session, turns: await readTurns($),
     newFailures: (await readFailures($)).filter(failure => failure.isNew).length, pace: await readPace($), agents: await readAgents($),
-    cache: await readCache($), plan: drawing.band, isPlanInvalid: drawing.invalid, score: drawing.score, isPlanScore: drawing.isPlanScore, scoreLevel: await readScoreLevel($), rec: recSummary(await readRec($)),
-    forecast: forecastTargetOf(handoff, usage, runway), handoffAskStep: handoff.isAskUp ? handoff.handledStep : null, runway, banner: bannerSegs(st),
+    cache: await readCache($), plan: drawing.band, isPlanInvalid: drawing.invalid, score: drawing.score, isPlanScore: drawing.isPlanScore, scoreLevel: (await readScoreLevel($)) ?? (await readKitScoreLevel($)), rec: recSummary(await readRec($)),
+    forecast: forecastTargetOf(handoff, usage, runway), handoffAskStep: handoff.isAskUp ? handoff.handledStep : null, runway, banner: bannerSegs(st), kitBanner: kitBannerSegs(await readKit($)),
     mode: setting.mode, totals: await readTotals($), stats: await readStats($),
     isToolsOpen: setting.isToolsOpen === true, skillListing: parts.skills ?? null,
     rules: { always: parts.rules ?? [], byPath: session.pathRules ?? [], isTracked: !at.isLeftOut },
