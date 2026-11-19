@@ -4,8 +4,8 @@ import { DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, so
 import type { Field, ResolvedSettings, Skip, Source, SettingsValues } from '../../hooks/settings/types'
 
 // A valid value for each field that differs from its default, and a second one that differs from both
-const ONE: SettingsValues = { band: 'calm', bandPlace: 'under', bandRows: false, quiet: false, rec: 'on', handoff: 'auto', handoffAt: 70 }
-const TWO: SettingsValues = { band: 'full', bandPlace: 'above', bandRows: true, quiet: true, rec: 'strict', handoff: 'off', handoffAt: 60 }
+const ONE: SettingsValues = { band: 'calm', bandPlace: 'under', bandRows: false, quiet: false, rec: 'on', handoff: 'auto', handoffAt: 70, plansFolder: '.alfred' }
+const TWO: SettingsValues = { band: 'full', bandPlace: 'above', bandRows: true, quiet: true, rec: 'strict', handoff: 'off', handoffAt: 60, plansFolder: 'default' }
 
 // The first skip a resolve listed
 function skipOf(r: ResolvedSettings): Skip {
@@ -15,7 +15,7 @@ function skipOf(r: ResolvedSettings): Skip {
 }
 
 test('the fields in their order, the sources highest first', () => {
-  expect([...FIELDS]).toEqual(['band', 'bandPlace', 'bandRows', 'quiet', 'rec', 'handoff', 'handoffAt'])
+  expect([...FIELDS]).toEqual(['band', 'bandPlace', 'bandRows', 'quiet', 'rec', 'handoff', 'handoffAt', 'plansFolder'])
   expect([...SOURCES]).toEqual(['policy', 'flag', 'local', 'project', 'user'])
 })
 
@@ -84,7 +84,7 @@ test('the old layer sits under the user file', () => {
 test('the defaults', () => {
   const r = resolveSettings({}, {})
   expect(r.values).toEqual(DEFAULTS)
-  expect(DEFAULTS).toEqual({ band: 'full', bandPlace: 'above', bandRows: true, quiet: true, rec: 'off', handoff: 'ask', handoffAt: 80 })
+  expect(DEFAULTS).toEqual({ band: 'full', bandPlace: 'above', bandRows: true, quiet: true, rec: 'off', handoff: 'ask', handoffAt: 80, plansFolder: '.alfred-mods' })
   for (const field of FIELDS) expect(r.from[field]).toBe('default')
   expect(r.skipped).toEqual([])
   expect(r.userFields).toEqual([])
@@ -217,4 +217,20 @@ test("writeField keeps the file's indent and its last newline", () => {
 test('writeField leaves alone a file it cannot keep', () => {
   for (const text of ['{ "a": ', '[1]', '"on"', 'null', '{"a": 1} x']) expect(writeField(text, 'rec', 'on')).toEqual({ why: 'parse' })
   for (const text of ['{"alfred-mods": "on"}', '{"alfred-mods": [1]}', '{"alfred-mods": null}']) expect(writeField(text, 'rec', 'on')).toEqual({ why: 'key' })
+})
+
+test('plansFolder is unset at .alfred-mods, from the default', () => {
+  const r = resolveSettings({}, {})
+  expect(r.values.plansFolder).toBe('.alfred-mods')
+  expect(r.from.plansFolder).toBe('default')
+})
+
+test('plansFolder from the project file, a wrong value skipped and listed', () => {
+  const chosen = resolveSettings({ project: { plansFolder: '.alfred' } }, {})
+  expect(chosen.values.plansFolder).toBe('.alfred')
+  expect(chosen.from.plansFolder).toBe('project')
+  const wrong = resolveSettings({ project: { plansFolder: 'elsewhere' } }, {})
+  expect(wrong.values.plansFolder).toBe('.alfred-mods')
+  expect(wrong.skipped).toEqual([{ field: 'plansFolder', source: 'project' }])
+  expect(skippedToast(skipOf(wrong), wrong)).toContain('"default", ".alfred" or ".alfred-mods"')
 })

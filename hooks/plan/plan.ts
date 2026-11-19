@@ -2,7 +2,8 @@
 // files', from the brief's 'Data contracts for the plan and scorer skills'. What a file requires makes it invalid when
 // missing; an optional field that does not fit is dropped.
 import { isRecord } from '../core/guards'
-import type { Finding, Plan, PlanChange, PlanStep, PlanView, Plans, ScoreRound, Scores, ScoresView, Severity, StepRow, StepStatus, StepTime, TaskItem, Watched } from './types'
+import { PLANS_FOLDERS, PLANS_ROOTS, PLANS_SUBFOLDER, SCORES_SUBFOLDER } from './constants'
+import type { Finding, Plan, PlanChange, PlanStep, PlanView, PlansFolder, Plans, ScoreRound, Scores, ScoresView, Severity, StepRow, StepStatus, StepTime, TaskItem, Watched } from './types'
 
 const STATUSES: readonly string[] = ['pending', 'in_progress', 'done', 'failed', 'blocked', 'skipped']
 const KINDS: readonly string[] = ['created', 'step_added', 'step_changed', 'step_removed', 'integrated']
@@ -271,10 +272,13 @@ export function newUserNotes(before: PlanChange[], after: PlanChange[]): PlanCha
   })
 }
 
-// The folders a plan skill writes plans and scores to. Claude Code asks before each write under `.claude/`, so a skill
-// writes under `.alfred-mods/`; the old folders are read as a fallback, and a file of the new folder wins over a
-// same-named one of the old
-export const PLANS_DIR = '.alfred-mods/plans'
-export const SCORES_DIR = '.alfred-mods/scores'
-export const OLD_PLANS_DIR = '.claude/session-inspector/plans'
-export const OLD_SCORES_DIR = '.claude/session-inspector/scores'
+export { OLD_PLANS_DIR, OLD_SCORES_DIR, PLANS_DIR, SCORES_DIR } from './constants'
+
+// The roots the reader reads, in order: the chosen one first, then the others in the fallback order
+export function plansRoots(chosen: PlansFolder): string[] {
+  return [chosen, ...PLANS_FOLDERS.filter(folder => folder !== chosen)].map(folder => PLANS_ROOTS[folder])
+}
+
+export const plansDirs = (chosen: PlansFolder): string[] => plansRoots(chosen).map(root => `${root}/${PLANS_SUBFOLDER}`)
+
+export const scoresDirs = (chosen: PlansFolder): string[] => plansRoots(chosen).map(root => `${root}/${SCORES_SUBFOLDER}`)

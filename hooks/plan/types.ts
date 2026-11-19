@@ -3,6 +3,9 @@ import type { Outcome } from '../tools/types'
 import type { Credit, Finding, Plan, PlanChange, PlanStep, Plans, ScoreRound, Scores, Severity, Slice, StepStatus, StepTime, TaskItem, Watched } from '../../types'
 export type { Credit, Finding, Plan, PlanChange, PlanStep, Plans, ScoreRound, Scores, Severity, Slice, StepStatus, StepTime, TaskItem, Watched }
 
+// Where the plan and score files live: the value of the `plansFolder` setting
+export type PlansFolder = 'default' | '.alfred' | '.alfred-mods'
+
 export type StepRow = { step: PlanStep; actualMs: number; forecastMs: number | null; isShared: boolean; notes: string[] }
 
 export type PlanView = {

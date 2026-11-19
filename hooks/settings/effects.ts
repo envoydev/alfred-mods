@@ -10,6 +10,8 @@ import { applyBandSetting } from '../band/effects'
 import type { EngineInterface } from 'claude-code'
 import { applyHandoffSetting } from '../handoff/effects'
 import type { HookInput, HookNext } from '../core/types'
+import type { PlansFolder } from '../plan/types'
+import { UNSET_PLANS_FOLDER } from '../plan/constants'
 
 // The mod's switches, from the "alfred-mods" key of each settings file and the old commands' store keys (spec
 // 2026-11-11 settings-values, S1-S4 and S7): read at the start, on the poll, after a /clear and after each change, one
@@ -21,6 +23,12 @@ const settingsMemory = {
 }
 
 export const settingsInForce = (): SettingsValues => settingsMemory.resolved?.values ?? DEFAULTS
+
+// The folder the plan and score files live in, and the source that chose it: 'default' means the field is unset
+export function plansFolderInForce(): { folder: PlansFolder; from: From } {
+  const resolved = settingsMemory.resolved
+  return resolved === null ? { folder: UNSET_PLANS_FOLDER, from: 'default' } : { folder: resolved.values.plansFolder, from: resolved.from.plansFolder }
+}
 
 // REC's level in force and the source that set it, or null before the settings are read
 export function recInForce(): { level: RecLevel; from: From } | null {
@@ -140,6 +148,27 @@ export async function writeUserField<F extends Field>($: EngineInterface, field:
   const from = resolved?.from[field]
   const isFirst = resolved !== null && resolved !== undefined && (from === 'policy' || from === 'flag' || from === 'local' || from === 'project')
   return `Set ${shown} in ${user}.${isFirst ? ` ${sourceFileName(from)} gives ${JSON.stringify(resolved.values[field])}, which comes first.` : ''}`
+}
+
+const PROJECT_SETTINGS_PATH = '.claude/settings.json'
+const SHADOWING_SOURCES: readonly From[] = ['policy', 'flag', 'local']
+
+// One field into the project's .claude/settings.json (made when missing), every other key kept. The layers are read
+// first, so `shadow` names a higher source that gives the field a valid value and keeps coming first; nothing is read
+// again after the write - Claude Code's ConfigChange brings the new value in, as for writeUserField.
+export async function writeProjectField<F extends Field>($: EngineInterface, field: F, value: SettingsValues[F]): Promise<{ ok: true; shadow: From | null } | { ok: false; why: string }> {
+  const name = sourceFileName('project')
+  await loadSettings($)
+  const from = settingsMemory.resolved?.from[field] ?? 'default'
+  const shadow = SHADOWING_SOURCES.includes(from) ? from : null
+  // A refused check is no proof the file is missing: only a check that answers false makes the file
+  const isThere = await $.fs.exists(PROJECT_SETTINGS_PATH).catch(() => undefined)
+  const text = isThere === false ? null : isThere === true ? await $.fs.read(PROJECT_SETTINGS_PATH).catch(() => undefined) : undefined
+  if (text === undefined) return { ok: false, why: `${name} could not be read - ${field} not written` }
+  const next = writeField(text, field, value)
+  if ('why' in next) return { ok: false, why: next.why === 'parse' ? `${name} does not parse - ${field} not written` : `"alfred-mods" in ${name} is not an object - ${field} not written` }
+  const isWritten = await $.fs.write(PROJECT_SETTINGS_PATH, next.text).then(() => true, () => false)
+  return isWritten ? { ok: true, shadow } : { ok: false, why: `${name} refused the write - ${field} not written` }
 }
 
 export function reloadSettingsSoon($: EngineInterface, e: HookInput<'classic.ConfigChange'>, next: HookNext<'classic.ConfigChange'>) {
