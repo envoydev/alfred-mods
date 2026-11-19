@@ -48,8 +48,6 @@ export const GITIGNORE_FILE = '.gitignore'
 
 export const OLD_INSTALL_PREFIX = 'session-inspector@'
 
-export const ENABLED_PLUGINS_KEY = 'enabledPlugins'
-
 // Where Alfred Code 3.12.1 and older wrote the session status files, and where later ones write them
 export const OLD_STATUS_DIR = '.claude/session-inspector/status'
 
@@ -64,8 +62,5 @@ export const NOTHING_LINE = 'nothing to update'
 export const LIST_SEPARATOR = ', '
 
 export const JSON_SUFFIX = '.json'
-
-// What writeUserField's answer starts with when the field was written
-export const WRITTEN_PREFIX = 'Set '
 
 export const REASON_MAX = 60

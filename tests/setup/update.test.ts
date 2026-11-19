@@ -3,7 +3,7 @@ import { expect, test } from 'claude-code/testing'
 import { parsePlan } from '../../hooks/plan/plan'
 import {
   closeReport, copiedLine, coversRoot, earlierChoicesLine, gitignoreAppend, gitignoreLine, isLivePlan, keptBothLine, leftInPlaceLine, movedLine,
-  moveQueue, oldInstallKeys, oldInstallLine, statusFilesLine,
+  moveQueue, notMovedLine, oldInstallKeys, oldInstallLine, statusFilesLine,
 } from '../../hooks/setup/update'
 import { MORE_LINE } from '../../hooks/setup/constants'
 import { planText } from '../plans'
@@ -56,21 +56,22 @@ test('oldInstallKeys names the session-inspector keys set to true', () => {
   expect(oldInstallKeys([true])).toEqual([])
 })
 
-test('moveQueue lists the newest file of a name once, the earlier folder on a tie, and names a name the chosen root holds', () => {
+test('moveQueue queues the newest file of a name once, oldest first, the earlier folder on a tie, and sets aside a name the chosen root holds', () => {
   const file = (name: string, folder: string, mtimeMs: number) => ({ name, root: folder, path: `${folder}/${name}.json`, mtimeMs, size: 1 })
-  const { queue, clashes } = moveQueue(
+  const { queue, clashed } = moveQueue(
     new Set(['held']),
     [[file('a', 'one', 5), file('held', 'one', 5), file('tie', 'one', 7)], [file('a', 'two', 9), file('held', 'two', 1), file('tie', 'two', 7)]],
   )
-  expect(queue.map(entry => entry.path)).toEqual(['two/a.json', 'one/tie.json'])
-  expect(clashes).toEqual(['held'])
+  expect(queue.map(entry => entry.path)).toEqual(['one/tie.json', 'two/a.json'])
+  expect(clashed.map(entry => entry.path)).toEqual(['one/held.json'])
 })
 
 test('the report lines read as the spec gives them', () => {
   expect(movedLine(3, '.alfred-mods')).toBe('moved 3 plan and scores files to .alfred-mods/')
-  expect(copiedLine(2, '.alfred-mods', ['.claude/session-inspector', '.alfred/alfred-mods'])).toBe(
-    'copied 2 files to .alfred-mods/ - remove the old copies in .claude/session-inspector/, .alfred/alfred-mods/ by hand',
+  expect(copiedLine(2, '.alfred-mods', ['.claude/session-inspector/plans', '.claude/session-inspector/scores'])).toBe(
+    'copied 2 files to .alfred-mods/ - remove the old copies in .claude/session-inspector/plans/, .claude/session-inspector/scores/ by hand',
   )
+  expect(notMovedLine('p', '.alfred-mods', 'plans')).toBe('not moved: p - its copy did not read back equal; check .alfred-mods/plans/')
   expect(leftInPlaceLine('p')).toBe('left in place: p - its writer still uses it; run /alfred-mods update after it finishes')
   expect(keptBothLine('p')).toBe('kept both: p (the newer one shows)')
   expect(MORE_LINE).toBe('more to move - run /alfred-mods update again')

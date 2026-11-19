@@ -129,10 +129,10 @@ async function userSettingsPath($: EngineInterface): Promise<string | null> {
 // The one write of /rec on|strict|off and /auto-handoff ask|auto|off|at <percent> (the user's ruling, 2026-11-12): the
 // field into the user file, every other key kept. The files are read first, so the answer names a higher file that
 // still comes first; Claude Code's ConfigChange then brings the change in, as it does an edit by hand.
-export async function writeUserField<F extends Field>($: EngineInterface, field: F, value: SettingsValues[F]): Promise<string> {
+export async function writeUserFieldResult<F extends Field>($: EngineInterface, field: F, value: SettingsValues[F]): Promise<{ ok: boolean; text: string }> {
   const user = sourceFileName('user')
   const shown = `"${field}": ${JSON.stringify(value)}`
-  const byHand = (why: string): string => `Nothing was written: ${why}. Set ${shown} under "alfred-mods" in ${user} by hand.`
+  const byHand = (why: string): { ok: false; text: string } => ({ ok: false, text: `Nothing was written: ${why}. Set ${shown} under "alfred-mods" in ${user} by hand.` })
   await loadSettings($)
   const path = await userSettingsPath($)
   if (path === null) return byHand('no home folder was found')
@@ -147,7 +147,11 @@ export async function writeUserField<F extends Field>($: EngineInterface, field:
   const resolved = settingsMemory.resolved
   const from = resolved?.from[field]
   const isFirst = resolved !== null && resolved !== undefined && (from === 'policy' || from === 'flag' || from === 'local' || from === 'project')
-  return `Set ${shown} in ${user}.${isFirst ? ` ${sourceFileName(from)} gives ${JSON.stringify(resolved.values[field])}, which comes first.` : ''}`
+  return { ok: true, text: `Set ${shown} in ${user}.${isFirst ? ` ${sourceFileName(from)} gives ${JSON.stringify(resolved.values[field])}, which comes first.` : ''}` }
+}
+
+export async function writeUserField<F extends Field>($: EngineInterface, field: F, value: SettingsValues[F]): Promise<string> {
+  return (await writeUserFieldResult($, field, value)).text
 }
 
 const SHADOWING_SOURCES: readonly From[] = ['policy', 'flag', 'local']

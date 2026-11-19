@@ -1449,7 +1449,7 @@ The Claude Code limits below are from the mods reference; the right column is ho
 | Toasts | 4 s unless `timeoutMs` is set | Uses the default |
 | Names of commands and panes | Letters, digits, `_` and `-`, up to 64 characters | `inspect`, `auto-handoff` and `rec`; the panes `inspect` and `rec` (agent) |
 | Pane opened without the user asking | Placed from 144 terminal columns, 110 once the person has opened it | Never auto-opens a pane; panes open only on a command (agent) |
-| `$.process.run` | 30 s timeout by default, 4 MiB per stream | Each read-only git command under 'Security' passes a 2 s timeout of its own (agent) |
+| `$.process.run` | 30 s timeout by default, 4 MiB per stream | Each read-only git command under 'Security' passes a 2 s timeout of its own, and the one `rm` of `/alfred-mods update` a 3 s one (agent) |
 | `claude plugin test` | 5 s per test; every `$` call needs a stub, registered before the test's first call | Timers run on `mock.clock`, never on real waits (agent) |
 | Platforms | Windows, Linux and macOS (the user, 2026-10-28) | Finds the config from `CLAUDE_CONFIG_DIR`, else `HOME`, else `USERPROFILE`; reads plan and score files with LF or CRLF; a missing `git` leaves the handoff without git state; each phase's terminal check runs on all three or reports the rest NOT RUN; CI (`.github/workflows/ci.yml`) runs `claude plugin validate` and `claude plugin test` on all three and `tsc` on Linux, its first run on the user's push (agent) |
 

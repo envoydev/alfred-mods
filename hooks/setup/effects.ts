@@ -6,19 +6,20 @@ import { drawLines } from '../core/draw'
 import { oneLine } from '../core/format'
 import { isNoColor } from '../core/effects'
 import { PLANS_ROOTS, PLANS_SUBFOLDER, SCORES_SUBFOLDER } from '../plan/constants'
+import { noteMovedFiles } from '../plan/effects'
 import { parsePlan, plansRoots } from '../plan/plan'
 import type { PlansFolder } from '../plan/types'
-import { loadSettings, plansFolderInForce, resolvedSettings, writeProjectField, writeUserField } from '../settings/effects'
+import { loadSettings, plansFolderInForce, resolvedSettings, writeProjectField, writeUserFieldResult } from '../settings/effects'
 import { DEFAULTS, FIELDS, sourceFileName } from '../settings/settings'
 import {
   BUTTON_KEY_PREFIX, CHOICE_ORDER, GITIGNORE_FILE, JSON_SUFFIX, MORE_LINE, MOVE_CAP, NEW_STATUS_DIR, OLD_STATUS_DIR, REASON_MAX, RM_ARGV, RM_TIMEOUT_MS,
-  SETUP_PANE_ID, SETUP_PANE_TITLE, SETUP_USAGE, WRITTEN_PREFIX,
+  SETUP_PANE_ID, SETUP_PANE_TITLE, SETUP_USAGE,
 } from './constants'
 import { choiceLines, configuredLine, livesLine, parseSetupArgs, setupPaneLines, shadowLine, unplacedLine, writerNote } from './setup'
-import type { ListedFile } from './types'
+import type { Copy, CopyResult, ListedFile } from './types'
 import {
-  closeReport, copiedLine, coversRoot, earlierChoicesLine, failureLine, gitignoreAppend, gitignoreByHandLine, gitignoreLine, isLivePlan, keptBothLine,
-  leftInPlaceLine, movedLine, moveQueue, oldInstallKeys, oldInstallLine, statusFilesLine,
+  closeReport, copiedLine, copyPath, coversRoot, earlierChoicesLine, failureLine, gitignoreAppend, gitignoreByHandLine, gitignoreLine, folderPathOf, isLivePlan, keptBothLine,
+  leftInPlaceLine, movedLine, moveQueue, notMovedLine, oldInstallKeys, oldInstallLine, statusFilesLine,
 } from './update'
 
 // What the pane draws: the last update's report, and the folder a press just wrote (the settings in force are stale
@@ -43,14 +44,14 @@ async function queueOf($: EngineInterface, kind: string, chosenRoot: string, oth
   return moveQueue(chosen, byFolder)
 }
 
-// One file into the chosen root, read back; true only when the copy equals what was read
-async function copyFile($: EngineInterface, chosenRoot: string, kind: string, file: ListedFile, text: string): Promise<boolean> {
-  const destination = `${chosenRoot}/${kind}/${file.name}${JSON_SUFFIX}`
+// One file into the chosen root, read back. A name that has a file in the chosen root by now is never written over.
+async function copyFile($: EngineInterface, copy: Copy, text: string): Promise<CopyResult> {
+  if (await $.fs.exists(copy.destination)) return 'exists'
   try {
-    await $.fs.write(destination, text)
-    return (await $.fs.read(destination)) === text
+    await $.fs.write(copy.destination, text)
+    return (await $.fs.read(copy.destination)) === text ? 'copied' : 'differs'
   } catch {
-    return false
+    return 'differs'
   }
 }
 
@@ -64,48 +65,70 @@ async function unchangedSince($: EngineInterface, copied: readonly ListedFile[])
   return kept
 }
 
-// One rm of every source that read back equal and did not change; where it rejects or exits non-zero the sources stay
-async function removeSources($: EngineInterface, chosenRoot: string, sources: readonly ListedFile[]): Promise<string[]> {
+// One rm of every source that read back equal and did not change, and of every copy that did not read back equal (the
+// run's own fresh write); where it rejects or exits non-zero the files stay
+async function removeFiles($: EngineInterface, chosenRoot: string, sources: readonly ListedFile[], badCopies: readonly string[]): Promise<string[]> {
+  if (sources.length === 0 && badCopies.length === 0) return []
+  const ran = await $.process.run([...RM_ARGV, ...sources.map(file => file.path), ...badCopies], { timeoutMs: RM_TIMEOUT_MS }).catch(() => null)
   if (sources.length === 0) return []
-  const ran = await $.process.run([...RM_ARGV, ...sources.map(file => file.path)], { timeoutMs: RM_TIMEOUT_MS }).catch(() => null)
   if (ran !== null && ran.exitCode === 0) return [movedLine(sources.length, chosenRoot)]
-  return [copiedLine(sources.length, chosenRoot, [...new Set(sources.map(file => file.root))])]
+  return [copiedLine(sources.length, chosenRoot, [...new Set(sources.map(file => folderPathOf(file.path)))])]
 }
 
-// Spec D4 step 1: the plans and scores of the other roots copied into the chosen one, then one rm of the sources.
-// A plan whose writer still uses it stays with its scores; a name the chosen root holds stays; past the cap the rest wait.
+// Spec D4 step 1: the plans and scores of the other roots copied into the chosen one, oldest first, then one rm. A plan
+// whose writer still uses it stays with its scores, a clashing plan's scores too; a name the chosen root holds stays;
+// past the cap the rest wait.
 async function moveFiles($: EngineInterface, folder: PlansFolder): Promise<string[]> {
   const chosenRoot = PLANS_ROOTS[folder]
   const others = plansRoots(folder).slice(1)
   const now = await $.clock.now()
   const plans = await queueOf($, PLANS_SUBFOLDER, chosenRoot, others)
   const scores = await queueOf($, SCORES_SUBFOLDER, chosenRoot, others)
-  const copied: ListedFile[] = []
+  const copies: Copy[] = []
   const live = new Set<string>()
   const waiting = new Set<string>()
+  const clashes = new Set([...plans.clashed, ...scores.clashed].map(file => file.name))
+  const notMoved: string[] = []
+  const badCopies: string[] = []
   let hasMore = false
+  const attempt = async (kind: string, file: ListedFile, text: string): Promise<void> => {
+    const copy = { file, destination: copyPath(chosenRoot, kind, file.name) }
+    const result = await copyFile($, copy, text)
+    if (result === 'copied') copies.push(copy)
+    else if (result === 'exists') clashes.add(file.name)
+    else {
+      notMoved.push(notMovedLine(file.name, chosenRoot, kind))
+      badCopies.push(copy.destination)
+    }
+  }
+  // A plan the chosen root holds too still has scores beside it in an old root: its writer may be using them
+  const scoreNames = new Set(scores.queue.map(file => file.name))
+  for (const file of plans.clashed.filter(clashing => scoreNames.has(clashing.name))) {
+    const text = await $.fs.read(file.path).catch(() => null)
+    if (text === null || isLivePlan(parsePlan(text), file.mtimeMs, now)) live.add(file.name)
+  }
   for (const file of plans.queue) {
-    if (copied.length >= MOVE_CAP) {
+    if (copies.length >= MOVE_CAP) {
       hasMore = true
       waiting.add(file.name)
       continue
     }
     const text = await $.fs.read(file.path).catch(() => null)
     if (text === null || isLivePlan(parsePlan(text), file.mtimeMs, now)) live.add(file.name)
-    else if (await copyFile($, chosenRoot, PLANS_SUBFOLDER, file, text)) copied.push(file)
+    else await attempt(PLANS_SUBFOLDER, file, text)
   }
   for (const file of scores.queue) {
     if (live.has(file.name)) continue
-    if (copied.length >= MOVE_CAP || waiting.has(file.name)) {
+    if (copies.length >= MOVE_CAP || waiting.has(file.name)) {
       hasMore = true
       continue
     }
     const text = await $.fs.read(file.path).catch(() => null)
-    if (text !== null && (await copyFile($, chosenRoot, SCORES_SUBFOLDER, file, text))) copied.push(file)
+    if (text !== null) await attempt(SCORES_SUBFOLDER, file, text)
   }
-  const clashes = [...new Set([...plans.clashes, ...scores.clashes])]
-  const moved = await removeSources($, chosenRoot, await unchangedSince($, copied))
-  return [...[...live].map(leftInPlaceLine), ...clashes.map(keptBothLine), ...moved, ...(hasMore ? [MORE_LINE] : [])]
+  const removed = await removeFiles($, chosenRoot, await unchangedSince($, copies.map(copy => copy.file)), badCopies)
+  noteMovedFiles(copies.map(copy => ({ path: copy.destination, mtimeMs: copy.file.mtimeMs })))
+  return [...[...live].map(leftInPlaceLine), ...[...clashes].map(keptBothLine), ...notMoved, ...removed, ...(hasMore ? [MORE_LINE] : [])]
 }
 
 // Spec D4 step 2: the chosen root in the .gitignore, when there is one and no line covers it; `default` is the
@@ -128,9 +151,9 @@ async function keepEarlierChoices($: EngineInterface): Promise<string[]> {
   const written: string[] = []
   for (const field of FIELDS) {
     if (resolved.from[field] !== 'legacy' || resolved.values[field] === DEFAULTS[field]) continue
-    const answer = await writeUserField($, field, resolved.values[field])
-    if (answer.startsWith(WRITTEN_PREFIX)) written.push(field)
-    else lines.push(answer)
+    const answer = await writeUserFieldResult($, field, resolved.values[field])
+    if (answer.ok) written.push(field)
+    else lines.push(answer.text)
   }
   return [...(written.length === 0 ? [] : [earlierChoicesLine(written)]), ...lines]
 }
