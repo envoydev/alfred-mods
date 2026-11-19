@@ -209,7 +209,8 @@ export function stubAll(on: On, o: Options = {}): {
       const end = start + from.length
       if ((start > 0 || plain.startsWith(from)) && (end === plain.length || plain[end] === '/')) return `${plain.slice(0, start)}${to}${plain.slice(end)}`
     }
-    return path
+    // No drive either way, so a real path that no table rewrote compares with one it did on Windows too
+    return plain
   }
   const mirrored = Object.entries(o.mirrors ?? {})
   const lookupTable: Record<string, string> = { ...o.aliases, ...Object.fromEntries(mirrored.map(([from, mirror]) => [from, mirror.to])) }
