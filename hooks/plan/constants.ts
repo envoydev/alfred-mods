@@ -15,3 +15,6 @@ export const UNSET_PLANS_FOLDER: PlansFolder = '.alfred-mods'
 
 export const PLANS_SUBFOLDER = 'plans'
 export const SCORES_SUBFOLDER = 'scores'
+
+// The largest plan or scores file the reader reads: `$.fs.read` refuses a file over 4 MiB
+export const MAX_PLAN_BYTES = 4 * 1024 * 1024

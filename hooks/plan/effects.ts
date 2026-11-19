@@ -3,10 +3,11 @@
 // stored, which outlives a reload.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
-import type { SliceClose, Credit, Moved, Plan, PlanDrawing, PlanView, Plans, Scores, TaskItem, Watched } from './types'
+import type { SliceClose, Credit, Listed, Moved, Plan, PlanDrawing, PlanView, Plans, Scores, TaskItem, Watched } from './types'
+import { MAX_PLAN_BYTES } from './constants'
 import type { Pending } from '../core/types'
 import { FINISH_SHOWN_MS, creditedPlan, isPlanDone, newUserNotes, parsePlan, parseScores, candidatesByName, planView, plansDirs, isPlanRunning, scoresDirs, scoresView, shownPlan, stepStatusKey, taskStatusKey, taskView, tasksAfter } from './plan'
-import { closeTargetOf, closeSlices, closeWait, liveSpans, sessionTimesOf, openWait, overheadKey, sliceMs, stepKey, sumTimes } from './steptime'
+import { closeTargetOf, closeSlices, closeWait, creditRunningTasks, liveSpans, sessionTimesOf, openWait, shownStepTimes, sliceMs, storedTimeOf, sumTimes, taskListMs } from './steptime'
 import { parseAlfredScoring, parseAlfredStatus } from './alfredplan'
 import { minutesText, oneLine } from '../core/format'
 import { scoresLabel } from './planlines'
@@ -93,21 +94,13 @@ export async function closeLoopSlices($: EngineInterface, pending: Pending, loop
     return closed.credit
   })
   // With the task list shown, the main loop's span and those of agents whose spawn was seen go to its running items
-  if (shown === 'tasks') {
-    const ms = Object.entries(spans).filter(([loop]) => loop === 'main' || rows.some(row => row.id === loop)).reduce((total, [, span]) => total + span, 0)
-    const running = (await readTasks($)).filter(task => task.status === 'in_progress').length
-    if (ms > 0 && running > 0) {
-      await updateTasks($, list => {
-        const runningCount = list.filter(task => task.status === 'in_progress').length
-        return runningCount === 0 ? list : list.map(task => (task.status === 'in_progress' ? { ...task, workedMs: task.workedMs + ms / runningCount } : task))
-      })
-    }
-  }
+  const taskMs = shown === 'tasks' ? taskListMs(spans, rows.map(row => row.id)) : 0
+  if (taskMs > 0 && (await readTasks($)).some(task => task.status === 'in_progress')) await updateTasks($, list => [...creditRunningTasks(list, taskMs)])
   const keys = [...new Set(closes.flatMap(close => close.keys))]
   for (const key of keys) {
     const step = after.sessionTimes[key]
     if (step === undefined) continue
-    const stored = key.startsWith('overhead:') ? { ms: step.ms, at: now } : { ms: step.ms, isShared: step.isShared, at: now }
+    const stored = storedTimeOf(key, step, now)
     pending.timeWrites = pending.timeWrites.then(() => $.store.set(key, stored)).catch(() => undefined)
   }
   await pending.timeWrites
@@ -136,19 +129,12 @@ async function liveStepTimes($: EngineInterface, plans: Plans, shown: Watched<Pl
   if (loops.length === 0 || shown === null) return { steps: {}, overhead: 0 }
   if (shown === 'tasks') {
     const rows = await readAgents($)
-    const ms = loops.filter(loop => loop === 'main' || rows.some(row => row.id === loop))
-      .reduce((total, loop) => total + sliceMs(credit.slices[loop] ?? { openedAt: now, waitMs: 0, namedSteps: [] }, now), 0)
+    const ms = taskListMs(Object.fromEntries(loops.map(loop => [loop, sliceMs(credit.slices[loop] ?? { openedAt: now, waitMs: 0, namedSteps: [] }, now)])), rows.map(row => row.id))
     const running = (await readTasks($)).filter(task => task.status === 'in_progress')
     return { steps: Object.fromEntries(running.map(task => [task.id, ms / running.length])), overhead: 0 }
   }
   const spans = liveSpans(credit, await closeTargetsOf($, credit, loops, plans, shown), now)
-  const session = await $.session.id()
-  const steps: Record<string, number> = {}
-  for (const step of shown.value?.steps ?? []) {
-    const ms = spans[stepKey(shown.name, step.id, session)]
-    if (ms !== undefined) steps[step.id] = ms
-  }
-  return { steps, overhead: spans[overheadKey(shown.name, session)] ?? 0 }
+  return shownStepTimes(shown, spans, await $.session.id())
 }
 
 export async function readPlanDrawing($: EngineInterface, now: number): Promise<PlanDrawing> {
@@ -305,7 +291,6 @@ export function schedulePlanReload($: EngineInterface, pending: Pending): void {
 
 // The plan and scores folders: listed, and each new or changed `*.json` file read, never written. A file that does not
 // parse keeps its last good parse, marked invalid; one over 4 MiB is invalid unread, as `$.fs.read` refuses it.
-const MAX_BYTES = 4 * 1024 * 1024
 
 // One listed file: its last read while unchanged since a good one, else read again; one that will not read or parse
 // keeps its last good parse, marked invalid
@@ -315,7 +300,7 @@ async function readWatched<T>(
   const { mtimeMs, size } = entry
   if (had !== undefined && !had.isInvalid && had.path === path && had.mtimeMs === mtimeMs && had.size === size) return had
   let value: T | null = null
-  if (size <= MAX_BYTES) {
+  if (size <= MAX_PLAN_BYTES) {
     try {
       value = parse(await $.fs.read(path))
     } catch {
@@ -324,8 +309,6 @@ async function readWatched<T>(
   }
   return value === null ? { name, mtimeMs, size, value: had?.value ?? null, isInvalid: true, path } : { name, mtimeMs, size, value, isInvalid: false, path }
 }
-
-type Listed = { name: string; mtimeMs: number; size: number; path: string }
 
 // The files `/alfred-mods:update` copied, by path. A copy is written now, but it is as old as its source: a fresh
 // mtimeMs would make an old plan look written this session. A write after the copy changes the listed mtimeMs or size,

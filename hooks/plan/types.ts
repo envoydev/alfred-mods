@@ -51,3 +51,6 @@ export type PlanDrawing = {
   shown: PlanView | null; band: PlanView | null; invalid: boolean; scores: ScoresView | null; score: ScoresView | null
   isPlanScore: boolean; others: string[]; otherScores: string[]; updatedAt: number | null
 }
+
+// One `*.json` file a plan or scores folder lists
+export type Listed = { name: string; mtimeMs: number; size: number; path: string }
