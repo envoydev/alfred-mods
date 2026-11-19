@@ -97,6 +97,15 @@ test('an unreadable scores clash never hides the kept-both line of the plan of i
   expect(rm.calls).toEqual([])
 })
 
+test('where rm does not run, no probe is written and the equal copies are kept both, run after run', async ($, on) => {
+  const { rm, files } = await start($, on, { files: { [`${OLD_PLANS}/p.json`]: stub(DONE), '.alfred-mods/plans/p.json': stub(DONE) }, rm: { deny: true } })
+  expect(await alfred($, 'update')).toEqual(['kept both: p (the newer one shows)', 'update done'])
+  expect(await alfred($, 'update')).toEqual(['kept both: p (the newer one shows)', 'update done'])
+  expect(files.writes.some(isProbe)).toBe(false)
+  expect(rm.calls).toEqual([])
+  expect(rm.checks).toBe(2)
+})
+
 test('a probe name that is taken is replaced once, and the equal copy is then removed', async ($, on) => {
   const { rm, files } = await start($, on, {
     files: { [`${OLD_PLANS}/p.json`]: stub(DONE), '.alfred-mods/plans/p.json': stub(DONE) }, taken: { [`.alfred-mods/plans/${PROBE}*`]: 1 },

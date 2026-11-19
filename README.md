@@ -229,7 +229,8 @@ code.
        of these prints one line for each name, and `not moved` one for each name and kind.
        If `rm` fails or is missing, each source and probe file it left is checked: the sources still there are named
        as `copied <n> files to <root>/ - remove the old copies in <folders> by hand`, and a probe file still there as
-       `could not remove <file> - delete it by hand`. A probe name that is taken is replaced once, and a taken second
+       `could not remove <file> - delete it by hand`. Where `rm` does not run at all, as on most Windows machines, no
+       probe is written and equal copies are kept both. A probe name that is taken is replaced once, and a taken second
        name keeps the equal copies. The line is `moved <n> plan and scores files to <root>/`, and past 50 files the
        run ends on `more to move - run /alfred-mods:update again`.
     2. `.gitignore`: when the project has one and no line covers the chosen folder (`.alfred` covers

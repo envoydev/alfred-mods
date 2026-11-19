@@ -116,7 +116,7 @@ export function stubAll(on: On, o: Options = {}): {
   // The names of the commands the mod registered, in order
   registered: string[]
   // Each `rm` argv the mod ran, with its timeout; `deny` is the option, which a test may change mid-test
-  rm: { calls: (readonly string[])[]; timeoutMs: number | null; deny: boolean }
+  rm: { calls: (readonly string[])[]; checks: number; timeoutMs: number | null; deny: boolean }
 } {
   const toasts: string[] = []
   // Each toast's timeoutMs, in the order of `toasts`: undefined is the default 4 s
@@ -195,8 +195,13 @@ export function stubAll(on: On, o: Options = {}): {
   const { files, isRefused, removeAt } = stubFiles(on, o)
   const git = { current: o.git ?? gitResult('## main\n'), calls: 0, argv: null as readonly string[] | null, timeoutMs: null as number | null }
   const changes = { diff: o.diff, untracked: o.untracked, revList: o.revList, argv: [] as (readonly string[])[], cwd: null as string | null, timeoutMs: null as number | null }
-  const rm = { calls: [] as (readonly string[])[], timeoutMs: null as number | null, deny: o.rm?.deny ?? false }
+  const rm = { calls: [] as (readonly string[])[], checks: 0, timeoutMs: null as number | null, deny: o.rm?.deny ?? false }
   on('process.run', async (_, e) => {
+    // `rm -f --` with no path is the mod's check that rm runs: counted apart, it exits 0 unless rm is refused
+    if (e.argv[0] === 'rm' && e.argv.length === 3) {
+      rm.checks++
+      return rm.deny ? { deny: 'test: rm refused' } : { value: gitResult('') }
+    }
     if (e.argv[0] === 'rm') {
       await o.beforeRm?.()
       rm.calls.push(e.argv)

@@ -135,6 +135,12 @@ async function freeProbeName($: EngineInterface, folder: string, makeName: () =>
   return null
 }
 
+// Whether rm runs here: with no path it removes nothing and exits 0. It is missing on most Windows machines, and a probe
+// the run cannot remove would stay in the chosen folder, one more each run (seen on Windows 11, 2026-11-19).
+async function canRemove($: EngineInterface): Promise<boolean> {
+  return (await $.process.run([...RM_ARGV], { timeoutMs: RM_TIMEOUT_MS }).catch(() => null))?.exitCode === 0
+}
+
 // What a real path cannot show - a case alias, a bind mount, a firmlink keep a path of their own - a file can: one
 // written into each chosen folder is looked for in each source folder that holds equal copies. Found there, that folder
 // is the chosen one under another name; a check that cannot answer, a name that stays taken or a write that fails keeps
@@ -143,7 +149,7 @@ async function probeFolders($: EngineInterface, chosenRoot: string, makeName: ()
   const out = { proven: [] as ListedFile[], kept: [] as ListedFile[], lines: [] as string[], probes: [] as string[], isBroken }
   if (equal.length === 0) return out
   const kind = equal[0]?.kind ?? ''
-  const name = isBroken ? null : await freeProbeName($, `${chosenRoot}/${kind}`, makeName)
+  const name = isBroken || !(await canRemove($)) ? null : await freeProbeName($, `${chosenRoot}/${kind}`, makeName)
   const probe = `${chosenRoot}/${kind}/${name ?? ''}`
   if (name === null || !(await $.fs.write(probe, PROBE_TEXT).then(() => true, () => false))) {
     out.isBroken = true
