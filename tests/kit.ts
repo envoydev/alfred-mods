@@ -67,8 +67,12 @@ type Options = {
   mirrors?: Record<string, { to: string; as?: string }>
   // Paths whose writes land with a line added, so a read-back of the copy differs from what was written
   mangleWrite?: string[]
+  // Paths (named as a refused path is) that a check answers 'there' this many times before it answers truly, as a name
+  // that is taken at first and free later
+  taken?: Record<string, number>
   // What `rm` answers: rejected with `deny`, or exit `exitCode` (0 by default); each call is recorded in the returned `rm`
-  rm?: { deny?: boolean; exitCode?: number }
+  // `removes` names the paths (as a refused path is named) that the call deletes, as an rm that fails part way does
+  rm?: { deny?: boolean; exitCode?: number; removes?: string[] }
   // Runs just before `rm` answers, as a poll that lists the plan folders between the copy and the delete would
   beforeRm?: () => Promise<void>
   // Why `$.ui.copy` does not take, when a test gives one
@@ -188,6 +192,7 @@ export function stubAll(on: On, o: Options = {}): {
   // after `\` reads as `/`; `{ deny }` rejects the mod's call.
   const files = { current: { ...(o.files ?? {}) }, reads: [] as string[], writes: [] as string[], exists: [] as string[], lists: [] as string[] }
   const links = o.links ?? {}
+  const taken = { ...o.taken }
   // A stub's absolute path such as `/shared/house.md` reaches a hook on Windows with the drive the resolve added
   // (`D:\shared\house.md`, or `\\?\D:\...` past the long-path limit), so the drive is dropped before matching
   // (Windows CI, 2026-11-12)
@@ -195,7 +200,7 @@ export function stubAll(on: On, o: Options = {}): {
   const undrived = (path: string): string => slashed(path).replace(/^(?:\/\/\?\/)?[A-Za-z]:(?=\/)/, '')
   const at = (full: string, path: string): boolean => undrived(full) === path || undrived(full).endsWith(`/${path}`)
   // A refused path ends where the path does; one ending in `*` is a name's start, for a file whose name is random
-  const isRefused = (full: string, path: string): boolean => (path.endsWith('*') ? undrived(full).includes(`/${path.slice(0, -1)}`) : at(full, path))
+  const isRefused = (full: string, path: string): boolean => (path.endsWith('*') ? `/${undrived(full)}`.includes(`/${path.slice(0, -1)}`) : at(full, path))
   // The mod's path reaches a hook resolved against its folder, so a table matches on a whole-segment run of the path
   const rewrite = (path: string, table: Record<string, string>): string => {
     const plain = undrived(path)
@@ -264,6 +269,11 @@ export function stubAll(on: On, o: Options = {}): {
   on('fs.exists', (_, e) => {
     files.exists.push(slashed(e.path))
     if (o.refuseExists?.some(path => isRefused(e.path, path)) === true) return { deny: `EACCES: check refused, ${e.path}` }
+    const pending = Object.keys(taken).find(path => (taken[path] ?? 0) > 0 && isRefused(e.path, path))
+    if (pending !== undefined) {
+      taken[pending] = (taken[pending] ?? 0) - 1
+      return { value: true }
+    }
     return { value: Object.keys(files.current).some(path => at(canon(e.path), path)) }
   })
   // A write lands at the path of a file the test gave, else at the path the mod passed
@@ -283,6 +293,11 @@ export function stubAll(on: On, o: Options = {}): {
       await o.beforeRm?.()
       rm.calls.push(e.argv)
       rm.timeoutMs = e.init?.timeoutMs ?? null
+      for (const target of e.argv.slice(3)) {
+        if (o.rm?.removes?.some(path => isRefused(target, path)) !== true) continue
+        const key = Object.keys(files.current).find(path => at(path, canon(target)))
+        if (key !== undefined) delete files.current[key]
+      }
       return rm.deny ? { deny: 'test: rm refused' } : { value: gitResult('', o.rm?.exitCode ?? 0) }
     }
     const isDiff = e.argv.includes('diff')

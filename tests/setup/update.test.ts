@@ -4,7 +4,7 @@ import { parsePlan } from '../../hooks/plan/plan'
 import {
   changedLine, closeReport, copiedLine, copyFailureLine, coversRoot, earlierChoicesLine, folderRelation, gitignoreAppend, gitignoreLine, isLivePlan,
   isSeparateCopy, isUtf8Text, keptBothLine, leftInPlaceLine, liveReason, movedLine, moveQueue, notMovedLine, notUtf8Line, oldInstallKeys, oldInstallLine,
-  sameFolderLine, statusFilesLine, unknownFolderLine, unreadablePlanLine, unreadPlanLine,
+  leftLine, sameFolderLine, statusFilesLine, unknownFolderLine, unreadablePlanLine, unreadPlanLine,
 } from '../../hooks/setup/update'
 import { MORE_LINE } from '../../hooks/setup/constants'
 import { planText } from '../plans'
@@ -107,6 +107,12 @@ test('moveQueue queues the newest file of a name once, oldest first, the earlier
   )
   expect(queue.map(entry => entry.path)).toEqual(['one/tie.json', 'two/a.json'])
   expect(clashed.map(entry => entry.path)).toEqual(['one/held.json'])
+})
+
+test('leftLine gives the line for each reason a plan stays', () => {
+  expect(leftLine('writing', 'p')).toBe(leftInPlaceLine('p'))
+  expect(leftLine('unreadable', 'p')).toBe(unreadablePlanLine('p'))
+  expect(leftLine('unread', 'p')).toBe(unreadPlanLine('p'))
 })
 
 test('the report lines read as the spec gives them', () => {

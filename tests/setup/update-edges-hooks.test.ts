@@ -292,7 +292,7 @@ test('a probe write that fails keeps every equal source', async ($, on) => {
 
 test('a probe check that rejects keeps the equal sources of that folder, and the probe is removed', async ($, on) => {
   const { rm } = await start($, on, {
-    files: { [`${OLD_PLANS}/p.json`]: stub(DONE), '.alfred-mods/plans/p.json': stub(DONE) }, refuseExists: [`${PROBE}*`],
+    files: { [`${OLD_PLANS}/p.json`]: stub(DONE), '.alfred-mods/plans/p.json': stub(DONE) }, refuseExists: [`${OLD_PLANS}/${PROBE}*`],
   })
   expect(await alfred($, 'update')).toEqual([KEPT_P, 'update done'])
   expect(sourcesIn(rm.calls[0])).toEqual([])

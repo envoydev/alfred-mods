@@ -12,22 +12,20 @@ import type { PlansFolder } from '../plan/types'
 import { loadSettings, plansFolderInForce, resolvedSettings, writeProjectField, writeUserFieldResult } from '../settings/effects'
 import { DEFAULTS, FIELDS, sourceFileName } from '../settings/settings'
 import {
-  BUTTON_KEY_PREFIX, CHOICE_ORDER, GITIGNORE_FILE, JSON_SUFFIX, MORE_LINE, MOVE_CAP, NEW_STATUS_DIR, OLD_STATUS_DIR, PROBE_TEXT, REASON_MAX, RM_ARGV, RM_TIMEOUT_MS,
+  BUTTON_KEY_PREFIX, CHOICE_ORDER, GITIGNORE_FILE, JSON_SUFFIX, MORE_LINE, MOVE_CAP, NEW_STATUS_DIR, OLD_STATUS_DIR, PROBE_NAME_TRIES, PROBE_TEXT, REASON_MAX, RM_ARGV, RM_TIMEOUT_MS,
   SETUP_PANE_ID, SETUP_PANE_TITLE, SETUP_USAGE,
 } from './constants'
 import { choiceLines, configuredLine, livesLine, hasNoValue, parseFolderValue, setupPaneLines, shadowLine, unplacedLine, writerNote } from './setup'
 import type { Copy, CopyResult, ListedFile, LiveReason } from './types'
 import {
   changedLine, closeReport, copiedLine, copyFailureLine, copyPath, coversRoot, earlierChoicesLine, failureLine, folderPathOf, folderRelation, gitignoreAppend,
-  gitignoreByHandLine, gitignoreLine, isSeparateCopy, isUtf8Text, keptBothLine, leftInPlaceLine, liveReason, movedLine, moveQueue, notUtf8Line, oldInstallKeys,
-  oldInstallLine, probeLeftLine, probeName, sameFolderLine, statusFilesLine, unknownFolderLine, unreadablePlanLine, unreadPlanLine,
+  gitignoreByHandLine, gitignoreLine, isSeparateCopy, isUtf8Text, keptBothLine, leftLine, liveReason, movedLine, moveQueue, notUtf8Line, oldInstallKeys,
+  oldInstallLine, probeLeftLine, probeName, sameFolderLine, statusFilesLine, unknownFolderLine,
 } from './update'
 
 // What the pane draws: the last update's report, and the folder a press just wrote (the settings in force are stale
 // until Claude Code's ConfigChange). A new claude run starts them over.
 const setupMemory = { report: [] as string[], chosen: null as PlansFolder | null }
-
-const LEFT_LINES: Readonly<Record<LiveReason, (name: string) => string>> = { writing: leftInPlaceLine, unreadable: unreadablePlanLine, unread: unreadPlanLine }
 
 const isJsonFile = (entry: { kind: string; name: string }): boolean => entry.kind === 'file' && entry.name.endsWith(JSON_SUFFIX)
 
@@ -110,32 +108,49 @@ async function unchangedSince($: EngineInterface, checked: readonly ListedFile[]
 }
 
 // One rm of every source that is whole in the chosen root and did not change, with the probe files; never of a
-// destination. Where it rejects or exits non-zero the sources stay, and so do the probes, which are named.
+// destination. Where it rejects or exits non-zero it may have removed some: what is still there is named, the sources
+// to remove by hand and the probes to delete.
 async function removeSources($: EngineInterface, chosenRoot: string, sources: readonly ListedFile[], probes: readonly string[]): Promise<string[]> {
   if (sources.length === 0 && probes.length === 0) return []
   const paths = [...sources.map(file => file.path), ...probes]
   const ran = await $.process.run([...RM_ARGV, ...paths], { timeoutMs: RM_TIMEOUT_MS }).catch(() => null)
   if (ran !== null && ran.exitCode === 0) return sources.length === 0 ? [] : [movedLine(sources.length, chosenRoot)]
-  const left = probes.length === 0 ? [] : [probeLeftLine(probes)]
-  if (sources.length === 0) return left
-  return [copiedLine(sources.length, chosenRoot, [...new Set(sources.map(file => folderPathOf(file.path)))]), ...left]
+  const staying = new Set<string>()
+  for (const path of paths) if (await $.fs.exists(path).then(found => found, () => true)) staying.add(path)
+  const kept = sources.filter(file => staying.has(file.path))
+  const keptProbes = probes.filter(path => staying.has(path))
+  return [
+    ...(kept.length < sources.length ? [movedLine(sources.length - kept.length, chosenRoot)] : []),
+    ...(kept.length > 0 ? [copiedLine(kept.length, chosenRoot, [...new Set(kept.map(file => folderPathOf(file.path)))])] : []),
+    ...(keptProbes.length > 0 ? [probeLeftLine(keptProbes)] : []),
+  ]
+}
+
+// A probe name no file has, tried again once when taken; a check that cannot answer counts as taken
+async function freeProbeName($: EngineInterface, folder: string, makeName: () => string): Promise<string | null> {
+  for (let tries = 0; tries < PROBE_NAME_TRIES; tries++) {
+    const name = makeName()
+    if (!(await $.fs.exists(`${folder}/${name}`).then(found => found, () => true))) return name
+  }
+  return null
 }
 
 // What a real path cannot show - a case alias, a bind mount, a firmlink keep a path of their own - a file can: one
 // written into each chosen folder is looked for in each source folder that holds equal copies. Found there, that folder
-// is the chosen one under another name; a check that cannot answer, or a write that fails, keeps its copies. `proven`
-// are the copies in a folder the probe is not in.
-async function probeFolders($: EngineInterface, chosenRoot: string, name: string, equal: readonly ListedFile[], isBroken: boolean) {
+// is the chosen one under another name; a check that cannot answer, a name that stays taken or a write that fails keeps
+// its copies. `proven` are the copies in a folder the probe is not in.
+async function probeFolders($: EngineInterface, chosenRoot: string, makeName: () => string, equal: readonly ListedFile[], isBroken: boolean) {
   const out = { proven: [] as ListedFile[], kept: [] as ListedFile[], lines: [] as string[], probes: [] as string[], isBroken }
   if (equal.length === 0) return out
   const kind = equal[0]?.kind ?? ''
-  const probe = `${chosenRoot}/${kind}/${name}`
-  if (!isBroken && (await $.fs.write(probe, PROBE_TEXT).then(() => true, () => false))) out.probes.push(probe)
-  else {
+  const name = isBroken ? null : await freeProbeName($, `${chosenRoot}/${kind}`, makeName)
+  const probe = `${chosenRoot}/${kind}/${name ?? ''}`
+  if (name === null || !(await $.fs.write(probe, PROBE_TEXT).then(() => true, () => false))) {
     out.isBroken = true
     out.kept.push(...equal)
     return out
   }
+  out.probes.push(probe)
   for (const folder of new Set(equal.map(file => folderPathOf(file.path)))) {
     const inFolder = equal.filter(file => folderPathOf(file.path) === folder)
     const isHere = await $.fs.exists(`${folder}/${name}`).then(found => found, () => null)
@@ -173,7 +188,7 @@ async function moveFiles($: EngineInterface, folder: PlansFolder): Promise<strin
   const notMoved: string[] = [...planFolderLines, ...scoresFolderLines]
   const texts = new Map<string, string | null>()
   const probes: string[] = []
-  const probeFile = probeName(now, Math.random().toString(36).slice(2))
+  const makeProbeName = (): string => probeName(now, Math.random().toString(36).slice(2))
   let isProbeBroken = false
   let hasMore = false
   const isFull = (): boolean => copies.length + equal.length >= MOVE_CAP
@@ -209,23 +224,33 @@ async function moveFiles($: EngineInterface, folder: PlansFolder): Promise<strin
     else notMoved.push(copyFailureLine(result, file.name, chosenRoot, kind))
     return result === 'copied'
   }
-  // A clash whose chosen copy is a separate file of byte-equal text and the listed size is whole there: the source is
-  // removed like a moved one. A source that stays (live, or beside a plan that stays) is never removed.
+  // A clash whose chosen copy is a separate file of byte-equal text and the listed size is a candidate: once the probe
+  // proves its folder, the source is removed like a moved one. A source that stays (live, or beside a plan that stays)
+  // is never removed, and one that cannot be read stays as it is.
   const settleClashes = async (kind: string, clashed: readonly ListedFile[], isStaying: (file: ListedFile) => Promise<boolean>) => {
+    const candidates: ListedFile[] = []
     for (const file of clashed) {
       const text = await textOf(file)
+      if (text === null) {
+        if (!live.has(file.name)) live.set(file.name, 'unread')
+        continue
+      }
       const destination = copyPath(chosenRoot, kind, file.name)
-      const isEqual = text !== null && isUtf8Text(text, file.size) && !(await isStaying(file)) &&
+      const isEqual = isUtf8Text(text, file.size) && !(await isStaying(file)) &&
         (await $.fs.read(destination).catch(() => null)) === text && (await isSeparate($, file, destination))
-      if (!isEqual) clashes.add(file.name)
-      else if (isFull()) hasMore = true
+      if (isEqual) candidates.push(file)
+      else clashes.add(file.name)
+    }
+    return candidates
+  }
+  // The candidates of one kind that the probe shows are in another folder join `equal`, up to the cap; the rest are
+  // kept
+  const proveEqual = async (candidates: readonly ListedFile[]) => {
+    const proved = await probeFolders($, chosenRoot, makeProbeName, candidates, isProbeBroken)
+    for (const file of proved.proven) {
+      if (isFull()) hasMore = true
       else equal.push(file)
     }
-  }
-  // The equal copies of one kind that the probe shows are in another folder stay in `equal`; the rest are kept
-  const proveEqual = async (kind: string) => {
-    const proved = await probeFolders($, chosenRoot, probeFile, equal.filter(file => file.kind === kind), isProbeBroken)
-    equal.splice(0, equal.length, ...equal.filter(file => file.kind !== kind), ...proved.proven)
     for (const file of proved.kept) clashes.add(file.name)
     notMoved.push(...proved.lines)
     probes.push(...proved.probes)
@@ -237,8 +262,7 @@ async function moveFiles($: EngineInterface, folder: PlansFolder): Promise<strin
     if (reason !== null) live.set(file.name, reason)
     else if (text !== null && !(await attempt(PLANS_SUBFOLDER, file, text))) held.add(file.name)
   }
-  await settleClashes(PLANS_SUBFOLDER, plans.clashed, async file => (await liveOf(file)) !== null)
-  await proveEqual(PLANS_SUBFOLDER)
+  await proveEqual(await settleClashes(PLANS_SUBFOLDER, plans.clashed, async file => (await liveOf(file)) !== null))
   // A plan that stays with another plan of its name beside it keeps its scores, as one whose copy failed does
   for (const file of plans.clashed) if (!equal.includes(file)) held.add(file.name)
   for (const file of scores.queue) {
@@ -248,11 +272,10 @@ async function moveFiles($: EngineInterface, folder: PlansFolder): Promise<strin
     const text = await textOf(file)
     if (text !== null) await attempt(SCORES_SUBFOLDER, file, text)
   }
-  await settleClashes(SCORES_SUBFOLDER, scores.clashed, async file => held.has(file.name) || (await ownPlanLiveOf(file)) !== null)
-  await proveEqual(SCORES_SUBFOLDER)
+  await proveEqual(await settleClashes(SCORES_SUBFOLDER, scores.clashed, async file => held.has(file.name) || (await ownPlanLiveOf(file)) !== null))
   const removed = await removeSources($, chosenRoot, await unchangedSince($, [...copies.map(copy => copy.file), ...equal]), probes)
   const shown = [...clashes].filter(name => !live.has(name))
-  const left = [...live].map(([name, reason]) => LEFT_LINES[reason](name))
+  const left = [...live].map(([name, reason]) => leftLine(reason, name))
   return [...left, ...shown.map(keptBothLine), ...notMoved, ...removed, ...(hasMore ? [MORE_LINE] : [])]
 }
 

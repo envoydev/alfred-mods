@@ -113,6 +113,12 @@ export const unreadPlanLine = (name: string): string => `left in place: ${name} 
 
 export const probeLeftLine = (paths: readonly string[]): string => `could not remove ${paths.join(LIST_SEPARATOR)} - delete ${paths.length === 1 ? 'it' : 'them'} by hand`
 
+// The line for a plan that stays, by why it stays
+export function leftLine(reason: LiveReason, name: string): string {
+  if (reason === 'writing') return leftInPlaceLine(name)
+  return reason === 'unreadable' ? unreadablePlanLine(name) : unreadPlanLine(name)
+}
+
 export const changedLine = (name: string): string => notMovedReasonLine(name, CHANGED_REASON)
 
 export const sameFolderLine = (folder: string, chosen: string): string => `not moved: ${folderOf(folder)} is the same folder as ${folderOf(chosen)}`

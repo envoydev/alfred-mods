@@ -76,6 +76,9 @@ export const UNCHECKED_COPY_REASON = 'could not check the copy'
 // `.json` file, so no reader takes it for a plan
 export const PROBE_PREFIX = '.alfred-mods-probe-'
 
+// A taken probe name is replaced this many times in all, then the equal copies are kept
+export const PROBE_NAME_TRIES = 2
+
 export const PROBE_TEXT = 'probe\n'
 
 export const UNREAD_NOTE = 'could not read it'
