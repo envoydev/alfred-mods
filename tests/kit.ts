@@ -338,6 +338,7 @@ export function engine(on: On, except: string[] = []): void {
   if (has('session.start')) on('session.start', (_, e) => ({ cwd: e.cwd }))
   if (has('prompt.submit')) on('prompt.submit', (_, e) => ({ text: e.text }))
   if (has('turn.start')) on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  if (has('prompt.attachment')) on('prompt.attachment', (_, e) => ({ text: e.text }))
   if (has('turn.complete')) on('turn.complete', () => ({ text: '' }))
   if (has('tool.call')) on('tool.call', () => ({ result: 'ok', text: 'ok' }))
   if (has('session.measure')) on('session.measure', (_, e) => ({ changed: e.changed }))

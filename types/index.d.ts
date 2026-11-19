@@ -212,6 +212,14 @@ export type KitStatus = { values: Record<string, KitValue>; saved: string | null
 // `seenAt`, the clock time of the turn whose line this is
 export type KitState = { status: KitStatus | null; seenAt: number | null }
 
+// What a main turn's requests carried for the model: each part is one `prompt.attachment`, kept as the engine's answer
+// resolved it. `chars` is the full length, `text` at most MAX_PART_CHARS of it. `startedAt` is null before the
+// process's first main turn; `typedChars` is the typed prompt's length, never its text; `dropped` counts the oldest
+// parts the cap pushed out.
+export type PromptOrigin = 'engine' | 'hook' | 'plugin'
+export type PromptPart = { type: string; origin: PromptOrigin; event: string | null; chars: number; text: string; isLeftOut: boolean; at: number }
+export type PromptRecord = { startedAt: number | null; typedChars: number | null; parts: PromptPart[]; dropped: number }
+
 declare module 'claude-code' {
   interface PluginState {
     'alfred-mods': {
@@ -222,6 +230,7 @@ declare module 'claude-code' {
       band: Shaped<BandSetting>
       stack: Shaped<Stack>
       kit: Shaped<KitState>
+      prompt: Shaped<PromptRecord>
       // Blocks per hook script this session (spec C6), so the failure list's cap loses no count
       blockers: Shaped<Record<string, number>>
       parts: Shaped<Parts>

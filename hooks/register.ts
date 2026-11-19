@@ -24,6 +24,7 @@ import type { ToolCall } from './tools/types'
 import type { Pending } from './core/types'
 import { reloadSettingsSoon } from './settings/effects'
 import { followSessionStart, startSession } from './lifecycle/effects'
+import { recordAttachment } from './prompt/effects'
 
 export const register: Register = (on, options) => {
   // The person's word that a managed plugin sends these events on past the mod: Claude Code then tells the model, once
@@ -87,6 +88,11 @@ export const register: Register = (on, options) => {
   // queues one typed during a turn, and a slash command may start no turn at all. It waits before `next`, as the
   // engine may start its turn before this hook resumes; a prompt dropped beneath leaves, one rewritten is re-keyed.
   on('prompt.submit', ($, e, next) => trackPrompt($, e, next, calls, pending)).catch(($, e, next) => next(e))
+
+  // What the model reads beside each request, recorded as the engine answered it and passed on untouched. It stays out of
+  // the block above: that holds only the hooks a managed plugin's notices have named, and none named `prompt.attachment`;
+  // it moves into that block the day a notice names it.
+  on('prompt.attachment', ($, e, next) => recordAttachment($, e, next)).catch(($, e, next) => next(e))
 
   on('turn.start', ($, e, next) => trackTurnStart($, e, next)).catch(($, e, next) => next(e))
 

@@ -18,6 +18,8 @@ import { resetView } from '../inspect/effects'
 import type { ToolCall } from '../tools/types'
 import type { Pending, HookInput, HookNext } from '../core/types'
 import { staleKeys } from '../plan/steptime'
+import { resetPrompt } from '../prompt/effects'
+import { restoreKit } from '../kit/effects'
 
 // The conversation the mod last started, by session id, and the start-over running. A /clear, a resume or a branch goes
 // on under a new id: classic.SessionStart starts it over, and where a managed plugin keeps that hook from the mod, the
@@ -95,6 +97,7 @@ async function resetState($: EngineInterface): Promise<void> {
   await resetBlockers($)
   await resetParts($)
   await resetLoops($)
+  await resetPrompt($)
   forgetBreakdown()
 }
 
@@ -122,6 +125,9 @@ function startOver($: EngineInterface, source: string | null, calls: Map<string,
     // before
     forgetHandoffSteps()
     await resetState($)
+    // The kit's values are the last line's, which a start-over changes no setting of: the engine's own reset of $.state
+    // emptied them, so they are written back (Claude Code resets $.state before this runs: Task 7's live /clear checks it)
+    await restoreKit($)
     await loadSettings($)
     if (!isClear) await markResumed($)
     // This read, finding no file, reads once more at 2 s
