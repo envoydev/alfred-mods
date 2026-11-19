@@ -86,6 +86,17 @@ test('a scores clash whose source cannot be read prints the could-not-read line,
   expect(rm.calls).toEqual([])
 })
 
+test('an unreadable scores clash never hides the kept-both line of the plan of its name', async ($, on) => {
+  const { rm } = await start($, on, {
+    files: {
+      [`${OLD_PLANS}/p.json`]: stub(planText({ S1: 'done' })), '.alfred-mods/plans/p.json': stub(DONE),
+      [`${OLD_SCORES}/p.json`]: unreadable(SCORES), '.alfred-mods/scores/p.json': stub(SCORES),
+    },
+  })
+  expect(await alfred($, 'update')).toEqual(['left in place: p - could not read it', 'kept both: p (the newer one shows)', 'update done'])
+  expect(rm.calls).toEqual([])
+})
+
 test('a probe name that is taken is replaced once, and the equal copy is then removed', async ($, on) => {
   const { rm, files } = await start($, on, {
     files: { [`${OLD_PLANS}/p.json`]: stub(DONE), '.alfred-mods/plans/p.json': stub(DONE) }, taken: { [`.alfred-mods/plans/${PROBE}*`]: 1 },

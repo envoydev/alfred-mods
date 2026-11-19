@@ -183,6 +183,8 @@ async function moveFiles($: EngineInterface, folder: PlansFolder): Promise<strin
   const copies: Copy[] = []
   const equal: ListedFile[] = []
   const live = new Map<string, LiveReason>()
+  // A scores file that cannot be read stays and is named, apart from its plan, so the plan's own line still shows
+  const unreadScores = new Set<string>()
   const held = new Set<string>()
   const clashes = new Set<string>()
   const notMoved: string[] = [...planFolderLines, ...scoresFolderLines]
@@ -232,7 +234,8 @@ async function moveFiles($: EngineInterface, folder: PlansFolder): Promise<strin
     for (const file of clashed) {
       const text = await textOf(file)
       if (text === null) {
-        if (!live.has(file.name)) live.set(file.name, 'unread')
+        if (kind === SCORES_SUBFOLDER) unreadScores.add(file.name)
+        else if (!live.has(file.name)) live.set(file.name, 'unread')
         continue
       }
       const destination = copyPath(chosenRoot, kind, file.name)
@@ -275,7 +278,8 @@ async function moveFiles($: EngineInterface, folder: PlansFolder): Promise<strin
   await proveEqual(await settleClashes(SCORES_SUBFOLDER, scores.clashed, async file => held.has(file.name) || (await ownPlanLiveOf(file)) !== null))
   const removed = await removeSources($, chosenRoot, await unchangedSince($, [...copies.map(copy => copy.file), ...equal]), probes)
   const shown = [...clashes].filter(name => !live.has(name))
-  const left = [...live].map(([name, reason]) => leftLine(reason, name))
+  const unreadNames = [...unreadScores].filter(name => live.get(name) !== 'unread')
+  const left = [...[...live].map(([name, reason]) => leftLine(reason, name)), ...unreadNames.map(name => leftLine('unread', name))]
   return [...left, ...shown.map(keptBothLine), ...notMoved, ...removed, ...(hasMore ? [MORE_LINE] : [])]
 }
 
