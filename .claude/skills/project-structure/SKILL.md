@@ -49,7 +49,9 @@ the form of a closed set are the `javascript` skill's 'Named values' (the `types
 - A feature folder is `hooks/<feature>/`: `types.ts`, `constants.ts`, logic files, `effects.ts`.
 - The outside world is `$`, the mods API: only `effects.ts` takes it, and each `$.state` atom is made, read and updated in its owner folder's `effects.ts`.
 - Shared code: `hooks/core/`.
-- Tests: `tests/<feature>/<name>.test.ts`, with the shared helpers in `tests/kit.ts`.
+- The mod's `$.state` declarations: `types/index.d.ts`, declarations only; the feature `types.ts` files re-export the ones they use from it.
+- Scripts outside the mod: `scripts/`, flat, run on Node's type stripping and checked by `tsconfig.scripts.json`.
+- Tests: `tests/<feature>/<name>.test.ts`, with the shared helpers in `tests/kit.ts` and the plan and scores fixtures the tests share in `tests/plans.ts`.
 - Literals that stay literals, because `claude plugin validate` reads the source: the event name in each `on(...)`, and every mods API call written in full. A relative import names its file with no extension.
 - The folders written before 2026-11-15 keep constants in their logic files; they follow the shape as they are changed.
 

@@ -1,11 +1,12 @@
 {
-  "kit": "claude-kit@e41c1ed",
+  "kit": "claude-kit@a455a1e",
   "files": {
     ".claude/agents/audit-editor.md": "f0534debec1297a47109feca99a10f6167b2031264f3909875a6111cf9a8e4fe",
     ".claude/agents/audit-planner.md": "8629070010847ff937be91c739e1b8c006b6c81847176f758e8a715a8e15a933",
     ".claude/agents/plan-grader.md": "051efe60f22cc7128524d197a35656bb966ced61806be2c680d370d89952322d",
     ".claude/rules/auto-run.md": "f22ebf2cc96b8824b31bc005cf6c77e8f969ebb58d882d9016dcbcafaf01a2f7",
     ".claude/rules/commits.md": "c8da61a6def2fa013c60e95b94d2367a55046e8beee2ca6dd82117a7a017017c",
+    ".claude/rules/communication.md": "34ff32d44f79d86f0be299557e8474788c0a0983b6f2df141083ff2fc29d30ed",
     ".claude/rules/execution.md": "6ae871cf7bae6a36d65d7441ac95c3d39998ad3ab9206f5cf9eff4fcff7be0c5",
     ".claude/rules/javascript.md": "8f4ff96fe8839fc542bb837913d5518147b497e76eb73b05e044bd6e8fd5ffb6",
     ".claude/rules/plan-approval.md": "f2d78423a15b8f6ab289204ac2e8896e48d766645ae4de5f23385100ce157abc",
@@ -33,7 +34,7 @@
     ".claude/skills/plugin-packaging/references/evals.md": "511e2b92f4d77f6b41dd228bab671b01c6aa3db4d94665c01a7437e0382e2b2e",
     ".claude/skills/plugin-packaging/references/manifest-and-marketplace.md": "bb95566e76cd5d6661011b9f3be7377e5f0f4a24bea90d09b977f1e5cb2ac522",
     ".claude/skills/plugin-packaging/references/security-and-governance.md": "1e060dfd86fb6ad6aae9e36529e7f817bbe81994c1cd6ac08b85e141d210fa9a",
-    ".claude/skills/project-structure/SKILL.md": "9c017217dce0a756063b4651e584431a2e5778332a9d7ed82c42515c3d24e5f4",
+    ".claude/skills/project-structure/SKILL.md": "003b7835f8124770a96201943066f160b2d75cbf42f7305b16c1aade41c2b7fc",
     ".claude/skills/refining-plans/SKILL.md": "411faf2ac186e383ed1f4bdee289baa8fb615c8f1be6e80c6f48727f52611383",
     ".claude/skills/refining-plans/references/reviewer-prompt.md": "24d7f43a615e87662c159941c6e7ee035cd8c849366ee32d295b4025bc013631",
     ".claude/skills/refining-plans/references/rubric.md": "8c6bf43913654af755c55363ac5614cb0c86a7168b7d4cebb0567f9902507b84",
