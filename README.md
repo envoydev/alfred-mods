@@ -869,7 +869,7 @@ the hooks module `hooks/register.ts` (the wiring; each feature lives in its fold
 source; the repo carries no marketplace of its own.
 
 ```bash
-npm test                 # claude plugin test: hooks fired with stubs, no session, sign-in or network
+npm test                 # claude plugin test on a copy of the files git would ship: hooks fired with stubs, no session, sign-in or network
 npm run validate         # claude plugin validate --strict on the root and on the manifest with --profile directory, on a copy of the files git would ship
 claude --plugin-dir .    # load the working tree for one session; a save reloads the hooks
 ```

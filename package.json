@@ -6,7 +6,7 @@
   "type": "module",
   "engines": { "node": ">=22" },
   "scripts": {
-    "test": "claude plugin test .",
+    "test": "node scripts/test.ts",
     "validate": "node scripts/validate.ts",
     "typecheck": "tsc -p . && tsc -p tsconfig.scripts.json",
     "kit:check": "node .claude/kit/check.mjs"
