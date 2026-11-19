@@ -2898,7 +2898,7 @@ const BandSettings = (() => {
     { key: 'rec', values: ['off', 'on', 'strict'], def: 'off', bad: 'yes', what: 'mask the screen for a recording' },
     { key: 'handoff', values: ['ask', 'auto', 'off'], def: 'ask', bad: 'never', what: 'save a handoff before the context fills' },
     { key: 'handoffAt', values: steps, def: 80, bad: 100, what: 'the context percent the handoff starts at' },
-    { key: 'plansFolder', values: ['default', '.alfred', '.alfred-mods'], def: '.alfred-mods', bad: 'elsewhere', what: 'where plan and score files live: .claude/session-inspector, .alfred/alfred-mods or .alfred-mods' },
+    { key: 'plansFolder', values: ['default', '.alfred', '.alfred-mods'], def: '.alfred-mods', bad: 'elsewhere', isNoLegacy: true, what: 'where plan and score files live: .claude/session-inspector, .alfred/alfred-mods or .alfred-mods' },
   ]
   // Highest first; the page leaves out --settings and managed settings, which sit above local
   const FILES = ['local', 'project', 'user']
@@ -3252,6 +3252,8 @@ const SRC_HEAD = {
 const FROM = { legacy: 'an earlier command', user: 'user file', project: 'project file', local: 'local file', def: 'the default' };
 // An option's value is the field's value as JSON; '' leaves the file without it
 function optionsFor(f, src) {
+  // 0.7's commands never stored a plansFolder (the mod's legacyOf cannot yield it), so its legacy column offers none
+  if (src === 'legacy' && f.isNoLegacy) return '<option value="">- not stored by 0.7</option>';
   const opts = [['', '- not set']].concat(f.values.map(v => [JSON.stringify(v), JSON.stringify(v)]));
   if (src !== 'legacy') opts.push([JSON.stringify(f.bad), `${JSON.stringify(f.bad)} - a bad value`]);
   return opts.map(([v, l]) => `<option value="${esc(v).replace(/"/g, '&quot;')}">${esc(l)}</option>`).join('');
@@ -3260,7 +3262,7 @@ function buildSettings() {
   const head = '<thead><tr><th scope="col">Field</th>' + SOURCES.map(s => `<th scope="col"${s === 'local' ? ' class="hi"' : ''}>${esc(SRC_HEAD[s][0])}<small>${esc(SRC_HEAD[s][1])}</small></th>`).join('')
     + '<th scope="col">The mod uses</th></tr></thead>';
   const body = '<tbody>' + BandSettings.FIELDS.map(f => `<tr><th scope="row"><code>${f.key}</code><span>${esc(f.what)}</span></th>`
-    + SOURCES.map(s => `<td><select id="cfg-${s}-${f.key}" data-s="${s}" data-f="${f.key}" aria-label="${f.key} in ${esc(SRC_HEAD[s][0])}">${optionsFor(f, s)}</select>${s === 'legacy' ? `<span class="retired" id="ret-${f.key}"></span>` : ''}</td>`).join('')
+    + SOURCES.map(s => `<td><select id="cfg-${s}-${f.key}" data-s="${s}" data-f="${f.key}"${s === 'legacy' && f.isNoLegacy ? ' disabled' : ''} aria-label="${f.key} in ${esc(SRC_HEAD[s][0])}">${optionsFor(f, s)}</select>${s === 'legacy' ? `<span class="retired" id="ret-${f.key}"></span>` : ''}</td>`).join('')
     + `<td class="use" id="use-${f.key}"></td></tr>`).join('') + '</tbody>';
   const cols = '<colgroup><col class="c-field">' + SOURCES.map(() => '<col class="c-src">').join('') + '<col class="c-use"></colgroup>';
   $('settingsTable').innerHTML = cols + head + body;
