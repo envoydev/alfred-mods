@@ -180,7 +180,7 @@ export async function followSessionStart($: EngineInterface, e: HookInput<'class
 
 export async function startSession($: EngineInterface, e: HookInput<'session.start'>, next: HookNext<'session.start'>, calls: Map<string, ToolCall>, pending: Pending) {
   const started = await next(e)
-  await $.command.register({ name: 'inspect', description: 'Session metrics, agents, tool failures, cache, the timeline and the plan in a pane', argumentHint: '[now|usage|agents|tools|cache|timeline|plan [name]|close|show [n]|copy [n]|report [n]|fill|band off|calm|full]' })
+  await $.command.register({ name: 'inspect', description: 'Session metrics, agents, tool failures, cache, the timeline and the plan in a pane', argumentHint: '[now|usage|agents|tools|cache|timeline|plan [name]|prompt|close|show [n]|copy [n]|report [n]|fill|band off|calm|full]' })
   await $.command.register({ name: 'rec', description: 'Recording mode: set "rec" in ~/.claude/settings.json, show the level, test it, or edit your private words', argumentHint: '[on|strict|off|test|words [close]]' })
   await $.command.register({ name: 'auto-handoff', description: 'Save a handoff now, set the handoff mode or first ask in ~/.claude/settings.json, or show them', argumentHint: '[ask|auto|off|at <percent>|now|compact|later]' })
   await readRecHome($)

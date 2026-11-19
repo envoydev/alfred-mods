@@ -28,6 +28,7 @@ import type { Failure, ToolStat } from '../tools/types'
 const TABS: [Tab, string, string, Tone?][] = [
   ['now', 'Now', 'n'], ['usage', 'Usage', 'u', 'usage'], ['agents', 'Agents', 'a', 'agents'], ['tools', 'Tools', 't'],
   ['cache', 'Cache', 'k', 'cache'], ['timeline', 'Timeline', 'l'], ['plan', 'Plan', 'p', 'plan'],
+  ['prompt', 'Prompt', 'm'],
 ]
 
 // The Usage and Cache tabs' label column

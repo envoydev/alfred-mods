@@ -26,6 +26,8 @@ import { compactNow, readCache } from '../cache/effects'
 import { PLANS_DIR } from '../plan/plan'
 import { drawLines } from '../core/draw'
 import { planLines } from '../plan/planlines'
+import { promptLines } from '../prompt/promptlines'
+import { readPrompt } from '../prompt/effects'
 import { mask } from '../rec/mask'
 import { runwayOf } from '../stack/stack'
 
@@ -183,6 +185,7 @@ export async function drawInspectPane($: EngineInterface, e: MatchedInput<'ui.re
     : shown.tab === 'tools' ? toolsLines(input)
     : shown.tab === 'timeline' ? timelineLines(input.turns, Math.max(3, e.props.scroll.bodyRows - 1 - bar.length), usage.rateWindows.length > 0, e.props.bodyColumns)
     : shown.tab === 'plan' ? planLines(drawing.shown, drawing.scores, { invalid: drawing.invalid, others: drawing.others, otherScores: drawing.otherScores, updatedAt: drawing.updatedAt, now, columns: e.props.bodyColumns })
+    : shown.tab === 'prompt' ? promptLines(await readPrompt($), e.props.bodyColumns)
     : nowLines(input)
   const press: Record<string, () => unknown> = {
     'tab-now': () => openInspect($, 'now'),
@@ -197,6 +200,7 @@ export async function drawInspectPane($: EngineInterface, e: MatchedInput<'ui.re
     'handoff-dismiss': () => dismissAsk($),
     'tab-timeline': () => openInspect($, 'timeline'),
     'tab-plan': () => openInspect($, 'plan'),
+    'tab-prompt': () => openInspect($, 'prompt'),
   }
   for (const row of rows) {
     press[`show-${row.id}`] = () => toggleExpanded($, row.id)

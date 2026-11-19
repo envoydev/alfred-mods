@@ -61,7 +61,7 @@ export type Session = {
   // each once; a compaction keeps them, as Claude Code re-attaches them (spec 2026-11-11, D4)
   pathRules?: string[]
 }
-export type Tab = 'now' | 'usage' | 'agents' | 'tools' | 'cache' | 'timeline' | 'plan'
+export type Tab = 'now' | 'usage' | 'agents' | 'tools' | 'cache' | 'timeline' | 'plan' | 'prompt'
 // `pinnedPlan`: the plan `/inspect plan <name>` pinned, shown while its file parses
 export type View = { tab: Tab; expandedIds: string[]; pinnedPlan: string | null }
 export type PacePoint = { at: number; percent: number }

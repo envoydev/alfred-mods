@@ -8,3 +8,16 @@ export const MAX_PART_CHARS = 4000
 export const FLUSH_MS = 250
 
 export const EMPTY_RECORD: PromptRecord = { startedAt: null, typedChars: null, parts: [], dropped: 0 }
+
+// The Prompt tab's words
+export const NO_TURN_TEXT = 'No turn yet in this session.'
+export const BEFORE_FIRST_TURN = 'before the first turn'
+export const NO_TYPED_TEXT = 'no typed text'
+export const LEFT_OUT_TEXT = 'left out'
+
+// A group of the tab by where its parts came from, in the order drawn
+export const PROMPT_GROUPS = [
+  { origin: 'hook', title: 'From hooks' },
+  { origin: 'plugin', title: 'From plugins' },
+  { origin: 'engine', title: 'From Claude Code' },
+] as const
