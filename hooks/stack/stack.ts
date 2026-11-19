@@ -167,6 +167,7 @@ export const STACK_TOASTS = {
   dialog: 'A dialog holds the keys: close it, then press f again',
   noBox: 'No prompt box here to fill',
   notFilled: "Alfred Code's resume prompt was not filled",
+  unanswered: 'The app did not answer in time: press f again',
   gone: 'Alfred Code has no resume prompt now',
 }
 
@@ -176,8 +177,14 @@ export function fillReady(stack: Stack, prompt: string | null): prompt is string
   return prompt !== null && stack.state === 'used' && (stack.fullContext === 'fresh-session' || stack.fullContext === 'compact')
 }
 
-// The toast for what the prompt box answered; an absent cause is a hook's refusal, unknown
-export function fillToast(result: { isFilled: boolean; refusal?: 'no_composer' | 'dialog' }): string {
+// The toast for what the prompt box answered; an absent cause is a hook's refusal, unknown. 'unanswered' (a headless
+// app silent for 5 s) arrived in Claude Code 2.1.329, and a refusal a later build adds reads as not filled
+const FILL_REFUSALS: ReadonlyMap<string, string> = new Map([
+  ['dialog', STACK_TOASTS.dialog],
+  ['no_composer', STACK_TOASTS.noBox],
+  ['unanswered', STACK_TOASTS.unanswered],
+])
+export function fillToast(result: { isFilled: boolean; refusal?: string }): string {
   if (result.isFilled) return STACK_TOASTS.filled
-  return result.refusal === 'dialog' ? STACK_TOASTS.dialog : result.refusal === 'no_composer' ? STACK_TOASTS.noBox : STACK_TOASTS.notFilled
+  return (result.refusal === undefined ? undefined : FILL_REFUSALS.get(result.refusal)) ?? STACK_TOASTS.notFilled
 }

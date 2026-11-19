@@ -10,7 +10,17 @@ export const INSPECT_HELP = 'Usage: /inspect [now|usage|agents|tools|cache|timel
 
 export const BAND_HELP = '/inspect band off, calm or full sets "band" in ~/.claude/settings.json.'
 
-export const COPY_WHY = { 'no-surface': 'no screen to copy on', 'no-clipboard': 'this terminal has no clipboard path', refused: 'the terminal refused it' } as const
+// Keyed by the reasons `$.ui.copy` gives; 'unanswered' (a remote app silent for 5 s) arrived in Claude Code 2.1.329
+export const COPY_WHY: ReadonlyMap<string, string> = new Map([
+  ['no-surface', 'no screen to copy on'],
+  ['no-clipboard', 'this terminal has no clipboard path'],
+  ['refused', 'the terminal refused it'],
+  ['unanswered', 'the app did not answer in time'],
+])
+export const COPY_WHY_UNKNOWN = 'no reason given'
+
+// Why a copy failed, in words; a reason a later build adds reads as no reason, never undefined
+export const copyWhy = (reason: string): string => COPY_WHY.get(reason) ?? COPY_WHY_UNKNOWN
 
 // '2' as 2; left out, 1; anything else, 0, which no item has
 export const ordinalOf = (word: string | undefined): number => (word === undefined ? 1 : /^\d+$/.test(word) ? Number(word) : 0)

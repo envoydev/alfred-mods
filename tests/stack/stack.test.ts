@@ -290,6 +290,11 @@ test('fillToast by outcome', () => {
   expect(fillToast({ isFilled: false, refusal: 'dialog' })).toBe('A dialog holds the keys: close it, then press f again')
   expect(fillToast({ isFilled: false, refusal: 'no_composer' })).toBe('No prompt box here to fill')
   expect(fillToast({ isFilled: false })).toBe("Alfred Code's resume prompt was not filled")
+})
+
+test('a fill the app left unanswered says so, and a refusal this build does not know reads as not filled', () => {
+  expect(fillToast({ isFilled: false, refusal: 'unanswered' })).toBe('The app did not answer in time: press f again')
+  expect(fillToast({ isFilled: false, refusal: 'a-later-reason' })).toBe("Alfred Code's resume prompt was not filled")
   expect(STACK_TOASTS.notEmpty).toBe("Prompt not empty: clear it, then press f to fill Alfred Code's resume prompt")
   expect(STACK_TOASTS.gone).toBe('Alfred Code has no resume prompt now')
 })
