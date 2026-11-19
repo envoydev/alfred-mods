@@ -409,7 +409,7 @@ export function watchState(on: On): { get(key: string): unknown; writes: string[
 }
 
 // The one `state.set` hook of watchState and emptyState: `onWrite` hears the key of each write as it lands
-function recordWrites(on: On, onWrite: (key: string) => void): { get(key: string): unknown; writes: string[] } {
+function recordWrites(on: On, onWrite: (key: string) => void): { get(key: string): unknown; forget(key: string): void; writes: string[] } {
   const latest = new Map<string, unknown>()
   const writes: string[] = []
   on('state.set', async ($, e, next) => {
@@ -422,7 +422,7 @@ function recordWrites(on: On, onWrite: (key: string) => void): { get(key: string
     }
     return r
   })
-  return { get: key => latest.get(key), writes }
+  return { get: key => latest.get(key), forget: key => void latest.delete(key), writes }
 }
 
 // A node of a drawn tree as a test reads it, and the guard that tells one from a string or a hole
@@ -539,7 +539,7 @@ export function seedState(on: On, seeds: Record<string, unknown>): void {
 
 // watchState and more: once `empty()` is called, a read of each key of `keys` answers as nothing stored (the StateRead's
 // value undefined, so the atom reads its initial value, as after the engine's own reset) until the mod next writes that
-// key. The test kit takes one `state.set` and one `state.get` hook, so a test that needs both uses this alone.
+// key, and `get` forgets the last value written, so it answers undefined until then too. The test kit takes one `state.set` and one `state.get` hook, so a test that needs both uses this alone.
 export function emptyState(on: On, keys: string[]): { empty(): void; get(key: string): unknown; writes: string[] } {
   const emptied = new Set<string>()
   const watched = recordWrites(on, key => void emptied.delete(key))
@@ -550,7 +550,10 @@ export function emptyState(on: On, keys: string[]): { empty(): void; get(key: st
   return {
     ...watched,
     empty() {
-      for (const key of keys) emptied.add(key)
+      for (const key of keys) {
+        emptied.add(key)
+        watched.forget(key)
+      }
     },
   }
 }
