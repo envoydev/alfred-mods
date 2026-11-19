@@ -29,5 +29,4 @@ export const KIT_MODEL_ROLES = [
 // What the band and the Now tab call the kit, and how a setting reads there
 export const KIT_SECTION_HEAD = 'CLAUDE-KIT'
 export const KIT_BANNER_LABEL = 'kit'
-export const KIT_SETTING_ROWS = [['auto-run', 'auto_run'], ['scoring', 'scoring'], ['auto-approve', 'auto_approve']] as const
-export const KIT_DEFAULT_SOURCE = 'default'
+export const KIT_SETTING_ROWS = [['auto-run', KIT_NAMES.autoRun], ['scoring', KIT_NAMES.scoring], ['auto-approve', KIT_NAMES.autoApprove]] as const

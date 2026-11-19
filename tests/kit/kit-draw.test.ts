@@ -133,6 +133,31 @@ test('a saved note and a not-saved note each take a row', () => {
   expect(refused.some(row => row.startsWith('not saved - saving changes the file of the repo'))).toBe(true)
 })
 
+// The kit banner never adds a row or moves a gauge: the rows under line 1 and the row count are the plain band's.
+// Where the plain band's marks share line 1 with the body, so do the kit's (the body's first line stays on line 1)
+test('a kit banner that fits the width but would push the body off line 1 is shortened or left out', () => {
+  const kitBanner = kitBannerSegs(kitOf(LINE))
+  const cases: { columns: number; mode: 'full' | 'calm'; marks: Partial<BandInput>; maxRows?: number }[] = [
+    { columns: 140, mode: 'full', marks: { rec: REC, banner: ALFRED_BANNER } },
+    { columns: 140, mode: 'full', marks: { rec: REC, banner: ALFRED_BANNER }, maxRows: 2 },
+    { columns: 140, mode: 'full', marks: { rec: REC, banner: ALFRED_BANNER }, maxRows: 3 },
+    { columns: 140, mode: 'calm', marks: { rec: REC, banner: ALFRED_BANNER } },
+    { columns: 130, mode: 'calm', marks: { banner: ALFRED_BANNER } },
+    { columns: 100, mode: 'calm', marks: {} },
+    { columns: 100, mode: 'full', marks: {}, maxRows: 2 },
+    { columns: 80, mode: 'full', marks: {} },
+  ]
+  for (const { columns, mode, marks, maxRows } of cases) {
+    const base = { columns, mode, ...marks, ...(maxRows === undefined ? {} : { maxRows }) }
+    const plain = bandLines(input(base))
+    const withKit = bandLines(input({ ...base, kitBanner }))
+    const note = JSON.stringify({ columns, mode, maxRows, marks: Object.keys(marks) })
+    expect(withKit, note).toHaveLength(plain.length)
+    expect(withKit.every(line => widthOf(line) <= columns), note).toBe(true)
+    expect(texts(withKit.slice(1)), note).toEqual(texts(plain.slice(1)))
+  }
+})
+
 const view = (total: number): ScoresView => ({
   scale: 100, totals: [{ round: 1, total }], delta: null, shown: { round: 1, total }, isGrading: false, criteria: [], severities: [],
   fixed: [], improved: [], open: [], hasStatus: false,
@@ -146,7 +171,7 @@ test("the score takes the kit's pass level: ok at or over it, warn under it", ()
   expect(scoreSeg(view(85), level)[0]).toMatchObject({ text: 'score 85', tone: 'warn' })
 })
 
-test("Alfred Code's level, given, is the one the score takes", () => {
+test('the score takes whichever level it is given: ok at 80 and warn at 90 for a total of 85', () => {
   expect(scoreSeg(view(85), 80)[0]).toMatchObject({ tone: 'ok' })
   expect(scoreSeg(view(85), 90)[0]).toMatchObject({ tone: 'warn' })
 })

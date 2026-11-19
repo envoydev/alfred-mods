@@ -11,6 +11,5 @@ export const ROW_JOIN = ' │ '
 // A rate window's short name in the band and its toasts
 export const WINDOW_LABEL: Readonly<Record<string, string>> = { five_hour: '5h', seven_day: '7d' }
 
-
 // claude-kit's banner as the narrow band shortens it
 export const KIT_SHORT: Seg[] = [{ text: KIT_BANNER_LABEL, tone: 'dim' }]

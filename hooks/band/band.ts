@@ -69,22 +69,31 @@ export function bandLines(input: BandInput): Line[] {
 const MARK_SEP: Seg = { text: ROW_JOIN, tone: 'dim' }
 const joinMarks = (marks: Line[]): Line => marks.flatMap((mark, i) => (i === 0 ? mark : [MARK_SEP, ...mark]))
 
-// REC, Alfred Code's banner, then claude-kit's. The kit's yields first: wider than the band, it shortens to `kit`, and
-// wider still it is left out, so REC and Alfred Code's banner stay as they are and no gauge, reset or the cost drops
-function marksOf(input: BandInput): Line[] {
+// Whether the body's first line shares line 1 with these marks (see `bandRows`)
+function sharesLineOne(input: BandInput, isNarrow: boolean, keep: Keep, marks: Line[]): boolean {
+  const lead: Line = [...joinMarks(marks), MARK_SEP]
+  const [first] = bandBody({ ...input, columns: input.columns - widthOf(lead) }, isNarrow, keep)
+  return first !== undefined && widthOf(lead) + widthOf(first) <= input.columns
+}
+
+// REC, Alfred Code's banner, then claude-kit's. The kit's yields first: it keeps a form (full, then `kit`) only where the
+// marks stay within the band and line 1 shares its row with the body's first line as it did without the kit's banner
+// (so it never adds a row); else it is left out, and REC and Alfred Code's banner stay as they are
+function marksOf(input: BandInput, isNarrow: boolean, keep: Keep): Line[] {
   const base: Line[] = [input.rec !== undefined && input.rec.level !== 'off' ? [REC_MARK] : [], input.banner ?? []].filter(segs => segs.length > 0)
   const full = input.kitBanner ?? []
   if (full.length === 0) return base
+  const mustShare = base.length === 0 || sharesLineOne(input, isNarrow, keep, base)
   for (const kit of [full, KIT_SHORT]) {
     const marks = [...base, kit]
-    if (widthOf(joinMarks(marks)) <= input.columns) return marks
+    if (widthOf(joinMarks(marks)) <= input.columns && (!mustShare || sharesLineOne(input, isNarrow, keep, marks))) return marks
   }
   return base
 }
 
 function bandRows(input: BandInput, keep: Keep): Line[] {
   const isNarrow = input.columns < 100
-  const marks = marksOf(input)
+  const marks = marksOf(input, isNarrow, keep)
   if (marks.length === 0) return bandBody(input, isNarrow, keep)
   const alone = joinMarks(marks)
   const lead: Line = [...alone, MARK_SEP]
