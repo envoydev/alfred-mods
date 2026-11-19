@@ -3,8 +3,8 @@
 import { candidatesByName, isPlanDone } from '../plan/plan'
 import type { Plan } from '../plan/types'
 import {
-  CHANGED_REASON, DONE_LINE, JSON_SUFFIX, LIST_SEPARATOR, LIVE_PLAN_MS, NOT_UTF8_REASON, NOTHING_LINE, OLD_INSTALL_PREFIX, OLD_STATUS_DIR, SLASH, UNCHECKED_COPY_REASON,
-  UNCHECKED_DESTINATION_REASON, UNREADABLE_PLAN_NOTE,
+  CHANGED_REASON, DONE_LINE, JSON_SUFFIX, LIST_SEPARATOR, LIVE_PLAN_MS, NOT_UTF8_REASON, NOTHING_LINE, OLD_INSTALL_PREFIX, OLD_STATUS_DIR, PROBE_PREFIX, SLASH, UNCHECKED_COPY_REASON,
+  UNCHECKED_DESTINATION_REASON, UNREAD_NOTE, UNREADABLE_PLAN_NOTE,
 } from './constants'
 import type { CopyFailure, FolderRelation, ListedFile, LiveReason, MoveQueue } from './types'
 import { isRecord } from '../core/guards'
@@ -60,17 +60,24 @@ export function moveQueue(chosenNames: ReadonlySet<string>, byFolder: ListedFile
   return { queue: queue.sort((first, second) => first.mtimeMs - second.mtimeMs), clashed, listed: byFolder.flat() }
 }
 
+// Real paths are compared as the disk may spell them: without case (a case alias, or a Windows drive letter, keeps its
+// own spelling) and with either slash. On a disk that tells case apart this can only skip a folder or keep a file.
+const spellingOf = (path: string): string => path.replace(/\\/g, '/').toLowerCase()
+
 // A source folder is another folder only where both real paths are known and differ: a link to the chosen folder, or a
 // path whose real place a hook withholds, must never have its files read as sources
 export function folderRelation(source: string | undefined, chosen: string | undefined): FolderRelation {
   if (source === undefined || chosen === undefined) return 'unknown'
-  return source === chosen ? 'same' : 'distinct'
+  return spellingOf(source) === spellingOf(chosen) ? 'same' : 'distinct'
 }
 
 // A clash is a separate copy only where the two real paths are known and differ (a hard link keeps its own spelling,
 // and removing one of two links leaves the data) and the chosen copy has the size the source had when it was listed
 export const isSeparateCopy = (source: string | undefined, destination: string | undefined, destinationSize: number, sourceSize: number): boolean =>
-  source !== undefined && destination !== undefined && source !== destination && destinationSize === sourceSize
+  source !== undefined && destination !== undefined && spellingOf(source) !== spellingOf(destination) && destinationSize === sourceSize
+
+// The probe's name: the time and a token make it new on every run
+export const probeName = (now: number, token: string): string => `${PROBE_PREFIX}${now}-${token}`
 
 // Where a copy lands: `<root>/<plans|scores>/<name>.json`
 export const copyPath = (root: string, kind: string, name: string): string => `${root}/${kind}/${name}${JSON_SUFFIX}`
@@ -101,6 +108,10 @@ export const copyFailureLine = (result: CopyFailure, name: string, root: string,
 }
 
 export const unreadablePlanLine = (name: string): string => `left in place: ${name} - ${UNREADABLE_PLAN_NOTE}`
+
+export const unreadPlanLine = (name: string): string => `left in place: ${name} - ${UNREAD_NOTE}`
+
+export const probeLeftLine = (paths: readonly string[]): string => `could not remove ${paths.join(LIST_SEPARATOR)} - delete ${paths.length === 1 ? 'it' : 'them'} by hand`
 
 export const changedLine = (name: string): string => notMovedReasonLine(name, CHANGED_REASON)
 

@@ -72,6 +72,14 @@ export const UNCHECKED_DESTINATION_REASON = 'could not check the destination'
 
 export const UNCHECKED_COPY_REASON = 'could not check the copy'
 
+// The file written into a chosen folder to learn whether a source folder is the same folder under another name: not a
+// `.json` file, so no reader takes it for a plan
+export const PROBE_PREFIX = '.alfred-mods-probe-'
+
+export const PROBE_TEXT = 'probe\n'
+
+export const UNREAD_NOTE = 'could not read it'
+
 export const CHANGED_REASON = 'it changed while the update ran; run /alfred-mods:update again'
 
 // A plan that does not parse and is older than the live window: waiting for its writer would never end

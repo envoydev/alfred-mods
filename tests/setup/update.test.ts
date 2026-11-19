@@ -4,7 +4,7 @@ import { parsePlan } from '../../hooks/plan/plan'
 import {
   changedLine, closeReport, copiedLine, copyFailureLine, coversRoot, earlierChoicesLine, folderRelation, gitignoreAppend, gitignoreLine, isLivePlan,
   isSeparateCopy, isUtf8Text, keptBothLine, leftInPlaceLine, liveReason, movedLine, moveQueue, notMovedLine, notUtf8Line, oldInstallKeys, oldInstallLine,
-  sameFolderLine, statusFilesLine, unknownFolderLine, unreadablePlanLine,
+  sameFolderLine, statusFilesLine, unknownFolderLine, unreadablePlanLine, unreadPlanLine,
 } from '../../hooks/setup/update'
 import { MORE_LINE } from '../../hooks/setup/constants'
 import { planText } from '../plans'
@@ -42,6 +42,12 @@ test('folderRelation is distinct only where both real paths are known and differ
   expect(folderRelation('/b/plans', '/b/plans')).toBe('same')
   expect(folderRelation(undefined, '/b/plans')).toBe('unknown')
   expect(folderRelation('/a/plans', undefined)).toBe('unknown')
+})
+
+test('real paths compare without case and with either slash: a case alias is the same folder', () => {
+  expect(folderRelation('/p/.Alfred-Mods/plans', '/p/.alfred-mods/plans')).toBe('same')
+  expect(folderRelation('C:\\proj\\plans', 'c:/proj/plans')).toBe('same')
+  expect(isSeparateCopy('/p/.Alfred-Mods/plans/a.json', '/p/.alfred-mods/plans/a.json', 10, 10)).toBe(false)
 })
 
 test('isSeparateCopy needs two known, different real paths and the listed size', () => {
@@ -94,7 +100,7 @@ test('oldInstallKeys names the session-inspector keys set to true', () => {
 })
 
 test('moveQueue queues the newest file of a name once, oldest first, the earlier folder on a tie, and sets aside a name the chosen root holds', () => {
-  const file = (name: string, folder: string, mtimeMs: number) => ({ name, root: folder, path: `${folder}/${name}.json`, mtimeMs, diskMtimeMs: mtimeMs, size: 1 })
+  const file = (name: string, folder: string, mtimeMs: number) => ({ name, root: folder, path: `${folder}/${name}.json`, mtimeMs, diskMtimeMs: mtimeMs, size: 1, kind: 'plans' })
   const { queue, clashed } = moveQueue(
     new Set(['held']),
     [[file('a', 'one', 5), file('held', 'one', 5), file('tie', 'one', 7)], [file('a', 'two', 9), file('held', 'two', 1), file('tie', 'two', 7)]],
@@ -115,6 +121,7 @@ test('the report lines read as the spec gives them', () => {
   expect(copyFailureLine('unstatted', 'p', '.alfred-mods', 'plans')).toBe('not moved: p - could not check the copy')
   expect(copyFailureLine('differs', 'p', '.alfred-mods', 'plans')).toBe(notMovedLine('p', '.alfred-mods', 'plans'))
   expect(unreadablePlanLine('p')).toBe('left in place: p - it does not read as a plan; fix or remove it')
+  expect(unreadPlanLine('p')).toBe('left in place: p - could not read it')
   expect(changedLine('p')).toBe('not moved: p - it changed while the update ran; run /alfred-mods:update again')
   expect(sameFolderLine('.claude/session-inspector/plans', '.alfred-mods/plans')).toBe(
     'not moved: .claude/session-inspector/plans/ is the same folder as .alfred-mods/plans/',

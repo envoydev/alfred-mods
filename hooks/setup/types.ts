@@ -6,10 +6,11 @@ export type SetupVerb = 'init' | 'configure' | 'update'
 // ok with a null folder is no value typed; not ok is a word that is no folder, or more than one word
 export type FolderValue = { ok: true; folder: PlansFolder | null } | { ok: false }
 
-// One plan or scores file listed in a root other than the chosen one; `name` is its file's name without `.json`.
+// One plan or scores file listed in a root other than the chosen one; `name` is its file's name without `.json`, `kind`
+// its folder's name.
 // `mtimeMs` is the time it counts as written (the source's, for a copy an earlier update made); `diskMtimeMs` is the
 // file's own.
-export type ListedFile = { name: string; root: string; path: string; mtimeMs: number; diskMtimeMs: number; size: number }
+export type ListedFile = { name: string; kind: string; root: string; path: string; mtimeMs: number; diskMtimeMs: number; size: number }
 
 // `queue`: the files to copy, the newest of each name, oldest first. `clashed`: the newest file of each name the chosen
 // root holds already, which stays unless its copy there is byte-equal. `listed`: every file seen.
@@ -25,8 +26,9 @@ export type CopyResult = 'copied' | 'exists' | 'unchecked' | 'differs' | 'unstat
 // The endings that leave the source in place and the file named as not moved
 export type CopyFailure = Exclude<CopyResult, 'copied' | 'exists'>
 
-// Why a plan stays: `writing` - its writer may still use it; `unreadable` - it does not parse and is past the window
-export type LiveReason = 'writing' | 'unreadable'
+// Why a plan stays: `writing` - its writer may still use it; `unreadable` - it does not parse and is past the window;
+// `unread` - the read of it failed
+export type LiveReason = 'writing' | 'unreadable' | 'unread'
 
 // How a source folder stands to the chosen one: another folder, the same folder, or one that cannot be told apart
 export type FolderRelation = 'distinct' | 'same' | 'unknown'

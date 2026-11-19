@@ -18,7 +18,13 @@ const PENDING = planText({ S1: 'done' })
 const SCORES = '{"version":1,"slug":"p"}'
 const MOVED_ONE = 'moved 1 plan and scores files to .alfred-mods/'
 const KEPT_P = 'kept both: p (the newer one shows)'
+const KEPT_Q = 'kept both: q (the newer one shows)'
 const stub = (text: string, mtimeMs = OLD): FileStub => ({ text, mtimeMs })
+const PROBE = '.alfred-mods-probe-'
+const isProbe = (path: string): boolean => path.includes(PROBE)
+// The rm argv without the probe files that ride along, which have random names
+const sourcesIn = (call: readonly string[] | undefined): string[] => (call ?? []).slice(3).filter(path => !isProbe(path))
+const probesIn = (call: readonly string[] | undefined): string[] => (call ?? []).slice(3).filter(isProbe)
 
 async function start($: Engine, on: On, o: Parameters<typeof stubAll>[1] = {}) {
   const kit = stubAll(on, { band: 'unset', quiet: 'unset', now: NOW, ...o })
@@ -62,18 +68,23 @@ test('a plan whose text has a multi-byte character moves when its size is the UT
 })
 
 test('a name whose chosen copy is byte-equal has its source removed, with the scores moving beside it', async ($, on) => {
-  const { rm } = await start($, on, {
+  const { rm, files } = await start($, on, {
     files: { [`${OLD_PLANS}/p.json`]: stub(DONE), '.alfred-mods/plans/p.json': stub(DONE), [`${OLD_SCORES}/p.json`]: stub(SCORES) },
   })
   expect(await alfred($, 'update')).toEqual(['moved 2 plan and scores files to .alfred-mods/', 'update done'])
+  expect(rm.calls).toHaveLength(1)
   expect(rm.calls[0]?.slice(0, 3)).toEqual(['rm', '-f', '--'])
-  expect(rm.calls[0]?.slice(3).sort()).toEqual([`${OLD_PLANS}/p.json`, `${OLD_SCORES}/p.json`])
+  expect(sourcesIn(rm.calls[0]).sort()).toEqual([`${OLD_PLANS}/p.json`, `${OLD_SCORES}/p.json`])
+  // Only the plans folder holds an equal copy; the scores moved, so no probe goes into the scores folder
+  expect(probesIn(rm.calls[0]).map(path => path.slice(0, path.indexOf(PROBE)))).toEqual(['.alfred-mods/plans/'])
+  expect(files.writes.filter(isProbe)).toHaveLength(1)
 })
 
 test('a byte-equal scores copy has its source removed too', async ($, on) => {
   const { rm } = await start($, on, { files: { [`${OLD_SCORES}/p.json`]: stub(SCORES), '.alfred-mods/scores/p.json': stub(SCORES) } })
   expect(await alfred($, 'update')).toEqual([MOVED_ONE, 'update done'])
-  expect(rm.calls).toEqual([['rm', '-f', '--', `${OLD_SCORES}/p.json`]])
+  expect(sourcesIn(rm.calls[0])).toEqual([`${OLD_SCORES}/p.json`])
+  expect(probesIn(rm.calls[0])).toHaveLength(1)
 })
 
 test('an equal copy of a live plan stays, and a clash that differs keeps both', async ($, on) => {
@@ -103,7 +114,7 @@ test('a source that changes between the equal check and the rm is not removed', 
   const kit = await start($, on, { files: { [`${OLD_PLANS}/p.json`]: racing, [`${OLD_PLANS}/q.json`]: stub(DONE), '.alfred-mods/plans/p.json': stub(DONE) } })
   writes = () => kit.files.writes.length
   expect(await alfred($, 'update')).toEqual([MOVED_ONE, 'update done'])
-  expect(kit.rm.calls).toEqual([['rm', '-f', '--', `${OLD_PLANS}/q.json`]])
+  expect(sourcesIn(kit.rm.calls[0])).toEqual([`${OLD_PLANS}/q.json`])
 })
 
 test('a destination whose check rejects is not moved, never named as kept both, and its scores stay', async ($, on) => {
@@ -239,4 +250,78 @@ test('a plan that does not read as a plan and is past the window has its own lin
 test('a plan that does not read as a plan and is inside the window keeps the writer line', async ($, on) => {
   await start($, on, { files: { [`${OLD_PLANS}/p.json`]: stub('{ not json', NOW - HOUR) } })
   expect(await alfred($, 'update')).toEqual(['left in place: p - its writer still uses it; run /alfred-mods:update after it finishes', 'update done'])
+})
+
+test('a run with no equal copy writes no probe', async ($, on) => {
+  const { files } = await start($, on, {
+    files: { [`${OLD_PLANS}/p.json`]: stub(DONE), [`${OLD_PLANS}/q.json`]: stub(DONE), '.alfred-mods/plans/q.json': stub('written by a writer') },
+  })
+  expect(await alfred($, 'update')).toEqual([KEPT_Q, MOVED_ONE, 'update done'])
+  expect(files.writes.some(isProbe)).toBe(false)
+})
+
+test('a root that is a link spelled in another case is the same folder: skipped whole, nothing removed', async ($, on) => {
+  const { rm, files } = await start($, on, {
+    files: { '.alfred-mods/plans/p.json': stub(DONE), '.alfred-mods/scores/p.json': stub(SCORES) },
+    mirrors: { '.claude/session-inspector': { to: '.alfred-mods', as: '.Alfred-Mods' } },
+  })
+  expect(await alfred($, 'update')).toEqual([SAME('.claude/session-inspector', 'plans'), SAME('.claude/session-inspector', 'scores'), 'update done'])
+  expect(rm.calls).toEqual([])
+  expect(files.writes).toEqual([])
+})
+
+test('an alias the real path cannot show is found by the probe: every equal source stays, and only the probe is removed', async ($, on) => {
+  const { rm, files } = await start($, on, {
+    files: { '.alfred-mods/plans/p.json': stub(DONE) }, mirrors: { '.claude/session-inspector': { to: '.alfred-mods' } },
+  })
+  expect(await alfred($, 'update')).toEqual([SAME('.claude/session-inspector', 'plans'), 'update done'])
+  expect(rm.calls).toHaveLength(1)
+  expect(sourcesIn(rm.calls[0])).toEqual([])
+  expect(probesIn(rm.calls[0])).toHaveLength(1)
+  expect(probesIn(rm.calls[0])[0]?.startsWith('.alfred-mods/plans/')).toBe(true)
+  expect(files.writes.filter(isProbe)).toHaveLength(1)
+})
+
+test('a probe write that fails keeps every equal source', async ($, on) => {
+  const { rm } = await start($, on, {
+    files: { [`${OLD_PLANS}/p.json`]: stub(DONE), '.alfred-mods/plans/p.json': stub(DONE) }, refuseWrite: [`${PROBE}*`],
+  })
+  expect(await alfred($, 'update')).toEqual([KEPT_P, 'update done'])
+  expect(rm.calls).toEqual([])
+})
+
+test('a probe check that rejects keeps the equal sources of that folder, and the probe is removed', async ($, on) => {
+  const { rm } = await start($, on, {
+    files: { [`${OLD_PLANS}/p.json`]: stub(DONE), '.alfred-mods/plans/p.json': stub(DONE) }, refuseExists: [`${PROBE}*`],
+  })
+  expect(await alfred($, 'update')).toEqual([KEPT_P, 'update done'])
+  expect(sourcesIn(rm.calls[0])).toEqual([])
+  expect(probesIn(rm.calls[0])).toHaveLength(1)
+})
+
+test('a plan that cannot be read has its own line and stays', async ($, on) => {
+  const { rm } = await start($, on, { files: { [`${OLD_PLANS}/p.json`]: { text: DONE, mtimeMs: NOW - 72 * HOUR, size: 5 * 1024 * 1024 } } })
+  expect(await alfred($, 'update')).toEqual(['left in place: p - could not read it', 'update done'])
+  expect(rm.calls).toEqual([])
+})
+
+test('the scores stay with a live plan whose folder was skipped as the same folder', async ($, on) => {
+  const { rm } = await start($, on, {
+    files: { '.alfred-mods/plans/p.json': stub(PENDING, NOW - HOUR), [`${OLD_SCORES}/p.json`]: stub(SCORES) }, aliases: { [OLD_PLANS]: '.alfred-mods/plans' },
+  })
+  expect(await alfred($, 'update')).toEqual([
+    'left in place: p - its writer still uses it; run /alfred-mods:update after it finishes', SAME('.claude/session-inspector', 'plans'), 'update done',
+  ])
+  expect(rm.calls).toEqual([])
+})
+
+test('equal plans and equal scores each get a probe in their own chosen folder, removed with the sources in one rm', async ($, on) => {
+  const { rm } = await start($, on, {
+    files: {
+      [`${OLD_PLANS}/p.json`]: stub(DONE), '.alfred-mods/plans/p.json': stub(DONE), [`${OLD_SCORES}/p.json`]: stub(SCORES), '.alfred-mods/scores/p.json': stub(SCORES),
+    },
+  })
+  expect(await alfred($, 'update')).toEqual(['moved 2 plan and scores files to .alfred-mods/', 'update done'])
+  expect(rm.calls).toHaveLength(1)
+  expect(probesIn(rm.calls[0]).map(path => path.slice(0, path.indexOf(PROBE))).sort()).toEqual(['.alfred-mods/plans/', '.alfred-mods/scores/'])
 })

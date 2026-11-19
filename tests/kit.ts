@@ -62,6 +62,9 @@ type Options = {
   // it) meets the file or folder it names, and its `realPath` is that one's. `noRealPath` paths stat with no
   // `realPath`, as when a hook above withholds it.
   aliases?: Record<string, string>; noRealPath?: string[]
+  // Paths that meet another path's files and folders but keep a `realPath` of their own, as a case alias, a bind mount
+  // or a firmlink does; `as` is the spelling of that `realPath` where it differs only in case
+  mirrors?: Record<string, { to: string; as?: string }>
   // Paths whose writes land with a line added, so a read-back of the copy differs from what was written
   mangleWrite?: string[]
   // What `rm` answers: rejected with `deny`, or exit `exitCode` (0 by default); each call is recorded in the returned `rm`
@@ -191,18 +194,24 @@ export function stubAll(on: On, o: Options = {}): {
   const slashed = (path: string): string => path.replace(/\\/g, '/')
   const undrived = (path: string): string => slashed(path).replace(/^(?:\/\/\?\/)?[A-Za-z]:(?=\/)/, '')
   const at = (full: string, path: string): boolean => undrived(full) === path || undrived(full).endsWith(`/${path}`)
-  // The mod's path reaches a hook resolved against its folder, so an alias matches on a whole-segment run of the path
-  const canon = (path: string): string => {
+  // A refused path ends where the path does; one ending in `*` is a name's start, for a file whose name is random
+  const isRefused = (full: string, path: string): boolean => (path.endsWith('*') ? undrived(full).includes(`/${path.slice(0, -1)}`) : at(full, path))
+  // The mod's path reaches a hook resolved against its folder, so a table matches on a whole-segment run of the path
+  const rewrite = (path: string, table: Record<string, string>): string => {
     const plain = undrived(path)
-    for (const [from, to] of Object.entries(o.aliases ?? {})) {
+    for (const [from, to] of Object.entries(table)) {
       const start = plain === from || plain.startsWith(`${from}/`) ? 0 : plain.indexOf(`/${from}`) + 1
       const end = start + from.length
-      if (start > 0 || plain.startsWith(from)) {
-        if (end === plain.length || plain[end] === '/') return `${plain.slice(0, start)}${to}${plain.slice(end)}`
-      }
+      if ((start > 0 || plain.startsWith(from)) && (end === plain.length || plain[end] === '/')) return `${plain.slice(0, start)}${to}${plain.slice(end)}`
     }
     return path
   }
+  const mirrored = Object.entries(o.mirrors ?? {})
+  const lookupTable: Record<string, string> = { ...o.aliases, ...Object.fromEntries(mirrored.map(([from, mirror]) => [from, mirror.to])) }
+  const spellingTable: Record<string, string> = { ...o.aliases, ...Object.fromEntries(mirrored.flatMap(([from, mirror]) => (mirror.as === undefined ? [] : [[from, mirror.as]]))) }
+  const canon = (path: string): string => rewrite(path, lookupTable)
+  // What `realPath` says: an alias lands on its target, a mirror on its own spelling unless it says another
+  const spelled = (path: string): string => rewrite(path, spellingTable)
   on('fs.list', (_, e) => {
     const dir = canon(slashed(e.path)).replace(/\/$/, '')
     files.lists.push(dir)
@@ -238,10 +247,10 @@ export function stubAll(on: On, o: Options = {}): {
       const folder = slashed(real).replace(/\/$/, '')
       const isDir = Object.keys(files.current).some(path => path.split('/').slice(0, -1).some((_, i, parts) => at(folder, parts.slice(0, i + 1).join('/'))))
       if (!isDir) return { deny: `ENOENT: no such file, ${e.path}` }
-      return { value: { kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false, ...(isResolved ? { realPath: slashed(real) } : {}) } }
+      return { value: { kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false, ...(isResolved ? { realPath: slashed(spelled(e.path)) } : {}) } }
     }
     // An absolute stub's real path is its own, as a link's target is written: both sides then compare on Windows too
-    const realPath = found[0].startsWith('/') ? found[0] : slashed(real)
+    const realPath = found[0].startsWith('/') ? found[0] : slashed(spelled(e.path))
     return { value: { kind: 'file' as const, size: sizeOf(found[1]), mtimeMs: found[1].mtimeMs, isLink: false, ...(isResolved ? { realPath } : {}) } }
   })
   // A read rejects over 4 MiB, as Claude Code's does (types, `$.fs.read`)
@@ -254,12 +263,12 @@ export function stubAll(on: On, o: Options = {}): {
   // Each path asked, so a test counts the reads of a missing file
   on('fs.exists', (_, e) => {
     files.exists.push(slashed(e.path))
-    if (o.refuseExists?.some(path => at(e.path, path)) === true) return { deny: `EACCES: check refused, ${e.path}` }
+    if (o.refuseExists?.some(path => isRefused(e.path, path)) === true) return { deny: `EACCES: check refused, ${e.path}` }
     return { value: Object.keys(files.current).some(path => at(canon(e.path), path)) }
   })
   // A write lands at the path of a file the test gave, else at the path the mod passed
   on('fs.write', (_, e) => {
-    if (o.refuseWrite?.some(path => at(e.path, path)) === true) return { deny: `EACCES: write refused, ${e.path}` }
+    if (o.refuseWrite?.some(path => isRefused(e.path, path)) === true) return { deny: `EACCES: write refused, ${e.path}` }
     const key = Object.keys(files.current).find(path => at(e.path, path)) ?? slashed(e.path)
     const text = o.mangleWrite?.some(path => at(e.path, path)) === true ? `${e.text}\n#` : e.text
     files.current[key] = { text, mtimeMs: o.now ?? 0 }
