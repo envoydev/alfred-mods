@@ -24,7 +24,8 @@ export async function noteKitLine($: EngineInterface, text: string, now: number)
   if (status === null) return
   const held = kitMemory.last
   const isSame = held !== null && JSON.stringify(held.status) === JSON.stringify(status)
-  const isFresh = held?.seenAt != null && now - held.seenAt < KIT_SEEN_REFRESH_MS
+  const heldAt = held === null ? null : held.seenAt
+  const isFresh = heldAt !== null && now - heldAt < KIT_SEEN_REFRESH_MS
   if (isSame && isFresh) return
   const next: KitState = { status, seenAt: now }
   kitMemory.last = next

@@ -1,7 +1,7 @@
 // Reads claude-kit's status line. Pure: text in, values out.
 import type { KitStatus, KitValue } from './types'
 import {
-  KIT_HEAD_END, KIT_ITEM, KIT_MARKER, KIT_NAMES, KIT_ON, NOT_SAVED_PREFIX, PASS_SCORE_MAX, PASS_SCORE_MIN, SAVED_PREFIX, WHOLE_NUMBER,
+  KIT_HEAD_END, KIT_ITEM, KIT_ITEM_END, KIT_MARKER, KIT_NAMES, KIT_ON, NOT_SAVED_PREFIX, PASS_SCORE_MAX, PASS_SCORE_MIN, SAVED_PREFIX, WHOLE_NUMBER,
 } from './constants'
 
 // The line's items in order and its note, or null where `text` holds no kit line. The read stops at the first thing that
@@ -16,7 +16,7 @@ export function parseKitStatus(text: string): KitStatus | null {
   let rest = text.slice(headEnd + KIT_HEAD_END.length).trimStart()
   while (rest !== '') {
     if (rest.startsWith(SAVED_PREFIX) || rest.startsWith(NOT_SAVED_PREFIX)) {
-      const end = rest.lastIndexOf(';')
+      const end = rest.lastIndexOf(KIT_ITEM_END)
       saved = (end === -1 ? rest : rest.slice(0, end)).trim()
       break
     }

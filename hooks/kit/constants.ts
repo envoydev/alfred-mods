@@ -6,6 +6,8 @@ export const SAVED_PREFIX = 'saved:'
 export const NOT_SAVED_PREFIX = 'not saved -'
 export const KIT_HOOK_EVENT = 'UserPromptSubmit'
 export const KIT_ON = 'on'
+// Ends each item and the note, so the note's text stops at the last one
+export const KIT_ITEM_END = ';'
 
 // One item: the name, the value (no blank in it, a cut one may end `...`), then the source in parentheses up to the
 // first `);`, so parentheses inside a source stay in it and no source runs past a `;`

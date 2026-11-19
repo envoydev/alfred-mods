@@ -404,11 +404,17 @@ export function spawns(on: On, table: Record<string, { agentId: string; model?: 
 // The latest value the mod wrote under each key, read beneath the plugin as the write lands, and every write in order
 // as JSON, so a test can look for text in any value the mod ever wrote
 export function watchState(on: On): { get(key: string): unknown; writes: string[] } {
+  return recordWrites(on, () => undefined)
+}
+
+// The one `state.set` hook of watchState and emptyState: `onWrite` hears the key of each write as it lands
+function recordWrites(on: On, onWrite: (key: string) => void): { get(key: string): unknown; writes: string[] } {
   const latest = new Map<string, unknown>()
   const writes: string[] = []
   on('state.set', async ($, e, next) => {
     writes.push(JSON.stringify(e.value))
     const r = await next(e)
+    onWrite(e.key)
     if (r.value?.isSet === true) {
       const v = e.value as { shape?: string; value?: unknown } | number
       latest.set(e.key, typeof v === 'object' && v !== null && 'shape' in v ? v.value : v)
@@ -530,20 +536,21 @@ export function seedState(on: On, seeds: Record<string, unknown>): void {
   })
 }
 
-// Answers a read of each key of `keys` as nothing stored, so the atom reads its initial value, as after the engine's own
-// reset, once the returned function is called and until the mod next writes that key
-export function emptyState(on: On, keys: string[]): () => void {
+// watchState and more: once `empty()` is called, a read of each key of `keys` answers as nothing stored (the StateRead's
+// value undefined, so the atom reads its initial value, as after the engine's own reset) until the mod next writes that
+// key. The test kit takes one `state.set` and one `state.get` hook, so a test that needs both uses this alone.
+export function emptyState(on: On, keys: string[]): { empty(): void; get(key: string): unknown; writes: string[] } {
   const emptied = new Set<string>()
-  on('state.set', async (_, e, next) => {
-    emptied.delete(e.key)
-    return next(e)
-  })
+  const watched = recordWrites(on, key => void emptied.delete(key))
   on('state.get', async (_, e, next) => {
     const stored = await next(e)
     return !emptied.has(e.key) || stored.value === undefined ? stored : { value: { ...stored.value, value: undefined } }
   })
-  return () => {
-    for (const key of keys) emptied.add(key)
+  return {
+    ...watched,
+    empty() {
+      for (const key of keys) emptied.add(key)
+    },
   }
 }
 
