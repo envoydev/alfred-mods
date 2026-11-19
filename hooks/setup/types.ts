@@ -1,9 +1,10 @@
-// The setup command's types: what '/alfred-mods <verb> [folder]' parses to
+// The setup commands' types: what the value typed after '/alfred-mods:init' or '/alfred-mods:configure' parses to
 import type { PlansFolder } from '../plan/types'
 
 export type SetupVerb = 'init' | 'configure' | 'update'
 
-export type SetupArgs = { verb: SetupVerb; folder: PlansFolder | null }
+// ok with a null folder is no value typed; not ok is a word that is no folder, or more than one word
+export type FolderValue = { ok: true; folder: PlansFolder | null } | { ok: false }
 
 // One plan or scores file listed in a root other than the chosen one; `name` is its file's name without `.json`
 export type ListedFile = { name: string; root: string; path: string; mtimeMs: number; size: number }

@@ -2,7 +2,7 @@
 // setup/effects.ts lists, copies and deletes.
 import { candidatesByName, isPlanDone } from '../plan/plan'
 import type { Plan } from '../plan/types'
-import { DONE_LINE, JSON_SUFFIX, LIST_SEPARATOR, LIVE_PLAN_MS, NOTHING_LINE, OLD_INSTALL_PREFIX, OLD_STATUS_DIR, SETUP_COMMAND } from './constants'
+import { DONE_LINE, JSON_SUFFIX, LIST_SEPARATOR, LIVE_PLAN_MS, NOTHING_LINE, OLD_INSTALL_PREFIX, OLD_STATUS_DIR, SLASH } from './constants'
 import type { ListedFile, MoveQueue } from './types'
 import { isRecord } from '../core/guards'
 import { sourceFileName } from '../settings/settings'
@@ -59,7 +59,7 @@ export const movedLine = (count: number, root: string): string => `moved ${count
 export const copiedLine = (count: number, root: string, from: readonly string[]): string =>
   `copied ${count} files to ${folderOf(root)} - remove the old copies in ${from.map(folderOf).join(LIST_SEPARATOR)} by hand`
 
-export const leftInPlaceLine = (name: string): string => `left in place: ${name} - its writer still uses it; run /${SETUP_COMMAND} update after it finishes`
+export const leftInPlaceLine = (name: string): string => `left in place: ${name} - its writer still uses it; run ${SLASH.update} after it finishes`
 
 export const notMovedLine = (name: string, root: string, kind: string): string =>
   `not moved: ${name} - its copy did not read back equal; check ${folderOf(`${root}/${kind}`)}`

@@ -350,7 +350,7 @@ const run = async ($: Engine, command: string, args: string): Promise<string> =>
 
 test('/band and /quiet are not registered', async ($, on) => {
   const { registered } = await start($, on)
-  expect(registered).toEqual(['inspect', 'rec', 'alfred-mods', 'auto-handoff'])
+  expect(registered).toEqual(['inspect', 'rec', 'auto-handoff'])
   // No hook of the mod answers them, so nothing beneath the plugins does either
   expect(await run($, 'band', 'calm').catch(() => null)).toBe(null)
   expect(await run($, 'quiet', 'off').catch(() => null)).toBe(null)

@@ -71,7 +71,7 @@ its tests to the run or takes it past `claude plugin test`'s limit of 1000 test 
   write under `.claude/`, so a skill writes them outside it unless the project chose `default`. The mod reads all three
   roots, the chosen one first, and a name held in more than one shows its newest file (the earlier root on a tie); a
   writer that has not caught up still shows. The writers' rule is in the README, 'Plan and score files'.
-  `/alfred-mods update` is the one writer of plan and score files in the mod: it copies one into the chosen root,
+  `/alfred-mods:update` is the one writer of plan and score files in the mod: it copies one into the chosen root,
   reads it back, and only then removes the source. No line leaves the core view as it is.
   Every phase is checked in both: a project without Alfred Code and one with it.
 - **Standalone.** The mod does not depend on, require, install or remove Alfred Code or any other plugin; the manifest
@@ -92,8 +92,12 @@ its tests to the run or takes it past `claude plugin test`'s limit of 1000 test 
   the new path under the root, under the root read at session start, the old path under the root, then the old path
   relative to the working folder (`statusPaths` in `hooks/handoff/handoff.ts`).
 - **The root holds only the mod's own plugin folders.** Claude Code scans a plugin root's default folders whatever the
-  manifest says, so `commands/`, `agents/`, `skills/`, `output-styles/`, `workflows/`, `monitors/`, `themes/`, `bin/`,
-  `.mcp.json`, `.lsp.json`, `settings.json` and a root `SKILL.md` never appear here unless the mod ships them. The one
+  manifest says, so `agents/`, `skills/`, `output-styles/`, `workflows/`, `monitors/`, `themes/`, `bin/`, `.mcp.json`,
+  `.lsp.json`, `settings.json` and a root `SKILL.md` never appear here unless the mod ships them. The mod ships
+  `commands/` (the user's ruling, 2026-11-19): `init.md`, `configure.md` and `update.md` name `/alfred-mods:init`,
+  `/alfred-mods:configure` and `/alfred-mods:update`, and each has its own `command.run` hook in `hooks/register.ts`,
+  which answers in place of the model (probed on 2.1.328). The markdown body is only the fallback for a host that runs
+  no mod hooks. No command is registered with `$.command.register` under the name `alfred-mods`. The one
   exception is a git-ignored, machine-local `.mcp.json` for development: it never ships, but a `claude --plugin-dir .`
   session reads it as the mod's own MCP server (`plugin details` lists it), so a check of what the mod adds to a
   session loads a copy of the files git lists, as `npm run validate` does.

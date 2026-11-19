@@ -1,4 +1,4 @@
-// The setup folder's effects: '/alfred-mods init|configure|update' and the pane that offers the choice. The plans
+// The setup folder's effects: '/alfred-mods:init', '/alfred-mods:configure' and '/alfred-mods:update', and the pane that offers the choice. The plans
 // folder is a project setting (.claude/settings.json), written only here.
 import type { EngineInterface } from 'claude-code'
 import type { MatchedInput } from '../core/types'
@@ -15,7 +15,7 @@ import {
   BUTTON_KEY_PREFIX, CHOICE_ORDER, GITIGNORE_FILE, JSON_SUFFIX, MORE_LINE, MOVE_CAP, NEW_STATUS_DIR, OLD_STATUS_DIR, REASON_MAX, RM_ARGV, RM_TIMEOUT_MS,
   SETUP_PANE_ID, SETUP_PANE_TITLE, SETUP_USAGE,
 } from './constants'
-import { choiceLines, configuredLine, livesLine, parseSetupArgs, setupPaneLines, shadowLine, unplacedLine, writerNote } from './setup'
+import { choiceLines, configuredLine, livesLine, hasNoValue, parseFolderValue, setupPaneLines, shadowLine, unplacedLine, writerNote } from './setup'
 import type { Copy, CopyResult, ListedFile } from './types'
 import {
   closeReport, copiedLine, copyPath, coversRoot, earlierChoicesLine, failureLine, gitignoreAppend, gitignoreByHandLine, gitignoreLine, folderPathOf, isLivePlan, keptBothLine,
@@ -185,7 +185,7 @@ async function oldStatusFiles($: EngineInterface): Promise<string[]> {
 
 const reasonOf = (error: unknown): string => oneLine(error instanceof Error ? error.message : 'unknown error', REASON_MAX)
 
-// The report of /alfred-mods update on `folder`, a line for each step with work and a closing line. Every root and
+// The report of /alfred-mods:update on `folder`, a line for each step with work and a closing line. Every root and
 // line comes from `folder`, never from the settings in force: a press has just written it and they are stale. A step that
 // fails ends the run on a line naming the reason, with the lines before it kept.
 async function runUpdate($: EngineInterface, folder: PlansFolder): Promise<string[]> {
@@ -243,25 +243,41 @@ async function offerChoices($: EngineInterface): Promise<string> {
   return opened === undefined || opened.isPlaced ? text : `${text}\n${unplacedLine(opened.reason)}`
 }
 
-export async function runSetupCommand($: EngineInterface, e: MatchedInput<'command.run', { command: 'alfred-mods' }>): Promise<{ text: string }> {
-  const args = parseSetupArgs(e.args)
-  if (args === null) return { text: SETUP_USAGE }
+// The two commands that take a folder differ in what they do with it: init also runs update, configure only writes
+async function writeFolder($: EngineInterface, verb: 'init' | 'configure', folder: PlansFolder): Promise<string> {
+  const chosen = await chooseFolder($, folder)
+  if (!chosen.ok) return chosen.why
+  if (verb === 'init') return [...confirmed(chosen), ...(await runUpdate($, chosen.folder))].join('\n')
+  // The shadow line already says which folder is in force, so it is not said again as the closing line
+  const noted = chosen.note === null ? [] : [chosen.note]
+  return (chosen.isShadowed ? [chosen.first, ...noted] : [...noted, configuredLine(chosen.folder)]).join('\n')
+}
+
+async function runFolderCommand($: EngineInterface, verb: 'init' | 'configure', args: string): Promise<{ text: string }> {
+  const value = parseFolderValue(args)
+  if (!value.ok) return { text: SETUP_USAGE }
   // The files are read first, so a session that has not polled answers from what they hold now
   await loadSettings($)
+  if (value.folder !== null) return { text: await writeFolder($, verb, value.folder) }
   const inForce = plansFolderInForce()
-  if (args.verb === 'update') return { text: (await runUpdate($, inForce.folder)).join('\n') }
-  if (args.folder !== null) {
-    const chosen = await chooseFolder($, args.folder)
-    if (!chosen.ok) return { text: chosen.why }
-    if (args.verb === 'init') return { text: [...confirmed(chosen), ...(await runUpdate($, chosen.folder))].join('\n') }
-    // The shadow line already says which folder is in force, so it is not said again as the closing line
-    const noted = chosen.note === null ? [] : [chosen.note]
-    return { text: (chosen.isShadowed ? [chosen.first, ...noted] : [...noted, configuredLine(chosen.folder)]).join('\n') }
-  }
-  if (args.verb === 'init' && inForce.from !== 'default') {
+  if (verb === 'init' && inForce.from !== 'default') {
     return { text: [livesLine(inForce.folder, sourceFileName(inForce.from), true), ...(await runUpdate($, inForce.folder))].join('\n') }
   }
   return { text: await offerChoices($) }
+}
+
+export function runInitCommand($: EngineInterface, e: MatchedInput<'command.run', { command: 'alfred-mods:init' }>): Promise<{ text: string }> {
+  return runFolderCommand($, 'init', e.args)
+}
+
+export function runConfigureCommand($: EngineInterface, e: MatchedInput<'command.run', { command: 'alfred-mods:configure' }>): Promise<{ text: string }> {
+  return runFolderCommand($, 'configure', e.args)
+}
+
+export async function runUpdateCommand($: EngineInterface, e: MatchedInput<'command.run', { command: 'alfred-mods:update' }>): Promise<{ text: string }> {
+  if (!hasNoValue(e.args)) return { text: SETUP_USAGE }
+  await loadSettings($)
+  return { text: (await runUpdate($, plansFolderInForce().folder)).join('\n') }
 }
 
 export async function drawSetupPane($: EngineInterface, e: MatchedInput<'ui.render', { component: 'Pane', requestId: 'alfred-mods-setup' }>) {

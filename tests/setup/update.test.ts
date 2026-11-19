@@ -72,9 +72,9 @@ test('the report lines read as the spec gives them', () => {
     'copied 2 files to .alfred-mods/ - remove the old copies in .claude/session-inspector/plans/, .claude/session-inspector/scores/ by hand',
   )
   expect(notMovedLine('p', '.alfred-mods', 'plans')).toBe('not moved: p - its copy did not read back equal; check .alfred-mods/plans/')
-  expect(leftInPlaceLine('p')).toBe('left in place: p - its writer still uses it; run /alfred-mods update after it finishes')
+  expect(leftInPlaceLine('p')).toBe('left in place: p - its writer still uses it; run /alfred-mods:update after it finishes')
   expect(keptBothLine('p')).toBe('kept both: p (the newer one shows)')
-  expect(MORE_LINE).toBe('more to move - run /alfred-mods update again')
+  expect(MORE_LINE).toBe('more to move - run /alfred-mods:update again')
   expect(gitignoreLine('.alfred-mods')).toBe('added .alfred-mods/ to .gitignore')
   expect(earlierChoicesLine(['band', 'rec'])).toBe('wrote your earlier choices to ~/.claude/settings.json: band, rec')
   expect(oldInstallLine('session-inspector@envoydev')).toBe(

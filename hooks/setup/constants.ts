@@ -2,15 +2,16 @@
 import type { PlansFolder } from '../plan/types'
 import type { SetupVerb } from './types'
 
-export const SETUP_COMMAND = 'alfred-mods'
+// The three commands as typed; the plugin's commands/ folder names them and each has a command.run hook of its own
+export const SLASH: Readonly<Record<SetupVerb, string>> = {
+  init: '/alfred-mods:init',
+  configure: '/alfred-mods:configure',
+  update: '/alfred-mods:update',
+}
 
-export const SETUP_VERBS: readonly SetupVerb[] = ['init', 'configure', 'update']
+export const FOLDER_VALUES_HINT = '[default|.alfred|.alfred-mods]'
 
-export const SETUP_ARGUMENT_HINT = 'init | configure [default|.alfred|.alfred-mods] | update'
-
-export const SETUP_USAGE = `Usage: /${SETUP_COMMAND} ${SETUP_ARGUMENT_HINT}`
-
-export const SETUP_DESCRIPTION = 'Choose the folder plans and scores live in (plansFolder in .claude/settings.json), and move the files there'
+export const SETUP_USAGE = `Usage: ${SLASH.init} ${FOLDER_VALUES_HINT} | ${SLASH.configure} ${FOLDER_VALUES_HINT} | ${SLASH.update}`
 
 export const SETUP_PANE_ID = 'alfred-mods-setup'
 
@@ -53,7 +54,7 @@ export const OLD_STATUS_DIR = '.claude/session-inspector/status'
 
 export const NEW_STATUS_DIR = '.alfred/state/sessions/status'
 
-export const MORE_LINE = 'more to move - run /alfred-mods update again'
+export const MORE_LINE = `more to move - run ${SLASH.update} again`
 
 export const DONE_LINE = 'update done'
 

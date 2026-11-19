@@ -326,7 +326,7 @@ async function readWatched<T>(
 
 type Listed = { name: string; mtimeMs: number; size: number; path: string }
 
-// The files `/alfred-mods update` copied, by path: the source's mtimeMs, and the copy's own mtimeMs and size as the
+// The files `/alfred-mods:update` copied, by path: the source's mtimeMs, and the copy's own mtimeMs and size as the
 // update saw them. A copy is written now, but it is as old as its source: a fresh mtimeMs would make an old plan look
 // written this session. A write after the copy changes the listed mtimeMs or size, which ends the stand-in. A new claude
 // run starts over.

@@ -1,4 +1,4 @@
-// /alfred-mods update: plan and scores files moved into the chosen root, the .gitignore line and what old versions left
+// /alfred-mods:update: plan and scores files moved into the chosen root, the .gitignore line and what old versions left
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
@@ -17,7 +17,7 @@ const OLD_SCORES = '.claude/session-inspector/scores'
 const DONE = planText({ S1: 'done', S2: 'done', S3: 'done', S4: 'done', S5: 'done' })
 const PENDING = planText({ S1: 'done' })
 const SCORES = '{"version":1,"slug":"p"}'
-const LEFT = 'left in place: p - its writer still uses it; run /alfred-mods update after it finishes'
+const LEFT = 'left in place: p - its writer still uses it; run /alfred-mods:update after it finishes'
 const mod = (fields: Record<string, unknown>): Record<string, unknown> => ({ 'alfred-mods': fields })
 const stub = (text: string, mtimeMs = OLD): FileStub => ({ text, mtimeMs })
 
@@ -27,8 +27,8 @@ async function start($: Engine, on: On, o: Parameters<typeof stubAll>[1] = {}) {
   await $.session.start(START)
   return kit
 }
-const alfred = async ($: Engine, args: string): Promise<string[]> =>
-  ((await $.command.run({ command: 'alfred-mods', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } })).text ?? '').split('\n')
+const alfred = async ($: Engine, verb: string, args = ''): Promise<string[]> =>
+  ((await $.command.run({ command: `alfred-mods:${verb}`, args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 120 } })).text ?? '').split('\n')
 
 test('a plan in the old folder moves to the chosen root and one rm gets its path', async ($, on) => {
   const { files, rm } = await start($, on, { files: { [`${OLD_PLANS}/p.json`]: stub(DONE) } })
@@ -150,7 +150,7 @@ test('51 files print the cap line and move 50', async ($, on) => {
   const many: Record<string, FileStub> = {}
   for (let i = 0; i < 51; i++) many[`${OLD_PLANS}/f${String(i).padStart(2, '0')}.json`] = stub(DONE)
   const { rm } = await start($, on, { files: many })
-  expect(await alfred($, 'update')).toEqual(['moved 50 plan and scores files to .alfred-mods/', 'more to move - run /alfred-mods update again', 'update done'])
+  expect(await alfred($, 'update')).toEqual(['moved 50 plan and scores files to .alfred-mods/', 'more to move - run /alfred-mods:update again', 'update done'])
   expect(rm.calls[0]).toHaveLength(3 + 50)
 })
 
@@ -226,7 +226,7 @@ test('init .alfred moves into the folder just written and adds that root to .git
   const { files, rm } = await start($, on, {
     sources: { project: mod({ plansFolder: 'default' }) }, files: { [`${OLD_PLANS}/p.json`]: stub(DONE), '.gitignore': stub('x\n') },
   })
-  const lines = await alfred($, 'init .alfred')
+  const lines = await alfred($, 'init', '.alfred')
   expect(lines).toContain('moved 1 plan and scores files to .alfred/alfred-mods/')
   expect(lines).toContain('added .alfred/alfred-mods/ to .gitignore')
   expect(fileAt(files, '.alfred/alfred-mods/plans/p.json')).toBe(DONE)
@@ -260,7 +260,7 @@ test('50 plans and one scores file past the cap print the more line', async ($, 
   const many: Record<string, FileStub> = { [`${OLD_SCORES}/s.json`]: stub(SCORES) }
   for (let i = 0; i < 50; i++) many[`${OLD_PLANS}/f${String(i).padStart(2, '0')}.json`] = stub(DONE)
   const { rm } = await start($, on, { files: many })
-  expect(await alfred($, 'update')).toEqual(['moved 50 plan and scores files to .alfred-mods/', 'more to move - run /alfred-mods update again', 'update done'])
+  expect(await alfred($, 'update')).toEqual(['moved 50 plan and scores files to .alfred-mods/', 'more to move - run /alfred-mods:update again', 'update done'])
   expect(rm.calls[0]).not.toContain(`${OLD_SCORES}/s.json`)
 })
 

@@ -7,7 +7,6 @@ import { notePermissionMode, resetBlockers, resetFailures, resetQuiet, resetStat
 import { openKeepWindow, readStatusFile, readStatusAfterStartOver, rememberStartRoot, resetStack } from '../stack/effects'
 import { queuePlanReload, resetCredit, resetPlans, resetTasks, restartPlanWatch, schedulePlanReload, seedSessionTimes, startPlanWatch, readStoredTimes } from '../plan/effects'
 import { forgetRecNote, readRecHome, resetRec } from '../rec/effects'
-import { SETUP_ARGUMENT_HINT, SETUP_COMMAND, SETUP_DESCRIPTION } from '../setup/constants'
 import { fillResumePrompt, forgetHandoffSteps, resetHandoff } from '../handoff/effects'
 import { isLive } from '../agents/agents'
 import { billingOf, needsTick } from '../cache/cache'
@@ -183,7 +182,6 @@ export async function startSession($: EngineInterface, e: HookInput<'session.sta
   const started = await next(e)
   await $.command.register({ name: 'inspect', description: 'Session metrics, agents, tool failures, cache, the timeline, the plan and the last prompt in a pane', argumentHint: '[now|usage|agents|tools|cache|timeline|plan [name]|prompt|close|show [n]|copy [n]|report [n]|fill|band off|calm|full]' })
   await $.command.register({ name: 'rec', description: 'Recording mode: set "rec" in ~/.claude/settings.json, show the level, test it, or edit your private words', argumentHint: '[on|strict|off|test|words [close]]' })
-  await $.command.register({ name: SETUP_COMMAND, description: SETUP_DESCRIPTION, argumentHint: SETUP_ARGUMENT_HINT })
   await $.command.register({ name: 'auto-handoff', description: 'Save a handoff now, set the handoff mode or first ask in ~/.claude/settings.json, or show them', argumentHint: '[ask|auto|off|at <percent>|now|compact|later]' })
   await readRecHome($)
   await loadSettings($, true)

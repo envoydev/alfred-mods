@@ -20,7 +20,7 @@ import { drawRecPane, maskAssistantMessage, maskCommandOutput, maskQuestions, ma
 import { drawBandAbove, drawBandAboveFailed, drawBandUnder, drawBandUnderFailed, drawSpinner } from './band/effects'
 import { trackRuleLoad } from './context/effects'
 import { drawInspectPane, runInspectCommand } from './inspect/effects'
-import { drawSetupPane, runSetupCommand } from './setup/effects'
+import { drawSetupPane, runConfigureCommand, runInitCommand, runUpdateCommand } from './setup/effects'
 import type { ToolCall } from './tools/types'
 import type { Pending } from './core/types'
 import { reloadSettingsSoon } from './settings/effects'
@@ -126,9 +126,12 @@ export const register: Register = (on, options) => {
   // answers with the level in force, never its own copy
   on('command.run', { command: 'rec' }, ($, e) => runRecCommand($, e)).catch(($, e, next) => ({ text: commandFailed('/rec', next.error.kind) }))
 
-  // '/alfred-mods init|configure [folder]|update': the plans folder, a project setting written only here; the pane offers
-  // the same choices as buttons and closes only when the person closes it
-  on('command.run', { command: 'alfred-mods' }, ($, e) => runSetupCommand($, e)).catch(($, e, next) => ({ text: commandFailed('/alfred-mods', next.error.kind) }))
+  // '/alfred-mods:init [folder]', '/alfred-mods:configure [folder]' and '/alfred-mods:update': the plans folder, a project
+  // setting written only here, and the files moved to it. The plugin's commands/ folder names each command; the hook
+  // answers it, and init and configure offer the same choices as buttons in a pane that closes only when the person closes it
+  on('command.run', { command: 'alfred-mods:init' }, ($, e) => runInitCommand($, e)).catch(($, e, next) => ({ text: commandFailed('/alfred-mods:init', next.error.kind) }))
+  on('command.run', { command: 'alfred-mods:configure' }, ($, e) => runConfigureCommand($, e)).catch(($, e, next) => ({ text: commandFailed('/alfred-mods:configure', next.error.kind) }))
+  on('command.run', { command: 'alfred-mods:update' }, ($, e) => runUpdateCommand($, e)).catch(($, e, next) => ({ text: commandFailed('/alfred-mods:update', next.error.kind) }))
 
   // '/auto-handoff [ask|auto|off|at <percent>|now]': the mode and the first ask are settings values (S5) that ask, auto,
   // off and at <percent> write into the user file (the user's ruling, 2026-11-12); a bare form reads the files first

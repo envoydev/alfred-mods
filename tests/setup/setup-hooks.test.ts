@@ -1,4 +1,4 @@
-// /alfred-mods init and configure: the field written into the project's settings file, the choices as text and as a
+// /alfred-mods:init and /alfred-mods:configure: the field written into the project's settings file, the choices as text and as a
 // pane, and the update a choice runs (its steps are update-hooks.test.ts's; here the folder it runs on is checked)
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
@@ -21,8 +21,8 @@ async function start($: Engine, on: On, o: Parameters<typeof stubAll>[1] = {}) {
   await $.session.start(START)
   return kit
 }
-const alfred = async ($: Engine, args: string): Promise<string> =>
-  (await $.command.run({ command: 'alfred-mods', args, origin: { kind: 'composer' }, presentation: PRESENTATION })).text ?? ''
+const alfred = async ($: Engine, verb: string, args = ''): Promise<string> =>
+  (await $.command.run({ command: `alfred-mods:${verb}`, args, origin: { kind: 'composer' }, presentation: PRESENTATION })).text ?? ''
 const setupPane = ($: Engine) =>
   $.ui.mount({ plugin: 'alfred-mods', surface: 'terminal', component: 'Pane', requestId: 'alfred-mods-setup', props: PANE })
 // The kit's invalidate only records the call, so the pane is mounted again to draw what a press left
@@ -32,14 +32,21 @@ async function again($: Engine, ui: { unmount: () => Promise<void> }): Promise<s
 }
 const fieldIn = (text: string | undefined): unknown => (JSON.parse(text ?? '{}') as Record<string, Record<string, unknown>>)['alfred-mods']?.plansFolder
 
-test('the command is registered', async ($, on) => {
+test('no alfred-mods command is registered: the plugin namespace comes from the commands folder', async ($, on) => {
   const { registered } = await start($, on)
-  expect(registered).toContain('alfred-mods')
+  expect(registered).not.toContain('alfred-mods')
+  expect(registered.filter(name => name.startsWith('alfred-mods'))).toEqual([])
+})
+
+test('the bare alfred-mods command, which the verbs replaced, is answered by no hook', async ($, on) => {
+  await start($, on)
+  const bare = await $.command.run({ command: 'alfred-mods', args: 'init .alfred', origin: { kind: 'composer' }, presentation: PRESENTATION }).catch(() => null)
+  expect(bare).toBe(null)
 })
 
 test('init with a folder writes the project file, runs update on it and prints the writer note', async ($, on) => {
   const { files } = await start($, on)
-  const text = await alfred($, 'init .alfred')
+  const text = await alfred($, 'init', '.alfred')
   expect(fieldIn(fileAt(files, PROJECT))).toBe('.alfred')
   expect(text.split('\n')).toEqual([
     'Plans live in .alfred/alfred-mods/ (plansFolder ".alfred" in .claude/settings.json)', NOTE, 'nothing to update',
@@ -48,20 +55,20 @@ test('init with a folder writes the project file, runs update on it and prints t
 
 test('init with the recommended folder prints no writer note', async ($, on) => {
   const { files } = await start($, on)
-  const text = await alfred($, 'init .alfred-mods')
+  const text = await alfred($, 'init', '.alfred-mods')
   expect(fieldIn(fileAt(files, PROJECT))).toBe('.alfred-mods')
   expect(text).not.toContain('claude-kit')
 })
 
 test('init with a folder passes the folder just written to update while the settings in force are stale', async ($, on) => {
   const { files } = await start($, on, { sources: { project: mod({ plansFolder: 'default' }) }, files: plan('.alfred-mods/plans/p.json') })
-  expect((await alfred($, 'init .alfred')).split('\n')).toContain('moved 1 plan and scores files to .alfred/alfred-mods/')
+  expect((await alfred($, 'init', '.alfred')).split('\n')).toContain('moved 1 plan and scores files to .alfred/alfred-mods/')
   expect(fileAt(files, '.alfred/alfred-mods/plans/p.json')).toBe(DONE)
 })
 
 test('init with the field set in a file prints where plans live and runs update, writing nothing', async ($, on) => {
   const { files, opened } = await start($, on, { sources: { project: mod({ plansFolder: '.alfred' }) } })
-  expect(await alfred($, 'init')).toBe('Plans live in .alfred/alfred-mods/ (plansFolder ".alfred" in .claude/settings.json) - /alfred-mods configure changes it\nnothing to update')
+  expect(await alfred($, 'init')).toBe('Plans live in .alfred/alfred-mods/ (plansFolder ".alfred" in .claude/settings.json) - /alfred-mods:configure changes it\nnothing to update')
   expect(files.writes).toEqual([])
   expect(opened).not.toContain('alfred-mods-setup')
 })
@@ -69,9 +76,9 @@ test('init with the field set in a file prints where plans live and runs update,
 test('init with the field unset prints the three choices and opens the pane', async ($, on) => {
   const { files, opened, escapes } = await start($, on)
   const text = await alfred($, 'init')
-  expect(text).toContain('/alfred-mods init .alfred-mods (recommended - no permission asks)')
-  expect(text).toContain("/alfred-mods init .alfred (beside Alfred Code's state)")
-  expect(text).toContain('/alfred-mods init default (.claude/session-inspector - Claude Code asks before each write)')
+  expect(text).toContain('/alfred-mods:init .alfred-mods (recommended - no permission asks)')
+  expect(text).toContain("/alfred-mods:init .alfred (beside Alfred Code's state)")
+  expect(text).toContain('/alfred-mods:init default (.claude/session-inspector - Claude Code asks before each write)')
   expect(text).not.toContain('(now)')
   expect(opened).toContain('alfred-mods-setup')
   expect(escapes).toContain('alfred-mods-setup')
@@ -81,22 +88,22 @@ test('init with the field unset prints the three choices and opens the pane', as
 test('configure with a local value marks it (now) and opens the pane', async ($, on) => {
   const { opened } = await start($, on, { sources: { local: mod({ plansFolder: '.alfred' }) } })
   const text = await alfred($, 'configure')
-  expect(text).toContain("/alfred-mods init .alfred (beside Alfred Code's state) (now)")
+  expect(text).toContain("/alfred-mods:init .alfred (beside Alfred Code's state) (now)")
   expect(text.match(/\(now\)/g)).toHaveLength(1)
   expect(opened).toContain('alfred-mods-setup')
 })
 
 test('configure with a folder writes it, moves nothing and says how to move the files', async ($, on) => {
   const { files } = await start($, on)
-  const text = await alfred($, 'configure .alfred')
+  const text = await alfred($, 'configure', '.alfred')
   expect(fieldIn(fileAt(files, PROJECT))).toBe('.alfred')
-  expect(text.split('\n')).toEqual([NOTE, 'plansFolder is ".alfred" - /alfred-mods update moves the files'])
+  expect(text.split('\n')).toEqual([NOTE, 'plansFolder is ".alfred" - /alfred-mods:update moves the files'])
   expect(text).not.toContain('nothing to update')
 })
 
 test('a higher file that wins over the value written is named, and update follows the one in force', async ($, on) => {
   await start($, on, { sources: { local: mod({ plansFolder: 'default' }) }, files: plan('.alfred-mods/plans/p.json') })
-  const text = await alfred($, 'init .alfred')
+  const text = await alfred($, 'init', '.alfred')
   expect(text.split('\n')).toEqual([
     'plansFolder is "default" in .claude/settings.local.json, which wins over the value written', NOTE,
     'moved 1 plan and scores files to .claude/session-inspector/', 'update done',
@@ -105,27 +112,43 @@ test('a higher file that wins over the value written is named, and update follow
 
 test('under a shadow the writer note follows the folder in force, not the value written', async ($, on) => {
   await start($, on, { sources: { local: mod({ plansFolder: '.alfred-mods' }) } })
-  const text = await alfred($, 'init .alfred')
+  const text = await alfred($, 'init', '.alfred')
   expect(text.split('\n')).toEqual(['plansFolder is ".alfred-mods" in .claude/settings.local.json, which wins over the value written', 'nothing to update'])
   expect(text).not.toContain('claude-kit')
 })
 
 test('configure with a value under a shadow prints the shadow line once and no closing line repeating it', async ($, on) => {
   await start($, on, { sources: { local: mod({ plansFolder: 'default' }) } })
-  expect((await alfred($, 'configure .alfred')).split('\n')).toEqual([
+  expect((await alfred($, 'configure', '.alfred')).split('\n')).toEqual([
     'plansFolder is "default" in .claude/settings.local.json, which wins over the value written', NOTE,
   ])
 })
 
 test('a project file that does not parse is refused and nothing is written', async ($, on) => {
   const { files } = await start($, on, { files: { [PROJECT]: { text: '{ bad', mtimeMs: 0 } } })
-  for (const args of ['init .alfred', 'configure .alfred']) expect(await alfred($, args)).toBe('.claude/settings.json does not parse - plansFolder not written')
+  for (const verb of ['init', 'configure']) expect(await alfred($, verb, '.alfred')).toBe('.claude/settings.json does not parse - plansFolder not written')
   expect(files.writes).toEqual([])
 })
 
-test('an unknown verb or folder prints the usage line', async ($, on) => {
-  await start($, on)
-  for (const args of ['frob', '', 'init bogus']) expect(await alfred($, args)).toBe('Usage: /alfred-mods init | configure [default|.alfred|.alfred-mods] | update')
+const USAGE = 'Usage: /alfred-mods:init [default|.alfred|.alfred-mods] | /alfred-mods:configure [default|.alfred|.alfred-mods] | /alfred-mods:update'
+
+test('an unknown folder or an extra word prints the usage line, whichever command was typed', async ($, on) => {
+  const { files } = await start($, on)
+  for (const verb of ['init', 'configure']) for (const args of ['bogus', '.alfred default']) expect(await alfred($, verb, args)).toBe(USAGE)
+  expect(files.writes).toEqual([])
+})
+
+test('update takes no value: one given prints the usage line and moves nothing', async ($, on) => {
+  const { files } = await start($, on, { files: plan('.alfred-mods/plans/p.json') })
+  expect(await alfred($, 'update', '.alfred')).toBe(USAGE)
+  expect(files.writes).toEqual([])
+})
+
+test('the verb comes from the command that ran: the same value does a different thing for init and configure', async ($, on) => {
+  const { files } = await start($, on, { files: plan('.alfred-mods/plans/p.json') })
+  expect(await alfred($, 'configure', '.alfred')).not.toContain('moved')
+  expect(files.writes).not.toContain('.alfred/alfred-mods/plans/p.json')
+  expect(await alfred($, 'init', '.alfred')).toContain('moved 1 plan and scores files to .alfred/alfred-mods/')
 })
 
 test('update prints its report for the folder in force', async ($, on) => {
