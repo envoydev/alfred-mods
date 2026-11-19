@@ -23,6 +23,7 @@ A mod is a Claude Code plugin whose hooks run inside Claude Code, so it can watc
 - [Recording mode](#recording-mode)
 - [Handoff](#handoff)
 - [With Alfred Code](#with-alfred-code)
+- [With claude-kit](#with-claude-kit)
 - [Plan and score files](#plan-and-score-files)
 - [Development](#development)
 
@@ -101,7 +102,7 @@ organization's managed settings allow only its own mods
 
 1. [Install](#install) it and run `/reload-plugins`. The band appears above the prompt; Ctrl+X Ctrl+A folds it away
    and back, and `/inspect band off` hides it until `/inspect band full`.
-2. Run `/inspect` for the pane with the details: Now, Usage, Agents, Tools, Cache, Timeline and Plan. Esc at an
+2. Run `/inspect` for the pane with the details: Now, Usage, Agents, Tools, Cache, Timeline, Plan and Prompt. Esc at an
    empty prompt, or `/inspect close`, closes it.
 3. Change what you want in `~/.claude/settings.json`, under one `"alfred-mods"` key beside the keys the file already
    has. Add only the fields you change; here is every field with its default:
@@ -152,8 +153,8 @@ code.
 
 ## Commands
 
-- **`/inspect [now|usage|agents|tools|cache|timeline|plan [name]]`** opens the pane on a tab, Now when none is named.
-  In the pane, `n`, `u`, `a`, `t`, `k`, `l` and `p` switch tabs. `/inspect plan <name>` pins the plan file
+- **`/inspect [now|usage|agents|tools|cache|timeline|plan [name]|prompt]`** opens the pane on a tab, Now when none is
+  named. In the pane, `n`, `u`, `a`, `t`, `k`, `l`, `p` and `m` switch tabs. `/inspect plan <name>` pins the plan file
   `<name>.json`; `/inspect plan` alone returns to the newest.
 - **`/inspect band off`, `calm`, `full`** set the band's mode, the `"band"` field, in your user file: `off` draws no
   band, above or under. **`/inspect band`** alone prints the mode and the file it comes from.
@@ -486,6 +487,10 @@ open session; a bare `/rec` or `/auto-handoff` reads the files again at once. A 
   handoff stands down ([Handoff](#handoff)), and the mod shows the stack's mode banner, the context runway measured
   against the stack's resume trigger, and an ALFRED CODE section whose `f` fills the stack's ready resume prompt
   ([With Alfred Code](#with-alfred-code)).
+- **With claude-kit:** where claude-kit's hook adds its `kit status (` line to your requests, the band's kit banner and
+  a CLAUDE-KIT section in the Now tab show the kit's modes ([With claude-kit](#with-claude-kit)).
+- **The Prompt tab** (`/inspect prompt`, `m`): what the main loop's last turn carried for the model, besides what you
+  typed ([The Prompt tab](#the-prompt-tab)).
 
 If the band or the pane fails to draw, it shows one dim line naming the failure, such as `alfred-mods: the band
 failed to draw (throw)`, instead of going blank.
@@ -762,6 +767,47 @@ Without Alfred Code, or when the file is missing, has another schema or names an
 this, and the ALFRED CODE section shows one dim line with the reason, such as `Alfred Code: no status file for this
 session`. The file is the stack's: the mod never writes it, and reads nothing else of the stack but the two files of the
 plan folder it names.
+
+## With claude-kit
+
+In a project where claude-kit is installed, its `UserPromptSubmit` hook adds
+a line starting `kit status (` to each request. The mod reads that line from the request, never a file of the kit's, and
+shows its values. The mod does not depend on claude-kit: without the line, none of this draws.
+
+- **The kit banner:** `kit: auto-run · scoring 90 · auto-approve │` follows Alfred Code's banner on the band's first line,
+  naming only the modes that are on (`scoring` carries the pass score). With none on, there is no banner. Where it
+  would change anything else in the band, it shortens to `kit`, and where even that would, it drops out.
+- **The CLAUDE-KIT section** in the Now tab, after ALFRED CODE: a row each for auto-run, scoring and auto-approve with
+  its value and the file it comes from (`auto-run on · from .claude/kit/settings.json`), the pass score, the five
+  models (`plan opus · audit opus · review opus · implement sonnet · search haiku`), the hook's `saved:` or
+  `not saved -` note when it gave one, and `seen <time> ago`. A turn that carries no line leaves the last one shown,
+  so the `seen` age tells how old the values are. A `/clear` keeps the values until the next line.
+- **The score's colour:** Alfred Code's scoring level where it gives one, else the kit's pass score while scoring is on,
+  when that is a whole number from 1 to 100.
+- **Plans and scores:** the kit's plans and scores reach the mod through the files in
+  [Plan and score files](#plan-and-score-files), once claude-kit publishes them. That is asked of claude-kit and is not
+  done yet: until it is, the Plan tab shows no kit plan.
+
+The mod never writes any of this. Add `.claude/session-inspector/` to a project's `.gitignore`, as the plan and score
+files the kit publishes there are not for the repository.
+
+### The Prompt tab
+
+`/inspect prompt`, or `m` in the pane, shows what the main loop's last turn carried for the model beside your typed
+text. Subagents' turns are left out. The first line reads `Last turn · <time> · you <n> chars · <parts> parts ·
+<total> chars`, then three groups, each only when it has parts:
+
+- **From hooks:** each part as `<event> · <type> · <chars>`, then its text.
+- **From plugins:** each part as `<event> · <chars>`, then its text.
+- **From Claude Code:** one row a part, `<type> · <chars>` and the text's first line.
+
+The turn starts at your prompt and runs to the next one, so a hook's context or a file's note inside it belongs to it.
+A record keeps the newest 60 parts (`<n> dropped` counts the rest) and each part's first 4,000 characters; a cut text
+ends `… (<chars> chars)`. Before a first turn the tab reads `No turn yet in this session.`
+
+The text stays in the session's memory (`$.state`) and nothing of it goes to a file, a log or the store. `/clear`, a
+resume and a fork empty the tab. Any plugin can read a `$.state` value, which gives it nothing it could not read from
+the same event.
 
 ## Plan and score files
 

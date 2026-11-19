@@ -266,7 +266,7 @@ table.steps { min-width: 720px; }
 
     <section class="panel" aria-label="The /inspect pane">
       <div><h2>The /inspect pane - the details behind the band</h2>
-        <p class="muted">Type <code>/inspect</code> and a pane opens with seven tabs, each answering one question. <code>/inspect usage</code> opens it on a tab; with the keys in the pane (Ctrl+X Tab), <code>n</code> <code>u</code> <code>a</code> <code>t</code> <code>k</code> <code>l</code> <code>p</code> switch tabs. Esc at an empty prompt, or <code>/inspect close</code>, closes it. <span id="placement"></span></p></div>
+        <p class="muted">Type <code>/inspect</code> and a pane opens with eight tabs, each answering one question. <code>/inspect usage</code> opens it on a tab; with the keys in the pane (Ctrl+X Tab), <code>n</code> <code>u</code> <code>a</code> <code>t</code> <code>k</code> <code>l</code> <code>p</code> <code>m</code> switch tabs. Esc at an empty prompt, or <code>/inspect close</code>, closes it. <span id="placement"></span></p></div>
       <div class="subtabs" role="tablist" aria-label="The pane's tabs" id="paneTabs"></div>
       <div role="tabpanel" id="panePanel" style="display:grid;gap:8px;min-width:0">
         <div><h3 id="paneAsk"></h3><p class="muted small" id="paneNote"></p></div>
@@ -3585,11 +3585,11 @@ let paneRaw = store.get('pane-raw') || JSON.stringify(PANE0, null, 2);
 let pane; try { pane = JSON.parse(paneRaw); } catch { pane = JSON.parse(JSON.stringify(PANE0)); }
 let paneW = store.get('pane-w') || 90;
 
-const TABS = ['Now', 'Usage', 'Agents', 'Tools', 'Cache', 'Timeline', 'Plan'];
+const TABS = ['Now', 'Usage', 'Agents', 'Tools', 'Cache', 'Timeline', 'Plan', 'Prompt'];
 // The question each tab answers
 const TAB_ASKS = {
   Now: 'What needs me right now?', Usage: 'What fills the context and my limits?', Agents: 'What are the subagents doing?',
-  Tools: 'Which calls ran, and which failed?', Cache: 'When does the cache go cold?', Timeline: 'What did each turn take?', Plan: 'How far is the plan?'
+  Tools: 'Which calls ran, and which failed?', Cache: 'When does the cache go cold?', Timeline: 'What did each turn take?', Plan: 'How far is the plan?', Prompt: 'What did the last turn carry for the model?'
 };
 let paneTab = TABS.includes(store.get('pane-tab')) ? store.get('pane-tab') : 'Now';
 const TAB_NOTES = {
@@ -3599,7 +3599,8 @@ const TAB_NOTES = {
   Tools: 'Calls per tool from the band\'s tools list, with failures and blocks from the pane data. Under 45 columns the name column narrows.',
   Cache: 'When the prompt cache goes cold and what rewriting it would cost.',
   Timeline: 'One row per turn. Under 61 columns the "you" column drops out.',
-  Plan: 'The plan file\'s steps with times and estimates (projected ×1.2 from finished steps), then the scorer\'s rounds. Empty "planSteps" in the JSON shows the no-plan state.'
+  Plan: 'The plan file\'s steps with times and estimates (projected ×1.2 from finished steps), then the scorer\'s rounds. Empty "planSteps" in the JSON shows the no-plan state.',
+  Prompt: 'What the main loop\'s last turn carried besides your text, grouped by where it came from. A sketch with fixed sample parts; the real tab keeps the newest 60 parts, 4,000 characters each.'
 };
 const W = s => [...String(s)].length;
 const padR = (s, n) => String(s) + ' '.repeat(Math.max(0, n - W(s)));
@@ -3760,7 +3761,20 @@ function tabPlan(d, m, p, w) {
   L.push([S('last update 2m ago', 'dim')]);
   return L;
 }
-const TAB_FN = { Now: tabNow, Usage: tabUsage, Agents: tabAgents, Tools: tabTools, Cache: tabCache, Timeline: tabTimeline, Plan: tabPlan };
+// The Prompt tab, sketched with fixed sample parts: the explorer holds no turn's text
+function tabPrompt() {
+  return [
+    [S('Last turn', 'bold'), S(' · 14:02 · you 38 chars · 3 parts · 1,240 chars', '')],
+    [S('From hooks', 'bold')],
+    [S('UserPromptSubmit · hook_additional_context · 310 chars', 'bold')],
+    [S('UserPromptSubmit hook additional context: kit status (...', 'dim')],
+    [S('From plugins', 'bold')],
+    [S('alfred-code-status · 640 chars', 'bold')],
+    [S('From Claude Code', 'bold')],
+    [S('edited_text_file · 290 chars · Note: src/app.ts was modified...', '')]
+  ];
+}
+const TAB_FN = { Now: tabNow, Usage: tabUsage, Agents: tabAgents, Tools: tabTools, Cache: tabCache, Timeline: tabTimeline, Plan: tabPlan, Prompt: tabPrompt };
 // The pane's tabs as a row of tabs, one drawn at a time, as the pane itself shows one
 function buildPane() {
   $('paneTabs').innerHTML = TABS.map(t => `<button type="button" role="tab" id="pane-${t}" aria-controls="panePanel" data-t="${t}">${t}</button>`).join('');

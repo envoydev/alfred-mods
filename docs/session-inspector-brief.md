@@ -133,7 +133,7 @@ Three layers by urgency: a band that stays calm until something needs you, one p
 ```text
 Events and reads      State                          Surfaces
 Turns and prompts   ─┐                               ┌─ Band above the prompt
-Tools and skills    ─┤                               ├─ /inspect pane: Now, Usage, Agents, Tools, Cache, Timeline, Plan
+Tools and skills    ─┤                               ├─ /inspect pane: Now, Usage, Agents, Tools, Cache, Timeline, Plan, Prompt
 Agents              ─┼─▶ Shared state ─▶ REC mask() ─┤
 Timers, file reads  ─┘                               ├─ Toasts, only what needs you
                                                      └─ Spinners and compact tool rows
@@ -332,7 +332,7 @@ Build the mods ▰▰▰▰▰ done ✓ in 27m
 **The `/inspect` pane**
 
 - **Placement:** docked beside the transcript in the terminal's fullscreen layout from 110 columns (and in a VS Code panel 800 px or wider), inline above the prompt otherwise; `e.props.placement` says which. `/inspect` opens it at any width, since the person asked; only a pane opened unasked waits for 144 columns. It remembers whether it was open. (agent)
-- **Tabs:** Now (default), Usage, Agents, Tools, Cache, Timeline, Plan. `/inspect <tab>` opens on a tab and `/inspect plan <slug>` picks a plan. There is no separate plan pane.
+- **Tabs:** Now (default), Usage, Agents, Tools, Cache, Timeline, Plan, Prompt (added 2026-11-19; `m`). `/inspect <tab>` opens on a tab and `/inspect plan <slug>` picks a plan. There is no separate plan pane.
 - **Now:** the view to keep open while Claude works: the current plan step, running agents with their current action, and new failures.
 - **Failure rows:** \[Show\] expands the error in a code block and \[Copy\] copies it.
 - **Desktop:** the per-turn context chart draws as an SVG; the terminal uses ▁▂▃▄▅▆▇.
