@@ -23,3 +23,7 @@ probe/
 
 # A local MCP config: the repo root is the plugin root, so a tracked .mcp.json would ship its servers to every install
 .mcp.json
+
+# Plan and score files claude-kit's flows publish for the mod's Plan tab: local, never committed
+.claude/session-inspector/
+.alfred-mods/

@@ -61,7 +61,7 @@ export type Session = {
   // each once; a compaction keeps them, as Claude Code re-attaches them (spec 2026-11-11, D4)
   pathRules?: string[]
 }
-export type Tab = 'now' | 'usage' | 'agents' | 'tools' | 'cache' | 'timeline' | 'plan'
+export type Tab = 'now' | 'usage' | 'agents' | 'tools' | 'cache' | 'timeline' | 'plan' | 'prompt'
 // `pinnedPlan`: the plan `/inspect plan <name>` pinned, shown while its file parses
 export type View = { tab: Tab; expandedIds: string[]; pinnedPlan: string | null }
 export type PacePoint = { at: number; percent: number }
@@ -137,8 +137,9 @@ export type Scores = {
   isWithheld?: boolean
 }
 // A file of the folder as last read: its last good parse, kept while a newer read fails
-// `isNamed`: the plan Alfred Code's status file names this session
-export type Watched<T> = { name: string; mtimeMs: number; size: number; value: T | null; isInvalid: boolean; isNamed?: boolean }
+// `isNamed`: the plan Alfred Code's status file names this session; `path`: the file it was read from, where a name is
+// in two folders
+export type Watched<T> = { name: string; mtimeMs: number; size: number; value: T | null; isInvalid: boolean; isNamed?: boolean; path?: string }
 // The folder's plans and scores; every session's step times summed per plan; when each plan finished this session;
 // the notes and finishes already seen; and when this session began, which a plan's file must be written after to run
 export type Plans = {
@@ -205,6 +206,21 @@ export type Parts = {
 }
 export type SkillListing = { listed: number; total: number; tokens: number }
 
+// claude-kit's status line as the mod reads it: each setting by name with the value and the source the line gives, in the
+// line's order, and the note the hook adds when it saved or refused a change (`saved:` or `not saved -`), else null
+export type KitValue = { value: string; source: string }
+export type KitStatus = { values: Record<string, KitValue>; saved: string | null }
+// `seenAt`, the clock time of the turn whose line this is
+export type KitState = { status: KitStatus | null; seenAt: number | null }
+
+// What a main turn's requests carried for the model: each part is one `prompt.attachment`, kept as the engine's answer
+// resolved it. `chars` is the full length, `text` at most MAX_PART_CHARS of it. `startedAt` is null before the
+// process's first main turn; `typedChars` is the typed prompt's length, never its text; `dropped` counts the oldest
+// parts the cap pushed out.
+export type PromptOrigin = 'engine' | 'hook' | 'plugin'
+export type PromptPart = { type: string; origin: PromptOrigin; event: string | null; chars: number; text: string; isLeftOut: boolean; at: number }
+export type PromptRecord = { startedAt: number | null; typedChars: number | null; parts: PromptPart[]; dropped: number }
+
 declare module 'claude-code' {
   interface PluginState {
     'alfred-mods': {
@@ -214,6 +230,8 @@ declare module 'claude-code' {
       plans: Shaped<Plans>; credit: Shaped<Credit>; tasks: Shaped<TaskItem[]>; rec: Shaped<RecState>; quiet: Shaped<Quiet>; handoff: Shaped<Handoff>
       band: Shaped<BandSetting>
       stack: Shaped<Stack>
+      kit: Shaped<KitState>
+      prompt: Shaped<PromptRecord>
       // Blocks per hook script this session (spec C6), so the failure list's cap loses no count
       blockers: Shaped<Record<string, number>>
       parts: Shaped<Parts>

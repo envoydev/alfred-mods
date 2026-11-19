@@ -4,7 +4,7 @@ import { oneLine, printable } from '../core/format'
 
 // The commands for what a click or a key does in the pane (the user, 2026-11-12: in iTerm's main screen, with tabs,
 // neither reaches the mod). Each answers with what it did, masked while REC is on.
-export const INSPECT_HELP = 'Usage: /inspect [now|usage|agents|tools|cache|timeline|plan [name]] opens a tab, /inspect close closes the pane. ' +
+export const INSPECT_HELP = 'Usage: /inspect [now|usage|agents|tools|cache|timeline|plan [name]|prompt] opens a tab, /inspect close closes the pane. ' +
   '/inspect show [n] and copy [n] act on tool failure n (1 the newest), report [n] on agent report n (1 the top), ' +
   "fill fills Alfred Code's resume prompt, band off|calm|full sets \"band\" in ~/.claude/settings.json."
 
@@ -18,4 +18,4 @@ export const ordinalOf = (word: string | undefined): number => (word === undefin
 export const outOfRange = (what: string, word: string | undefined, count: number, first: string): string =>
   `No ${what} ${oneLine(printable(word ?? ''), 20)}: there ${count === 1 ? 'is 1' : `are ${count}`}, 1 the ${first}.`
 
-export const TAB_NAMES: Tab[] = ['now', 'usage', 'agents', 'tools', 'cache', 'timeline', 'plan']
+export const TAB_NAMES: Tab[] = ['now', 'usage', 'agents', 'tools', 'cache', 'timeline', 'plan', 'prompt']

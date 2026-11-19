@@ -24,6 +24,7 @@ import { stepHandoff } from '../handoff/effects'
 import { toast } from '../core/effects'
 import { takeRecNote } from '../rec/effects'
 import { followConversation } from '../lifecycle/effects'
+import { startTurnRecord } from '../prompt/effects'
 import type { ToolCall } from '../tools/types'
 
 const INITIAL_TURNS: Turn[] = []
@@ -359,6 +360,7 @@ export async function trackTurnStart($: EngineInterface, e: HookInput<'turn.star
         return { ...session, lastPromptAt: promptAt, waitingPrompts: i < 0 ? session.waitingPrompts : session.waitingPrompts.slice(i + 1) }
       })
     }
+    await startTurnRecord($, e.text.length, now)
     await updateLive($, () => ({ turnId: e.turnId, startedAt, toolCalls: 0, toolFailures: 0, runningCalls: [], promptAt }))
     turnSpendMemory.clear()
     try {

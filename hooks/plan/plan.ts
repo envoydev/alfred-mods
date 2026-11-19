@@ -2,7 +2,8 @@
 // files', from the brief's 'Data contracts for the plan and scorer skills'. What a file requires makes it invalid when
 // missing; an optional field that does not fit is dropped.
 import { isRecord } from '../core/guards'
-import type { Finding, Plan, PlanChange, PlanStep, PlanView, Plans, ScoreRound, Scores, ScoresView, Severity, StepRow, StepStatus, StepTime, TaskItem, Watched } from './types'
+import { PLANS_FOLDERS, PLANS_ROOTS, PLANS_SUBFOLDER, SCORES_SUBFOLDER } from './constants'
+import type { Finding, Plan, PlanChange, PlanStep, PlanView, PlansFolder, Plans, ScoreRound, Scores, ScoresView, Severity, StepRow, StepStatus, StepTime, TaskItem, Watched } from './types'
 
 const STATUSES: readonly string[] = ['pending', 'in_progress', 'done', 'failed', 'blocked', 'skipped']
 const KINDS: readonly string[] = ['created', 'step_added', 'step_changed', 'step_removed', 'integrated']
@@ -271,6 +272,21 @@ export function newUserNotes(before: PlanChange[], after: PlanChange[]): PlanCha
   })
 }
 
-// The folders the stack writes plans and scores to
-export const PLANS_DIR = '.claude/session-inspector/plans'
-export const SCORES_DIR = '.claude/session-inspector/scores'
+// The roots the reader reads, in order: the chosen one first, then the others in the fallback order
+export function plansRoots(chosen: PlansFolder): string[] {
+  return [chosen, ...PLANS_FOLDERS.filter(folder => folder !== chosen)].map(folder => PLANS_ROOTS[folder])
+}
+
+// The folder the chosen value names for plans, the one a plan skill writes to
+export const chosenPlansDir = (chosen: PlansFolder): string => `${PLANS_ROOTS[chosen]}/${PLANS_SUBFOLDER}`
+
+export const plansDirs = (chosen: PlansFolder): string[] => plansRoots(chosen).map(root => `${root}/${PLANS_SUBFOLDER}`)
+
+export const scoresDirs = (chosen: PlansFolder): string[] => plansRoots(chosen).map(root => `${root}/${SCORES_SUBFOLDER}`)
+
+// The files of one name across the folders' lists: a group per name, the greatest `mtimeMs` first, a tie in folder order
+export function candidatesByName<T extends { name: string; mtimeMs: number }>(byFolder: T[][]): T[][] {
+  const groups = new Map<string, T[]>()
+  for (const file of byFolder.flat()) groups.set(file.name, [...(groups.get(file.name) ?? []), file])
+  return [...groups.values()].map(group => group.sort((first, second) => second.mtimeMs - first.mtimeMs))
+}

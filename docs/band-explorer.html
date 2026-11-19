@@ -266,7 +266,7 @@ table.steps { min-width: 720px; }
 
     <section class="panel" aria-label="The /inspect pane">
       <div><h2>The /inspect pane - the details behind the band</h2>
-        <p class="muted">Type <code>/inspect</code> and a pane opens with seven tabs, each answering one question. <code>/inspect usage</code> opens it on a tab; with the keys in the pane (Ctrl+X Tab), <code>n</code> <code>u</code> <code>a</code> <code>t</code> <code>k</code> <code>l</code> <code>p</code> switch tabs. Esc at an empty prompt, or <code>/inspect close</code>, closes it. <span id="placement"></span></p></div>
+        <p class="muted">Type <code>/inspect</code> and a pane opens with eight tabs, each answering one question. <code>/inspect usage</code> opens it on a tab; with the keys in the pane (Ctrl+X Tab), <code>n</code> <code>u</code> <code>a</code> <code>t</code> <code>k</code> <code>l</code> <code>p</code> <code>m</code> switch tabs. Esc at an empty prompt, or <code>/inspect close</code>, closes it. <span id="placement"></span></p></div>
       <div class="subtabs" role="tablist" aria-label="The pane's tabs" id="paneTabs"></div>
       <div role="tabpanel" id="panePanel" style="display:grid;gap:8px;min-width:0">
         <div><h3 id="paneAsk"></h3><p class="muted small" id="paneNote"></p></div>
@@ -1369,7 +1369,7 @@ function planLines(
   options                                                                                                                       ,
 )         {
   const out         = []
-  if (view === null) out.push([{ text: 'No plan file in .claude/session-inspector/plans/, and no task list this session.', tone: 'dim' }])
+  if (view === null) out.push([{ text: 'No plan file in .alfred-mods/plans/, and no task list this session.', tone: 'dim' }])
   else {
     const head       = [{ text: 'Plan', bold: true, tone: 'plan' }, { text: ` · ${fitLine(view.title, 60)}`, bold: true }, { text: `   ${view.finished}/${view.total}` }]
     if (view.isFinished) head.push({ text: ` · done in ${minutesText(view.workedMs)}` })
@@ -2688,11 +2688,11 @@ function newUserNotes(before              , after              )               {
   })
 }
 
-// The folders the stack writes plans and scores to
-const PLANS_DIR = '.claude/session-inspector/plans'
-const SCORES_DIR = '.claude/session-inspector/scores'
+// The root each value of the plansFolder setting names, as hooks/plan/constants.ts has it: plans sit under
+// <root>/plans, scores under <root>/scores; with the field unset the root is .alfred-mods
+const PLANS_ROOTS = { default: '.claude/session-inspector', '.alfred': '.alfred/alfred-mods', '.alfred-mods': '.alfred-mods' }
 
-return { parsePlan, parseScores, isFinishedStep, isPlanDone, isPlanRunning, shownPlan, creditedPlan, planView, scoresView, tasksAfter, taskView, taskStatusKey, stepStatusKey, FINISH_SHOWN_MS, newUserNotes, PLANS_DIR, SCORES_DIR };
+return { parsePlan, parseScores, isFinishedStep, isPlanDone, isPlanRunning, shownPlan, creditedPlan, planView, scoresView, tasksAfter, taskView, taskStatusKey, stepStatusKey, FINISH_SHOWN_MS, newUserNotes, PLANS_ROOTS };
 })();
 return { bandLines: __m['band/band.ts'].bandLines, statusText: __m['band/band.ts'].statusText, underRows: __m['band/band.ts'].underRows, cellsOf: __m['band/wrap.ts'].cellsOf, groupLines: __m['tools/compact.ts'].groupLines, planView: __m['plan/plan.ts'].planView, newRow: __m['agents/agents.ts'].newRow };
 })();
@@ -2898,6 +2898,7 @@ const BandSettings = (() => {
     { key: 'rec', values: ['off', 'on', 'strict'], def: 'off', bad: 'yes', what: 'mask the screen for a recording' },
     { key: 'handoff', values: ['ask', 'auto', 'off'], def: 'ask', bad: 'never', what: 'save a handoff before the context fills' },
     { key: 'handoffAt', values: steps, def: 80, bad: 100, what: 'the context percent the handoff starts at' },
+    { key: 'plansFolder', values: ['default', '.alfred', '.alfred-mods'], def: '.alfred-mods', bad: 'elsewhere', isNoLegacy: true, what: 'where plan and score files live: .claude/session-inspector, .alfred/alfred-mods or .alfred-mods' },
   ]
   // Highest first; the page leaves out --settings and managed settings, which sit above local
   const FILES = ['local', 'project', 'user']
@@ -3251,6 +3252,8 @@ const SRC_HEAD = {
 const FROM = { legacy: 'an earlier command', user: 'user file', project: 'project file', local: 'local file', def: 'the default' };
 // An option's value is the field's value as JSON; '' leaves the file without it
 function optionsFor(f, src) {
+  // 0.7's commands never stored a plansFolder (the mod's legacyOf cannot yield it), so its legacy column offers none
+  if (src === 'legacy' && f.isNoLegacy) return '<option value="">- not stored by 0.7</option>';
   const opts = [['', '- not set']].concat(f.values.map(v => [JSON.stringify(v), JSON.stringify(v)]));
   if (src !== 'legacy') opts.push([JSON.stringify(f.bad), `${JSON.stringify(f.bad)} - a bad value`]);
   return opts.map(([v, l]) => `<option value="${esc(v).replace(/"/g, '&quot;')}">${esc(l)}</option>`).join('');
@@ -3259,7 +3262,7 @@ function buildSettings() {
   const head = '<thead><tr><th scope="col">Field</th>' + SOURCES.map(s => `<th scope="col"${s === 'local' ? ' class="hi"' : ''}>${esc(SRC_HEAD[s][0])}<small>${esc(SRC_HEAD[s][1])}</small></th>`).join('')
     + '<th scope="col">The mod uses</th></tr></thead>';
   const body = '<tbody>' + BandSettings.FIELDS.map(f => `<tr><th scope="row"><code>${f.key}</code><span>${esc(f.what)}</span></th>`
-    + SOURCES.map(s => `<td><select id="cfg-${s}-${f.key}" data-s="${s}" data-f="${f.key}" aria-label="${f.key} in ${esc(SRC_HEAD[s][0])}">${optionsFor(f, s)}</select>${s === 'legacy' ? `<span class="retired" id="ret-${f.key}"></span>` : ''}</td>`).join('')
+    + SOURCES.map(s => `<td><select id="cfg-${s}-${f.key}" data-s="${s}" data-f="${f.key}"${s === 'legacy' && f.isNoLegacy ? ' disabled' : ''} aria-label="${f.key} in ${esc(SRC_HEAD[s][0])}">${optionsFor(f, s)}</select>${s === 'legacy' ? `<span class="retired" id="ret-${f.key}"></span>` : ''}</td>`).join('')
     + `<td class="use" id="use-${f.key}"></td></tr>`).join('') + '</tbody>';
   const cols = '<colgroup><col class="c-field">' + SOURCES.map(() => '<col class="c-src">').join('') + '<col class="c-use"></colgroup>';
   $('settingsTable').innerHTML = cols + head + body;
@@ -3511,7 +3514,7 @@ const BAND_PARTS = [
     'Follows Claude: its last cd, or the last file it edited. Read from git after each Bash call, edit and write, and every 30 seconds. The mod never fetches, so the arrows are as of your last fetch.'],
   ['plan:', 'while a plan runs', { running: true, plan: true }, null, null, t => /^plan:/.test(t),
     'The plan\'s title, the steps done, the step in progress, and the plan\'s score with its change from the round before.',
-    'Read from a plan file in .claude/session-inspector/plans/, else Claude\'s task list. With Alfred Code, the plan its status file names comes first.'],
+    'Read from a plan file in <root>/plans/, where the "plansFolder" field names the root (.alfred-mods, .alfred/alfred-mods or .claude/session-inspector; .alfred-mods when unset; the other two are read too, the newest file of a name wins), else Claude\'s task list. With Alfred Code, the plan its status file names comes first.'],
   ['usage:', 'once something is counted', { running: true }, null, null, t => /^usage:/.test(t),
     'The session\'s counts: tool calls, skills loaded, agents dispatched with how many run now, rules in the context, and compactions.',
     'It counts what the four rows under it list, so it stays when "bandRows": false closes them.'],
@@ -3585,11 +3588,11 @@ let paneRaw = store.get('pane-raw') || JSON.stringify(PANE0, null, 2);
 let pane; try { pane = JSON.parse(paneRaw); } catch { pane = JSON.parse(JSON.stringify(PANE0)); }
 let paneW = store.get('pane-w') || 90;
 
-const TABS = ['Now', 'Usage', 'Agents', 'Tools', 'Cache', 'Timeline', 'Plan'];
+const TABS = ['Now', 'Usage', 'Agents', 'Tools', 'Cache', 'Timeline', 'Plan', 'Prompt'];
 // The question each tab answers
 const TAB_ASKS = {
   Now: 'What needs me right now?', Usage: 'What fills the context and my limits?', Agents: 'What are the subagents doing?',
-  Tools: 'Which calls ran, and which failed?', Cache: 'When does the cache go cold?', Timeline: 'What did each turn take?', Plan: 'How far is the plan?'
+  Tools: 'Which calls ran, and which failed?', Cache: 'When does the cache go cold?', Timeline: 'What did each turn take?', Plan: 'How far is the plan?', Prompt: 'What did the last turn carry for the model?'
 };
 let paneTab = TABS.includes(store.get('pane-tab')) ? store.get('pane-tab') : 'Now';
 const TAB_NOTES = {
@@ -3599,7 +3602,8 @@ const TAB_NOTES = {
   Tools: 'Calls per tool from the band\'s tools list, with failures and blocks from the pane data. Under 45 columns the name column narrows.',
   Cache: 'When the prompt cache goes cold and what rewriting it would cost.',
   Timeline: 'One row per turn. Under 61 columns the "you" column drops out.',
-  Plan: 'The plan file\'s steps with times and estimates (projected ×1.2 from finished steps), then the scorer\'s rounds. Empty "planSteps" in the JSON shows the no-plan state.'
+  Plan: 'The plan file\'s steps with times and estimates (projected ×1.2 from finished steps), then the scorer\'s rounds. Empty "planSteps" in the JSON shows the no-plan state.',
+  Prompt: 'What the main loop\'s last turn carried besides your text, grouped by where it came from. A sketch with fixed sample parts; the real tab keeps the newest 60 parts, 4,000 characters each.'
 };
 const W = s => [...String(s)].length;
 const padR = (s, n) => String(s) + ' '.repeat(Math.max(0, n - W(s)));
@@ -3760,7 +3764,20 @@ function tabPlan(d, m, p, w) {
   L.push([S('last update 2m ago', 'dim')]);
   return L;
 }
-const TAB_FN = { Now: tabNow, Usage: tabUsage, Agents: tabAgents, Tools: tabTools, Cache: tabCache, Timeline: tabTimeline, Plan: tabPlan };
+// The Prompt tab, sketched with fixed sample parts: the explorer holds no turn's text
+function tabPrompt() {
+  return [
+    [S('Last turn', 'bold'), S(' · 14:02 · you 38 chars · 3 parts · 1,240 chars', '')],
+    [S('From hooks', 'bold')],
+    [S('UserPromptSubmit · hook_additional_context · 310 chars', 'bold')],
+    [S('UserPromptSubmit hook additional context: kit status (...', 'dim')],
+    [S('From plugins', 'bold')],
+    [S('alfred-code-status · 640 chars', 'bold')],
+    [S('From Claude Code', 'bold')],
+    [S('edited_text_file · 290 chars · Note: src/app.ts was modified...', '')]
+  ];
+}
+const TAB_FN = { Now: tabNow, Usage: tabUsage, Agents: tabAgents, Tools: tabTools, Cache: tabCache, Timeline: tabTimeline, Plan: tabPlan, Prompt: tabPrompt };
 // The pane's tabs as a row of tabs, one drawn at a time, as the pane itself shows one
 function buildPane() {
   $('paneTabs').innerHTML = TABS.map(t => `<button type="button" role="tab" id="pane-${t}" aria-controls="panePanel" data-t="${t}">${t}</button>`).join('');

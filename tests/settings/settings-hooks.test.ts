@@ -2,8 +2,9 @@
 // flag, local, project, user, an earlier command's choice, the default (spec 2026-11-11 settings-values, S1-S4)
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
-import type { On } from 'claude-code'
+import type { EngineInterface, On } from 'claude-code'
 
+import { writeProjectField } from '../../hooks/settings/effects'
 import { HANDOFF_USAGE } from '../../hooks/handoff/handoff'
 import { REC_HELP, recStatus } from '../../hooks/rec/rec'
 import { PRESENTATION, START, engine, fileAt, stubAll, watchState } from '../kit'
@@ -470,4 +471,58 @@ test('a word /rec and /auto-handoff do not take prints the state and the help', 
   expect(await run($, 'rec', 'loud')).toBe(`${recStatus('on', 0)} - from ~/.claude/settings.json\n${REC_HELP}`)
   expect((await run($, 'auto-handoff', 'never')).split('\n').slice(1).join('\n')).toBe(HANDOFF_USAGE)
   expect(files.writes).toEqual([])
+})
+
+// writeProjectField has no command yet (Task 1 of the plans-folder plan), and the host refuses a test hook's `$.state`
+// calls, so these tests hand it a `$` of their own: the settings, the store, the project file and the state, with every
+// other call answering nothing
+const SETTINGS_FILE = '.claude/settings.json'
+
+function projectEngine(file: string | null, sources: Record<string, Record<string, unknown>> = {}) {
+  const written: { path: string; text: string }[] = []
+  const kept = new Map<string, { value: unknown; version: number }>()
+  const quiet = new Proxy(() => Promise.resolve(undefined), { get: () => quiet }) as unknown
+  const fake = {
+    settings: { read: async (e: { source: string }) => sources[e.source]?.['alfred-mods'] },
+    store: { get: async () => null, set: async () => undefined, delete: async () => undefined },
+    state: {
+      get: async (ref: { key: string }) => ({ value: kept.get(ref.key)?.value, version: kept.get(ref.key)?.version ?? 0 }),
+      set: async (ref: { key: string }, value: unknown) => {
+        const version = (kept.get(ref.key)?.version ?? 0) + 1
+        kept.set(ref.key, { value, version })
+        return { isSet: true, version }
+      },
+    },
+    fs: {
+      exists: async () => file !== null,
+      read: async () => file,
+      write: async (path: string, text: string) => void written.push({ path, text }),
+    },
+    ui: quiet, clock: quiet, env: quiet, session: quiet,
+  }
+  return { $: fake as unknown as EngineInterface, written }
+}
+
+test('writeProjectField makes a missing project file with the field', async () => {
+  const { $, written } = projectEngine(null)
+  expect(await writeProjectField($, 'plansFolder', '.alfred')).toEqual({ ok: true, shadow: null })
+  expect(written).toEqual([{ path: SETTINGS_FILE, text: '{\n  "alfred-mods": {\n    "plansFolder": ".alfred"\n  }\n}\n' }])
+})
+
+test('writeProjectField keeps the other keys of the project file', async () => {
+  const { $, written } = projectEngine('{ "permissions": {} }')
+  expect(await writeProjectField($, 'plansFolder', 'default')).toEqual({ ok: true, shadow: null })
+  expect(JSON.parse(written[0]?.text ?? '')).toEqual({ permissions: {}, 'alfred-mods': { plansFolder: 'default' } })
+})
+
+test('writeProjectField writes nothing to a project file that does not parse', async () => {
+  const { $, written } = projectEngine('{ bad')
+  expect(await writeProjectField($, 'plansFolder', '.alfred')).toEqual({ ok: false, why: '.claude/settings.json does not parse - plansFolder not written' })
+  expect(written).toEqual([])
+})
+
+test('writeProjectField names the local file that comes first', async () => {
+  const { $, written } = projectEngine(null, { local: mod({ plansFolder: 'default' }) })
+  expect(await writeProjectField($, 'plansFolder', '.alfred')).toEqual({ ok: true, shadow: 'local' })
+  expect(written).toHaveLength(1)
 })

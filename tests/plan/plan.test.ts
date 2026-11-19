@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { parsePlan, parseScores, planView, scoresView, taskView, tasksAfter } from '../../hooks/plan/plan'
+import { candidatesByName, chosenPlansDir, parsePlan, parseScores, planView, plansDirs, plansRoots, scoresDirs, scoresView, taskView, tasksAfter } from '../../hooks/plan/plan'
 import { FIVE, FIVE_OVERHEAD, FIVE_TIMES, MIN, NOW, PLAN_JSON, SCORES_JSON, planOf } from '../plans'
 import type { Scores, TaskItem } from '../../hooks/plan/types'
 
@@ -202,4 +202,24 @@ test('the task tools keep the task list', () => {
   const listed = tasksAfter([{ id: '0', subject: 'A', status: 'in_progress', workedMs: 60_000 }], 'TodoWrite',
     { todos: [{ content: 'A', status: 'completed', activeForm: 'Doing A' }, { content: 'B', status: 'pending', activeForm: 'Doing B' }] }, null)
   expect(listed).toEqual([{ id: '0', subject: 'A', status: 'completed', workedMs: 60_000 }, { id: '1', subject: 'B', status: 'pending', workedMs: 0 }])
+})
+
+test('the plans roots read the chosen folder first, then the others in the fallback order', () => {
+  expect(plansRoots('.alfred')).toEqual(['.alfred/alfred-mods', '.alfred-mods', '.claude/session-inspector'])
+  expect(plansRoots('default')).toEqual(['.claude/session-inspector', '.alfred-mods', '.alfred/alfred-mods'])
+  expect(plansRoots('.alfred-mods')).toEqual(['.alfred-mods', '.claude/session-inspector', '.alfred/alfred-mods'])
+  expect(chosenPlansDir('.alfred')).toBe('.alfred/alfred-mods/plans')
+})
+
+test('the plans and scores folders sit under each root', () => {
+  expect(plansDirs('.alfred')[0]).toBe('.alfred/alfred-mods/plans')
+  expect(scoresDirs('.alfred')).toEqual(['.alfred/alfred-mods/scores', '.alfred-mods/scores', '.claude/session-inspector/scores'])
+})
+
+test('candidatesByName groups a name across folders, newest first, a tie in folder order', () => {
+  expect(candidatesByName([[{ name: 'a', mtimeMs: 5 }], [{ name: 'a', mtimeMs: 9 }]])).toEqual([[{ name: 'a', mtimeMs: 9 }, { name: 'a', mtimeMs: 5 }]])
+  const first = { name: 'a', mtimeMs: 7, from: 'first' }
+  const second = { name: 'a', mtimeMs: 7, from: 'second' }
+  expect(candidatesByName([[first], [second]])).toEqual([[first, second]])
+  expect(candidatesByName([[{ name: 'a', mtimeMs: 1 }], [{ name: 'b', mtimeMs: 2 }]]).map(group => group.map(file => file.name))).toEqual([['a'], ['b']])
 })

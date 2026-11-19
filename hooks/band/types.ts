@@ -30,6 +30,8 @@ export type BandInput = {
   // Alfred Code's runway, which the ctx item measures against while it applies, and the mode banner that leads line 1
   runway?: Runway | null
   banner?: Seg[]
+  // claude-kit's banner, after Alfred Code's on line 1: it shortens to `kit`, then goes, before any other mark gives way
+  kitBanner?: Seg[]
   // The "band" setting: `full` adds the info line, the turn's tool count and today's cost; absent or `calm`, today's two
   // lines. `totals` and `stats` feed the info line's output speed and tool calls.
   mode?: BandMode

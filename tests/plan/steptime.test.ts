@@ -1,8 +1,8 @@
 import { expect, test } from 'claude-code/testing'
 
-import { closeSlices, liveSpans, sessionTimesOf, overheadKey, sliceMs, staleKeys, stepKey, sumTimes, targetsOf, waitMsOf } from '../../hooks/plan/steptime'
+import { closeSlices, creditRunningTasks, liveSpans, sessionTimesOf, overheadKey, shownStepTimes, sliceMs, staleKeys, stepKey, storedTimeOf, sumTimes, targetsOf, taskListMs, waitMsOf } from '../../hooks/plan/steptime'
 import { FIVE, planOf } from '../plans'
-import type { Credit } from '../../hooks/plan/types'
+import type { Credit, TaskItem } from '../../hooks/plan/types'
 
 const NAME = 'token-refresh'
 const DAY = 86_400_000
@@ -105,4 +105,30 @@ test('an open slice shows its span so far, split among its keys, and stays open'
 
   expect(liveSpans(c, closes, 70_000)).toEqual({ 'step:p:S3:s1': 30_000, 'step:p:S4:s1': 30_000 })
   expect(c.slices.main).toEqual({ openedAt: 0, waitMs: 10_000, namedSteps: [] })
+})
+
+test('the task list takes the main loop and the known agents, never an unknown loop', () => {
+  expect(taskListMs({ main: 100, a1: 50, stranger: 900 }, ['a1'])).toBe(150)
+})
+
+test('the running items share the time evenly, and a list with none running stays as it is', () => {
+  const list: TaskItem[] = [
+    { id: '1', subject: 'one', status: 'in_progress', workedMs: 10 },
+    { id: '2', subject: 'two', status: 'completed', workedMs: 5 },
+    { id: '3', subject: 'three', status: 'in_progress', workedMs: 0 },
+  ]
+  expect(creditRunningTasks(list, 100).map(task => task.workedMs)).toEqual([60, 5, 50])
+  const idle = list.map(task => ({ ...task, status: 'completed' as const }))
+  expect(creditRunningTasks(idle, 100)).toBe(idle)
+})
+
+test('an overhead key is stored with no isShared, a step key with it', () => {
+  expect(storedTimeOf(overheadKey(NAME, 's'), { ms: 5, isShared: true }, 9)).toEqual({ ms: 5, at: 9 })
+  expect(storedTimeOf(stepKey(NAME, 'S1', 's'), { ms: 5, isShared: true }, 9)).toEqual({ ms: 5, isShared: true, at: 9 })
+})
+
+test("the shown plan's live time is read by its steps' keys and its overhead key", () => {
+  const shown = { name: NAME, mtimeMs: 0, size: 0, value: FIVE, isInvalid: false, path: 'p.json' }
+  const spans = { [stepKey(NAME, 'S1', 's')]: 40, [overheadKey(NAME, 's')]: 7, [stepKey(NAME, 'S1', 'other')]: 99 }
+  expect(shownStepTimes(shown, spans, 's')).toEqual({ steps: { S1: 40 }, overhead: 7 })
 })

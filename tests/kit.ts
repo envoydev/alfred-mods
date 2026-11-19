@@ -6,10 +6,18 @@ import type {
   TurnStepInput, TurnStepResult, TurnUsage, UiPane,
 } from 'claude-code'
 
+import type { FileStub } from './fs-stubs'
+import { stubFiles } from './fs-stubs'
+
+export type { FileStub } from './fs-stubs'
+export type { Drawn } from './drawn-rows'
+export { isDrawn, rows } from './drawn-rows'
+export { emptyState, failState, seedState, watchState } from './state-stubs'
+
 export const NO_READING: SessionUsage = { startedAt: 0, context: { window: 200_000 }, rateLimits: [] }
 
 // `unplaced` is the reason a surface gives for leaving an opened pane undrawn; `store` is what earlier sessions kept
-type Options = {
+export type Options = {
   usage?: SessionUsage; sessionId?: string; cwd?: string; env?: Record<string, string>; now?: number; unplaced?: string
   // The session's project root (`$.session.root()`); absent, the folder `cwd` names at each call, as a session that
   // never moved off its root; null, a root the call rejects
@@ -57,7 +65,24 @@ type Options = {
   // Store keys whose first delete is refused, as a store that fails once would
   refuseDelete?: string[]
   // Paths whose writes, or whose existence checks, are refused, as a guard or a read-only disk would
-  refuseWrite?: string[]; refuseExists?: string[]
+  refuseWrite?: string[]; refuseExists?: string[]; refuseStat?: string[]
+  // Paths that lead to another path, as a symbolic link does: a list, read, check or stat of one (or of a path under
+  // it) meets the file or folder it names, and its `realPath` is that one's. `noRealPath` paths stat with no
+  // `realPath`, as when a hook above withholds it.
+  aliases?: Record<string, string>; noRealPath?: string[]
+  // Paths that meet another path's files and folders but keep a `realPath` of their own, as a case alias, a bind mount
+  // or a firmlink does; `as` is the spelling of that `realPath` where it differs only in case
+  mirrors?: Record<string, { to: string; as?: string }>
+  // Paths whose writes land with a line added, so a read-back of the copy differs from what was written
+  mangleWrite?: string[]
+  // Paths (named as a refused path is) that a check answers 'there' this many times before it answers truly, as a name
+  // that is taken at first and free later
+  taken?: Record<string, number>
+  // What `rm` answers: rejected with `deny`, or exit `exitCode` (0 by default); each call is recorded in the returned `rm`
+  // `removes` names the paths (as a refused path is named) that the call deletes, as an rm that fails part way does
+  rm?: { deny?: boolean; exitCode?: number; removes?: string[] }
+  // Runs just before `rm` answers, as a poll that lists the plan folders between the copy and the delete would
+  beforeRm?: () => Promise<void>
   // Why `$.ui.copy` does not take, when a test gives one
   copyRefused?: 'no-surface' | 'no-clipboard' | 'refused'
 }
@@ -65,8 +90,6 @@ type Options = {
 export const gitResult = (stdout: string, exitCode = 0, stderr = ''): ProcessRunResult =>
   ({ exitCode, stdout, stderr, isStdoutTruncated: false, isStderrTruncated: false })
 
-// A file the mod lists and reads; `size` stands in for the text's length when given
-export type FileStub = { text: string; mtimeMs: number; size?: number }
 
 // The text of the file at `path` a test gave or the mod wrote, matched as the end of its key
 export const fileAt = (files: { current: Record<string, FileStub> }, path: string): string | undefined =>
@@ -92,6 +115,8 @@ export function stubAll(on: On, o: Options = {}): {
   sources: Record<SettingsSource, Record<string, unknown>>
   // The names of the commands the mod registered, in order
   registered: string[]
+  // Each `rm` argv the mod ran, with its timeout; `deny` is the option, which a test may change mid-test
+  rm: { calls: (readonly string[])[]; checks: number; timeoutMs: number | null; deny: boolean }
 } {
   const toasts: string[] = []
   // Each toast's timeoutMs, in the order of `toasts`: undefined is the default 4 s
@@ -167,74 +192,25 @@ export function stubAll(on: On, o: Options = {}): {
     }
     return { value: (key === null ? (o.settings ?? {}) : o.settings?.[key]) as Settings }
   })
-  // A test changes the files mid-test through `files.current`; a folder with no file in it is missing. The kit hands a
-  // hook the path resolved against the mod's folder, with Windows' separators on Windows, so a stub matches its end
-  // after `\` reads as `/`; `{ deny }` rejects the mod's call.
-  const files = { current: { ...(o.files ?? {}) }, reads: [] as string[], writes: [] as string[], exists: [] as string[], lists: [] as string[] }
-  const links = o.links ?? {}
-  // A stub's absolute path such as `/shared/house.md` reaches a hook on Windows with the drive the resolve added
-  // (`D:\shared\house.md`, or `\\?\D:\...` past the long-path limit), so the drive is dropped before matching
-  // (Windows CI, 2026-11-12)
-  const slashed = (path: string): string => path.replace(/\\/g, '/')
-  const undrived = (path: string): string => slashed(path).replace(/^(?:\/\/\?\/)?[A-Za-z]:(?=\/)/, '')
-  const at = (full: string, path: string): boolean => undrived(full) === path || undrived(full).endsWith(`/${path}`)
-  on('fs.list', (_, e) => {
-    const dir = slashed(e.path).replace(/\/$/, '')
-    files.lists.push(dir)
-    const parentOf = (path: string): string => path.slice(0, path.lastIndexOf('/'))
-    const inDir = Object.entries(files.current).filter(([path]) => at(dir, parentOf(path)))
-    const linksIn = Object.keys(links).filter(path => at(dir, parentOf(path)))
-    // A folder holding a file or link at any depth below is listed as a folder
-    const folders = (path: string): string[] => (path.includes('/') ? [parentOf(path), ...folders(parentOf(path))].filter(f => f.includes('/')) : [])
-    const dirsIn = [...new Set([...Object.keys(files.current), ...Object.keys(links)].flatMap(path => folders(path).filter(f => at(dir, parentOf(f)))))]
-    if (inDir.length === 0 && linksIn.length === 0 && dirsIn.length === 0) return { deny: `ENOENT: no such directory, ${e.path}` }
-    return {
-      value: [
-        ...dirsIn.map(path => ({ name: path.slice(path.lastIndexOf('/') + 1), kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false })),
-        ...inDir.map(([path, f]) => ({
-          name: path.slice(path.lastIndexOf('/') + 1), kind: 'file' as const, size: f.size ?? f.text.length, mtimeMs: f.mtimeMs, isLink: false,
-        })),
-        ...linksIn.map(path => ({ name: path.slice(path.lastIndexOf('/') + 1), kind: 'other' as const, size: 0, mtimeMs: 0, isLink: true })),
-      ],
-    }
-  })
-  // A link stats as what it leads to, with `realPath` its target when asked; a file as itself, its path its real one
-  on('fs.stat', (_, e) => {
-    const link = Object.entries(links).find(([path]) => at(e.path, path))
-    if (link !== undefined) {
-      const isDir = Object.keys(files.current).some(path => path.startsWith(`${link[1]}/`))
-      return { value: { kind: isDir ? 'dir' as const : 'file' as const, size: 0, mtimeMs: 0, isLink: true, ...(e.resolve ? { realPath: link[1] } : {}) } }
-    }
-    const found = Object.entries(files.current).find(([path]) => at(e.path, path))
-    if (found === undefined) return { deny: `ENOENT: no such file, ${e.path}` }
-    // An absolute stub's real path is its own, as a link's target is written: both sides then compare on Windows too
-    const realPath = found[0].startsWith('/') ? found[0] : slashed(e.path)
-    return { value: { kind: 'file' as const, size: found[1].size ?? found[1].text.length, mtimeMs: found[1].mtimeMs, isLink: false, ...(e.resolve ? { realPath } : {}) } }
-  })
-  // A read rejects over 4 MiB, as Claude Code's does (types, `$.fs.read`)
-  on('fs.read', (_, e) => {
-    const found = Object.entries(files.current).find(([path]) => at(e.path, path))
-    if (found !== undefined) files.reads.push(found[0])
-    if (found === undefined) return { deny: `ENOENT: no such file, ${e.path}` }
-    return (found[1].size ?? 0) > 4 * 1024 * 1024 ? { deny: `EFBIG: over 4 MiB, ${e.path}` } : { value: found[1].text }
-  })
-  // Each path asked, so a test counts the reads of a missing file
-  on('fs.exists', (_, e) => {
-    files.exists.push(slashed(e.path))
-    if (o.refuseExists?.some(path => at(e.path, path)) === true) return { deny: `EACCES: check refused, ${e.path}` }
-    return { value: Object.keys(files.current).some(path => at(e.path, path)) }
-  })
-  // A write lands at the path of a file the test gave, else at the path the mod passed
-  on('fs.write', (_, e) => {
-    if (o.refuseWrite?.some(path => at(e.path, path)) === true) return { deny: `EACCES: write refused, ${e.path}` }
-    const key = Object.keys(files.current).find(path => at(e.path, path)) ?? slashed(e.path)
-    files.current[key] = { text: e.text, mtimeMs: o.now ?? 0 }
-    files.writes.push(key)
-    return { value: undefined }
-  })
+  const { files, isRefused, removeAt } = stubFiles(on, o)
   const git = { current: o.git ?? gitResult('## main\n'), calls: 0, argv: null as readonly string[] | null, timeoutMs: null as number | null }
   const changes = { diff: o.diff, untracked: o.untracked, revList: o.revList, argv: [] as (readonly string[])[], cwd: null as string | null, timeoutMs: null as number | null }
-  on('process.run', (_, e) => {
+  const rm = { calls: [] as (readonly string[])[], checks: 0, timeoutMs: null as number | null, deny: o.rm?.deny ?? false }
+  on('process.run', async (_, e) => {
+    // `rm -f --` with no path is the mod's check that rm runs: counted apart, it exits 0 unless rm is refused
+    if (e.argv[0] === 'rm' && e.argv.length === 3) {
+      rm.checks++
+      return rm.deny ? { deny: 'test: rm refused' } : { value: gitResult('') }
+    }
+    if (e.argv[0] === 'rm') {
+      await o.beforeRm?.()
+      rm.calls.push(e.argv)
+      rm.timeoutMs = e.init?.timeoutMs ?? null
+      for (const target of e.argv.slice(3)) {
+        if (o.rm?.removes?.some(path => isRefused(target, path)) === true) removeAt(target)
+      }
+      return rm.deny ? { deny: 'test: rm refused' } : { value: gitResult('', o.rm?.exitCode ?? 0) }
+    }
     const isDiff = e.argv.includes('diff')
     if (e.argv.includes('rev-list')) {
       changes.argv.push(e.argv)
@@ -328,7 +304,7 @@ export function stubAll(on: On, o: Options = {}): {
     writes,
   }
   mock.env(on, o.env ?? {})
-  return { clock, toasts, toastMs, opened, escapes, closed, copied, usage, panes, listed, files, store, session, git, changes, prompt, invalidates, statuses, sources, registered }
+  return { clock, toasts, toastMs, opened, escapes, closed, copied, usage, panes, listed, files, store, session, git, changes, prompt, invalidates, statuses, sources, registered, rm }
 }
 
 // Claude Code's own answers to the events a session raises, for a test that drives a whole turn. A test hooks an
@@ -338,6 +314,7 @@ export function engine(on: On, except: string[] = []): void {
   if (has('session.start')) on('session.start', (_, e) => ({ cwd: e.cwd }))
   if (has('prompt.submit')) on('prompt.submit', (_, e) => ({ text: e.text }))
   if (has('turn.start')) on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  if (has('prompt.attachment')) on('prompt.attachment', (_, e) => ({ text: e.text }))
   if (has('turn.complete')) on('turn.complete', () => ({ text: '' }))
   if (has('tool.call')) on('tool.call', () => ({ result: 'ok', text: 'ok' }))
   if (has('session.measure')) on('session.measure', (_, e) => ({ changed: e.changed }))
@@ -401,88 +378,6 @@ export function spawns(on: On, table: Record<string, { agentId: string; model?: 
   })
 }
 
-// The latest value the mod wrote under each key, read beneath the plugin as the write lands, and every write in order
-// as JSON, so a test can look for text in any value the mod ever wrote
-export function watchState(on: On): { get(key: string): unknown; writes: string[] } {
-  const latest = new Map<string, unknown>()
-  const writes: string[] = []
-  on('state.set', async ($, e, next) => {
-    writes.push(JSON.stringify(e.value))
-    const r = await next(e)
-    if (r.value?.isSet === true) {
-      const v = e.value as { shape?: string; value?: unknown } | number
-      latest.set(e.key, typeof v === 'object' && v !== null && 'shape' in v ? v.value : v)
-    }
-    return r
-  })
-  return { get: key => latest.get(key), writes }
-}
-
-// A node of a drawn tree as a test reads it, and the guard that tells one from a string or a hole
-export type Drawn = { type: string; props?: Record<string, unknown>; children?: unknown[] }
-export const isDrawn = (node: unknown): node is Drawn => typeof node === 'object' && node !== null && typeof (node as Drawn).type === 'string'
-
-function textOf(n: unknown): string {
-  if (typeof n === 'string') return n
-  if (typeof n !== 'object' || n === null) return ''
-  const el = n as { type?: string; props?: Record<string, unknown>; children?: unknown[] }
-  if (el.type === 'Button') return String(el.props?.label ?? '')
-  if (el.type === 'Code') return String(el.props?.source ?? '')
-  if (el.type === 'Svg') return String(el.props?.alt ?? '')
-  return (el.children ?? []).map(textOf).join('')
-}
-
-type El = { type?: string; props?: Record<string, unknown>; children?: unknown[] }
-const isLine = (n: unknown): boolean => {
-  const el = n as El | null
-  return el?.type === 'Box' && typeof el.props?.['key'] === 'string' && (el.props['key'] as string).startsWith('line-')
-}
-const spaces = (v: unknown): string => ' '.repeat(typeof v === 'number' ? v : 0)
-
-// A piece of a fitted line as the terminal draws it: its margins as spaces, an empty Box of width n as n spaces, a
-// cell padded to its width on its align side (cut with '…' when longer, as truncate-end draws it)
-function pieceOf(n: unknown): string {
-  if (typeof n !== 'object' || n === null) return textOf(n)
-  const el = n as El
-  if (el.type !== 'Box') return textOf(el)
-  const p = el.props ?? {}
-  const kids = el.children ?? []
-  const inner = kids.map(pieceOf).join('')
-  let body = inner
-  if (typeof p['width'] === 'number') {
-    const width = p['width']
-    const cells = [...inner]
-    body = kids.length === 0 ? ' '.repeat(width)
-      : cells.length > width ? `${cells.slice(0, Math.max(0, width - 1)).join('')}…`
-      : p['justifyContent'] === 'flex-end' ? inner.padStart(width) : inner.padEnd(width)
-  }
-  return spaces(p['marginLeft']) + body + spaces(p['marginRight'])
-}
-
-// One string per drawn line. A tree of fitted lines (Boxes keyed `line-*`) gives one row per such Box, its pieces
-// joined; any other tree, one row per innermost Box (one holding no Box), its texts and button labels in order.
-export async function rows(ui: { drawn: () => Promise<RenderElement> }): Promise<string[]> {
-  const tree = await ui.drawn()
-  const lines: El[] = []
-  const find = (n: unknown): void => {
-    if (typeof n !== 'object' || n === null) return
-    if (isLine(n)) lines.push(n as El)
-    else ((n as El).children ?? []).forEach(find)
-  }
-  find(tree)
-  if (lines.length > 0) return lines.map(l => (l.children ?? []).map(pieceOf).join(''))
-  const out: string[] = []
-  const walk = (n: unknown): void => {
-    if (typeof n !== 'object' || n === null) return
-    const el = n as El
-    const kids = el.children ?? []
-    if (el.type === 'Box' && kids.some(k => (k as El | null)?.type === 'Box')) kids.forEach(walk)
-    else out.push(textOf(el))
-  }
-  walk(tree)
-  return out
-}
-
 // Claude Code's own drawing of each site the mod rewrites, beneath the mod: the props it was handed, as JSON. The
 // dialog's tree must hold Claude Code's own node, so its stub keeps the props it was handed, newest last, and passes
 // the node on rather than drawing them.
@@ -505,29 +400,6 @@ export function engineSites(on: On): { asked: unknown[] } {
   on('ui.render', { component: 'Spinner' }, json)
   on('ui.render', { component: 'PromptHint' }, json)
   return { asked }
-}
-
-// Refuses the mod's read of one atom while `key` is set, as a store that fails would: every render hook reads an
-// atom before it draws, so this makes any of them throw
-export function failState(on: On): { key: string | null } {
-  const fail = { key: null as string | null }
-  on('state.get', (_, e, next) => (fail.key !== null && e.key === fail.key ? { deny: 'test: state read refused' } : next(e)))
-  return fail
-}
-
-// Reads each key of `seeds` as the value an earlier version stored under it, until the mod writes that key: a session
-// reloaded over state a test sets
-export function seedState(on: On, seeds: Record<string, unknown>): void {
-  const written = new Set<string>()
-  on('state.set', async (_, e, next) => {
-    written.add(e.key)
-    return next(e)
-  })
-  on('state.get', async (_, e, next) => {
-    const stored = await next(e)
-    const seed = seeds[e.key]
-    return seed === undefined || written.has(e.key) || stored.value === undefined ? stored : { value: { ...stored.value, value: seed } }
-  })
 }
 
 // A call a test leaves held past its end: the kit rejects it once the test's stubs are gone, which is expected, so the

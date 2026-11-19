@@ -26,7 +26,7 @@ project names, no absolute local paths, no tokens, nothing from a user's machine
 
 ```bash
 npm run validate     # claude plugin validate --strict on a copy of the files git ships
-npm test             # claude plugin test . - every *.test.ts, no session, sign-in or network
+npm test             # claude plugin test on the same copy - every *.test.ts, no session, sign-in or network
 npm run kit:check    # the files claude-kit manages are unedited, and no CLAUDE.md hides this file
 npm run typecheck    # tsc on tsconfig.json and tsconfig.scripts.json - needs npm install and .claude-plugin/types/
 claude --plugin-dir .   # load the working tree for one session; it reloads on save
@@ -38,9 +38,11 @@ mod, so run one such session first (the folder is git-ignored and belongs to the
 `npm install` once in a fresh clone: `typescript` and `@types/node`, pinned exactly in `devDependencies` with no
 lockfile, check `scripts/` under `tsconfig.scripts.json` (nodenext, Node's types). Nothing the mod ships imports them.
 
-`npm run validate` runs `scripts/validate.ts` on Node's type stripping, so a maintainer's Node is 22.18 or newer
-on the 22 line, or 23.6 or newer (https://nodejs.org/api/typescript.md); `engines` stays `>=22`. CI's
-`node-version: 22` takes the newest 22.x.
+`npm run validate` and `npm test` run `scripts/validate.ts` and `scripts/test.ts` on Node's type stripping, so a
+maintainer's Node is 22.18 or newer on the 22 line, or 23.6 or newer (https://nodejs.org/api/typescript.md); `engines`
+stays `>=22`. CI's `node-version: 22` takes the newest 22.x. Both run on a scratch copy of the files git would ship
+(`scripts/shipped-copy.ts`): a git-ignored copy of the repo that an audit leaves under `docs/superpowers/` never adds
+its tests to the run or takes it past `claude plugin test`'s limit of 1000 test files.
 
 ## Layout
 
@@ -49,8 +51,9 @@ on the 22 line, or 23.6 or newer (https://nodejs.org/api/typescript.md); `engine
 - `hooks/<folder>/` - one feature each (`band`, `inspect`, `handoff`, `plan`, `tools`, `agents`, `cache`, ...):
   `types.ts`, logic files that take no `$`, and `effects.ts`, the folder's only file that touches `$`.
 - `tests/` - each hook's `*.test.ts` at the same path as its source, with shared helpers in `tests/kit.ts`.
-- `types/` - the mod's own `index.d.ts`; `scripts/validate.ts` - the validate run, on Node's type stripping;
-  `docs/` - the brief and the band explorer.
+- `types/` - the mod's own `index.d.ts`; `scripts/validate.ts` and `scripts/test.ts` - the validate and test runs,
+  on Node's type stripping, and `scripts/shipped-copy.ts`, the copy both run on; `docs/` - the brief and the band
+  explorer.
 
 ## Invariants
 
@@ -60,6 +63,16 @@ on the 22 line, or 23.6 or newer (https://nodejs.org/api/typescript.md); `engine
   and `scoring.json`; the user's ruling, 2026-11-13: 'alfred mods must learn Alfred's code plans'), and from nothing
   else in the stack. An absent file, an unknown schema or another session's file leaves the core view as it is, never
   an error, with the reason in a dim diagnostics row.
+  claude-kit is a second source that adds data (the user's ruling, 2026-11-19): the mod reads it only from the
+  `kit status (` line a request carries and from the public plan and score files, never from the kit's own files. The
+  plan and score files are `<root>/plans/<slug>.json` and `<root>/scores/<slug>.json`, the root named by the
+  `plansFolder` field (the user's ruling, 2026-11-19): `default` is `.claude/session-inspector`, `.alfred` is
+  `.alfred/alfred-mods`, `.alfred-mods` is `.alfred-mods`, and unset means `.alfred-mods`. Claude Code asks before each
+  write under `.claude/`, so a skill writes them outside it unless the project chose `default`. The mod reads all three
+  roots, the chosen one first, and a name held in more than one shows its newest file (the earlier root on a tie); a
+  writer that has not caught up still shows. The writers' rule is in the README, 'Plan and score files'.
+  `/alfred-mods:update` is the one writer of plan and score files in the mod: it copies one into the chosen root,
+  reads it back, and only then removes the source. No line leaves the core view as it is.
   Every phase is checked in both: a project without Alfred Code and one with it.
 - **Standalone.** The mod does not depend on, require, install or remove Alfred Code or any other plugin; the manifest
   declares no `dependencies`.
@@ -79,8 +92,12 @@ on the 22 line, or 23.6 or newer (https://nodejs.org/api/typescript.md); `engine
   the new path under the root, under the root read at session start, the old path under the root, then the old path
   relative to the working folder (`statusPaths` in `hooks/handoff/handoff.ts`).
 - **The root holds only the mod's own plugin folders.** Claude Code scans a plugin root's default folders whatever the
-  manifest says, so `commands/`, `agents/`, `skills/`, `output-styles/`, `workflows/`, `monitors/`, `themes/`, `bin/`,
-  `.mcp.json`, `.lsp.json`, `settings.json` and a root `SKILL.md` never appear here unless the mod ships them. The one
+  manifest says, so `agents/`, `skills/`, `output-styles/`, `workflows/`, `monitors/`, `themes/`, `bin/`, `.mcp.json`,
+  `.lsp.json`, `settings.json` and a root `SKILL.md` never appear here unless the mod ships them. The mod ships
+  `commands/` (the user's ruling, 2026-11-19): `init.md`, `configure.md` and `update.md` name `/alfred-mods:init`,
+  `/alfred-mods:configure` and `/alfred-mods:update`, and each has its own `command.run` hook in `hooks/register.ts`,
+  which answers in place of the model (probed on 2.1.328). The markdown body is only the fallback for a host that runs
+  no mod hooks. No command is registered with `$.command.register` under the name `alfred-mods`. The one
   exception is a git-ignored, machine-local `.mcp.json` for development: it never ships, but a `claude --plugin-dir .`
   session reads it as the mod's own MCP server (`plugin details` lists it), so a check of what the mod adds to a
   session loads a copy of the files git lists, as `npm run validate` does.

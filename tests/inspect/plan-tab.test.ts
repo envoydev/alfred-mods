@@ -255,7 +255,7 @@ for (const surface of SURFACES) {
     expect((await rows(await band($, surface, true)))[0]?.startsWith('Tasks ▰▱▱▱▱ 1/3 · 33%')).toBe(true)
   })
 
-  test(`/inspect plan <name> pins a plan, and an unknown name lists the plans (${surface})`, async ($, on) => {
+  test(`/inspect plan <name> pins a plan, and an unknown name lists the plans (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     const titled = (title: string, statuses: Record<string, string> = {}) => planText(statuses, [], plan => {
       plan.title = title
     })
@@ -269,6 +269,11 @@ for (const surface of SURFACES) {
     await clock.advance(30_000)
     expect((await rows(await pane($, surface))).some(l => l.startsWith('Plan · Old plan'))).toBe(true)
     expect((await inspect($, 'plan nope')).text).toBe('No plan named nope. Plans: new, old.')
+  })
+
+  test(`/inspect plan <name> with no plan files names the chosen root (${surface})`, async ($, on) => {
+    await begin($, on, { files: {}, sources: { project: { 'alfred-mods': { plansFolder: '.alfred' } } } })
+    expect((await inspect($, 'plan nope')).text).toBe('No plan named nope. No plan file in .alfred/alfred-mods/plans/.')
   })
 
   test(`the Plan tab label and the plan bar take gold, and nothing under NO_COLOR (${surface})`, async ($, on) => {

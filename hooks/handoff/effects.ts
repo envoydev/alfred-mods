@@ -4,7 +4,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 import type { Handoff, PlanPart, SaveTrigger, SaveInput, SaveResult, ScoresPart } from './types'
-import { PLANS_DIR, creditedPlan, scoresView } from '../plan/plan'
+import { chosenPlansDir, creditedPlan, scoresView } from '../plan/plan'
 import { FOREIGN, HANDOFF_PATH, HANDOFF_USAGE, MARKER, MODES, RESUME_WINDOW_MS, RESUME_PROMPT, TOASTS, gitPart, handoffPercent, handoffText, isThreshold, nextStep, parseStatus, percentOf, stepUnder, stepsOf } from './handoff'
 import { readBreakdown } from '../context/effects'
 import { readLive, readSession, readUsage } from '../session/effects'
@@ -17,7 +17,7 @@ import type { Pending, MatchedInput } from '../core/types'
 import { planViewOf, readPlans, readTasks } from '../plan/effects'
 import { runwayOf } from '../stack/stack'
 import { clockText, tokensText } from '../core/format'
-import { loadSettings, resolvedSettings, writeUserField, settingsInForce } from '../settings/effects'
+import { loadSettings, plansFolderInForce, resolvedSettings, writeUserField, settingsInForce } from '../settings/effects'
 import { readView } from '../inspect/effects'
 import { toast } from '../core/effects'
 import { sourceLabel } from '../settings/settings'
@@ -163,7 +163,7 @@ async function readSaveInput($: EngineInterface, at: number, git: string[]): Pro
       const steps: PlanPart['steps'] = view.rows.map(row => ({
         id: row.step.id, title: row.step.title, status: row.step.status, actualMs: row.actualMs, forecastMs: row.forecastMs, notes: row.notes.length,
       }))
-      plan = { file: `${PLANS_DIR}/${credited.name}.json`, title: view.title, finished: view.finished, total: view.total, steps }
+      plan = { file: credited.path ?? `${chosenPlansDir(plansFolderInForce().folder)}/${credited.name}.json`, title: view.title, finished: view.finished, total: view.total, steps }
       const own = plans.scoreFiles.find(scoreFile =>
         scoreFile.value !== null && scoreFile.value.subject.kind === 'plan' && scoreFile.value.subject.ref === credited.name)
       const sv = own === undefined || own.value === null ? null : scoresView(own.value)

@@ -1,5 +1,6 @@
 // The inspect pane's types
 import type { Runway, Stack } from '../stack/types'
+import type { KitState } from '../kit/types'
 import type { HandoffView } from '../handoff/types'
 import type { Totals } from '../session/types'
 import type { Failure, ToolStat } from '../tools/types'
@@ -14,5 +15,7 @@ export type TabInput = BandInput & {
   failures: Failure[]; stats: Record<string, ToolStat>; totals: Totals; view: View; handoff?: HandoffView
   // Blocks per hook script (spec C6); what fills the context (spec C1); loops no spawn announced (spec C3)
   blockers?: Record<string, number>; parts?: Parts; loops?: Loop[]
+  // claude-kit's status as last read, or none seen
+  kit?: KitState
   stack?: { view: Stack; prompt: string | null; runway: Runway | null; sessionModel: string | null }
 }

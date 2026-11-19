@@ -20,10 +20,12 @@ import { drawRecPane, maskAssistantMessage, maskCommandOutput, maskQuestions, ma
 import { drawBandAbove, drawBandAboveFailed, drawBandUnder, drawBandUnderFailed, drawSpinner } from './band/effects'
 import { trackRuleLoad } from './context/effects'
 import { drawInspectPane, runInspectCommand } from './inspect/effects'
+import { drawSetupPane, runConfigureCommand, runInitCommand, runUpdateCommand } from './setup/effects'
 import type { ToolCall } from './tools/types'
 import type { Pending } from './core/types'
 import { reloadSettingsSoon } from './settings/effects'
 import { followSessionStart, startSession } from './lifecycle/effects'
+import { recordAttachment } from './prompt/effects'
 
 export const register: Register = (on, options) => {
   // The person's word that a managed plugin sends these events on past the mod: Claude Code then tells the model, once
@@ -88,6 +90,11 @@ export const register: Register = (on, options) => {
   // engine may start its turn before this hook resumes; a prompt dropped beneath leaves, one rewritten is re-keyed.
   on('prompt.submit', ($, e, next) => trackPrompt($, e, next, calls, pending)).catch(($, e, next) => next(e))
 
+  // What the model reads beside each request, recorded as the engine answered it and passed on untouched. It stays out of
+  // the block above: that holds only the hooks a managed plugin's notices have named, and none named `prompt.attachment`;
+  // it moves into that block the day a notice names it.
+  on('prompt.attachment', ($, e, next) => recordAttachment($, e, next)).catch(($, e, next) => next(e))
+
   on('turn.start', ($, e, next) => trackTurnStart($, e, next)).catch(($, e, next) => next(e))
 
   on('turn.step', async function* ($, e, next) {
@@ -118,6 +125,14 @@ export const register: Register = (on, options) => {
   // file (the user's ruling, 2026-11-12); every form but words reads the files first, so a session that has not polled
   // answers with the level in force, never its own copy
   on('command.run', { command: 'rec' }, ($, e) => runRecCommand($, e)).catch(($, e, next) => ({ text: commandFailed('/rec', next.error.kind) }))
+
+  // '/alfred-mods:init [folder]', '/alfred-mods:configure [folder]' and '/alfred-mods:update': the plans folder, a
+  // project setting written only here, and the files moved to it. The plugin's commands/ folder names each command; the
+  // hook answers it, and init and configure offer the same choices as buttons in a pane that closes only when the
+  // person closes it
+  on('command.run', { command: 'alfred-mods:init' }, ($, e) => runInitCommand($, e)).catch(($, e, next) => ({ text: commandFailed('/alfred-mods:init', next.error.kind) }))
+  on('command.run', { command: 'alfred-mods:configure' }, ($, e) => runConfigureCommand($, e)).catch(($, e, next) => ({ text: commandFailed('/alfred-mods:configure', next.error.kind) }))
+  on('command.run', { command: 'alfred-mods:update' }, ($, e) => runUpdateCommand($, e)).catch(($, e, next) => ({ text: commandFailed('/alfred-mods:update', next.error.kind) }))
 
   // '/auto-handoff [ask|auto|off|at <percent>|now]': the mode and the first ask are settings values (S5) that ask, auto,
   // off and at <percent> write into the user file (the user's ruling, 2026-11-12); a bare form reads the files first
@@ -165,4 +180,7 @@ export const register: Register = (on, options) => {
 
   // The private-words pane: words are added only here, never through a command's arguments, which the transcript echoes
   on('ui.render', { component: 'Pane', requestId: 'rec' }, ($, e) => drawRecPane($, e)).catch(($, e, next) => drawNote($.ui.resolve(e), paneFailed(next.error.kind, next.error.message, recLevel() !== 'off')))
+
+  // The plans folder pane: one button per choice, the last update's report under them
+  on('ui.render', { component: 'Pane', requestId: 'alfred-mods-setup' }, ($, e) => drawSetupPane($, e)).catch(($, e, next) => drawNote($.ui.resolve(e), paneFailed(next.error.kind, next.error.message, recLevel() !== 'off')))
 }

@@ -2,7 +2,7 @@
 // `{ ms, isShared, at }` and `overhead:<plan>:<session id>` holds `{ ms, at }`. Each session writes only its own keys,
 // so two sessions never race; a read sums them all. Pure functions; plan/effects.ts reads and writes the store.
 import { isFinishedStep, isPlanRunning } from './plan'
-import type { CallWait, SliceClose, Credit, NamedStep, Plan, Slice, StepTime, CloseTarget, Watched } from './types'
+import type { CallWait, SliceClose, Credit, NamedStep, Plan, Slice, StepTime, CloseTarget, TaskItem, Watched } from './types'
 import type { CostEntries } from '../session/types'
 
 
@@ -156,4 +156,30 @@ export function closeTargetOf(loop: string, slice: Slice, lines: NamedStep | nul
   if (target === null) return none
   if (target === 'overhead') return { loop, keys: [overheadKey(shown.name, session)], isShared: false }
   return { loop, keys: target.steps.map(step => stepKey(shown.name, step, session)), isShared: target.isShared }
+}
+
+// The time the task list takes from a set of spans: the main loop's and those of agents whose spawn was seen
+export function taskListMs(spans: Readonly<Record<string, number>>, agentIds: readonly string[]): number {
+  return Object.entries(spans).filter(([loop]) => loop === 'main' || agentIds.includes(loop)).reduce((total, [, span]) => total + span, 0)
+}
+
+// The running items share `ms` evenly; a list with none running stays as it is
+export function creditRunningTasks(list: readonly TaskItem[], ms: number): readonly TaskItem[] {
+  const runningCount = list.filter(task => task.status === 'in_progress').length
+  return runningCount === 0 ? list : list.map(task => (task.status === 'in_progress' ? { ...task, workedMs: task.workedMs + ms / runningCount } : task))
+}
+
+// What the store keeps for one of this session's keys: an overhead key holds no isShared
+export function storedTimeOf(key: string, time: StepTime, now: number): { ms: number; isShared?: boolean; at: number } {
+  return key.startsWith('overhead:') ? { ms: time.ms, at: now } : { ms: time.ms, isShared: time.isShared, at: now }
+}
+
+// The shown plan's live time by step id and as overhead, from the open slices' spans
+export function shownStepTimes(shown: Watched<Plan>, spans: Readonly<Record<string, number>>, session: string): { steps: Record<string, number>; overhead: number } {
+  const steps: Record<string, number> = {}
+  for (const step of shown.value?.steps ?? []) {
+    const ms = spans[stepKey(shown.name, step.id, session)]
+    if (ms !== undefined) steps[step.id] = ms
+  }
+  return { steps, overhead: spans[overheadKey(shown.name, session)] ?? 0 }
 }

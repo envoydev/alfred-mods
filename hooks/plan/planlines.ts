@@ -222,9 +222,10 @@ function scoreLines(scoresView: ScoresView): Line[] {
 export function planLines(
   view: PlanView | null, scoresView: ScoresView | null,
   options: { invalid: boolean; others: string[]; otherScores: string[]; updatedAt: number | null; now: number; columns: number },
+  plansDir: string,
 ): Line[] {
   const out: Line[] = []
-  if (view === null) out.push([{ text: 'No plan file in .claude/session-inspector/plans/, and no task list this session.', tone: 'dim' }])
+  if (view === null) out.push([{ text: `No plan file in ${plansDir}/, and no task list this session.`, tone: 'dim' }])
   else {
     const head: Line = [{ text: 'Plan', bold: true, tone: 'plan' }, { text: ` · ${fitLine(view.title, 60)}`, bold: true }, { text: `   ${view.finished}/${view.total}` }]
     if (view.isFinished) head.push({ text: ` · done in ${minutesText(view.workedMs)}` })

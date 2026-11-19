@@ -23,6 +23,7 @@ A mod is a Claude Code plugin whose hooks run inside Claude Code, so it can watc
 - [Recording mode](#recording-mode)
 - [Handoff](#handoff)
 - [With Alfred Code](#with-alfred-code)
+- [With claude-kit](#with-claude-kit)
 - [Plan and score files](#plan-and-score-files)
 - [Development](#development)
 
@@ -101,7 +102,7 @@ organization's managed settings allow only its own mods
 
 1. [Install](#install) it and run `/reload-plugins`. The band appears above the prompt; Ctrl+X Ctrl+A folds it away
    and back, and `/inspect band off` hides it until `/inspect band full`.
-2. Run `/inspect` for the pane with the details: Now, Usage, Agents, Tools, Cache, Timeline and Plan. Esc at an
+2. Run `/inspect` for the pane with the details: Now, Usage, Agents, Tools, Cache, Timeline, Plan and Prompt. Esc at an
    empty prompt, or `/inspect close`, closes it.
 3. Change what you want in `~/.claude/settings.json`, under one `"alfred-mods"` key beside the keys the file already
    has. Add only the fields you change; here is every field with its default:
@@ -115,7 +116,8 @@ organization's managed settings allow only its own mods
        "quiet": true,
        "rec": "off",
        "handoff": "ask",
-       "handoffAt": 80
+       "handoffAt": 80,
+       "plansFolder": ".alfred-mods"
      }
    }
    ```
@@ -152,8 +154,8 @@ code.
 
 ## Commands
 
-- **`/inspect [now|usage|agents|tools|cache|timeline|plan [name]]`** opens the pane on a tab, Now when none is named.
-  In the pane, `n`, `u`, `a`, `t`, `k`, `l` and `p` switch tabs. `/inspect plan <name>` pins the plan file
+- **`/inspect [now|usage|agents|tools|cache|timeline|plan [name]|prompt]`** opens the pane on a tab, Now when none is
+  named. In the pane, `n`, `u`, `a`, `t`, `k`, `l`, `p` and `m` switch tabs. `/inspect plan <name>` pins the plan file
   `<name>.json`; `/inspect plan` alone returns to the newest.
 - **`/inspect band off`, `calm`, `full`** set the band's mode, the `"band"` field, in your user file: `off` draws no
   band, above or under. **`/inspect band`** alone prints the mode and the file it comes from.
@@ -181,12 +183,82 @@ code.
   as the ask's `c` does; **`/auto-handoff later`** takes the ask down until its next step, as `r` does.
   **`/auto-handoff`** reads the settings files again and
   prints the mode, the first ask and the file each comes from.
+- **`/alfred-mods:init`**, **`/alfred-mods:configure`** and **`/alfred-mods:update`** choose the folder plan and score
+  files live in, the `"plansFolder"` field ([Plan and score files](#plan-and-score-files)), and move the files there.
+  They are the mod's `commands/` files, so Claude Code lists them under the plugin's name, and the mod answers each
+  one in place of the model. `init` and `configure` take one value, `default`, `.alfred` or `.alfred-mods`. They write
+  the field into the project's `.claude/settings.json`, not your user file, as the folder is the project's layout:
+  - **`/alfred-mods:init`** with the field set in any file prints `Plans live in <root>/ (plansFolder "<value>" in
+    <file>) - /alfred-mods:configure changes it`, then runs `update`. With it unset, `init` prints the three choices,
+    the recommended one first - `/alfred-mods:init .alfred-mods (recommended - no permission asks)`,
+    `/alfred-mods:init .alfred (beside Alfred Code's state)`, `/alfred-mods:init default (.claude/session-inspector -
+    Claude Code asks before each write)` - and opens a pane, `Plans folder`, with the same three as buttons (on the
+    terminal's main screen, as the lines to type). A press writes the field and runs `update`, and the report shows in
+    the pane, which stays open. Where no surface draws a pane (`claude -p`), the text is the choices and one more line,
+    `The pane is open but not drawn: <reason>.`.
+    **`/alfred-mods:init <value>`** writes the field, prints `Plans live in ...` for it, and runs `update`.
+  - **`/alfred-mods:configure <value>`** writes the field and moves nothing: it prints `plansFolder is "<value>" -
+    /alfred-mods:update moves the files`. **`/alfred-mods:configure`** alone shows the same three lines and pane as
+    `init`, the current one marked `(now)`; a press, or one of those lines typed, writes the field and runs `update`.
+    When a higher file sets the field, the line says so instead - `plansFolder is ".alfred" in
+    .claude/settings.local.json, which wins over the value written`.
+  - **`/alfred-mods:update`** takes no value. It applies the folder in force and prints one line for each step that
+    had work, then `update done` (`nothing to update` when none had). It runs on your word only, never by itself:
+    1. Plans and scores in the two other folders move into the chosen one, up to 50 files a run: each is copied, read
+       back and checked equal, and then one `rm` removes the sources that read back equal and did not change. Only a
+       file that would be copied counts toward the 50. A folder that is the chosen folder under another name (a link
+       to it) is never a source: `not moved: <root>/<plans|scores>/ is the same folder as <chosen
+       root>/<plans|scores>/`, or, where its real place cannot be told, `not moved: <folder>/ - could not tell if it
+       is the same folder as <chosen folder>/`. A plan with a step not done whose file is under 24 hours old stays
+       with its scores, and so does a plan that does not parse while its file is that new: `left in place: <name> -
+       its writer still uses it; run /alfred-mods:update after it finishes`. A plan that does not parse and is older
+       stays too, with its scores, but waiting for its writer would never end: `left in place: <name> - it does not
+       read as a plan; fix or remove it`. A plan whose file cannot be read stays with its scores: `left in place:
+       <name> - could not read it`. A name the chosen folder already holds stays in both, with the scores of that
+       plan beside it: `kept both: <name> (the newer one shows)`. An equal copy is cleaned only where the folders are
+       proven different: the chosen folder's copy must be a separate file of the same text and the size the source
+       had, its real path must differ from the source's (compared without case), and a probe file - written into the
+       chosen folder, looked for in the source folder, and removed with the sources - must not be found there. A
+       source that fails any of these is kept: the folder that holds the probe is named as the same folder. A copy
+       that did not read back equal leaves the source and the destination as found: `not moved: <name> - its copy did
+       not read back equal; check <root>/<plans|scores>/`. A file that is not UTF-8 text is never copied, as the read
+       would change it: `not moved: <name> - not UTF-8 text`. A source whose size changed since the listing is not
+       copied: `not moved: <name> - it changed while the update ran; run /alfred-mods:update again`. A destination
+       that cannot be checked, or a copy that cannot be checked after it was written, leaves the source in place:
+       `not moved: <name> - could not check the destination` or `not moved: <name> - could not check the copy`. Each
+       of these prints one line for each name, and `not moved` one for each name and kind.
+       If `rm` fails or is missing, each source and probe file it left is checked: the sources still there are named
+       as `copied <n> files to <root>/ - remove the old copies in <folders> by hand`, and a probe file still there as
+       `could not remove <file> - delete it by hand`. Where `rm` does not run at all, as on most Windows machines, no
+       probe is written and equal copies are kept both. A probe name that is taken is replaced once, and a taken second
+       name keeps the equal copies. The line is `moved <n> plan and scores files to <root>/`, and past 50 files the
+       run ends on `more to move - run /alfred-mods:update again`.
+    2. `.gitignore`: when the project has one and no line covers the chosen folder (`.alfred` covers
+       `.alfred/alfred-mods`), `<root>/` is appended: `added <root>/ to .gitignore`. `default` adds none, and no
+       `.gitignore` is made.
+    3. A choice made before 0.8 is written to your user file when no settings file sets that field and the choice
+       differs from the default: `wrote your earlier choices to ~/.claude/settings.json: <fields>` (it may name
+       several fields; [From 0.7](#from-07)).
+    4. A switched-on old install is named: `an old session-inspector install is still on - claude plugin uninstall
+       session-inspector@<marketplace>`.
+    5. Status files of Alfred Code 3.12.1 or older are counted while the new status folder exists:
+       `<n> status files from Alfred Code 3.12.1 or older in .claude/session-inspector/status/ - safe to delete`.
+       Nothing is removed: an old stack may still write there.
+  - The confirm lines of `init <value>`, `configure <value>` and a pane press add, for a folder other than
+    `.alfred-mods`, `new plans land there once each writer reads plansFolder - claude-kit does from its 0b09406 sync`.
+    A bare `init` with the field set prints its `Plans live in ...` line alone, then the `update` report. An unknown
+    value, or a value given to `update`, prints the usage line. Nothing of a plan's text is printed.
+  - Where the host runs no mod hooks, each command is only its markdown file: the model is told the mod did not
+    answer, and that `"alfred-mods": { "plansFolder": "<value>" }` in `.claude/settings.json` sets the folder by hand.
 
 A command that sets a field writes that one field under `"alfred-mods"` in `~/.claude/settings.json` (in
 `$CLAUDE_CONFIG_DIR` when that is set) and leaves every other key, the file's indent and its line ends as they were.
 The band follows within seconds, as for an edit by hand. If a project or local file gives the same field, it still
 comes first, and the command says so. A file that does not parse as JSON, or whose `"alfred-mods"` is not an object,
-is never rewritten: the command says why, and you set the field by hand.
+is never rewritten: the command says why, and you set the field by hand. `/alfred-mods:init` and
+`/alfred-mods:configure` follow the same rules for the project's `.claude/settings.json`: they create the file when it
+is missing, and a file that does not parse is left alone (`.claude/settings.json does not parse - plansFolder not
+written`).
 
 Every button and key the mod draws has a command, so nothing needs a click or the pane's keys: in iTerm's main screen
 with tabs, for one, neither reaches the mod. On the terminal's main screen (`CLAUDE_CODE_NO_FLICKER=0`) the pane draws
@@ -201,7 +273,8 @@ NEEDS A LOOK
 An agent's report reads `/inspect report 1`, the handoff ask `/auto-handoff now · /auto-handoff compact ·
 /auto-handoff later`, and Alfred Code's fill `/inspect fill`. In fullscreen and on the Desktop they stay buttons. The
 tabs keep theirs, as each tab's name is its command's word (`/inspect usage`). The band's `[ /compact ]` and the Cache
-tab's Compact are Claude Code's own `/compact`. Every switch is a settings value ([Settings](#settings)).
+tab's Compact are Claude Code's own `/compact`. The `Plans folder` pane draws its three choices as
+`/alfred-mods:init <value>` on the main screen too. Every switch is a settings value ([Settings](#settings)).
 
 ## Settings
 
@@ -231,18 +304,20 @@ download the file, or clone the repo, and open it.
 
 ### The fields
 
-| Field       | Values                       | Default   | Decides                                                            |
-|-------------|------------------------------|-----------|--------------------------------------------------------------------|
-| `band`      | `"full"`, `"calm"`, `"off"`  | `"full"`  | `"full"` adds the info line and the rows under it; `"calm"` keeps two lines; `"off"` draws none |
-| `bandPlace` | `"above"`, `"under"`         | `"above"` | the band above the input, or under it (the terminal only)          |
-| `bandRows`  | `true`, `false`              | `true`    | the `tools:`, `skills:`, `agents:` and `rules:` rows open or closed |
-| `quiet`     | `true`, `false`              | `true`    | one line per tool call in place of the command and its output      |
-| `rec`       | `"off"`, `"on"`, `"strict"`  | `"off"`   | [Recording mode](#recording-mode): what is masked on screen        |
-| `handoff`   | `"ask"`, `"auto"`, `"off"`   | `"ask"`   | how a [handoff](#handoff) is saved before the context fills        |
-| `handoffAt` | a whole number from 10 to 95 | `80`      | the context percent where the handoff first asks or saves          |
+| Field         | Values                                       | Default          | Decides                                                            |
+|---------------|----------------------------------------------|------------------|--------------------------------------------------------------------|
+| `band`        | `"full"`, `"calm"`, `"off"`                  | `"full"`         | `"full"` adds the info line and the rows under it; `"calm"` keeps two lines; `"off"` draws none |
+| `bandPlace`   | `"above"`, `"under"`                         | `"above"`        | the band above the input, or under it (the terminal only)          |
+| `bandRows`    | `true`, `false`                              | `true`           | the `tools:`, `skills:`, `agents:` and `rules:` rows open or closed |
+| `quiet`       | `true`, `false`                              | `true`           | one line per tool call in place of the command and its output      |
+| `rec`         | `"off"`, `"on"`, `"strict"`                  | `"off"`          | [Recording mode](#recording-mode): what is masked on screen        |
+| `handoff`     | `"ask"`, `"auto"`, `"off"`                   | `"ask"`          | how a [handoff](#handoff) is saved before the context fills        |
+| `handoffAt`   | a whole number from 10 to 95                 | `80`             | the context percent where the handoff first asks or saves          |
+| `plansFolder` | `"default"`, `".alfred"`, `".alfred-mods"`   | `".alfred-mods"` | where [plan and score files](#plan-and-score-files) live           |
 
-`band`, `rec`, `handoff` and `handoffAt` can also be set by a command, which writes the field into your user file
-([Commands](#commands)).
+`band`, `rec`, `handoff` and `handoffAt` can also be set by a command, which writes the field into your user file;
+`plansFolder` is set by `/alfred-mods:init` or `/alfred-mods:configure`, which write it into the project's
+`.claude/settings.json` ([Commands](#commands)).
 
 ### Each field, with an example
 
@@ -420,6 +495,17 @@ window. `/auto-handoff at 70` sets it.
 ⚠ ctx past 70% 4: Handoff        then again at 75%, 80%, … 95%
 ```
 
+#### `plansFolder` - where plan and score files live
+
+`"default"` is `.claude/session-inspector/`, which Claude Code protects: it asks before each write there. `".alfred"`
+is `.alfred/alfred-mods/`, beside Alfred Code's state. `".alfred-mods"` is `.alfred-mods/`, and is the value while the
+field is unset. `/alfred-mods:init` and `/alfred-mods:configure` set it in the project's `.claude/settings.json`;
+[Plan and score files](#plan-and-score-files) says how a writer finds it.
+
+```json
+{ "alfred-mods": { "plansFolder": ".alfred" } }
+```
+
 ### Which file wins
 
 Each field on its own takes the first valid value in this order:
@@ -486,6 +572,10 @@ open session; a bare `/rec` or `/auto-handoff` reads the files again at once. A 
   handoff stands down ([Handoff](#handoff)), and the mod shows the stack's mode banner, the context runway measured
   against the stack's resume trigger, and an ALFRED CODE section whose `f` fills the stack's ready resume prompt
   ([With Alfred Code](#with-alfred-code)).
+- **With claude-kit:** where claude-kit's hook adds its `kit status (` line to your requests, the band's kit banner and
+  a CLAUDE-KIT section in the Now tab show the kit's modes ([With claude-kit](#with-claude-kit)).
+- **The Prompt tab** (`/inspect prompt`, `m`): what the main loop's last turn carried for the model, besides what you
+  typed ([The Prompt tab](#the-prompt-tab)).
 
 If the band or the pane fails to draw, it shows one dim line naming the failure, such as `alfred-mods: the band
 failed to draw (throw)`, instead of going blank.
@@ -763,14 +853,89 @@ this, and the ALFRED CODE section shows one dim line with the reason, such as `A
 session`. The file is the stack's: the mod never writes it, and reads nothing else of the stack but the two files of the
 plan folder it names.
 
+## With claude-kit
+
+In a project where claude-kit is installed, its `UserPromptSubmit` hook adds
+a line starting `kit status (` to each request. The mod reads that line from the request, never a file of the kit's, and
+shows its values. The mod does not depend on claude-kit: without the line, none of this draws.
+
+- **The kit banner:** `kit: auto-run · scoring 90 · auto-approve │` follows Alfred Code's banner on the band's first line,
+  naming only the modes that are on (`scoring` carries the pass score). With none on, there is no banner. Where it
+  would change anything else in the band, it shortens to `kit`, and where even that would, it drops out.
+- **The CLAUDE-KIT section** in the Now tab, after ALFRED CODE: a row each for auto-run, scoring and auto-approve with
+  its value and the file it comes from (`auto-run on · from .claude/kit/settings.json`), where the scoring row also
+  carries the pass score (`scoring on · pass 90 · from .claude/kit/settings.json`), one `models:` row for the five
+  models (`models: plan opus · audit opus · review opus · implement sonnet · search haiku`), the hook's `saved:` or
+  `not saved -` note when it gave one, and `seen <time> ago`. A turn that carries no line leaves the last one shown,
+  so the `seen` age tells how old the values are. A `/clear` keeps the values until the next line.
+- **The score's colour:** Alfred Code's scoring level where it gives one, else the kit's pass score while scoring is on,
+  when that is a whole number from 1 to 100.
+- **Plans and scores:** the kit's plans and scores reach the mod through the files in
+  [Plan and score files](#plan-and-score-files): `solve-task` publishes the plan file and `refining-plans` the score
+  file. From claude-kit 0b09406 (the commit your `.claude/kit/lock.json` names, or a later one) both find the folder by
+  the writers' rule in that section, so they follow the `plansFolder` field. An older sync writes them to
+  `.alfred-mods/`, which the mod reads whatever the field says, and `/alfred-mods:update` moves them to the folder you
+  chose.
+
+The mod never writes the kit status line. Only `/alfred-mods:update` moves plan and score files: it copies each one,
+then removes the source. Add the plans folder you chose (`.alfred-mods/` unless you picked another) to a project's
+`.gitignore`, as the plan and score files the kit publishes there are not for the repository; `/alfred-mods:update`
+adds the line, except for `default`.
+
+### The Prompt tab
+
+`/inspect prompt`, or `m` in the pane, shows what the main loop's last turn carried for the model beside your typed
+text. Subagents' turns are left out. The first line reads `Last turn · <time> · you <n> chars · <parts> parts ·
+<total> chars`, then three groups, each only when it has parts:
+
+- **From hooks:** each part as `<event> · <type> · <chars>`, then its text.
+- **From plugins:** each part as `<event> · <chars>`, then its text.
+- **From Claude Code:** one row a part, `<type> · <chars>` and the text's first line.
+
+The turn starts at your prompt and runs to the next one, so a hook's context or a file's note inside it belongs to it.
+A record keeps the newest 60 parts (`<n> dropped` counts the rest) and each part's first 4,000 characters; a cut text
+ends `… (<chars> chars)`. Attachments raised before a first turn show under a `before the first turn` header; only an
+empty record, such as one after a `/clear`, shows the dim line `No turn yet in this session.`
+
+The text stays in the session's memory (`$.state`) and nothing of it goes to a file, a log or the store. `/clear`, a
+resume and a fork empty it, and after a resume the next turn lists the earlier parts the engine asks again too. Any
+plugin can read a `$.state` value, which gives it nothing it could not read from the same event.
+
 ## Plan and score files
 
-The Plan tab and the band's plan line read JSON files from one fixed folder in the project:
-`.claude/session-inspector/plans/<slug>.json` for each plan and `.claude/session-inspector/scores/<slug>.json` for each
-scored output. Any skill or tool can write them; writers resolve their own paths and publish there. The mod only
-reads the folder, except HANDOFF.md, which it writes. Keep the folder gitignored.
+The Plan tab and the band's plan line read JSON files from one folder of the project, the one the `plansFolder` field
+names ([The fields](#the-fields)): `<root>/plans/<slug>.json` for each plan and `<root>/scores/<slug>.json` for each
+scored output. The roots are `.claude/session-inspector` for `"default"`, `.alfred/alfred-mods` for `".alfred"` and
+`.alfred-mods` for `".alfred-mods"`, which is also the root while the field is unset. Any skill or tool can write
+the files. Claude Code asks before each write under `.claude/`, which stalls a run nobody watches, so only `"default"`
+puts them there, and `/alfred-mods:init` offers the choice ([Commands](#commands)).
 
-The mod reads both folders after each Write, Edit or NotebookEdit call completes, at the end of each turn, and every
+The mod reads all three roots, the chosen one first, then `.alfred-mods`, `default` and `.alfred` in that order with
+the chosen one left out. A name held in more than one root shows its newest file; on a tie, the earlier root. So a
+writer that does not follow the field yet still shows, and a file `/alfred-mods:update` moved is replaced on screen
+the moment its writer writes it again. A change of the field shows at the next read, with no restart. Only
+`/alfred-mods:update` moves a plan or scores file; the mod writes none of its own. Keep the chosen root gitignored
+(`.alfred-mods/`, `.alfred/alfred-mods/`; `update` adds the line); `.claude/` is the project's own config.
+
+**The writers' rule.** A writer finds the folder like this:
+
+1. Read `"alfred-mods".plansFolder` - the field inside the `"alfred-mods"` object - from `.claude/settings.local.json`,
+   then `.claude/settings.json`, then `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`); the first
+   file with a valid value wins. A value not in the map is skipped, and the next file is read.
+2. Map it: `"default"` is `.claude/session-inspector`, `".alfred"` is `.alfred/alfred-mods`, `".alfred-mods"` is
+   `.alfred-mods`.
+3. Write `plans/<slug>.json` and `scores/<slug>.json` under that root. With no valid value in any of the three files,
+   write under `.alfred-mods/`.
+
+The mod's own order puts managed settings and `--settings` first, which a writer cannot read. A value set only there
+can split the writer's folder from the mod's first folder; the view stays right through the reading of all three
+roots, and `/alfred-mods:update` moves the files.
+
+**Rolling back.** The mod before this field read `.alfred-mods/` and `.claude/session-inspector/` only. After a
+downgrade, files in `.alfred/alfred-mods/` no longer show: move them back by hand, or run
+`/alfred-mods:configure .alfred-mods` and `/alfred-mods:update` before downgrading.
+
+The mod reads the folders after each Write, Edit or NotebookEdit call completes, at the end of each turn, and every
 30 seconds. It shows the plan with a step in progress written this session, else the task list, else the newest plan
 (with Alfred Code, the plan its status file names comes first: see With Alfred Code);
 `/inspect plan <slug>` pins one. A file that does not parse keeps its last good version and shows `plan file invalid`.
@@ -869,7 +1034,7 @@ the hooks module `hooks/register.ts` (the wiring; each feature lives in its fold
 source; the repo carries no marketplace of its own.
 
 ```bash
-npm test                 # claude plugin test: hooks fired with stubs, no session, sign-in or network
+npm test                 # claude plugin test on a copy of the files git would ship: hooks fired with stubs, no session, sign-in or network
 npm run validate         # claude plugin validate --strict on the root and on the manifest with --profile directory, on a copy of the files git would ship
 claude --plugin-dir .    # load the working tree for one session; a save reloads the hooks
 ```

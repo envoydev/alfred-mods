@@ -19,19 +19,19 @@ const grep = (more: object = {}) => ({ tool: 'Grep', pattern: 'AuthService', ...
 const isGrep = (tool: string): boolean => tool === 'Grep'
 
 for (const surface of SURFACES) {
-  test(`a docked pane too narrow for seven tabs wraps by width, every name whole (${surface})`, async ($, on) => {
+  test(`a docked pane too narrow for eight tabs wraps by width, every name whole (${surface})`, async ($, on) => {
     stubAll(on)
     engine(on)
     await inspect($, 'agents')
 
-    // Fullscreen docks the pane at about 46 columns; one bar of seven tabs needs 69
+    // Fullscreen docks the pane at about 46 columns; one bar of eight tabs needs 80
     const narrow = await $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'inspect', props: { ...PANE, bodyColumns: 46 } })
     const lines = await rows(narrow)
     expect(lines[0]).toBe('Now Usage  Agents  Tools ')
-    expect(lines[1]).toBe('Cache Timeline Plan ')
+    expect(lines[1]).toBe('Cache Timeline Plan Prompt ')
     await narrow.unmount()
 
-    expect((await rows(await pane($, surface)))[0]).toBe('Now Usage  Agents  Tools Cache Timeline Plan ')
+    expect((await rows(await pane($, surface)))[0]).toBe('Now Usage  Agents  Tools Cache Timeline Plan Prompt ')
   })
 
   test(`the Agents tab draws the main loop as the root and each agent under the one that started it (${surface})`, async ($, on) => {
