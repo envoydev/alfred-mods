@@ -8,26 +8,26 @@ import type { Line } from '../../hooks/core/types'
 import type { ScoreRound, Scores } from '../../hooks/plan/types'
 
 const text = (line: Line): string => line.map(s => ('text' in s ? s.text : '')).join('').replace(/ +/g, ' ').trim()
-const ROOT = '.alfred-mods'
+const DIR = '.alfred-mods/plans'
 const O = { invalid: false, others: [], otherScores: [], updatedAt: null, now: NOW, columns: 120 }
 const SCORES = parseScores(SCORES_JSON) as Scores
 const withRound = (round: Partial<ScoreRound>): Scores =>
   ({ ...SCORES, rounds: [...SCORES.rounds, { round: 3, at: null, total: 75, criteria: {}, findings: [], ...round }] })
 
 test('with no plan and no task list the tab says so, and shows the newest scores in full', () => {
-  const lines = planLines(null, scoresView(SCORES), O, ROOT).map(text)
+  const lines = planLines(null, scoresView(SCORES), O, DIR).map(text)
   expect(lines[0]).toBe('No plan file in .alfred-mods/plans/, and no task list this session.')
   expect(lines).toContain('Scores R1 68 → R2 81 ▲13 (scale 100)')
 })
 
-test('the empty line names the root it is given', () => {
-  expect(text(planLines(null, null, O, '.alfred/alfred-mods')[0] ?? [])).toBe('No plan file in .alfred/alfred-mods/plans/, and no task list this session.')
+test('the empty line names the plans folder it is given', () => {
+  expect(text(planLines(null, null, O, '.alfred/alfred-mods/plans')[0] ?? [])).toBe('No plan file in .alfred/alfred-mods/plans/, and no task list this session.')
 })
 
 test('a failed, a blocked and a skipped step draw their own glyphs, and a shared step says so', () => {
   const plan = planOf({ S3: 'skipped', S4: 'failed', S5: 'blocked' })
   const v = planView(plan, { ...FIVE_TIMES, S4: { ms: 12 * MIN, isShared: true } }, 0, {}, NOW)
-  const lines = planLines(v, null, O, ROOT).map(text)
+  const lines = planLines(v, null, O, DIR).map(text)
   expect(lines).toContain('– S3 Migration with rollback skipped est 10m')
   expect(lines).toContain('✗ S4 Update interceptor 12m of ≈24m shared est 20m')
   expect(lines).toContain('⊘ S5 E2E tests ≈18m est 15m')
@@ -39,7 +39,7 @@ test('a falling total, a criterion new this round, the improved list and more th
     criteria: { correctness: 70, speed: 60 },
     findings: [finding('F2', 'improved'), ...['F3', 'F4', 'F5', 'F6'].map(id => finding(id))] as ScoreRound['findings'],
   }))
-  const lines = planLines(null, s, O, ROOT).map(text)
+  const lines = planLines(null, s, O, DIR).map(text)
   expect(lines).toContain('Scores R1 68 → R2 81 → R3 75 ▼6 (scale 100)')
   expect(lines).toContain('correctness 80→70 ▼ speed 60 new')
   expect(lines).toContain('improved: F2 finding F2')
@@ -50,14 +50,14 @@ test('a falling total, a criterion new this round, the improved list and more th
 
 test('other plans and other scores files are listed, an invalid one marked', () => {
   const v = planView(FIVE, FIVE_TIMES, FIVE_OVERHEAD, {}, NOW)
-  const lines = planLines(v, null, { ...O, others: ['beta (invalid)', 'gamma'], otherScores: [scoresLabel('reply-7', withRound({ total: 88 }))] }, ROOT).map(text)
+  const lines = planLines(v, null, { ...O, others: ['beta (invalid)', 'gamma'], otherScores: [scoresLabel('reply-7', withRound({ total: 88 }))] }, DIR).map(text)
   expect(lines).toContain('reply-7 (plan) R3 88')
   expect(lines).toContain('Other plans: beta (invalid), gamma /inspect plan <name>')
 })
 
 test('steps without an estimate are counted in the header', () => {
   const v = planView(planOf({ S5: { estimateMin: null } }), FIVE_TIMES, FIVE_OVERHEAD, {}, NOW)
-  expect(text(planLines(v, null, O, ROOT)[0] ?? [])).toBe('Plan · Token refresh 3/5 · ≈1h 24m total · ≈12m left (×1.2) · 1 without an estimate')
+  expect(text(planLines(v, null, O, DIR)[0] ?? [])).toBe('Plan · Token refresh 3/5 · ≈1h 24m total · ≈12m left (×1.2) · 1 without an estimate')
 })
 
 test('a plan line too wide loses its step, then its title is cut', () => {
@@ -68,18 +68,18 @@ test('a plan line too wide loses its step, then its title is cut', () => {
 
 test('a ratio under 0.1 keeps its first digit rather than reading ×0.0', () => {
   const quick = { S1: { ms: 9000, isShared: false }, S2: { ms: 12_000, isShared: false }, S3: { ms: 6000, isShared: false } }
-  expect(text(planLines(planView(FIVE, quick, 0, {}, NOW), null, O, ROOT)[0] ?? []).endsWith('(×0.01)')).toBe(true)
+  expect(text(planLines(planView(FIVE, quick, 0, {}, NOW), null, O, DIR)[0] ?? []).endsWith('(×0.01)')).toBe(true)
 })
 
 test('a first round shows its figures, with no change against a round before it', () => {
-  const lines = planLines(null, scoresView({ ...SCORES, rounds: SCORES.rounds.slice(0, 1) }), O, ROOT).map(text)
+  const lines = planLines(null, scoresView({ ...SCORES, rounds: SCORES.rounds.slice(0, 1) }), O, DIR).map(text)
   expect(lines).toContain('correctness 70 risk 50 completeness 80')
   expect(lines).toContain('BLOCKER 1')
 })
 
 test('in a narrow pane the titles are cut so each step keeps its time and estimate', () => {
   const v = planView(FIVE, FIVE_TIMES, FIVE_OVERHEAD, {}, NOW)
-  const rows = planLines(v, null, { ...O, columns: 46 }, ROOT).filter(l => /^[✓⟳·] S\d/.test(text(l)))
+  const rows = planLines(v, null, { ...O, columns: 46 }, DIR).filter(l => /^[✓⟳·] S\d/.test(text(l)))
   expect(rows).toHaveLength(5)
   for (const l of rows) expect(widthOf(l)).toBeLessThanOrEqual(46)
   const steps = rows.map(text)

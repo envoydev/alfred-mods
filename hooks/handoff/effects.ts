@@ -4,8 +4,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 import type { Handoff, PlanPart, SaveTrigger, SaveInput, SaveResult, ScoresPart } from './types'
-import { PLANS_SUBFOLDER } from '../plan/constants'
-import { creditedPlan, plansRoots, scoresView } from '../plan/plan'
+import { chosenPlansDir, creditedPlan, scoresView } from '../plan/plan'
 import { FOREIGN, HANDOFF_PATH, HANDOFF_USAGE, MARKER, MODES, RESUME_WINDOW_MS, RESUME_PROMPT, TOASTS, gitPart, handoffPercent, handoffText, isThreshold, nextStep, parseStatus, percentOf, stepUnder, stepsOf } from './handoff'
 import { readBreakdown } from '../context/effects'
 import { readLive, readSession, readUsage } from '../session/effects'
@@ -164,7 +163,7 @@ async function readSaveInput($: EngineInterface, at: number, git: string[]): Pro
       const steps: PlanPart['steps'] = view.rows.map(row => ({
         id: row.step.id, title: row.step.title, status: row.step.status, actualMs: row.actualMs, forecastMs: row.forecastMs, notes: row.notes.length,
       }))
-      plan = { file: credited.path ?? `${plansRoots(plansFolderInForce().folder)[0]}/${PLANS_SUBFOLDER}/${credited.name}.json`, title: view.title, finished: view.finished, total: view.total, steps }
+      plan = { file: credited.path ?? `${chosenPlansDir(plansFolderInForce().folder)}/${credited.name}.json`, title: view.title, finished: view.finished, total: view.total, steps }
       const own = plans.scoreFiles.find(scoreFile =>
         scoreFile.value !== null && scoreFile.value.subject.kind === 'plan' && scoreFile.value.subject.ref === credited.name)
       const sv = own === undefined || own.value === null ? null : scoresView(own.value)

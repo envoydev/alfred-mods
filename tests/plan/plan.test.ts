@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { parsePlan, parseScores, pickNewest, planView, plansDirs, plansRoots, scoresDirs, scoresView, taskView, tasksAfter } from '../../hooks/plan/plan'
+import { candidatesByName, chosenPlansDir, parsePlan, parseScores, planView, plansDirs, plansRoots, scoresDirs, scoresView, taskView, tasksAfter } from '../../hooks/plan/plan'
 import { FIVE, FIVE_OVERHEAD, FIVE_TIMES, MIN, NOW, PLAN_JSON, SCORES_JSON, planOf } from '../plans'
 import type { Scores, TaskItem } from '../../hooks/plan/types'
 
@@ -208,6 +208,7 @@ test('the plans roots read the chosen folder first, then the others in the fallb
   expect(plansRoots('.alfred')).toEqual(['.alfred/alfred-mods', '.alfred-mods', '.claude/session-inspector'])
   expect(plansRoots('default')).toEqual(['.claude/session-inspector', '.alfred-mods', '.alfred/alfred-mods'])
   expect(plansRoots('.alfred-mods')).toEqual(['.alfred-mods', '.claude/session-inspector', '.alfred/alfred-mods'])
+  expect(chosenPlansDir('.alfred')).toBe('.alfred/alfred-mods/plans')
 })
 
 test('the plans and scores folders sit under each root', () => {
@@ -215,10 +216,10 @@ test('the plans and scores folders sit under each root', () => {
   expect(scoresDirs('.alfred')).toEqual(['.alfred/alfred-mods/scores', '.alfred-mods/scores', '.claude/session-inspector/scores'])
 })
 
-test('pickNewest keeps one entry per name, the greatest time, and a tie goes to the earlier folder', () => {
-  expect(pickNewest([[{ name: 'a', mtimeMs: 5 }], [{ name: 'a', mtimeMs: 9 }]])).toEqual([{ name: 'a', mtimeMs: 9 }])
-  expect(pickNewest([[{ name: 'a', mtimeMs: 9 }], [{ name: 'a', mtimeMs: 5 }]])).toEqual([{ name: 'a', mtimeMs: 9 }])
+test('candidatesByName groups a name across folders, newest first, a tie in folder order', () => {
+  expect(candidatesByName([[{ name: 'a', mtimeMs: 5 }], [{ name: 'a', mtimeMs: 9 }]])).toEqual([[{ name: 'a', mtimeMs: 9 }, { name: 'a', mtimeMs: 5 }]])
   const first = { name: 'a', mtimeMs: 7, from: 'first' }
-  expect(pickNewest([[first], [{ name: 'a', mtimeMs: 7, from: 'second' }]])).toEqual([first])
-  expect(pickNewest([[{ name: 'a', mtimeMs: 1 }], [{ name: 'b', mtimeMs: 2 }]]).map(file => file.name)).toEqual(['a', 'b'])
+  const second = { name: 'a', mtimeMs: 7, from: 'second' }
+  expect(candidatesByName([[first], [second]])).toEqual([[first, second]])
+  expect(candidatesByName([[{ name: 'a', mtimeMs: 1 }], [{ name: 'b', mtimeMs: 2 }]]).map(group => group.map(file => file.name))).toEqual([['a'], ['b']])
 })

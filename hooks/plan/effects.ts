@@ -5,7 +5,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 import type { SliceClose, Credit, Plan, PlanDrawing, PlanView, Plans, Scores, TaskItem, Watched } from './types'
 import type { Pending } from '../core/types'
-import { FINISH_SHOWN_MS, creditedPlan, isPlanDone, newUserNotes, parsePlan, parseScores, pickNewest, planView, plansDirs, isPlanRunning, scoresDirs, scoresView, shownPlan, stepStatusKey, taskStatusKey, taskView, tasksAfter } from './plan'
+import { FINISH_SHOWN_MS, creditedPlan, isPlanDone, newUserNotes, parsePlan, parseScores, candidatesByName, planView, plansDirs, isPlanRunning, scoresDirs, scoresView, shownPlan, stepStatusKey, taskStatusKey, taskView, tasksAfter } from './plan'
 import { closeTargetOf, closeSlices, closeWait, liveSpans, sessionTimesOf, openWait, overheadKey, sliceMs, stepKey, sumTimes } from './steptime'
 import { parseAlfredScoring, parseAlfredStatus } from './alfredplan'
 import { minutesText, oneLine } from '../core/format'
@@ -324,32 +324,39 @@ async function readWatched<T>(
   return value === null ? { name, mtimeMs, size, value: had?.value ?? null, isInvalid: true, path } : { name, mtimeMs, size, value, isInvalid: false, path }
 }
 
-// Never rejects: a missing folder is empty, a file that will not read is invalid. A last read counts for a file only when
-// it came from the same path, so a name in two folders never takes the other's parse
-async function readJsonFolder<T>(
-  $: EngineInterface, dir: string, known: Watched<T>[], parse: (text: string) => T | null,
-): Promise<Watched<T>[]> {
-  let entries
+type Listed = { name: string; mtimeMs: number; size: number; path: string }
+
+// A missing folder is empty; only `.json` files count
+async function listJsonFolder($: EngineInterface, dir: string): Promise<Listed[]> {
   try {
-    entries = await $.fs.list(dir)
+    return (await $.fs.list(dir)).filter(entry => entry.kind === 'file' && entry.name.endsWith('.json'))
+      .map(entry => ({ name: entry.name.slice(0, -'.json'.length), mtimeMs: entry.mtimeMs, size: entry.size, path: `${dir}/${entry.name}` }))
   } catch {
     return []
   }
-  const out: Watched<T>[] = []
-  for (const entry of entries) {
-    if (entry.kind !== 'file' || !entry.name.endsWith('.json')) continue
-    const name = entry.name.slice(0, -'.json'.length)
-    const path = `${dir}/${entry.name}`
-    out.push(await readWatched($, path, name, entry, known.find(knownFile => knownFile.path === path), parse))
-  }
-  return out
 }
 
-// Every folder read, the newest file of a name kept: a tie goes to the earlier folder
+// Every folder listed, then per name only the newest file read (a tie goes to the earlier folder): the losers are never
+// read. A newest file with no good parse of its own, one that will not parse or is too large, gives way to the next
+// newest; a name with no good file keeps its newest, invalid. A last read counts for a file only when it came from the
+// same path, so a name in two folders never takes the other's parse. Never rejects.
 async function readJsonFolders<T>($: EngineInterface, dirs: string[], known: Watched<T>[], parse: (text: string) => T | null): Promise<Watched<T>[]> {
-  const byFolder: Watched<T>[][] = []
-  for (const dir of dirs) byFolder.push(await readJsonFolder($, dir, known, parse))
-  return pickNewest(byFolder)
+  const byFolder: Listed[][] = []
+  for (const dir of dirs) byFolder.push(await listJsonFolder($, dir))
+  const out: Watched<T>[] = []
+  for (const candidates of candidatesByName(byFolder)) {
+    let first: Watched<T> | null = null
+    for (const candidate of candidates) {
+      const read = await readWatched($, candidate.path, candidate.name, candidate, known.find(knownFile => knownFile.path === candidate.path), parse)
+      first ??= read
+      if (!read.isInvalid || read.value !== null) {
+        first = read
+        break
+      }
+    }
+    if (first !== null) out.push(first)
+  }
+  return out
 }
 
 // Alfred Code's plan folder, the one the status file names (alfred-code's plan folder contract): its `status.json`

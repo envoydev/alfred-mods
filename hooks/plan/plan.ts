@@ -272,22 +272,21 @@ export function newUserNotes(before: PlanChange[], after: PlanChange[]): PlanCha
   })
 }
 
-
 // The roots the reader reads, in order: the chosen one first, then the others in the fallback order
 export function plansRoots(chosen: PlansFolder): string[] {
   return [chosen, ...PLANS_FOLDERS.filter(folder => folder !== chosen)].map(folder => PLANS_ROOTS[folder])
 }
 
+// The folder the chosen value names for plans, the one a plan skill writes to
+export const chosenPlansDir = (chosen: PlansFolder): string => `${PLANS_ROOTS[chosen]}/${PLANS_SUBFOLDER}`
+
 export const plansDirs = (chosen: PlansFolder): string[] => plansRoots(chosen).map(root => `${root}/${PLANS_SUBFOLDER}`)
 
 export const scoresDirs = (chosen: PlansFolder): string[] => plansRoots(chosen).map(root => `${root}/${SCORES_SUBFOLDER}`)
 
-// One file per name from the folders' lists in folder order: the greatest `mtimeMs` wins, a tie the earlier folder's
-export function pickNewest<T extends { name: string; mtimeMs: number }>(byFolder: T[][]): T[] {
-  const picked = new Map<string, T>()
-  for (const file of byFolder.flat()) {
-    const held = picked.get(file.name)
-    if (held === undefined || file.mtimeMs > held.mtimeMs) picked.set(file.name, file)
-  }
-  return [...picked.values()]
+// The files of one name across the folders' lists: a group per name, the greatest `mtimeMs` first, a tie in folder order
+export function candidatesByName<T extends { name: string; mtimeMs: number }>(byFolder: T[][]): T[][] {
+  const groups = new Map<string, T[]>()
+  for (const file of byFolder.flat()) groups.set(file.name, [...(groups.get(file.name) ?? []), file])
+  return [...groups.values()].map(group => group.sort((first, second) => second.mtimeMs - first.mtimeMs))
 }

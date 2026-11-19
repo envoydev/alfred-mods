@@ -684,6 +684,35 @@ test('with the field unset, a plan only in .alfred/alfred-mods is still read', a
   expect(p.planFiles.map(file => file.path)).toEqual([ALFRED_PLAN_PATH])
 })
 
+test('a same-named file that cannot win is never read', async ($, on) => {
+  const { clock, files } = stubAll(on, { files: { [PLAN_PATH]: { text: PLAN_JSON, mtimeMs: 1 }, [NEW_PLAN_PATH]: { text: PLAN_JSON, mtimeMs: 9 } } })
+  engine(on)
+  await $.session.start(START)
+  await clock.advance(30_300)
+  expect(files.reads).toContain(NEW_PLAN_PATH)
+  expect(files.reads).not.toContain(PLAN_PATH)
+})
+
+test('a newer file that does not parse never hides a valid older one of the same name', async ($, on) => {
+  const p = await readFiles($, on, {
+    [PLAN_PATH]: { text: PLAN_JSON, mtimeMs: 1 }, [NEW_PLAN_PATH]: { text: '{"version":1,"title":"Tok', mtimeMs: 9 },
+  })
+  expect(p.planFiles.map(file => [file.path, file.isInvalid])).toEqual([[PLAN_PATH, false]])
+  expect(p.planFiles[0]?.value?.steps).toHaveLength(5)
+})
+
+test('a name whose only file does not parse is read as invalid', async ($, on) => {
+  const p = await readFiles($, on, { [NEW_PLAN_PATH]: { text: '{"version":1,"title":"Tok', mtimeMs: 9 } })
+  expect(p.planFiles.map(file => [file.path, file.isInvalid])).toEqual([[NEW_PLAN_PATH, true]])
+})
+
+test('with plansFolder .alfred, the same slug and time in .alfred-mods shows the .alfred file', async ($, on) => {
+  const p = await readFiles($, on, {
+    [ALFRED_PLAN_PATH]: { text: PLAN_JSON, mtimeMs: 5 }, [NEW_PLAN_PATH]: { text: planText({ S4: 'done' }), mtimeMs: 5 },
+  }, '.alfred')
+  expect(p.planFiles.map(file => file.path)).toEqual([ALFRED_PLAN_PATH])
+})
+
 test('a name read from the old folder is not reused for the new folder\'s file of the same size and time', async ($, on) => {
   const { clock, files } = stubAll(on, { files: { [PLAN_PATH]: { text: PLAN_JSON, mtimeMs: 1 } } })
   const state = watchState(on)
