@@ -146,7 +146,16 @@ test('a kit banner that fits the width but would push the body off line 1 is sho
     { columns: 100, mode: 'calm', marks: {} },
     { columns: 100, mode: 'full', marks: {}, maxRows: 2 },
     { columns: 80, mode: 'full', marks: {} },
+    { columns: 120, mode: 'full', marks: {} },
+    { columns: 120, mode: 'calm', marks: {} },
+    { columns: 100, mode: 'calm', marks: {} },
+    { columns: 140, mode: 'full', marks: { rec: REC } },
+    { columns: 170, mode: 'full', marks: { banner: ALFRED_BANNER } },
   ]
+  const kitTexts = [text(kitBanner), 'kit']
+  // The line without the kit's mark in it: the kit's text and the joiner beside it
+  const withoutKit = (line: Line): string =>
+    kitTexts.reduce((t, kit) => t.includes(`${kit} │ `) ? t.replace(`${kit} │ `, '') : t.endsWith(` │ ${kit}`) ? t.slice(0, -` │ ${kit}`.length) : t, text(line))
   for (const { columns, mode, marks, maxRows } of cases) {
     const base = { columns, mode, ...marks, ...(maxRows === undefined ? {} : { maxRows }) }
     const plain = bandLines(input(base))
@@ -155,6 +164,8 @@ test('a kit banner that fits the width but would push the body off line 1 is sho
     expect(withKit, note).toHaveLength(plain.length)
     expect(withKit.every(line => widthOf(line) <= columns), note).toBe(true)
     expect(texts(withKit.slice(1)), note).toEqual(texts(plain.slice(1)))
+    // Line 1 loses none of its body to the kit's mark
+    expect(withoutKit(withKit[0] ?? []), note).toBe(text(plain[0] ?? []))
   }
 })
 

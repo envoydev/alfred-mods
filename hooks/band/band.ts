@@ -69,24 +69,30 @@ export function bandLines(input: BandInput): Line[] {
 const MARK_SEP: Seg = { text: ROW_JOIN, tone: 'dim' }
 const joinMarks = (marks: Line[]): Line => marks.flatMap((mark, i) => (i === 0 ? mark : [MARK_SEP, ...mark]))
 
-// Whether the body's first line shares line 1 with these marks (see `bandRows`)
-function sharesLineOne(input: BandInput, isNarrow: boolean, keep: Keep, marks: Line[]): boolean {
+// Line 1's body as these marks leave it: the body's first line, fitted beside them, or null where it does not fit beside
+// them (the marks then take line 1 alone)
+function firstBeside(input: BandInput, isNarrow: boolean, keep: Keep, marks: Line[]): Line | null {
   const lead: Line = [...joinMarks(marks), MARK_SEP]
   const [first] = bandBody({ ...input, columns: input.columns - widthOf(lead) }, isNarrow, keep)
-  return first !== undefined && widthOf(lead) + widthOf(first) <= input.columns
+  return first !== undefined && widthOf(lead) + widthOf(first) <= input.columns ? first : null
 }
 
+const isSameLine = (left: Line | null, right: Line | null): boolean => left === null || right === null ? left === right : JSON.stringify(left) === JSON.stringify(right)
+
 // REC, Alfred Code's banner, then claude-kit's. The kit's yields first: it keeps a form (full, then `kit`) only where the
-// marks stay within the band and line 1 shares its row with the body's first line as it did without the kit's banner
-// (so it never adds a row); else it is left out, and REC and Alfred Code's banner stay as they are
+// marks stay within the band and the band's rows are the plain band's, line 1's body items included - the body's first
+// line shares line 1 with the marks exactly where it did without the kit's banner, and loses nothing to the narrower
+// width. Else it is left out, and REC and Alfred Code's banner stay as they are
 function marksOf(input: BandInput, isNarrow: boolean, keep: Keep): Line[] {
   const base: Line[] = [input.rec !== undefined && input.rec.level !== 'off' ? [REC_MARK] : [], input.banner ?? []].filter(segs => segs.length > 0)
   const full = input.kitBanner ?? []
   if (full.length === 0) return base
-  const mustShare = base.length === 0 || sharesLineOne(input, isNarrow, keep, base)
+  // With no marks the plain band's line 1 is its body's first line, and where that is none the band draws nothing
+  const plain = base.length === 0 ? (bandBody(input, isNarrow, keep)[0] ?? null) : firstBeside(input, isNarrow, keep, base)
+  if (base.length === 0 && plain === null) return base
   for (const kit of [full, KIT_SHORT]) {
     const marks = [...base, kit]
-    if (widthOf(joinMarks(marks)) <= input.columns && (!mustShare || sharesLineOne(input, isNarrow, keep, marks))) return marks
+    if (widthOf(joinMarks(marks)) <= input.columns && isSameLine(firstBeside(input, isNarrow, keep, marks), plain)) return marks
   }
   return base
 }
