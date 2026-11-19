@@ -62,6 +62,8 @@ type Options = {
   mangleWrite?: string[]
   // What `rm` answers: rejected with `deny`, or exit `exitCode` (0 by default); each call is recorded in the returned `rm`
   rm?: { deny?: boolean; exitCode?: number }
+  // Runs just before `rm` answers, as a poll that lists the plan folders between the copy and the delete would
+  beforeRm?: () => Promise<void>
   // Why `$.ui.copy` does not take, when a test gives one
   copyRefused?: 'no-surface' | 'no-clipboard' | 'refused'
 }
@@ -242,8 +244,9 @@ export function stubAll(on: On, o: Options = {}): {
   const git = { current: o.git ?? gitResult('## main\n'), calls: 0, argv: null as readonly string[] | null, timeoutMs: null as number | null }
   const changes = { diff: o.diff, untracked: o.untracked, revList: o.revList, argv: [] as (readonly string[])[], cwd: null as string | null, timeoutMs: null as number | null }
   const rm = { calls: [] as (readonly string[])[], timeoutMs: null as number | null, deny: o.rm?.deny ?? false }
-  on('process.run', (_, e) => {
+  on('process.run', async (_, e) => {
     if (e.argv[0] === 'rm') {
+      await o.beforeRm?.()
       rm.calls.push(e.argv)
       rm.timeoutMs = e.init?.timeoutMs ?? null
       return rm.deny ? { deny: 'test: rm refused' } : { value: gitResult('', o.rm?.exitCode ?? 0) }

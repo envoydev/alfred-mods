@@ -65,10 +65,55 @@ test('a plan that does not parse counts as live and stays', async ($, on) => {
   expect(rm.calls).toEqual([])
 })
 
-test('a copy whose read-back differs is named, removed with the one rm, and its source stays', async ($, on) => {
-  const { rm } = await start($, on, { files: { [`${OLD_PLANS}/p.json`]: stub(DONE) }, mangleWrite: ['.alfred-mods/plans/p.json'] })
+test('a copy whose read-back differs is named, its destination is left as found and never in the rm, and its source stays', async ($, on) => {
+  const { rm, files } = await start($, on, {
+    files: { [`${OLD_PLANS}/p.json`]: stub(DONE), [`${OLD_PLANS}/q.json`]: stub(DONE) }, mangleWrite: ['.alfred-mods/plans/p.json'],
+  })
+  expect(await alfred($, 'update')).toEqual([
+    'not moved: p - its copy did not read back equal; check .alfred-mods/plans/', 'moved 1 plan and scores files to .alfred-mods/', 'update done',
+  ])
+  expect(rm.calls).toEqual([['rm', '-f', '--', `${OLD_PLANS}/q.json`]])
+  expect(fileAt(files, '.alfred-mods/plans/p.json')).toBe(`${DONE}\n#`)
+})
+
+test('a write that throws is named, leaves no destination in the rm and keeps the source', async ($, on) => {
+  const { rm } = await start($, on, { files: { [`${OLD_PLANS}/p.json`]: stub(DONE) }, refuseWrite: ['.alfred-mods/plans/p.json'] })
   expect(await alfred($, 'update')).toEqual(['not moved: p - its copy did not read back equal; check .alfred-mods/plans/', 'update done'])
-  expect(rm.calls).toEqual([['rm', '-f', '--', '.alfred-mods/plans/p.json']])
+  expect(rm.calls).toEqual([])
+})
+
+test('a plan whose copy did not read back equal keeps its scores in place too', async ($, on) => {
+  const { rm } = await start($, on, {
+    files: { [`${OLD_PLANS}/p.json`]: stub(DONE), [`${OLD_SCORES}/p.json`]: stub(SCORES) }, mangleWrite: ['.alfred-mods/plans/p.json'],
+  })
+  expect(await alfred($, 'update')).toEqual(['not moved: p - its copy did not read back equal; check .alfred-mods/plans/', 'update done'])
+  expect(rm.calls).toEqual([])
+})
+
+test('a check of the destination that rejects is a clash for that name, and the others still move', async ($, on) => {
+  const { rm } = await start($, on, {
+    files: { [`${OLD_PLANS}/p.json`]: stub(DONE), [`${OLD_PLANS}/q.json`]: stub(DONE) }, refuseExists: ['.alfred-mods/plans/p.json'],
+  })
+  expect(await alfred($, 'update')).toEqual(['kept both: p (the newer one shows)', 'moved 1 plan and scores files to .alfred-mods/', 'update done'])
+  expect(rm.calls).toEqual([['rm', '-f', '--', `${OLD_PLANS}/q.json`]])
+})
+
+test('the scores stay with a live plan of their own root, whatever plan of that name is newer elsewhere', async ($, on) => {
+  const { rm } = await start($, on, {
+    files: {
+      [`${OLD_PLANS}/p.json`]: stub(PENDING, NOW - 2 * HOUR), '.alfred/alfred-mods/plans/p.json': stub(DONE, NOW - HOUR), [`${OLD_SCORES}/p.json`]: stub(SCORES),
+    },
+  })
+  const lines = await alfred($, 'update')
+  expect(lines).toContain(LEFT)
+  expect(rm.calls).toEqual([['rm', '-f', '--', '.alfred/alfred-mods/plans/p.json']])
+})
+
+test('a live clashing plan prints left in place and not kept both', async ($, on) => {
+  await start($, on, {
+    files: { [`${OLD_PLANS}/p.json`]: stub(PENDING, NOW - HOUR), '.alfred-mods/plans/p.json': stub(PENDING, NOW - HOUR), [`${OLD_SCORES}/p.json`]: stub(SCORES) },
+  })
+  expect(await alfred($, 'update')).toEqual([LEFT, 'update done'])
 })
 
 test('a source whose stat changes between the copy and the delete is not in the rm', async ($, on) => {
@@ -278,4 +323,37 @@ test('a user file that does not parse is named and no earlier choice is reported
   const lines = await alfred($, 'update')
   expect(lines[0]).toContain('Nothing was written')
   expect(lines.join('\n')).not.toContain('wrote your earlier choices')
+})
+
+test('a listing between the copy and the rm shows the source time, not the copy', async ($, on) => {
+  let seen: number | undefined
+  let clock: { advance(ms: number): Promise<void> } | undefined
+  const state = { get: (_key: string): unknown => undefined } as { get(key: string): unknown }
+  const kit = stubAll(on, {
+    band: 'unset', quiet: 'unset', now: NOW, files: { [`${OLD_PLANS}/token-refresh.json`]: stub(PLAN_JSON) },
+    beforeRm: async () => {
+      await clock?.advance(30_000)
+      seen = plansOf(state).planFiles.find(file => file.path === '.alfred-mods/plans/token-refresh.json')?.mtimeMs
+    },
+  })
+  clock = kit.clock
+  Object.assign(state, watchState(on))
+  engine(on)
+  await $.session.start(START)
+  await kit.clock.advance(300)
+  await alfred($, 'update')
+  expect(seen).toBe(OLD)
+})
+
+test('a later write with the same mtime but another size clears the stand-in', async ($, on) => {
+  const kit = stubAll(on, { band: 'unset', quiet: 'unset', now: NOW, files: { [`${OLD_PLANS}/p.json`]: stub(DONE) } })
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  await kit.clock.advance(300)
+  await alfred($, 'update')
+  await kit.clock.advance(30_000)
+  kit.files.current['.alfred-mods/plans/p.json'] = stub(`${DONE} `, NOW)
+  await kit.clock.advance(30_000)
+  expect(plansOf(state).planFiles.find(file => file.path === '.alfred-mods/plans/p.json')?.mtimeMs).toBe(NOW)
 })

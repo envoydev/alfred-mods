@@ -326,20 +326,21 @@ async function readWatched<T>(
 
 type Listed = { name: string; mtimeMs: number; size: number; path: string }
 
-// The files `/alfred-mods update` copied, by path: the source's mtimeMs, and the copy's own as the first listing saw it.
-// A copy is written now, but it is as old as its source: a fresh mtimeMs would make an old plan look written this
-// session. A write after the copy changes the listed mtimeMs, which ends the stand-in. A new claude run starts over.
-const movedFiles = new Map<string, { sourceMtimeMs: number; copyMtimeMs: number | null }>()
+// The files `/alfred-mods update` copied, by path: the source's mtimeMs, and the copy's own mtimeMs and size as the
+// update saw them. A copy is written now, but it is as old as its source: a fresh mtimeMs would make an old plan look
+// written this session. A write after the copy changes the listed mtimeMs or size, which ends the stand-in. A new claude
+// run starts over.
+type Moved = { path: string; mtimeMs: number; copyMtimeMs: number; copySize: number }
+const movedFiles = new Map<string, Moved>()
 
-export function noteMovedFiles(moves: readonly { path: string; mtimeMs: number }[]): void {
-  for (const move of moves) movedFiles.set(move.path, { sourceMtimeMs: move.mtimeMs, copyMtimeMs: null })
+export function noteMovedFiles(moves: readonly Moved[]): void {
+  for (const move of moves) movedFiles.set(move.path, move)
 }
 
-function effectiveMtime(path: string, listedMs: number): number {
+function effectiveMtime(path: string, listedMs: number, listedSize: number): number {
   const moved = movedFiles.get(path)
   if (moved === undefined) return listedMs
-  moved.copyMtimeMs ??= listedMs
-  if (listedMs === moved.copyMtimeMs) return moved.sourceMtimeMs
+  if (listedMs === moved.copyMtimeMs && listedSize === moved.copySize) return moved.mtimeMs
   movedFiles.delete(path)
   return listedMs
 }
@@ -349,7 +350,7 @@ async function listJsonFolder($: EngineInterface, dir: string): Promise<Listed[]
   try {
     return (await $.fs.list(dir)).filter(entry => entry.kind === 'file' && entry.name.endsWith('.json')).map(entry => {
       const path = `${dir}/${entry.name}`
-      return { name: entry.name.slice(0, -'.json'.length), mtimeMs: effectiveMtime(path, entry.mtimeMs), size: entry.size, path }
+      return { name: entry.name.slice(0, -'.json'.length), mtimeMs: effectiveMtime(path, entry.mtimeMs, entry.size), size: entry.size, path }
     })
   } catch {
     return []

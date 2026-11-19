@@ -44,12 +44,17 @@ async function queueOf($: EngineInterface, kind: string, chosenRoot: string, oth
   return moveQueue(chosen, byFolder)
 }
 
-// One file into the chosen root, read back. A name that has a file in the chosen root by now is never written over.
+// One file into the chosen root, read back. A name that has a file in the chosen root by now - or whose check fails -
+// is never written over. A copy that read back equal is noted at once, so a listing before the rm sees its source's time.
+// A destination that does not read back equal is left as found: someone else wrote it.
 async function copyFile($: EngineInterface, copy: Copy, text: string): Promise<CopyResult> {
-  if (await $.fs.exists(copy.destination)) return 'exists'
+  if (await $.fs.exists(copy.destination).catch(() => true)) return 'exists'
   try {
     await $.fs.write(copy.destination, text)
-    return (await $.fs.read(copy.destination)) === text ? 'copied' : 'differs'
+    if ((await $.fs.read(copy.destination)) !== text) return 'differs'
+    const stat = await $.fs.stat(copy.destination).catch(() => null)
+    if (stat !== null) noteMovedFiles([{ path: copy.destination, mtimeMs: copy.file.mtimeMs, copyMtimeMs: stat.mtimeMs, copySize: stat.size }])
+    return 'copied'
   } catch {
     return 'differs'
   }
@@ -65,19 +70,18 @@ async function unchangedSince($: EngineInterface, copied: readonly ListedFile[])
   return kept
 }
 
-// One rm of every source that read back equal and did not change, and of every copy that did not read back equal (the
-// run's own fresh write); where it rejects or exits non-zero the files stay
-async function removeFiles($: EngineInterface, chosenRoot: string, sources: readonly ListedFile[], badCopies: readonly string[]): Promise<string[]> {
-  if (sources.length === 0 && badCopies.length === 0) return []
-  const ran = await $.process.run([...RM_ARGV, ...sources.map(file => file.path), ...badCopies], { timeoutMs: RM_TIMEOUT_MS }).catch(() => null)
+// One rm of every source that read back equal and did not change; never of a destination. Where it rejects or exits
+// non-zero the sources stay.
+async function removeSources($: EngineInterface, chosenRoot: string, sources: readonly ListedFile[]): Promise<string[]> {
   if (sources.length === 0) return []
+  const ran = await $.process.run([...RM_ARGV, ...sources.map(file => file.path)], { timeoutMs: RM_TIMEOUT_MS }).catch(() => null)
   if (ran !== null && ran.exitCode === 0) return [movedLine(sources.length, chosenRoot)]
   return [copiedLine(sources.length, chosenRoot, [...new Set(sources.map(file => folderPathOf(file.path)))])]
 }
 
-// Spec D4 step 1: the plans and scores of the other roots copied into the chosen one, oldest first, then one rm. A plan
-// whose writer still uses it stays with its scores, a clashing plan's scores too; a name the chosen root holds stays;
-// past the cap the rest wait.
+// Spec D4 step 1: the plans and scores of the other roots copied into the chosen one, oldest first, then one rm of the
+// sources. A plan whose writer still uses it stays, and so do the scores beside it in its own root; scores also stay with
+// a plan that did not move; a name the chosen root holds stays; past the cap the rest wait.
 async function moveFiles($: EngineInterface, folder: PlansFolder): Promise<string[]> {
   const chosenRoot = PLANS_ROOTS[folder]
   const others = plansRoots(folder).slice(1)
@@ -87,25 +91,26 @@ async function moveFiles($: EngineInterface, folder: PlansFolder): Promise<strin
   const copies: Copy[] = []
   const live = new Set<string>()
   const waiting = new Set<string>()
+  const held = new Set<string>()
   const clashes = new Set([...plans.clashed, ...scores.clashed].map(file => file.name))
   const notMoved: string[] = []
-  const badCopies: string[] = []
+  const texts = new Map<string, string | null>()
   let hasMore = false
-  const attempt = async (kind: string, file: ListedFile, text: string): Promise<void> => {
+  const planText = async (file: ListedFile): Promise<string | null> => {
+    if (!texts.has(file.path)) texts.set(file.path, await $.fs.read(file.path).catch(() => null))
+    return texts.get(file.path) ?? null
+  }
+  const isLive = async (file: ListedFile): Promise<boolean> => {
+    const text = await planText(file)
+    return text === null || isLivePlan(parsePlan(text), file.mtimeMs, now)
+  }
+  const attempt = async (kind: string, file: ListedFile, text: string): Promise<boolean> => {
     const copy = { file, destination: copyPath(chosenRoot, kind, file.name) }
     const result = await copyFile($, copy, text)
     if (result === 'copied') copies.push(copy)
     else if (result === 'exists') clashes.add(file.name)
-    else {
-      notMoved.push(notMovedLine(file.name, chosenRoot, kind))
-      badCopies.push(copy.destination)
-    }
-  }
-  // A plan the chosen root holds too still has scores beside it in an old root: its writer may be using them
-  const scoreNames = new Set(scores.queue.map(file => file.name))
-  for (const file of plans.clashed.filter(clashing => scoreNames.has(clashing.name))) {
-    const text = await $.fs.read(file.path).catch(() => null)
-    if (text === null || isLivePlan(parsePlan(text), file.mtimeMs, now)) live.add(file.name)
+    else notMoved.push(notMovedLine(file.name, chosenRoot, kind))
+    return result === 'copied'
   }
   for (const file of plans.queue) {
     if (copies.length >= MOVE_CAP) {
@@ -113,12 +118,15 @@ async function moveFiles($: EngineInterface, folder: PlansFolder): Promise<strin
       waiting.add(file.name)
       continue
     }
-    const text = await $.fs.read(file.path).catch(() => null)
-    if (text === null || isLivePlan(parsePlan(text), file.mtimeMs, now)) live.add(file.name)
-    else await attempt(PLANS_SUBFOLDER, file, text)
+    const text = await planText(file)
+    if (await isLive(file)) live.add(file.name)
+    else if (text !== null && !(await attempt(PLANS_SUBFOLDER, file, text))) held.add(file.name)
   }
   for (const file of scores.queue) {
-    if (live.has(file.name)) continue
+    // The plan beside the scores, in their own root, whichever plan of that name is newer elsewhere
+    const own = plans.listed.find(plan => plan.root === file.root && plan.name === file.name)
+    if (own !== undefined && (await isLive(own))) live.add(file.name)
+    if (live.has(file.name) || held.has(file.name)) continue
     if (copies.length >= MOVE_CAP || waiting.has(file.name)) {
       hasMore = true
       continue
@@ -126,9 +134,9 @@ async function moveFiles($: EngineInterface, folder: PlansFolder): Promise<strin
     const text = await $.fs.read(file.path).catch(() => null)
     if (text !== null) await attempt(SCORES_SUBFOLDER, file, text)
   }
-  const removed = await removeFiles($, chosenRoot, await unchangedSince($, copies.map(copy => copy.file)), badCopies)
-  noteMovedFiles(copies.map(copy => ({ path: copy.destination, mtimeMs: copy.file.mtimeMs })))
-  return [...[...live].map(leftInPlaceLine), ...[...clashes].map(keptBothLine), ...notMoved, ...removed, ...(hasMore ? [MORE_LINE] : [])]
+  const removed = await removeSources($, chosenRoot, await unchangedSince($, copies.map(copy => copy.file)))
+  const shown = [...clashes].filter(name => !live.has(name))
+  return [...[...live].map(leftInPlaceLine), ...shown.map(keptBothLine), ...notMoved, ...removed, ...(hasMore ? [MORE_LINE] : [])]
 }
 
 // Spec D4 step 2: the chosen root in the .gitignore, when there is one and no line covers it; `default` is the

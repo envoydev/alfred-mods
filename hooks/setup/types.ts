@@ -9,7 +9,7 @@ export type SetupArgs = { verb: SetupVerb; folder: PlansFolder | null }
 export type ListedFile = { name: string; root: string; path: string; mtimeMs: number; size: number }
 
 // The files to copy, the newest of each name, oldest first, and the newest file of each name the chosen root holds already
-export type MoveQueue = { queue: ListedFile[]; clashed: ListedFile[] }
+export type MoveQueue = { queue: ListedFile[]; clashed: ListedFile[]; listed: ListedFile[] }
 
 // A copy into the chosen root, and the source it came from
 export type Copy = { file: ListedFile; destination: string }

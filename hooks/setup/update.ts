@@ -34,7 +34,7 @@ export function oldInstallKeys(enabled: unknown): string[] {
 
 // The files of one kind in the other roots: the newest file of each name is queued, oldest first so the moved files keep
 // their order, a tie going to the earlier root. A name the chosen root holds is set aside, its newest file listed in
-// `clashed`: it stays, and its writer may still be using it.
+// `clashed`: it stays. `listed` is every file seen.
 export function moveQueue(chosenNames: ReadonlySet<string>, byFolder: ListedFile[][]): MoveQueue {
   const queue: ListedFile[] = []
   const clashed: ListedFile[] = []
@@ -43,7 +43,7 @@ export function moveQueue(chosenNames: ReadonlySet<string>, byFolder: ListedFile
     if (chosenNames.has(newest.name)) clashed.push(newest)
     else queue.push(newest)
   }
-  return { queue: queue.sort((first, second) => first.mtimeMs - second.mtimeMs), clashed }
+  return { queue: queue.sort((first, second) => first.mtimeMs - second.mtimeMs), clashed, listed: byFolder.flat() }
 }
 
 // Where a copy lands: `<root>/<plans|scores>/<name>.json`
