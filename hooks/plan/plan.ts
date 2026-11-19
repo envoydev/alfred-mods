@@ -272,7 +272,6 @@ export function newUserNotes(before: PlanChange[], after: PlanChange[]): PlanCha
   })
 }
 
-export { OLD_PLANS_DIR, OLD_SCORES_DIR, PLANS_DIR, SCORES_DIR } from './constants'
 
 // The roots the reader reads, in order: the chosen one first, then the others in the fallback order
 export function plansRoots(chosen: PlansFolder): string[] {
@@ -282,3 +281,13 @@ export function plansRoots(chosen: PlansFolder): string[] {
 export const plansDirs = (chosen: PlansFolder): string[] => plansRoots(chosen).map(root => `${root}/${PLANS_SUBFOLDER}`)
 
 export const scoresDirs = (chosen: PlansFolder): string[] => plansRoots(chosen).map(root => `${root}/${SCORES_SUBFOLDER}`)
+
+// One file per name from the folders' lists in folder order: the greatest `mtimeMs` wins, a tie the earlier folder's
+export function pickNewest<T extends { name: string; mtimeMs: number }>(byFolder: T[][]): T[] {
+  const picked = new Map<string, T>()
+  for (const file of byFolder.flat()) {
+    const held = picked.get(file.name)
+    if (held === undefined || file.mtimeMs > held.mtimeMs) picked.set(file.name, file)
+  }
+  return [...picked.values()]
+}

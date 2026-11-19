@@ -2,7 +2,7 @@
 // styled segments. Every title, note and finding is file content: draw.tsx makes each printable and masks it.
 import { barText, fitLine, minutesText, widthOf } from '../core/format'
 import type { Line, Seg } from '../core/types'
-import { PLANS_DIR } from './plan'
+import { PLANS_SUBFOLDER } from './constants'
 import type { Finding, PlanView, Scores, ScoresView, StepRow, StepStatus } from './types'
 
 const MIN = 60_000
@@ -223,9 +223,10 @@ function scoreLines(scoresView: ScoresView): Line[] {
 export function planLines(
   view: PlanView | null, scoresView: ScoresView | null,
   options: { invalid: boolean; others: string[]; otherScores: string[]; updatedAt: number | null; now: number; columns: number },
+  root: string,
 ): Line[] {
   const out: Line[] = []
-  if (view === null) out.push([{ text: `No plan file in ${PLANS_DIR}/, and no task list this session.`, tone: 'dim' }])
+  if (view === null) out.push([{ text: `No plan file in ${root}/${PLANS_SUBFOLDER}/, and no task list this session.`, tone: 'dim' }])
   else {
     const head: Line = [{ text: 'Plan', bold: true, tone: 'plan' }, { text: ` · ${fitLine(view.title, 60)}`, bold: true }, { text: `   ${view.finished}/${view.total}` }]
     if (view.isFinished) head.push({ text: ` · done in ${minutesText(view.workedMs)}` })

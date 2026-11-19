@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { parsePlan, parseScores, planView, plansDirs, plansRoots, scoresDirs, scoresView, taskView, tasksAfter } from '../../hooks/plan/plan'
+import { parsePlan, parseScores, pickNewest, planView, plansDirs, plansRoots, scoresDirs, scoresView, taskView, tasksAfter } from '../../hooks/plan/plan'
 import { FIVE, FIVE_OVERHEAD, FIVE_TIMES, MIN, NOW, PLAN_JSON, SCORES_JSON, planOf } from '../plans'
 import type { Scores, TaskItem } from '../../hooks/plan/types'
 
@@ -213,4 +213,12 @@ test('the plans roots read the chosen folder first, then the others in the fallb
 test('the plans and scores folders sit under each root', () => {
   expect(plansDirs('.alfred')[0]).toBe('.alfred/alfred-mods/plans')
   expect(scoresDirs('.alfred')).toEqual(['.alfred/alfred-mods/scores', '.alfred-mods/scores', '.claude/session-inspector/scores'])
+})
+
+test('pickNewest keeps one entry per name, the greatest time, and a tie goes to the earlier folder', () => {
+  expect(pickNewest([[{ name: 'a', mtimeMs: 5 }], [{ name: 'a', mtimeMs: 9 }]])).toEqual([{ name: 'a', mtimeMs: 9 }])
+  expect(pickNewest([[{ name: 'a', mtimeMs: 9 }], [{ name: 'a', mtimeMs: 5 }]])).toEqual([{ name: 'a', mtimeMs: 9 }])
+  const first = { name: 'a', mtimeMs: 7, from: 'first' }
+  expect(pickNewest([[first], [{ name: 'a', mtimeMs: 7, from: 'second' }]])).toEqual([first])
+  expect(pickNewest([[{ name: 'a', mtimeMs: 1 }], [{ name: 'b', mtimeMs: 2 }]]).map(file => file.name)).toEqual(['a', 'b'])
 })

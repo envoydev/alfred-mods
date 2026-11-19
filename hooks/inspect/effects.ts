@@ -7,7 +7,7 @@ import type { Tab, View } from './types'
 import { BAND_HELP, COPY_WHY, INSPECT_HELP, TAB_NAMES, ordinalOf, outOfRange } from './commands'
 import { oneLine, printable } from '../core/format'
 import { failureNumberOf } from '../tools/outcome'
-import { loadSettings, resolvedSettings, writeUserField } from '../settings/effects'
+import { loadSettings, plansFolderInForce, resolvedSettings, writeUserField } from '../settings/effects'
 import { closePane, isNoColor, toast } from '../core/effects'
 import { isBreakdownStale, readBreakdownSoon, readParts } from '../context/effects'
 import { readAgents, readLoops } from '../agents/effects'
@@ -23,7 +23,8 @@ import { readPlanDrawing, readPlans } from '../plan/effects'
 import { fillStackPrompt, readStack, readScoreLevel, stackPrompt } from '../stack/effects'
 import { forecastTargetOf, handoffViewOf } from '../handoff/handoff'
 import { compactNow, readCache } from '../cache/effects'
-import { PLANS_DIR } from '../plan/plan'
+import { PLANS_SUBFOLDER } from '../plan/constants'
+import { plansRoots } from '../plan/plan'
 import { drawLines } from '../core/draw'
 import { planLines } from '../plan/planlines'
 import { promptLines } from '../prompt/promptlines'
@@ -150,7 +151,7 @@ export async function runInspectCommand($: EngineInterface, e: MatchedInput<'com
     const good = (await readPlans($)).planFiles.filter(planFile => planFile.value !== null).map(planFile => planFile.name).sort()
     if (name !== null && !good.includes(name)) {
       const asked = oneLine(printable(name), 40)
-      return { text: good.length === 0 ? `No plan named ${asked}. No plan file in ${PLANS_DIR}/.` : `No plan named ${asked}. Plans: ${good.join(', ')}.` }
+      return { text: good.length === 0 ? `No plan named ${asked}. No plan file in ${plansRoots(plansFolderInForce().folder)[0]}/${PLANS_SUBFOLDER}/.` : `No plan named ${asked}. Plans: ${good.join(', ')}.` }
     }
     await updateView($, view => (view.pinnedPlan === name ? view : { ...view, pinnedPlan: name }))
   }
@@ -188,7 +189,7 @@ export async function drawInspectPane($: EngineInterface, e: MatchedInput<'ui.re
     : shown.tab === 'cache' ? cacheLines(input)
     : shown.tab === 'tools' ? toolsLines(input)
     : shown.tab === 'timeline' ? timelineLines(input.turns, Math.max(3, e.props.scroll.bodyRows - 1 - bar.length), usage.rateWindows.length > 0, e.props.bodyColumns)
-    : shown.tab === 'plan' ? planLines(drawing.shown, drawing.scores, { invalid: drawing.invalid, others: drawing.others, otherScores: drawing.otherScores, updatedAt: drawing.updatedAt, now, columns: e.props.bodyColumns })
+    : shown.tab === 'plan' ? planLines(drawing.shown, drawing.scores, { invalid: drawing.invalid, others: drawing.others, otherScores: drawing.otherScores, updatedAt: drawing.updatedAt, now, columns: e.props.bodyColumns }, plansRoots(plansFolderInForce().folder)[0] ?? '')
     : shown.tab === 'prompt' ? promptLines(await readPrompt($), e.props.bodyColumns)
     : nowLines(input)
   const press: Record<string, () => unknown> = {

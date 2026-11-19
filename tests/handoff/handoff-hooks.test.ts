@@ -355,6 +355,23 @@ test('HANDOFF.md names the plan file where the plan was read: the .alfred-mods f
   expect(written(fromNew.files)).toContain('From .alfred-mods/plans/token-refresh.json.')
 })
 
+test('HANDOFF.md names the chosen root for a plan read with no path', async ($, on) => {
+  const kit = stubAll(on, {
+    files: { '.alfred/alfred-mods/plans/token-refresh.json': { text: PLAN_JSON, mtimeMs: 1 } },
+    sources: { project: { 'alfred-mods': { plansFolder: '.alfred' } } },
+  })
+  const state = watchState(on, (key, value) => {
+    const stored = value as { value?: { planFiles?: { path?: string }[] } }
+    if (key === 'plans') for (const planFile of stored.value?.planFiles ?? []) delete planFile.path
+  })
+  engine(on)
+  await $.session.start(START)
+  await kit.clock.advance(300)
+  await handoff($, 'now')
+  await saved(kit.clock, () => state.get('handoff') as Handoff)
+  expect(written(kit.files)).toContain('From .alfred/alfred-mods/plans/token-refresh.json.')
+})
+
 test('HANDOFF.md holds no failure reason, task subject, agent description or note text', async ($, on) => {
   on('tool.call', (_, e) => (e.tool === 'TaskCreate'
     ? { result: { task: { id: '1', subject: 'Write the rotation tests' } }, text: 'Task #1 created' }

@@ -5,7 +5,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 import type { SliceClose, Credit, Plan, PlanDrawing, PlanView, Plans, Scores, TaskItem, Watched } from './types'
 import type { Pending } from '../core/types'
-import { FINISH_SHOWN_MS, OLD_PLANS_DIR, OLD_SCORES_DIR, PLANS_DIR, SCORES_DIR, creditedPlan, isPlanDone, newUserNotes, parsePlan, parseScores, planView, isPlanRunning, scoresView, shownPlan, stepStatusKey, taskStatusKey, taskView, tasksAfter } from './plan'
+import { FINISH_SHOWN_MS, creditedPlan, isPlanDone, newUserNotes, parsePlan, parseScores, pickNewest, planView, plansDirs, isPlanRunning, scoresDirs, scoresView, shownPlan, stepStatusKey, taskStatusKey, taskView, tasksAfter } from './plan'
 import { closeTargetOf, closeSlices, closeWait, liveSpans, sessionTimesOf, openWait, overheadKey, sliceMs, stepKey, sumTimes } from './steptime'
 import { parseAlfredScoring, parseAlfredStatus } from './alfredplan'
 import { minutesText, oneLine } from '../core/format'
@@ -15,6 +15,7 @@ import { isLive, stepMarkOf } from '../agents/agents'
 import { readStack } from '../stack/effects'
 import { readView } from '../inspect/effects'
 import { readAgents } from '../agents/effects'
+import { plansFolderInForce } from '../settings/effects'
 
 const INITIAL_PLANS: Plans = { planFiles: [], scoreFiles: [], stepTimes: {}, overheadMs: {}, finishedAt: {}, toastedKeys: [], watchedSince: null, alfredFolder: null }
 const plansAtom = atom({ plugin: 'alfred-mods', key: 'plans' } as const, INITIAL_PLANS, { shape: 'plans-3' })
@@ -231,8 +232,9 @@ export async function seedSessionTimes($: EngineInterface): Promise<void> {
 async function reloadPlanFiles($: EngineInterface, pending: Pending): Promise<void> {
   const before = await readPlans($)
   const now = await $.clock.now()
-  const ownPlans = await readJsonFolders($, [PLANS_DIR, OLD_PLANS_DIR], before.planFiles, parsePlan)
-  const ownScores = await readJsonFolders($, [SCORES_DIR, OLD_SCORES_DIR], before.scoreFiles, parseScores)
+  const { folder: plansFolder } = plansFolderInForce()
+  const ownPlans = await readJsonFolders($, plansDirs(plansFolder), before.planFiles, parsePlan)
+  const ownScores = await readJsonFolders($, scoresDirs(plansFolder), before.scoreFiles, parseScores)
   // Alfred Code's plan folder: the one its status file names, else the one it let go, read once more to see it
   // finished, then kept 10 minutes after it finished
   // A status file that will not read, or whose `plan` will not, says nothing: the plan it named stays named
@@ -325,7 +327,7 @@ async function readWatched<T>(
 // Never rejects: a missing folder is empty, a file that will not read is invalid. A last read counts for a file only when
 // it came from the same path, so a name in two folders never takes the other's parse
 async function readJsonFolder<T>(
-  $: EngineInterface, dir: string, known: Watched<T>[], skip: Set<string>, parse: (text: string) => T | null,
+  $: EngineInterface, dir: string, known: Watched<T>[], parse: (text: string) => T | null,
 ): Promise<Watched<T>[]> {
   let entries
   try {
@@ -337,21 +339,17 @@ async function readJsonFolder<T>(
   for (const entry of entries) {
     if (entry.kind !== 'file' || !entry.name.endsWith('.json')) continue
     const name = entry.name.slice(0, -'.json'.length)
-    if (skip.has(name)) continue
     const path = `${dir}/${entry.name}`
     out.push(await readWatched($, path, name, entry, known.find(knownFile => knownFile.path === path), parse))
   }
   return out
 }
 
-// The folders in order, the first holding a name keeping it: a file of the new folder wins over a same-named one of the old
+// Every folder read, the newest file of a name kept: a tie goes to the earlier folder
 async function readJsonFolders<T>($: EngineInterface, dirs: string[], known: Watched<T>[], parse: (text: string) => T | null): Promise<Watched<T>[]> {
-  const out: Watched<T>[] = []
-  for (const dir of dirs) {
-    const held = new Set(out.map(file => file.name))
-    out.push(...await readJsonFolder($, dir, known, held, parse))
-  }
-  return out
+  const byFolder: Watched<T>[][] = []
+  for (const dir of dirs) byFolder.push(await readJsonFolder($, dir, known, parse))
+  return pickNewest(byFolder)
 }
 
 // Alfred Code's plan folder, the one the status file names (alfred-code's plan folder contract): its `status.json`

@@ -404,15 +404,19 @@ export function spawns(on: On, table: Record<string, { agentId: string; model?: 
 
 // The latest value the mod wrote under each key, read beneath the plugin as the write lands, and every write in order
 // as JSON, so a test can look for text in any value the mod ever wrote
-export function watchState(on: On): { get(key: string): unknown; writes: string[] } {
-  return recordWrites(on, () => undefined)
+// `beforeWrite` may change a value in place before it lands, as a state stored by an older build would hold it
+export function watchState(on: On, beforeWrite: (key: string, value: unknown) => void = () => undefined): { get(key: string): unknown; writes: string[] } {
+  return recordWrites(on, () => undefined, beforeWrite)
 }
 
 // The one `state.set` hook of watchState and emptyState: `onWrite` hears the key of each write as it lands
-function recordWrites(on: On, onWrite: (key: string) => void): { get(key: string): unknown; forget(key: string): void; writes: string[] } {
+function recordWrites(
+  on: On, onWrite: (key: string) => void, beforeWrite: (key: string, value: unknown) => void = () => undefined,
+): { get(key: string): unknown; forget(key: string): void; writes: string[] } {
   const latest = new Map<string, unknown>()
   const writes: string[] = []
   on('state.set', async ($, e, next) => {
+    beforeWrite(e.key, e.value)
     writes.push(JSON.stringify(e.value))
     const r = await next(e)
     onWrite(e.key)

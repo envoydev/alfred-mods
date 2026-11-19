@@ -617,8 +617,10 @@ const NEW_PLAN_PATH = '.alfred-mods/plans/token-refresh.json'
 const NEW_SCORES_PATH = '.alfred-mods/scores/token-refresh.json'
 const SCORES_ONE_ROUND = JSON.stringify({ ...JSON.parse(SCORES_JSON), rounds: JSON.parse(SCORES_JSON).rounds.slice(0, 1) })
 
-async function readFiles($: Engine, on: On, files: Record<string, { text: string; mtimeMs: number }>): Promise<Plans> {
-  const { clock } = stubAll(on, { files })
+async function readFiles(
+  $: Engine, on: On, files: Record<string, { text: string; mtimeMs: number }>, plansFolder?: string,
+): Promise<Plans> {
+  const { clock } = stubAll(on, { files, ...(plansFolder === undefined ? {} : { sources: { project: { 'alfred-mods': { plansFolder } } } }) })
   const state = watchState(on)
   engine(on)
   await $.session.start(START)
@@ -639,16 +641,47 @@ test('a plan and a scores file only in the old folder are still read', async ($,
   expect(p.scoreFiles.map(file => [file.name, file.path])).toEqual([['token-refresh', SCORES_PATH]])
 })
 
-test('the same slug in both folders shows the new one, plan and scores alike', async ($, on) => {
+test('the same slug in both folders shows the newer file, plan and scores alike', async ($, on) => {
   const p = await readFiles($, on, {
-    [PLAN_PATH]: { text: PLAN_JSON, mtimeMs: 9 }, [NEW_PLAN_PATH]: { text: planText({ S4: 'done' }), mtimeMs: 1 },
-    [SCORES_PATH]: { text: SCORES_JSON, mtimeMs: 9 }, [NEW_SCORES_PATH]: { text: SCORES_ONE_ROUND, mtimeMs: 1 },
+    [PLAN_PATH]: { text: PLAN_JSON, mtimeMs: 1 }, [NEW_PLAN_PATH]: { text: planText({ S4: 'done' }), mtimeMs: 9 },
+    [SCORES_PATH]: { text: SCORES_JSON, mtimeMs: 1 }, [NEW_SCORES_PATH]: { text: SCORES_ONE_ROUND, mtimeMs: 9 },
   })
   expect(p.planFiles).toHaveLength(1)
   expect(p.planFiles[0]).toMatchObject({ path: NEW_PLAN_PATH })
   expect(p.planFiles[0]?.value?.steps[3]?.status).toBe('done')
   expect(p.scoreFiles).toHaveLength(1)
   expect(p.scoreFiles[0]?.value?.rounds).toHaveLength(1)
+})
+
+test('a later file of the old folder wins over the same slug in the .alfred-mods folder', async ($, on) => {
+  const p = await readFiles($, on, {
+    [PLAN_PATH]: { text: PLAN_JSON, mtimeMs: 9 }, [NEW_PLAN_PATH]: { text: planText({ S4: 'done' }), mtimeMs: 1 },
+    [SCORES_PATH]: { text: SCORES_JSON, mtimeMs: 9 }, [NEW_SCORES_PATH]: { text: SCORES_ONE_ROUND, mtimeMs: 1 },
+  })
+  expect(p.planFiles.map(file => file.path)).toEqual([PLAN_PATH])
+  expect(p.scoreFiles.map(file => file.path)).toEqual([SCORES_PATH])
+  expect(p.scoreFiles[0]?.value?.rounds).toHaveLength(2)
+})
+
+const ALFRED_PLAN_PATH = '.alfred/alfred-mods/plans/token-refresh.json'
+const ALFRED_SCORES_PATH = '.alfred/alfred-mods/scores/token-refresh.json'
+
+test('with plansFolder .alfred, a plan and scores file only in .alfred/alfred-mods are read', async ($, on) => {
+  const p = await readFiles($, on, { [ALFRED_PLAN_PATH]: { text: PLAN_JSON, mtimeMs: 1 }, [ALFRED_SCORES_PATH]: { text: SCORES_JSON, mtimeMs: 1 } }, '.alfred')
+  expect(p.planFiles.map(file => file.path)).toEqual([ALFRED_PLAN_PATH])
+  expect(p.scoreFiles.map(file => file.path)).toEqual([ALFRED_SCORES_PATH])
+})
+
+test('with plansFolder .alfred, the same slug in .alfred-mods with a later time shows the .alfred-mods file', async ($, on) => {
+  const p = await readFiles($, on, {
+    [ALFRED_PLAN_PATH]: { text: PLAN_JSON, mtimeMs: 1 }, [NEW_PLAN_PATH]: { text: planText({ S4: 'done' }), mtimeMs: 9 },
+  }, '.alfred')
+  expect(p.planFiles.map(file => file.path)).toEqual([NEW_PLAN_PATH])
+})
+
+test('with the field unset, a plan only in .alfred/alfred-mods is still read', async ($, on) => {
+  const p = await readFiles($, on, { [ALFRED_PLAN_PATH]: { text: PLAN_JSON, mtimeMs: 1 } })
+  expect(p.planFiles.map(file => file.path)).toEqual([ALFRED_PLAN_PATH])
 })
 
 test('a name read from the old folder is not reused for the new folder\'s file of the same size and time', async ($, on) => {
