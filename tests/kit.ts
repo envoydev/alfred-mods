@@ -276,10 +276,11 @@ export function stubAll(on: On, o: Options = {}): {
     }
     return { value: Object.keys(files.current).some(path => at(canon(e.path), path)) }
   })
-  // A write lands at the path of a file the test gave, else at the path the mod passed
+  // A write lands at the path of a file the test gave, else at the path the mod passed, with no drive, so a read of
+  // that path finds it on Windows too (Windows CI, 2026-11-19)
   on('fs.write', (_, e) => {
     if (o.refuseWrite?.some(path => isRefused(e.path, path)) === true) return { deny: `EACCES: write refused, ${e.path}` }
-    const key = Object.keys(files.current).find(path => at(e.path, path)) ?? slashed(e.path)
+    const key = Object.keys(files.current).find(path => at(e.path, path)) ?? undrived(e.path)
     const text = o.mangleWrite?.some(path => at(e.path, path)) === true ? `${e.text}\n#` : e.text
     files.current[key] = { text, mtimeMs: o.now ?? 0 }
     files.writes.push(key)
