@@ -80,7 +80,10 @@ on the 22 line, or 23.6 or newer (https://nodejs.org/api/typescript.md); `engine
   relative to the working folder (`statusPaths` in `hooks/handoff/handoff.ts`).
 - **The root holds only the mod's own plugin folders.** Claude Code scans a plugin root's default folders whatever the
   manifest says, so `commands/`, `agents/`, `skills/`, `output-styles/`, `workflows/`, `monitors/`, `themes/`, `bin/`,
-  `.mcp.json`, `.lsp.json`, `settings.json` and a root `SKILL.md` never appear here unless the mod ships them.
+  `.mcp.json`, `.lsp.json`, `settings.json` and a root `SKILL.md` never appear here unless the mod ships them. The one
+  exception is a git-ignored, machine-local `.mcp.json` for development: it never ships, but a `claude --plugin-dir .`
+  session reads it as the mod's own MCP server (`plugin details` lists it), so a check of what the mod adds to a
+  session loads a copy of the files git lists, as `npm run validate` does.
 - **A mod observes and draws.** It never approves, denies or rewrites a tool call, unless the brief names the case.
   No `$.http.fetch` and no `$.model` calls; `$.process` only where the brief allows it, with a timeout. No prompt,
   tool input, secret or account email in any log or file.
