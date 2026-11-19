@@ -4,7 +4,7 @@ import { reportLine } from '../agents/agents'
 import { durationText, fitLine, tokensText, widthOf } from '../core/format'
 import { isRecord } from '../core/guards'
 import type { Line, Seg } from '../core/types'
-import { RUNNING_STATUS } from './constants'
+import { RUNNING_STATUS, WAITING_STATUS } from './constants'
 import type { CompactCall, RowContext } from './types'
 
 
@@ -98,6 +98,7 @@ function status(call: CompactCall): Seg[] {
     const exit = /^Exit code (\d+)/.exec(errorText(call))
     return [{ text: exit === null ? '✗' : `✗ exit ${exit[1]}`, tone: 'fail' }]
   }
+  if (call.isWaiting === true) return [{ text: WAITING_STATUS, tone: 'dim' }]
   const count = countOf(call)
   return [...(count === null || count === 0 ? [] : [{ text: `${count} ${count === 1 ? 'line' : 'lines'} ` }]), { text: '✓', tone: 'ok' }]
 }

@@ -118,15 +118,17 @@ function markUnfolded(ids: string[]): void {
   keepNewest(rowMemory.marks)
 }
 
-// A row's or a group call's facts as a compact row reads them; a refusal draws as a block
+// A row's or a group call's facts as a compact row reads them; a refusal draws as a block. A call has not run yet while
+// it carries no `output`, which stays undefined until it resolves (types), and the mod never saw it settle
 function compactCallOf(
-  id: string | undefined, call: { tool: string; input: unknown; output?: unknown; isErrored: boolean; isInterrupted: boolean },
+  id: string | undefined, call: { tool: string; input: unknown; output?: unknown; isErrored: boolean; isInterrupted: boolean; isRunning?: boolean },
 ): CompactCall {
   const remembered = id === undefined ? undefined : rowMemory.outcomes.get(id)
+  const isWaiting = id !== undefined && remembered === undefined && call.output === undefined && call.isRunning !== true && !call.isErrored && !call.isInterrupted
   const outcome = remembered?.outcome === 'denied' ? 'denied' : remembered?.outcome === 'blocked' || remembered?.outcome === 'refused' ? 'blocked' : null
   return {
     tool: call.tool, input: call.input, output: call.output, isErrored: call.isErrored, isInterrupted: call.isInterrupted, outcome,
-    reason: outcome === null ? null : remembered?.reason ?? null, isAutoAllowed: remembered?.isAutoAllowed === true,
+    reason: outcome === null ? null : remembered?.reason ?? null, isAutoAllowed: remembered?.isAutoAllowed === true, isWaiting,
   }
 }
 

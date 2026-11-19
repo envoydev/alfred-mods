@@ -25,6 +25,12 @@ test('a Bash call draws ⏺ Bash · Show CI failure lines 1038-1042 · 30 lines 
   expect(text(callLine(call, 120))).toEqual(['⏺ Bash · Show CI failure lines 1038-1042 · 30 lines ✓'])
 })
 
+// Live, 2026-11-19: a call held at the permission dialog drew '✓' before it ran; the types leave `output` undefined
+// until a call resolves
+test('a call not yet run - at the permission dialog or queued - draws waiting…, never ✓', () => {
+  expect(text(callLine(bash({ command: 'mkdir -p d', description: 'Create d' }, { isWaiting: true }), 120))).toEqual(['⏺ Bash · Create d · waiting…'])
+})
+
 test('a call still running draws running… in place of its result', () => {
   expect(text(callLine(bash({ command: 'npm test', description: 'Run the suite' }, { isRunning: true }), 120))).toEqual(['⏺ Bash · Run the suite · running…'])
 })
@@ -215,6 +221,13 @@ for (const surface of SURFACES) {
     expect((await draw($, surface, 'ToolUse', running)).props).toEqual(running)
     const result = { tool_use_id: 'c1', tool: 'Bash', output: bashOut('a'), isErrored: false, isExpanded: true }
     expect((await draw($, surface, 'ToolResult', result)).props).toEqual(result)
+  })
+
+  test(`/quiet on: a row with no output that the mod never saw settle reads waiting…, one it saw reads its outcome (${surface})`, async ($, on) => {
+    await start($, on, QUIET)
+    const waiting = await draw($, surface, 'ToolUse', { ...USE, tool_use_id: 'w1', tool: 'Bash', input: { command: 'mkdir -p d', description: 'Create d' } })
+    expect(waiting.lines).toEqual(['⏺ Bash · Create d · waiting…'])
+    expect((await draw($, surface, 'ToolUse', BASH_USE)).lines).toEqual(['⏺ Bash · List files · 2 lines ✓'])
   })
 
   test(`with /quiet off every site passes next(e) (${surface})`, async ($, on) => {

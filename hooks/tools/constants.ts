@@ -9,3 +9,6 @@ export const EDIT_TOOLS: readonly string[] = ['Edit', 'Write', 'NotebookEdit']
 // The status a row the mod draws for a call still running reads
 export const RUNNING_STATUS = 'running…'
 
+// The status of a call that has not run yet: held at the permission dialog, or queued
+export const WAITING_STATUS = 'waiting…'
+
