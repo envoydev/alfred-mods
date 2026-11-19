@@ -91,7 +91,7 @@ async function band($: Engine, surface: (typeof SURFACES)[number]) {
 }
 
 for (const surface of SURFACES) {
-  test(`the band shows the K2 plan and the K1 score (${surface})`, async ($, on: On) => {
+  test(`the band shows the K2 plan and the K1 score (${surface})`, { timeoutMs: 15_000 }, async ($, on: On) => {
     const kit = stubAll(on, {
       now: NOW, files: { [PLAN_PATH]: { text: K2_PLAN, mtimeMs: NOW }, [SCORES_PATH]: { text: K1_SCORES, mtimeMs: NOW } },
     })

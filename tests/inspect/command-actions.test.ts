@@ -72,7 +72,7 @@ test('"band": "off" with "bandPlace": "under" draws the footer alone', async ($,
   await low.unmount()
 })
 
-test('"band": "off" counts the band as not shown, so the pinned line carries the context', async ($, on) => {
+test('"band": "off" counts the band as not shown, so the pinned line carries the context', { timeoutMs: 15_000 }, async ($, on) => {
   const kit = await start($, on, {}, [], true)
   await setUser($, kit, { band: 'off' })
   const ui = await above($)

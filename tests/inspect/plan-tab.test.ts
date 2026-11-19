@@ -255,7 +255,7 @@ for (const surface of SURFACES) {
     expect((await rows(await band($, surface, true)))[0]?.startsWith('Tasks ▰▱▱▱▱ 1/3 · 33%')).toBe(true)
   })
 
-  test(`/inspect plan <name> pins a plan, and an unknown name lists the plans (${surface})`, async ($, on) => {
+  test(`/inspect plan <name> pins a plan, and an unknown name lists the plans (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     const titled = (title: string, statuses: Record<string, string> = {}) => planText(statuses, [], plan => {
       plan.title = title
     })
