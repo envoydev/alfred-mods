@@ -204,28 +204,32 @@ code.
     .claude/settings.local.json, which wins over the value written`.
   - **`/alfred-mods:update`** takes no value. It applies the folder in force and prints one line for each step that
     had work, then `update done` (`nothing to update` when none had). It runs on your word only, never by itself:
-    1. Plans and scores in the two other folders move into the chosen one, up to 50 files a run: each is copied,
-       read back and checked equal, and then one `rm` removes the sources that read back equal and did not change.
-       Only a file that would be copied counts toward the 50. A folder that is the chosen folder under another name
-       (a link to it) is never a source: `not moved: <root>/<plans|scores>/ is the same folder as <chosen
+    1. Plans and scores in the two other folders move into the chosen one, up to 50 files a run: each is copied, read
+       back and checked equal, and then one `rm` removes the sources that read back equal and did not change. Only a
+       file that would be copied counts toward the 50. A folder that is the chosen folder under another name (a link
+       to it) is never a source: `not moved: <root>/<plans|scores>/ is the same folder as <chosen
        root>/<plans|scores>/`, or, where its real place cannot be told, `not moved: <folder>/ - could not tell if it
        is the same folder as <chosen folder>/`. A plan with a step not done whose file is under 24 hours old stays
        with its scores, and so does a plan that does not parse while its file is that new: `left in place: <name> -
        its writer still uses it; run /alfred-mods:update after it finishes`. A plan that does not parse and is older
        stays too, with its scores, but waiting for its writer would never end: `left in place: <name> - it does not
-       read as a plan; fix or remove it`. A name the chosen folder already holds stays in both, with the scores of that
-       plan beside it: `kept both: <name> (the newer one shows)`. When the chosen folder's copy is a separate file of
-       the same text and the size the source had, the source is removed like a moved one; a copy that is the same file
-       under another name, or whose real place cannot be told, is kept. A copy that did not read back equal leaves
-       the source and the destination as found: `not moved: <name> - its copy did not read back equal; check
-       <root>/<plans|scores>/`. A file that is not UTF-8 text is never copied, as the read would change it: `not
-       moved: <name> - not UTF-8 text`. A source whose size changed since the listing is not copied: `not moved:
-       <name> - it changed while the update ran; run /alfred-mods:update again`. A destination that cannot be
-       checked, or a copy that cannot be checked after it was written, leaves the source in place: `not moved: <name> -
-       could not check the destination` or `not moved: <name> - could not check the copy`. Each of these prints one line
-       for each name, and `not moved` one for each name and kind.
+       read as a plan; fix or remove it`. A plan whose file cannot be read stays with its scores: `left in place:
+       <name> - could not read it`. A name the chosen folder already holds stays in both, with the scores of that
+       plan beside it: `kept both: <name> (the newer one shows)`. An equal copy is cleaned only where the folders are
+       proven different: the chosen folder's copy must be a separate file of the same text and the size the source
+       had, its real path must differ from the source's (compared without case), and a probe file - written into the
+       chosen folder, looked for in the source folder, and removed with the sources - must not be found there. A
+       source that fails any of these is kept: the folder that holds the probe is named as the same folder. A copy
+       that did not read back equal leaves the source and the destination as found: `not moved: <name> - its copy did
+       not read back equal; check <root>/<plans|scores>/`. A file that is not UTF-8 text is never copied, as the read
+       would change it: `not moved: <name> - not UTF-8 text`. A source whose size changed since the listing is not
+       copied: `not moved: <name> - it changed while the update ran; run /alfred-mods:update again`. A destination
+       that cannot be checked, or a copy that cannot be checked after it was written, leaves the source in place:
+       `not moved: <name> - could not check the destination` or `not moved: <name> - could not check the copy`. Each
+       of these prints one line for each name, and `not moved` one for each name and kind.
        If `rm` fails or is missing, the sources stay: `copied <n> files to <root>/ - remove the old copies in
-       <folders> by hand`. The line is `moved <n> plan and scores files to <root>/`, and past 50 files,
+       <folders> by hand`, and a probe file it could not remove is named: `could not remove <file> - delete it by
+       hand`. The line is `moved <n> plan and scores files to <root>/`, and past 50 files the run ends on
        `more to move - run /alfred-mods:update again`.
     2. `.gitignore`: when the project has one and no line covers the chosen folder (`.alfred` covers
        `.alfred/alfred-mods`), `<root>/` is appended: `added <root>/ to .gitignore`. `default` adds none, and no
