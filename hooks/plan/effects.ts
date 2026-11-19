@@ -5,7 +5,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 import type { SliceClose, Credit, Plan, PlanDrawing, PlanView, Plans, Scores, TaskItem, Watched } from './types'
 import type { Pending } from '../core/types'
-import { FINISH_SHOWN_MS, PLANS_DIR, SCORES_DIR, creditedPlan, isPlanDone, newUserNotes, parsePlan, parseScores, planView, isPlanRunning, scoresView, shownPlan, stepStatusKey, taskStatusKey, taskView, tasksAfter } from './plan'
+import { FINISH_SHOWN_MS, OLD_PLANS_DIR, OLD_SCORES_DIR, PLANS_DIR, SCORES_DIR, creditedPlan, isPlanDone, newUserNotes, parsePlan, parseScores, planView, isPlanRunning, scoresView, shownPlan, stepStatusKey, taskStatusKey, taskView, tasksAfter } from './plan'
 import { closeTargetOf, closeSlices, closeWait, liveSpans, sessionTimesOf, openWait, overheadKey, sliceMs, stepKey, sumTimes } from './steptime'
 import { parseAlfredScoring, parseAlfredStatus } from './alfredplan'
 import { minutesText, oneLine } from '../core/format'
@@ -231,8 +231,8 @@ export async function seedSessionTimes($: EngineInterface): Promise<void> {
 async function reloadPlanFiles($: EngineInterface, pending: Pending): Promise<void> {
   const before = await readPlans($)
   const now = await $.clock.now()
-  const ownPlans = await readJsonFolder($, PLANS_DIR, before.planFiles, parsePlan)
-  const ownScores = await readJsonFolder($, SCORES_DIR, before.scoreFiles, parseScores)
+  const ownPlans = await readJsonFolders($, [PLANS_DIR, OLD_PLANS_DIR], before.planFiles, parsePlan)
+  const ownScores = await readJsonFolders($, [SCORES_DIR, OLD_SCORES_DIR], before.scoreFiles, parseScores)
   // Alfred Code's plan folder: the one its status file names, else the one it let go, read once more to see it
   // finished, then kept 10 minutes after it finished
   // A status file that will not read, or whose `plan` will not, says nothing: the plan it named stays named
@@ -310,7 +310,7 @@ async function readWatched<T>(
   $: EngineInterface, path: string, name: string, entry: { mtimeMs: number; size: number }, had: Watched<T> | undefined, parse: (text: string) => T | null,
 ): Promise<Watched<T>> {
   const { mtimeMs, size } = entry
-  if (had !== undefined && !had.isInvalid && had.mtimeMs === mtimeMs && had.size === size) return had
+  if (had !== undefined && !had.isInvalid && had.path === path && had.mtimeMs === mtimeMs && had.size === size) return had
   let value: T | null = null
   if (size <= MAX_BYTES) {
     try {
@@ -319,11 +319,14 @@ async function readWatched<T>(
       value = null
     }
   }
-  return value === null ? { name, mtimeMs, size, value: had?.value ?? null, isInvalid: true } : { name, mtimeMs, size, value, isInvalid: false }
+  return value === null ? { name, mtimeMs, size, value: had?.value ?? null, isInvalid: true, path } : { name, mtimeMs, size, value, isInvalid: false, path }
 }
 
-// Never rejects: a missing folder is empty, a file that will not read is invalid
-async function readJsonFolder<T>($: EngineInterface, dir: string, known: Watched<T>[], parse: (text: string) => T | null): Promise<Watched<T>[]> {
+// Never rejects: a missing folder is empty, a file that will not read is invalid. A last read counts for a file only when
+// it came from the same path, so a name in two folders never takes the other's parse
+async function readJsonFolder<T>(
+  $: EngineInterface, dir: string, known: Watched<T>[], skip: Set<string>, parse: (text: string) => T | null,
+): Promise<Watched<T>[]> {
   let entries
   try {
     entries = await $.fs.list(dir)
@@ -334,7 +337,19 @@ async function readJsonFolder<T>($: EngineInterface, dir: string, known: Watched
   for (const entry of entries) {
     if (entry.kind !== 'file' || !entry.name.endsWith('.json')) continue
     const name = entry.name.slice(0, -'.json'.length)
-    out.push(await readWatched($, `${dir}/${entry.name}`, name, entry, known.find(knownFile => knownFile.name === name), parse))
+    if (skip.has(name)) continue
+    const path = `${dir}/${entry.name}`
+    out.push(await readWatched($, path, name, entry, known.find(knownFile => knownFile.path === path), parse))
+  }
+  return out
+}
+
+// The folders in order, the first holding a name keeping it: a file of the new folder wins over a same-named one of the old
+async function readJsonFolders<T>($: EngineInterface, dirs: string[], known: Watched<T>[], parse: (text: string) => T | null): Promise<Watched<T>[]> {
+  const out: Watched<T>[] = []
+  for (const dir of dirs) {
+    const held = new Set(out.map(file => file.name))
+    out.push(...await readJsonFolder($, dir, known, held, parse))
   }
   return out
 }

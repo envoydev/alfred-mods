@@ -137,8 +137,9 @@ export type Scores = {
   isWithheld?: boolean
 }
 // A file of the folder as last read: its last good parse, kept while a newer read fails
-// `isNamed`: the plan Alfred Code's status file names this session
-export type Watched<T> = { name: string; mtimeMs: number; size: number; value: T | null; isInvalid: boolean; isNamed?: boolean }
+// `isNamed`: the plan Alfred Code's status file names this session; `path`: the file it was read from, where a name is
+// in two folders
+export type Watched<T> = { name: string; mtimeMs: number; size: number; value: T | null; isInvalid: boolean; isNamed?: boolean; path?: string }
 // The folder's plans and scores; every session's step times summed per plan; when each plan finished this session;
 // the notes and finishes already seen; and when this session began, which a plan's file must be written after to run
 export type Plans = {

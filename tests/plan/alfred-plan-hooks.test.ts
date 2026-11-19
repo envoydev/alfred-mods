@@ -49,7 +49,7 @@ test('without the status file\'s plan the folder is never touched, and the proje
   })
   expect(p().planFiles.map(w => w.name)).toEqual(['token-refresh'])
   expect(p().alfredFolder).toBeNull()
-  expect([...files.lists, ...files.reads].some(path => path.includes('.alfred'))).toBe(false)
+  expect([...files.lists, ...files.reads].some(path => path.includes('.alfred/'))).toBe(false)
 })
 
 test('the named plan is shown first, over a running plan of the project\'s own folder and over the task list', async ($, on) => {

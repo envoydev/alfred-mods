@@ -271,6 +271,10 @@ export function newUserNotes(before: PlanChange[], after: PlanChange[]): PlanCha
   })
 }
 
-// The folders the stack writes plans and scores to
-export const PLANS_DIR = '.claude/session-inspector/plans'
-export const SCORES_DIR = '.claude/session-inspector/scores'
+// The folders a plan skill writes plans and scores to. Claude Code asks before each write under `.claude/`, so a skill
+// writes under `.alfred-mods/`; the old folders are read as a fallback, and a file of the new folder wins over a
+// same-named one of the old
+export const PLANS_DIR = '.alfred-mods/plans'
+export const SCORES_DIR = '.alfred-mods/scores'
+export const OLD_PLANS_DIR = '.claude/session-inspector/plans'
+export const OLD_SCORES_DIR = '.claude/session-inspector/scores'

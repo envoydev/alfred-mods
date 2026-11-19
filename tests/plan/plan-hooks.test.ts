@@ -1,4 +1,6 @@
 import { expect, test } from 'claude-code/testing'
+import type { Engine } from 'claude-code/testing'
+import type { On } from 'claude-code'
 
 import { isPlanRunning, shownPlan } from '../../hooks/plan/plan'
 import { PRESENTATION, SPAWN, START, engine, spawns, stubAll, watchState } from '../kit'
@@ -609,4 +611,55 @@ test('a toast built from a plan file carries no control character', async ($, on
   files.current[PLAN_PATH] = { text: planText(ALL_DONE, [], p => { p.title = 'Token \u001b[31mrefresh\u0007' }), mtimeMs: 2 }
   await clock.advance(30_000)
   expect(toasts).toEqual(['Plan done: Token refresh in <1m'])
+})
+
+const NEW_PLAN_PATH = '.alfred-mods/plans/token-refresh.json'
+const NEW_SCORES_PATH = '.alfred-mods/scores/token-refresh.json'
+const SCORES_ONE_ROUND = JSON.stringify({ ...JSON.parse(SCORES_JSON), rounds: JSON.parse(SCORES_JSON).rounds.slice(0, 1) })
+
+async function readFiles($: Engine, on: On, files: Record<string, { text: string; mtimeMs: number }>): Promise<Plans> {
+  const { clock } = stubAll(on, { files })
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  await clock.advance(300)
+  return plansOf(state)
+}
+
+test('a plan and a scores file only in the .alfred-mods folder are read', async ($, on) => {
+  const p = await readFiles($, on, { [NEW_PLAN_PATH]: { text: PLAN_JSON, mtimeMs: 1 }, [NEW_SCORES_PATH]: { text: SCORES_JSON, mtimeMs: 1 } })
+  expect(p.planFiles.map(file => [file.name, file.path])).toEqual([['token-refresh', NEW_PLAN_PATH]])
+  expect(p.scoreFiles.map(file => [file.name, file.path])).toEqual([['token-refresh', NEW_SCORES_PATH]])
+  expect(p.scoreFiles[0]?.value?.rounds).toHaveLength(2)
+})
+
+test('a plan and a scores file only in the old folder are still read', async ($, on) => {
+  const p = await readFiles($, on, { [PLAN_PATH]: { text: PLAN_JSON, mtimeMs: 1 }, [SCORES_PATH]: { text: SCORES_JSON, mtimeMs: 1 } })
+  expect(p.planFiles.map(file => [file.name, file.path])).toEqual([['token-refresh', PLAN_PATH]])
+  expect(p.scoreFiles.map(file => [file.name, file.path])).toEqual([['token-refresh', SCORES_PATH]])
+})
+
+test('the same slug in both folders shows the new one, plan and scores alike', async ($, on) => {
+  const p = await readFiles($, on, {
+    [PLAN_PATH]: { text: PLAN_JSON, mtimeMs: 9 }, [NEW_PLAN_PATH]: { text: planText({ S4: 'done' }), mtimeMs: 1 },
+    [SCORES_PATH]: { text: SCORES_JSON, mtimeMs: 9 }, [NEW_SCORES_PATH]: { text: SCORES_ONE_ROUND, mtimeMs: 1 },
+  })
+  expect(p.planFiles).toHaveLength(1)
+  expect(p.planFiles[0]).toMatchObject({ path: NEW_PLAN_PATH })
+  expect(p.planFiles[0]?.value?.steps[3]?.status).toBe('done')
+  expect(p.scoreFiles).toHaveLength(1)
+  expect(p.scoreFiles[0]?.value?.rounds).toHaveLength(1)
+})
+
+test('a name read from the old folder is not reused for the new folder\'s file of the same size and time', async ($, on) => {
+  const { clock, files } = stubAll(on, { files: { [PLAN_PATH]: { text: PLAN_JSON, mtimeMs: 1 } } })
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  await clock.advance(300)
+  expect(plansOf(state).planFiles[0]?.value?.steps[3]?.status).toBe('in_progress')
+  files.current[NEW_PLAN_PATH] = { text: planText({ S4: 'done' }), mtimeMs: 1 }
+  await clock.advance(30_000)
+  expect(plansOf(state).planFiles[0]).toMatchObject({ path: NEW_PLAN_PATH })
+  expect(s4(state)).toBe('done')
 })

@@ -15,7 +15,7 @@ const withRound = (round: Partial<ScoreRound>): Scores =>
 
 test('with no plan and no task list the tab says so, and shows the newest scores in full', () => {
   const lines = planLines(null, scoresView(SCORES), O).map(text)
-  expect(lines[0]).toBe('No plan file in .claude/session-inspector/plans/, and no task list this session.')
+  expect(lines[0]).toBe('No plan file in .alfred-mods/plans/, and no task list this session.')
   expect(lines).toContain('Scores R1 68 → R2 81 ▲13 (scale 100)')
 })
 

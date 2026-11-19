@@ -163,7 +163,7 @@ async function readSaveInput($: EngineInterface, at: number, git: string[]): Pro
       const steps: PlanPart['steps'] = view.rows.map(row => ({
         id: row.step.id, title: row.step.title, status: row.step.status, actualMs: row.actualMs, forecastMs: row.forecastMs, notes: row.notes.length,
       }))
-      plan = { file: `${PLANS_DIR}/${credited.name}.json`, title: view.title, finished: view.finished, total: view.total, steps }
+      plan = { file: credited.path ?? `${PLANS_DIR}/${credited.name}.json`, title: view.title, finished: view.finished, total: view.total, steps }
       const own = plans.scoreFiles.find(scoreFile =>
         scoreFile.value !== null && scoreFile.value.subject.kind === 'plan' && scoreFile.value.subject.ref === credited.name)
       const sv = own === undefined || own.value === null ? null : scoresView(own.value)
