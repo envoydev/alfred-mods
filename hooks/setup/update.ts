@@ -136,8 +136,17 @@ export const oldInstallLine = (key: string): string => `an old session-inspector
 
 export const statusFilesLine = (count: number): string => `${count} status files from Alfred Code 3.12.1 or older in ${folderOf(OLD_STATUS_DIR)} - safe to delete`
 
-// This session's own status file is in the old folder: its stack is 3.12.1 or older and writes there still
+// The stack writes this session's status file to the old folder: it is 3.12.1 or older and writes there still
 export const oldStackLine = (): string => `this session's Alfred Code still writes ${folderOf(OLD_STATUS_DIR)} - update Alfred Code to 3.13 or later`
+
+// Spec D4 step 5. A project's sessions share one installed stack, so this session's own file says which one it is: in
+// the old folder and not the new, the stack is 3.12.1 or older and every old file may be live, so it is told to update
+// and none is called safe to delete. Otherwise the old files are counted once the new folder exists, this session's
+// old copy included.
+export function statusLines(o: { oldNames: readonly string[]; own: string; hasNewFolder: boolean; isOwnInNew: boolean }): string[] {
+  if (o.oldNames.includes(o.own) && !o.isOwnInNew) return [oldStackLine()]
+  return o.hasNewFolder && o.oldNames.length > 0 ? [statusFilesLine(o.oldNames.length)] : []
+}
 
 export const gitignoreByHandLine = (root: string): string => `could not update .gitignore - add ${folderOf(root)} by hand`
 

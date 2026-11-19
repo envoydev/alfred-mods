@@ -20,7 +20,7 @@ import type { Copy, CopyResult, ListedFile, LiveReason } from './types'
 import {
   changedLine, closeReport, copiedLine, copyFailureLine, copyPath, coversRoot, earlierChoicesLine, failureLine, folderPathOf, folderRelation, gitignoreAppend,
   gitignoreByHandLine, gitignoreLine, isSeparateCopy, isUtf8Text, keptBothLine, leftLine, liveReason, movedLine, moveQueue, notUtf8Line, oldInstallKeys,
-  oldInstallLine, oldStackLine, probeLeftLine, probeName, sameFolderLine, statusFilesLine, unknownFolderLine,
+  oldInstallLine, probeLeftLine, probeName, sameFolderLine, statusLines, unknownFolderLine,
 } from './update'
 
 // What the pane draws: the last update's report, and the folder a press just wrote (the settings in force are stale
@@ -327,14 +327,13 @@ async function oldInstalls($: EngineInterface): Promise<string[]> {
   return [...keys].map(oldInstallLine)
 }
 
-// Spec D4 step 5: the old stack's status files, counted only while the new folder exists; an old stack still writes
-// there. This session's own file is never counted as safe to delete: its stack is 3.12.1 or older and is told to update
+// Spec D4 step 5: the facts statusLines decides on - the old folder's files, this session's file name and the new folder
 async function oldStatusFiles($: EngineInterface): Promise<string[]> {
-  if (!(await $.fs.list(NEW_STATUS_DIR).then(() => true, () => false))) return []
   const own = `${await $.session.id()}${JSON_SUFFIX}`
-  const names = (await $.fs.list(OLD_STATUS_DIR).catch(() => [])).filter(isJsonFile).map(file => file.name)
-  const count = names.filter(name => name !== own).length
-  return [...(count === 0 ? [] : [statusFilesLine(count)]), ...(names.includes(own) ? [oldStackLine()] : [])]
+  const oldNames = (await $.fs.list(OLD_STATUS_DIR).catch(() => [])).filter(isJsonFile).map(file => file.name)
+  const hasNewFolder = await $.fs.list(NEW_STATUS_DIR).then(() => true, () => false)
+  const isOwnInNew = await $.fs.exists(`${NEW_STATUS_DIR}/${own}`).catch(() => false)
+  return statusLines({ oldNames, own, hasNewFolder, isOwnInNew })
 }
 
 const reasonOf = (error: unknown): string => oneLine(error instanceof Error ? error.message : 'unknown error', REASON_MAX)

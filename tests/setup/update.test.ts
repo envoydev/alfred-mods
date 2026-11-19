@@ -4,7 +4,7 @@ import { parsePlan } from '../../hooks/plan/plan'
 import {
   changedLine, closeReport, copiedLine, copyFailureLine, coversRoot, earlierChoicesLine, folderRelation, gitignoreAppend, gitignoreLine, isLivePlan,
   isSeparateCopy, isUtf8Text, keptBothLine, leftInPlaceLine, liveReason, movedLine, moveQueue, notMovedLine, notUtf8Line, oldInstallKeys, oldInstallLine,
-  leftLine, sameFolderLine, oldStackLine, statusFilesLine, unknownFolderLine, unreadablePlanLine, unreadPlanLine,
+  leftLine, sameFolderLine, oldStackLine, statusFilesLine, statusLines, unknownFolderLine, unreadablePlanLine, unreadPlanLine,
 } from '../../hooks/setup/update'
 import { MORE_LINE } from '../../hooks/setup/constants'
 import { planText } from '../plans'
@@ -144,6 +144,15 @@ test('the report lines read as the spec gives them', () => {
   )
   expect(statusFilesLine(4)).toBe('4 status files from Alfred Code 3.12.1 or older in .claude/session-inspector/status/ - safe to delete')
   expect(oldStackLine()).toBe('this session\'s Alfred Code still writes .claude/session-inspector/status/ - update Alfred Code to 3.13 or later')
+})
+
+test('statusLines: an old stack gets the update line alone, a new one the count of every old file', () => {
+  const stack = oldStackLine()
+  expect(statusLines({ oldNames: ['a.json', 's1.json'], own: 's1.json', hasNewFolder: true, isOwnInNew: false })).toEqual([stack])
+  expect(statusLines({ oldNames: ['s1.json'], own: 's1.json', hasNewFolder: false, isOwnInNew: false })).toEqual([stack])
+  expect(statusLines({ oldNames: ['a.json', 's1.json'], own: 's1.json', hasNewFolder: true, isOwnInNew: true })).toEqual([statusFilesLine(2)])
+  expect(statusLines({ oldNames: ['a.json'], own: 's1.json', hasNewFolder: false, isOwnInNew: false })).toEqual([])
+  expect(statusLines({ oldNames: [], own: 's1.json', hasNewFolder: true, isOwnInNew: false })).toEqual([])
 })
 
 test('closeReport ends on update done, or nothing to update when no step printed', () => {
