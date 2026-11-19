@@ -11,7 +11,7 @@ import { planText } from '../plans'
 
 const PROJECT = '.claude/settings.json'
 const PANE = { title: 'Plans folder', isFocused: false, bodyColumns: 100, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 30 }, view: {} }
-const NOTE = 'new plans land there once each writer reads plansFolder - claude-kit from its next release'
+const NOTE = 'new plans land there once each writer reads plansFolder - claude-kit does from its 0b09406 sync'
 const DONE = planText({ S1: 'done', S2: 'done', S3: 'done', S4: 'done', S5: 'done' })
 const plan = (path: string): Record<string, FileStub> => ({ [path]: { text: DONE, mtimeMs: 0 } })
 const mod = (fields: Record<string, unknown>): Record<string, unknown> => ({ 'alfred-mods': fields })

@@ -29,7 +29,7 @@ export const CHOICE_NOTES: Readonly<Record<PlansFolder, string>> = {
 
 export const NOW_MARK = ' (now)'
 
-export const WRITER_NOTE = 'new plans land there once each writer reads plansFolder - claude-kit from its next release'
+export const WRITER_NOTE = 'new plans land there once each writer reads plansFolder - claude-kit does from its 0b09406 sync'
 
 export const BUTTON_KEY_PREFIX = 'choose-'
 

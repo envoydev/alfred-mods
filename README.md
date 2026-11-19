@@ -245,8 +245,8 @@ code.
        `<n> status files from Alfred Code 3.12.1 or older in .claude/session-inspector/status/ - safe to delete`.
        Nothing is removed: an old stack may still write there.
   - The confirm lines of `init <value>`, `configure <value>` and a pane press add, for a folder other than
-    `.alfred-mods`, `new plans land there once each writer reads plansFolder - claude-kit from its next release`. A
-    bare `init` with the field set prints its `Plans live in ...` line alone, then the `update` report. An unknown
+    `.alfred-mods`, `new plans land there once each writer reads plansFolder - claude-kit does from its 0b09406 sync`.
+    A bare `init` with the field set prints its `Plans live in ...` line alone, then the `update` report. An unknown
     value, or a value given to `update`, prints the usage line. Nothing of a plan's text is printed.
   - Where the host runs no mod hooks, each command is only its markdown file: the model is told the mod did not
     answer, and that `"alfred-mods": { "plansFolder": "<value>" }` in `.claude/settings.json` sets the folder by hand.
@@ -871,11 +871,11 @@ shows its values. The mod does not depend on claude-kit: without the line, none 
 - **The score's colour:** Alfred Code's scoring level where it gives one, else the kit's pass score while scoring is on,
   when that is a whole number from 1 to 100.
 - **Plans and scores:** the kit's plans and scores reach the mod through the files in
-  [Plan and score files](#plan-and-score-files), once claude-kit publishes them. That is asked of claude-kit and is not
-  done yet: until it is, the Plan tab shows no kit plan. claude-kit publishes them from its next release, and finds
-  the folder by the writers' rule in that section, so it follows the `plansFolder` field from then on. Until then any
-  file of its own, when one is written, lands in `.alfred-mods/`, which the mod reads whatever the field says, and
-  `/alfred-mods:update` moves it to the folder you chose.
+  [Plan and score files](#plan-and-score-files): `solve-task` publishes the plan file and `refining-plans` the score
+  file. From claude-kit 0b09406 (the commit your `.claude/kit/lock.json` names, or a later one) both find the folder by
+  the writers' rule in that section, so they follow the `plansFolder` field. An older sync writes them to
+  `.alfred-mods/`, which the mod reads whatever the field says, and `/alfred-mods:update` moves them to the folder you
+  chose.
 
 The mod never writes the kit status line. Only `/alfred-mods:update` moves plan and score files: it copies each one,
 then removes the source. Add the plans folder you chose (`.alfred-mods/` unless you picked another) to a project's

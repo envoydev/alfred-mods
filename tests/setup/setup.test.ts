@@ -39,7 +39,7 @@ test('choiceLines marks the current choice', () => {
 
 test('writerNote is null for .alfred-mods and names the writers for the others', () => {
   expect(writerNote('.alfred-mods')).toBeNull()
-  const note = 'new plans land there once each writer reads plansFolder - claude-kit from its next release'
+  const note = 'new plans land there once each writer reads plansFolder - claude-kit does from its 0b09406 sync'
   expect(writerNote('.alfred')).toBe(note)
   expect(writerNote('default')).toBe(note)
 })
