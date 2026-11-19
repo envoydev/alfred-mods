@@ -3,18 +3,23 @@
 import { candidatesByName, isPlanDone } from '../plan/plan'
 import type { Plan } from '../plan/types'
 import {
-  DONE_LINE, JSON_SUFFIX, LIST_SEPARATOR, LIVE_PLAN_MS, NOT_UTF8_REASON, NOTHING_LINE, OLD_INSTALL_PREFIX, OLD_STATUS_DIR, SLASH, UNCHECKED_COPY_REASON,
-  UNCHECKED_DESTINATION_REASON,
+  CHANGED_REASON, DONE_LINE, JSON_SUFFIX, LIST_SEPARATOR, LIVE_PLAN_MS, NOT_UTF8_REASON, NOTHING_LINE, OLD_INSTALL_PREFIX, OLD_STATUS_DIR, SLASH, UNCHECKED_COPY_REASON,
+  UNCHECKED_DESTINATION_REASON, UNREADABLE_PLAN_NOTE,
 } from './constants'
-import type { CopyFailure, ListedFile, MoveQueue } from './types'
+import type { CopyFailure, FolderRelation, ListedFile, LiveReason, MoveQueue } from './types'
 import { isRecord } from '../core/guards'
 import { sourceFileName } from '../settings/settings'
 
-// A plan that does not parse is live; one with a step not done is live while its file is under 24 hours old: its
-// writer still edits it in place
-export function isLivePlan(plan: Plan | null, mtimeMs: number, now: number): boolean {
-  return plan === null || (!isPlanDone(plan) && now - mtimeMs < LIVE_PLAN_MS)
+// Why a plan stays, or null when it moves. A plan with a step not done stays while its file is under 24 hours old: its
+// writer still edits it in place. A plan that does not parse stays for safety, as a writer may be mid-write: within the
+// window it waits for its writer, and past it only the person can settle it.
+export function liveReason(plan: Plan | null, mtimeMs: number, now: number): LiveReason | null {
+  const isInWindow = now - mtimeMs < LIVE_PLAN_MS
+  if (plan === null) return isInWindow ? 'writing' : 'unreadable'
+  return !isPlanDone(plan) && isInWindow ? 'writing' : null
 }
+
+export const isLivePlan = (plan: Plan | null, mtimeMs: number, now: number): boolean => liveReason(plan, mtimeMs, now) !== null
 
 const trimmedLine = (line: string): string => line.trim().replace(/^\//, '').replace(/\/$/, '')
 
@@ -55,6 +60,18 @@ export function moveQueue(chosenNames: ReadonlySet<string>, byFolder: ListedFile
   return { queue: queue.sort((first, second) => first.mtimeMs - second.mtimeMs), clashed, listed: byFolder.flat() }
 }
 
+// A source folder is another folder only where both real paths are known and differ: a link to the chosen folder, or a
+// path whose real place a hook withholds, must never have its files read as sources
+export function folderRelation(source: string | undefined, chosen: string | undefined): FolderRelation {
+  if (source === undefined || chosen === undefined) return 'unknown'
+  return source === chosen ? 'same' : 'distinct'
+}
+
+// A clash is a separate copy only where the two real paths are known and differ (a hard link keeps its own spelling,
+// and removing one of two links leaves the data) and the chosen copy has the size the source had when it was listed
+export const isSeparateCopy = (source: string | undefined, destination: string | undefined, destinationSize: number, sourceSize: number): boolean =>
+  source !== undefined && destination !== undefined && source !== destination && destinationSize === sourceSize
+
 // Where a copy lands: `<root>/<plans|scores>/<name>.json`
 export const copyPath = (root: string, kind: string, name: string): string => `${root}/${kind}/${name}${JSON_SUFFIX}`
 
@@ -82,6 +99,15 @@ export const copyFailureLine = (result: CopyFailure, name: string, root: string,
   if (result === 'differs') return notMovedLine(name, root, kind)
   return notMovedReasonLine(name, result === 'unchecked' ? UNCHECKED_DESTINATION_REASON : UNCHECKED_COPY_REASON)
 }
+
+export const unreadablePlanLine = (name: string): string => `left in place: ${name} - ${UNREADABLE_PLAN_NOTE}`
+
+export const changedLine = (name: string): string => notMovedReasonLine(name, CHANGED_REASON)
+
+export const sameFolderLine = (folder: string, chosen: string): string => `not moved: ${folderOf(folder)} is the same folder as ${folderOf(chosen)}`
+
+export const unknownFolderLine = (folder: string, chosen: string): string =>
+  `not moved: ${folderOf(folder)} - could not tell if it is the same folder as ${folderOf(chosen)}`
 
 export const keptBothLine = (name: string): string => `kept both: ${name} (the newer one shows)`
 

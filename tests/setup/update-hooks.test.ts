@@ -59,8 +59,8 @@ test('an unfinished plan 25 hours old moves', async ($, on) => {
   expect(rm.calls).toHaveLength(1)
 })
 
-test('a plan that does not parse counts as live and stays', async ($, on) => {
-  const { rm } = await start($, on, { files: { [`${OLD_PLANS}/p.json`]: stub('{ not json') } })
+test('a plan that does not parse counts as live inside the window and stays', async ($, on) => {
+  const { rm } = await start($, on, { files: { [`${OLD_PLANS}/p.json`]: stub('{ not json', NOW - HOUR) } })
   expect(await alfred($, 'update')).toEqual([LEFT, 'update done'])
   expect(rm.calls).toEqual([])
 })

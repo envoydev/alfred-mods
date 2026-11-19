@@ -2,8 +2,9 @@ import { expect, test } from 'claude-code/testing'
 
 import { parsePlan } from '../../hooks/plan/plan'
 import {
-  closeReport, copiedLine, copyFailureLine, coversRoot, earlierChoicesLine, gitignoreAppend, gitignoreLine, isLivePlan, isUtf8Text, keptBothLine, leftInPlaceLine, movedLine,
-  moveQueue, notMovedLine, notUtf8Line, oldInstallKeys, oldInstallLine, statusFilesLine,
+  changedLine, closeReport, copiedLine, copyFailureLine, coversRoot, earlierChoicesLine, folderRelation, gitignoreAppend, gitignoreLine, isLivePlan,
+  isSeparateCopy, isUtf8Text, keptBothLine, leftInPlaceLine, liveReason, movedLine, moveQueue, notMovedLine, notUtf8Line, oldInstallKeys, oldInstallLine,
+  sameFolderLine, statusFilesLine, unknownFolderLine, unreadablePlanLine,
 } from '../../hooks/setup/update'
 import { MORE_LINE } from '../../hooks/setup/constants'
 import { planText } from '../plans'
@@ -26,6 +27,29 @@ test('isLivePlan: a pending step 1 h old is live, 25 h old is not', () => {
 test('isLivePlan: a plan with every step done is not live', () => {
   expect(FINISHED).not.toBeNull()
   expect(isLivePlan(FINISHED, NOW - HOUR, NOW)).toBe(false)
+})
+
+test('liveReason: a plan that does not parse waits for its writer inside the window and is unreadable past it', () => {
+  expect(liveReason(null, NOW - HOUR, NOW)).toBe('writing')
+  expect(liveReason(null, NOW - 25 * HOUR, NOW)).toBe('unreadable')
+  expect(liveReason(PENDING, NOW - HOUR, NOW)).toBe('writing')
+  expect(liveReason(PENDING, NOW - 25 * HOUR, NOW)).toBeNull()
+  expect(liveReason(FINISHED, NOW - HOUR, NOW)).toBeNull()
+})
+
+test('folderRelation is distinct only where both real paths are known and differ', () => {
+  expect(folderRelation('/a/plans', '/b/plans')).toBe('distinct')
+  expect(folderRelation('/b/plans', '/b/plans')).toBe('same')
+  expect(folderRelation(undefined, '/b/plans')).toBe('unknown')
+  expect(folderRelation('/a/plans', undefined)).toBe('unknown')
+})
+
+test('isSeparateCopy needs two known, different real paths and the listed size', () => {
+  expect(isSeparateCopy('/a/p.json', '/b/p.json', 10, 10)).toBe(true)
+  expect(isSeparateCopy('/a/p.json', '/a/p.json', 10, 10)).toBe(false)
+  expect(isSeparateCopy(undefined, '/b/p.json', 10, 10)).toBe(false)
+  expect(isSeparateCopy('/a/p.json', undefined, 10, 10)).toBe(false)
+  expect(isSeparateCopy('/a/p.json', '/b/p.json', 11, 10)).toBe(false)
 })
 
 test('coversRoot reads a line trimmed, with one leading and one trailing slash dropped', () => {
@@ -90,6 +114,14 @@ test('the report lines read as the spec gives them', () => {
   expect(copyFailureLine('unchecked', 'p', '.alfred-mods', 'plans')).toBe('not moved: p - could not check the destination')
   expect(copyFailureLine('unstatted', 'p', '.alfred-mods', 'plans')).toBe('not moved: p - could not check the copy')
   expect(copyFailureLine('differs', 'p', '.alfred-mods', 'plans')).toBe(notMovedLine('p', '.alfred-mods', 'plans'))
+  expect(unreadablePlanLine('p')).toBe('left in place: p - it does not read as a plan; fix or remove it')
+  expect(changedLine('p')).toBe('not moved: p - it changed while the update ran; run /alfred-mods:update again')
+  expect(sameFolderLine('.claude/session-inspector/plans', '.alfred-mods/plans')).toBe(
+    'not moved: .claude/session-inspector/plans/ is the same folder as .alfred-mods/plans/',
+  )
+  expect(unknownFolderLine('.claude/session-inspector/plans', '.alfred-mods/plans')).toBe(
+    'not moved: .claude/session-inspector/plans/ - could not tell if it is the same folder as .alfred-mods/plans/',
+  )
   expect(keptBothLine('p')).toBe('kept both: p (the newer one shows)')
   expect(MORE_LINE).toBe('more to move - run /alfred-mods:update again')
   expect(gitignoreLine('.alfred-mods')).toBe('added .alfred-mods/ to .gitignore')

@@ -58,6 +58,10 @@ type Options = {
   refuseDelete?: string[]
   // Paths whose writes, or whose existence checks, are refused, as a guard or a read-only disk would
   refuseWrite?: string[]; refuseExists?: string[]; refuseStat?: string[]
+  // Paths that lead to another path, as a symbolic link does: a list, read, check or stat of one (or of a path under
+  // it) meets the file or folder it names, and its `realPath` is that one's. `noRealPath` paths stat with no
+  // `realPath`, as when a hook above withholds it.
+  aliases?: Record<string, string>; noRealPath?: string[]
   // Paths whose writes land with a line added, so a read-back of the copy differs from what was written
   mangleWrite?: string[]
   // What `rm` answers: rejected with `deny`, or exit `exitCode` (0 by default); each call is recorded in the returned `rm`
@@ -187,8 +191,20 @@ export function stubAll(on: On, o: Options = {}): {
   const slashed = (path: string): string => path.replace(/\\/g, '/')
   const undrived = (path: string): string => slashed(path).replace(/^(?:\/\/\?\/)?[A-Za-z]:(?=\/)/, '')
   const at = (full: string, path: string): boolean => undrived(full) === path || undrived(full).endsWith(`/${path}`)
+  // The mod's path reaches a hook resolved against its folder, so an alias matches on a whole-segment run of the path
+  const canon = (path: string): string => {
+    const plain = undrived(path)
+    for (const [from, to] of Object.entries(o.aliases ?? {})) {
+      const start = plain === from || plain.startsWith(`${from}/`) ? 0 : plain.indexOf(`/${from}`) + 1
+      const end = start + from.length
+      if (start > 0 || plain.startsWith(from)) {
+        if (end === plain.length || plain[end] === '/') return `${plain.slice(0, start)}${to}${plain.slice(end)}`
+      }
+    }
+    return path
+  }
   on('fs.list', (_, e) => {
-    const dir = slashed(e.path).replace(/\/$/, '')
+    const dir = canon(slashed(e.path)).replace(/\/$/, '')
     files.lists.push(dir)
     const parentOf = (path: string): string => path.slice(0, path.lastIndexOf('/'))
     const inDir = Object.entries(files.current).filter(([path]) => at(dir, parentOf(path)))
@@ -215,15 +231,22 @@ export function stubAll(on: On, o: Options = {}): {
       const isDir = Object.keys(files.current).some(path => path.startsWith(`${link[1]}/`))
       return { value: { kind: isDir ? 'dir' as const : 'file' as const, size: 0, mtimeMs: 0, isLink: true, ...(e.resolve ? { realPath: link[1] } : {}) } }
     }
-    const found = Object.entries(files.current).find(([path]) => at(e.path, path))
-    if (found === undefined) return { deny: `ENOENT: no such file, ${e.path}` }
+    const real = canon(e.path)
+    const found = Object.entries(files.current).find(([path]) => at(real, path))
+    const isResolved = e.resolve === true && o.noRealPath?.some(path => at(e.path, path)) !== true
+    if (found === undefined) {
+      const folder = slashed(real).replace(/\/$/, '')
+      const isDir = Object.keys(files.current).some(path => path.split('/').slice(0, -1).some((_, i, parts) => at(folder, parts.slice(0, i + 1).join('/'))))
+      if (!isDir) return { deny: `ENOENT: no such file, ${e.path}` }
+      return { value: { kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false, ...(isResolved ? { realPath: slashed(real) } : {}) } }
+    }
     // An absolute stub's real path is its own, as a link's target is written: both sides then compare on Windows too
-    const realPath = found[0].startsWith('/') ? found[0] : slashed(e.path)
-    return { value: { kind: 'file' as const, size: sizeOf(found[1]), mtimeMs: found[1].mtimeMs, isLink: false, ...(e.resolve ? { realPath } : {}) } }
+    const realPath = found[0].startsWith('/') ? found[0] : slashed(real)
+    return { value: { kind: 'file' as const, size: sizeOf(found[1]), mtimeMs: found[1].mtimeMs, isLink: false, ...(isResolved ? { realPath } : {}) } }
   })
   // A read rejects over 4 MiB, as Claude Code's does (types, `$.fs.read`)
   on('fs.read', (_, e) => {
-    const found = Object.entries(files.current).find(([path]) => at(e.path, path))
+    const found = Object.entries(files.current).find(([path]) => at(canon(e.path), path))
     if (found !== undefined) files.reads.push(found[0])
     if (found === undefined) return { deny: `ENOENT: no such file, ${e.path}` }
     return (found[1].size ?? 0) > 4 * 1024 * 1024 ? { deny: `EFBIG: over 4 MiB, ${e.path}` } : { value: found[1].text }
@@ -232,7 +255,7 @@ export function stubAll(on: On, o: Options = {}): {
   on('fs.exists', (_, e) => {
     files.exists.push(slashed(e.path))
     if (o.refuseExists?.some(path => at(e.path, path)) === true) return { deny: `EACCES: check refused, ${e.path}` }
-    return { value: Object.keys(files.current).some(path => at(e.path, path)) }
+    return { value: Object.keys(files.current).some(path => at(canon(e.path), path)) }
   })
   // A write lands at the path of a file the test gave, else at the path the mod passed
   on('fs.write', (_, e) => {

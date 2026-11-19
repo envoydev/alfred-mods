@@ -16,10 +16,11 @@ import {
   SETUP_PANE_ID, SETUP_PANE_TITLE, SETUP_USAGE,
 } from './constants'
 import { choiceLines, configuredLine, livesLine, hasNoValue, parseFolderValue, setupPaneLines, shadowLine, unplacedLine, writerNote } from './setup'
-import type { Copy, CopyResult, ListedFile } from './types'
+import type { Copy, CopyResult, ListedFile, LiveReason } from './types'
 import {
-  closeReport, copiedLine, copyFailureLine, copyPath, coversRoot, earlierChoicesLine, failureLine, gitignoreAppend, gitignoreByHandLine, gitignoreLine,
-  folderPathOf, isLivePlan, isUtf8Text, keptBothLine, leftInPlaceLine, movedLine, moveQueue, notUtf8Line, oldInstallKeys, oldInstallLine, statusFilesLine,
+  changedLine, closeReport, copiedLine, copyFailureLine, copyPath, coversRoot, earlierChoicesLine, failureLine, folderPathOf, folderRelation, gitignoreAppend,
+  gitignoreByHandLine, gitignoreLine, isSeparateCopy, isUtf8Text, keptBothLine, leftInPlaceLine, liveReason, movedLine, moveQueue, notUtf8Line, oldInstallKeys,
+  oldInstallLine, sameFolderLine, statusFilesLine, unknownFolderLine, unreadablePlanLine,
 } from './update'
 
 // What the pane draws: the last update's report, and the folder a press just wrote (the settings in force are stale
@@ -39,11 +40,36 @@ async function listKind($: EngineInterface, root: string, kind: string): Promise
   })
 }
 
+// Where a folder lands, once every link is followed: not there, or with no real path when a hook withholds it
+async function realFolder($: EngineInterface, path: string): Promise<{ isThere: boolean; real: string | undefined }> {
+  const stat = await $.fs.stat(path, { resolve: true }).catch(() => null)
+  return stat === null ? { isThere: false, real: undefined } : { isThere: true, real: stat.realPath }
+}
+
+// The files of one kind in the other roots, and the lines for a folder that is skipped whole: one that is the chosen
+// folder under another name (a link to it), or whose real path cannot be told, is never a source, as its files would be
+// removed as copies of themselves
 async function queueOf($: EngineInterface, kind: string, chosenRoot: string, others: readonly string[]) {
+  const chosenFolder = `${chosenRoot}/${kind}`
+  const chosenReal = await realFolder($, chosenFolder)
   const chosen = new Set((await listKind($, chosenRoot, kind)).map(file => file.name))
   const byFolder: ListedFile[][] = []
-  for (const root of others) byFolder.push(await listKind($, root, kind))
-  return moveQueue(chosen, byFolder)
+  const lines: string[] = []
+  for (const root of others) {
+    const folder = `${root}/${kind}`
+    const source = chosenReal.isThere ? await realFolder($, folder) : null
+    const relation = source === null || !source.isThere ? 'distinct' : folderRelation(source.real, chosenReal.real)
+    if (relation === 'distinct') byFolder.push(await listKind($, root, kind))
+    else lines.push(relation === 'same' ? sameFolderLine(folder, chosenFolder) : unknownFolderLine(folder, chosenFolder))
+  }
+  return { queue: moveQueue(chosen, byFolder), lines }
+}
+
+// What stops a write: a file there already, or a check that cannot answer
+async function destinationBlock($: EngineInterface, destination: string): Promise<'exists' | 'unchecked' | null> {
+  const exists = await $.fs.exists(destination).then(found => found, () => null)
+  if (exists === null) return 'unchecked'
+  return exists ? 'exists' : null
 }
 
 // One file into the chosen root, read back. A name that has a file in the chosen root by now is never written over, and
@@ -51,9 +77,8 @@ async function queueOf($: EngineInterface, kind: string, chosenRoot: string, oth
 // source's time; one that cannot be stat-ed is not noted and its source stays. A destination that does not read back
 // equal is left as found: someone else wrote it.
 async function copyFile($: EngineInterface, copy: Copy, text: string): Promise<CopyResult> {
-  const exists = await $.fs.exists(copy.destination).then(found => found, () => null)
-  if (exists === null) return 'unchecked'
-  if (exists) return 'exists'
+  const blocked = await destinationBlock($, copy.destination)
+  if (blocked !== null) return blocked
   try {
     await $.fs.write(copy.destination, text)
     if ((await $.fs.read(copy.destination)) !== text) return 'differs'
@@ -85,23 +110,31 @@ async function removeSources($: EngineInterface, chosenRoot: string, sources: re
   return [copiedLine(sources.length, chosenRoot, [...new Set(sources.map(file => folderPathOf(file.path)))])]
 }
 
+// Two files that are not one file under two names: both real paths known and different, and the chosen copy as large as
+// the source was listed. A hard link keeps its own spelling and removing one link leaves the data.
+async function isSeparate($: EngineInterface, source: ListedFile, destination: string): Promise<boolean> {
+  const sourceStat = await $.fs.stat(source.path, { resolve: true }).catch(() => null)
+  const destinationStat = await $.fs.stat(destination, { resolve: true }).catch(() => null)
+  if (sourceStat === null || destinationStat === null) return false
+  return isSeparateCopy(sourceStat.realPath, destinationStat.realPath, destinationStat.size, source.size)
+}
+
 // Spec D4 step 1: the plans and scores of the other roots copied into the chosen one, oldest first, then one rm of the
 // sources. A plan whose writer still uses it stays, and so do the scores beside it in its own root; scores also stay
-// with a plan that did not move; a name the chosen root holds stays unless its copy there is byte-equal; only a file
-// that can move counts toward the cap, past which the rest wait.
+// with a plan that did not move; a name the chosen root holds stays unless its copy there is a separate, byte-equal
+// file; only a file that would be copied counts toward the cap, past which the rest wait.
 async function moveFiles($: EngineInterface, folder: PlansFolder): Promise<string[]> {
   const chosenRoot = PLANS_ROOTS[folder]
   const others = plansRoots(folder).slice(1)
   const now = await $.clock.now()
-  const plans = await queueOf($, PLANS_SUBFOLDER, chosenRoot, others)
-  const scores = await queueOf($, SCORES_SUBFOLDER, chosenRoot, others)
+  const { queue: plans, lines: planFolderLines } = await queueOf($, PLANS_SUBFOLDER, chosenRoot, others)
+  const { queue: scores, lines: scoresFolderLines } = await queueOf($, SCORES_SUBFOLDER, chosenRoot, others)
   const copies: Copy[] = []
   const equal: ListedFile[] = []
-  const live = new Set<string>()
-  const waiting = new Set<string>()
+  const live = new Map<string, LiveReason>()
   const held = new Set<string>()
   const clashes = new Set<string>()
-  const notMoved: string[] = []
+  const notMoved: string[] = [...planFolderLines, ...scoresFolderLines]
   const texts = new Map<string, string | null>()
   let hasMore = false
   const isFull = (): boolean => copies.length + equal.length >= MOVE_CAP
@@ -109,33 +142,42 @@ async function moveFiles($: EngineInterface, folder: PlansFolder): Promise<strin
     if (!texts.has(file.path)) texts.set(file.path, await $.fs.read(file.path).catch(() => null))
     return texts.get(file.path) ?? null
   }
-  const isLive = async (file: ListedFile): Promise<boolean> => {
+  const liveOf = async (file: ListedFile): Promise<LiveReason | null> => {
     const text = await textOf(file)
-    return text === null || isLivePlan(parsePlan(text), file.mtimeMs, now)
+    return liveReason(text === null ? null : parsePlan(text), file.mtimeMs, now)
   }
   // The plan beside a scores file, in their own root, whichever plan of that name is newer elsewhere
-  const ownPlanIsLive = async (file: ListedFile): Promise<boolean> => {
+  const ownPlanLiveOf = async (file: ListedFile): Promise<LiveReason | null> => {
     const own = plans.listed.find(plan => plan.root === file.root && plan.name === file.name)
-    return own !== undefined && (await isLive(own))
+    return own === undefined ? null : liveOf(own)
+  }
+  // Why a text that is not the listed size is refused: the file changed since the listing, or it is not UTF-8 text
+  const refusalOf = async (file: ListedFile): Promise<string> => {
+    const stat = await $.fs.stat(file.path).catch(() => null)
+    return stat !== null && stat.size === file.size && stat.mtimeMs === file.diskMtimeMs ? notUtf8Line(file.name) : changedLine(file.name)
   }
   const attempt = async (kind: string, file: ListedFile, text: string): Promise<boolean> => {
     if (!isUtf8Text(text, file.size)) {
-      notMoved.push(notUtf8Line(file.name))
+      notMoved.push(await refusalOf(file))
       return false
     }
     const copy = { file, destination: copyPath(chosenRoot, kind, file.name) }
-    const result = await copyFile($, copy, text)
+    // Past the cap a file is only checked: it makes the run say 'more' only when the next run would copy it
+    const result = isFull() ? (await destinationBlock($, copy.destination)) ?? 'waiting' : await copyFile($, copy, text)
     if (result === 'copied') copies.push(copy)
+    else if (result === 'waiting') hasMore = true
     else if (result === 'exists') clashes.add(file.name)
     else notMoved.push(copyFailureLine(result, file.name, chosenRoot, kind))
     return result === 'copied'
   }
-  // A clash whose chosen copy is byte-equal to its source is whole there: the source is removed like a moved one
-  const settleClashes = async (kind: string, clashed: readonly ListedFile[], isLiveFile: (file: ListedFile) => Promise<boolean>) => {
+  // A clash whose chosen copy is a separate file of byte-equal text and the listed size is whole there: the source is
+  // removed like a moved one. A source that stays (live, or beside a plan that stays) is never removed.
+  const settleClashes = async (kind: string, clashed: readonly ListedFile[], isStaying: (file: ListedFile) => Promise<boolean>) => {
     for (const file of clashed) {
       const text = await textOf(file)
-      const isEqual = text !== null && isUtf8Text(text, file.size) && !(await isLiveFile(file)) &&
-        (await $.fs.read(copyPath(chosenRoot, kind, file.name)).catch(() => null)) === text
+      const destination = copyPath(chosenRoot, kind, file.name)
+      const isEqual = text !== null && isUtf8Text(text, file.size) && !(await isStaying(file)) &&
+        (await $.fs.read(destination).catch(() => null)) === text && (await isSeparate($, file, destination))
       if (!isEqual) clashes.add(file.name)
       else if (isFull()) hasMore = true
       else equal.push(file)
@@ -143,29 +185,25 @@ async function moveFiles($: EngineInterface, folder: PlansFolder): Promise<strin
   }
   for (const file of plans.queue) {
     const text = await textOf(file)
-    if (await isLive(file)) live.add(file.name)
-    else if (isFull()) {
-      hasMore = true
-      waiting.add(file.name)
-    } else if (text !== null && !(await attempt(PLANS_SUBFOLDER, file, text))) held.add(file.name)
+    const reason = await liveOf(file)
+    if (reason !== null) live.set(file.name, reason)
+    else if (text !== null && !(await attempt(PLANS_SUBFOLDER, file, text))) held.add(file.name)
   }
-  await settleClashes(PLANS_SUBFOLDER, plans.clashed, isLive)
+  await settleClashes(PLANS_SUBFOLDER, plans.clashed, async file => (await liveOf(file)) !== null)
   // A plan that stays with another plan of its name beside it keeps its scores, as one whose copy failed does
   for (const file of plans.clashed) if (!equal.includes(file)) held.add(file.name)
   for (const file of scores.queue) {
-    if (await ownPlanIsLive(file)) live.add(file.name)
+    const reason = await ownPlanLiveOf(file)
+    if (reason !== null) live.set(file.name, reason)
     if (live.has(file.name) || held.has(file.name)) continue
-    if (isFull() || waiting.has(file.name)) {
-      hasMore = true
-      continue
-    }
     const text = await textOf(file)
     if (text !== null) await attempt(SCORES_SUBFOLDER, file, text)
   }
-  await settleClashes(SCORES_SUBFOLDER, scores.clashed, ownPlanIsLive)
+  await settleClashes(SCORES_SUBFOLDER, scores.clashed, async file => held.has(file.name) || (await ownPlanLiveOf(file)) !== null)
   const removed = await removeSources($, chosenRoot, await unchangedSince($, [...copies.map(copy => copy.file), ...equal]))
   const shown = [...clashes].filter(name => !live.has(name))
-  return [...[...live].map(leftInPlaceLine), ...shown.map(keptBothLine), ...notMoved, ...removed, ...(hasMore ? [MORE_LINE] : [])]
+  const left = [...live].map(([name, reason]) => (reason === 'writing' ? leftInPlaceLine(name) : unreadablePlanLine(name)))
+  return [...left, ...shown.map(keptBothLine), ...notMoved, ...removed, ...(hasMore ? [MORE_LINE] : [])]
 }
 
 // Spec D4 step 2: the chosen root in the .gitignore, when there is one and no line covers it; `default` is the

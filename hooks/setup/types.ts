@@ -24,3 +24,9 @@ export type CopyResult = 'copied' | 'exists' | 'unchecked' | 'differs' | 'unstat
 
 // The endings that leave the source in place and the file named as not moved
 export type CopyFailure = Exclude<CopyResult, 'copied' | 'exists'>
+
+// Why a plan stays: `writing` - its writer may still use it; `unreadable` - it does not parse and is past the window
+export type LiveReason = 'writing' | 'unreadable'
+
+// How a source folder stands to the chosen one: another folder, the same folder, or one that cannot be told apart
+export type FolderRelation = 'distinct' | 'same' | 'unknown'

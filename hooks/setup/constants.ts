@@ -72,6 +72,11 @@ export const UNCHECKED_DESTINATION_REASON = 'could not check the destination'
 
 export const UNCHECKED_COPY_REASON = 'could not check the copy'
 
+export const CHANGED_REASON = 'it changed while the update ran; run /alfred-mods:update again'
+
+// A plan that does not parse and is older than the live window: waiting for its writer would never end
+export const UNREADABLE_PLAN_NOTE = 'it does not read as a plan; fix or remove it'
+
 export const LIST_SEPARATOR = ', '
 
 export const JSON_SUFFIX = '.json'
