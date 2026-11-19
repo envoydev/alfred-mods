@@ -431,16 +431,22 @@ test("a tool row takes its slot's width, not the viewport's", async ($, on) => {
   expect(lines.map(l => [l.props?.['width'], l.props?.['overflow']])).toEqual(lines.map(() => [undefined, 'hidden']))
 })
 
-// Rule 2 is linear, so a long run of spaces in tool output does not stall a render hook (the release 2 review)
-test('a 100 kB run of spaces cuts in under 50 ms', async ($, on) => {
+// Rule 2 is linear, so a long run of spaces in tool output does not stall a render hook (the release 2 review). A
+// quadratic cut takes seconds here; the best of five redraws keeps a busy machine's pause (705 ms once, 2026-11-19,
+// under a parallel suite) from failing a linear one
+test('a 100 kB run of spaces cuts in under 50 ms, the best of five redraws', async ($, on) => {
   stubAll(on)
   engine(on)
   fitPane(on, [[{ text: `a${' '.repeat(100_000)}b` }]])
   const ui = await mountFit($, 'terminal', 40)
-  const t0 = performance.now()
-  await ui.redraw({ ...FIT_PANE, bodyColumns: 41 })
-  await ui.drawn()
-  expect(Math.round(performance.now() - t0) < 50).toBe(true)
+  let bestMs = Number.POSITIVE_INFINITY
+  for (let run = 1; run <= 5; run++) {
+    const t0 = performance.now()
+    await ui.redraw({ ...FIT_PANE, bodyColumns: 40 + run })
+    await ui.drawn()
+    bestMs = Math.min(bestMs, performance.now() - t0)
+  }
+  expect(Math.round(bestMs) < 50).toBe(true)
 })
 
 // REC on and /quiet off: an errored row draws its masked text, a blank line in it keeping its row (the release 2 review)
