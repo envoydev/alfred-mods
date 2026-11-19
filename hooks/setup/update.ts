@@ -2,8 +2,11 @@
 // setup/effects.ts lists, copies and deletes.
 import { candidatesByName, isPlanDone } from '../plan/plan'
 import type { Plan } from '../plan/types'
-import { DONE_LINE, JSON_SUFFIX, LIST_SEPARATOR, LIVE_PLAN_MS, NOTHING_LINE, OLD_INSTALL_PREFIX, OLD_STATUS_DIR, SLASH } from './constants'
-import type { ListedFile, MoveQueue } from './types'
+import {
+  DONE_LINE, JSON_SUFFIX, LIST_SEPARATOR, LIVE_PLAN_MS, NOT_UTF8_REASON, NOTHING_LINE, OLD_INSTALL_PREFIX, OLD_STATUS_DIR, SLASH, UNCHECKED_COPY_REASON,
+  UNCHECKED_DESTINATION_REASON,
+} from './constants'
+import type { CopyFailure, ListedFile, MoveQueue } from './types'
 import { isRecord } from '../core/guards'
 import { sourceFileName } from '../settings/settings'
 
@@ -22,9 +25,15 @@ export function coversRoot(gitignore: string, root: string): boolean {
   return gitignore.split('\n').some(line => !line.trim().startsWith('#') && covered.includes(trimmedLine(line)))
 }
 
+// The line goes in with the file's own line ending
 export function gitignoreAppend(gitignore: string, root: string): string {
-  return `${gitignore}${gitignore === '' || gitignore.endsWith('\n') ? '' : '\n'}${root}/\n`
+  const ending = gitignore.includes('\r\n') ? '\r\n' : '\n'
+  return `${gitignore}${gitignore === '' || gitignore.endsWith('\n') ? '' : ending}${root}/${ending}`
 }
+
+// `$.fs.read` decodes a file as UTF-8 text, and a byte that is not UTF-8 may come back changed; text of the listed size
+// in bytes is the file as it was
+export const isUtf8Text = (text: string, size: number): boolean => new TextEncoder().encode(text).length === size
 
 // The `enabledPlugins` keys of the old plugin name that are set true
 export function oldInstallKeys(enabled: unknown): string[] {
@@ -32,9 +41,9 @@ export function oldInstallKeys(enabled: unknown): string[] {
   return Object.entries(enabled).filter(([key, value]) => key.startsWith(OLD_INSTALL_PREFIX) && value === true).map(([key]) => key)
 }
 
-// The files of one kind in the other roots: the newest file of each name is queued, oldest first so the moved files keep
-// their order, a tie going to the earlier root. A name the chosen root holds is set aside, its newest file listed in
-// `clashed`: it stays. `listed` is every file seen.
+// The files of one kind in the other roots: the newest file of each name is queued, oldest first so the moved files
+// keep their order, a tie going to the earlier root. A name the chosen root holds is set aside, its newest file listed
+// in `clashed`: it stays. `listed` is every file seen.
 export function moveQueue(chosenNames: ReadonlySet<string>, byFolder: ListedFile[][]): MoveQueue {
   const queue: ListedFile[] = []
   const clashed: ListedFile[] = []
@@ -63,6 +72,16 @@ export const leftInPlaceLine = (name: string): string => `left in place: ${name}
 
 export const notMovedLine = (name: string, root: string, kind: string): string =>
   `not moved: ${name} - its copy did not read back equal; check ${folderOf(`${root}/${kind}`)}`
+
+export const notMovedReasonLine = (name: string, reason: string): string => `not moved: ${name} - ${reason}`
+
+export const notUtf8Line = (name: string): string => notMovedReasonLine(name, NOT_UTF8_REASON)
+
+// The line for a copy that did not end whole: what to check depends on what failed
+export const copyFailureLine = (result: CopyFailure, name: string, root: string, kind: string): string => {
+  if (result === 'differs') return notMovedLine(name, root, kind)
+  return notMovedReasonLine(name, result === 'unchecked' ? UNCHECKED_DESTINATION_REASON : UNCHECKED_COPY_REASON)
+}
 
 export const keptBothLine = (name: string): string => `kept both: ${name} (the newer one shows)`
 

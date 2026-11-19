@@ -1,5 +1,6 @@
-// /alfred-mods:init and /alfred-mods:configure: the field written into the project's settings file, the choices as text and as a
-// pane, and the update a choice runs (its steps are update-hooks.test.ts's; here the folder it runs on is checked)
+// /alfred-mods:init and /alfred-mods:configure: the field written into the project's settings file, the choices as text
+// and as a pane, and the update a choice runs (its steps are update-hooks.test.ts's; here the folder it runs on is
+// checked)
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
@@ -25,6 +26,10 @@ const alfred = async ($: Engine, verb: string, args = ''): Promise<string> =>
   (await $.command.run({ command: `alfred-mods:${verb}`, args, origin: { kind: 'composer' }, presentation: PRESENTATION })).text ?? ''
 const setupPane = ($: Engine) =>
   $.ui.mount({ plugin: 'alfred-mods', surface: 'terminal', component: 'Pane', requestId: 'alfred-mods-setup', props: PANE })
+const MAIN = { columns: 120, rows: 40, isFullscreen: false }
+const FULLSCREEN = { columns: 200, rows: 50, isFullscreen: true }
+const paneOn = ($: Engine, surface: 'terminal' | 'desktop', viewport?: typeof MAIN) =>
+  $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'alfred-mods-setup', props: PANE, ...(viewport === undefined ? {} : { viewport }) })
 // The kit's invalidate only records the call, so the pane is mounted again to draw what a press left
 async function again($: Engine, ui: { unmount: () => Promise<void> }): Promise<string[]> {
   await ui.unmount()
@@ -130,7 +135,7 @@ test('a project file that does not parse is refused and nothing is written', asy
   expect(files.writes).toEqual([])
 })
 
-const USAGE = 'Usage: /alfred-mods:init [default|.alfred|.alfred-mods] | /alfred-mods:configure [default|.alfred|.alfred-mods] | /alfred-mods:update'
+const USAGE = 'Usage: /alfred-mods:init [.alfred-mods|.alfred|default] | /alfred-mods:configure [.alfred-mods|.alfred|default] | /alfred-mods:update'
 
 test('an unknown folder or an extra word prints the usage line, whichever command was typed', async ($, on) => {
   const { files } = await start($, on)
@@ -198,4 +203,28 @@ test('a press whose update fails leaves a could-not-update line in the pane', as
   const text = (await again($, ui)).join('\n')
   expect(text).toMatch(/\[could not update: .*\]/)
   expect(text).not.toContain('update done')
+})
+
+test('on the main screen the pane draws each choice as the line to type, and the help says to type one', async ($, on) => {
+  await start($, on)
+  const ui = await paneOn($, 'terminal', MAIN)
+  const lines = await rows(ui)
+  expect(lines.some(l => l.startsWith('/alfred-mods:init .alfred-mods') && l.includes('recommended'))).toBe(true)
+  expect(lines.some(l => l.startsWith('/alfred-mods:init .alfred '))).toBe(true)
+  expect(lines.some(l => l.startsWith('/alfred-mods:init default'))).toBe(true)
+  expect(lines.some(l => l.startsWith('Type a line to write plansFolder'))).toBe(true)
+  expect(lines.some(l => l.startsWith('A press writes'))).toBe(false)
+  expect(await ui.find({ key: 'choose-.alfred' })).toBeFalsy()
+})
+
+test('in fullscreen, on the Desktop and with no viewport the pane keeps its buttons', async ($, on) => {
+  await start($, on)
+  for (const [surface, viewport] of [['terminal', FULLSCREEN], ['desktop', MAIN], ['terminal', undefined]] as const) {
+    const ui = await paneOn($, surface, viewport)
+    expect(await ui.find({ key: 'choose-.alfred' })).toBeTruthy()
+    const lines = await rows(ui)
+    expect(lines.some(l => l.startsWith('/alfred-mods:init'))).toBe(false)
+    expect(lines.some(l => l.startsWith('A press writes'))).toBe(true)
+    await ui.unmount()
+  }
 })

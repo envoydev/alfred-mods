@@ -1,4 +1,5 @@
-// The setup command's named values: its words, the pane and the texts of the plans folder choice
+// The setup commands' named values - /alfred-mods:init, /alfred-mods:configure and /alfred-mods:update: their words,
+// the pane and the texts of the plans folder choice and of the update
 import type { PlansFolder } from '../plan/types'
 import type { SetupVerb } from './types'
 
@@ -9,16 +10,16 @@ export const SLASH: Readonly<Record<SetupVerb, string>> = {
   update: '/alfred-mods:update',
 }
 
-export const FOLDER_VALUES_HINT = '[default|.alfred|.alfred-mods]'
+// The order the choices are shown in, the recommended one first; the reader's fallback order is PLANS_FOLDERS
+export const CHOICE_ORDER: readonly PlansFolder[] = ['.alfred-mods', '.alfred', 'default']
+
+export const FOLDER_VALUES_HINT = `[${CHOICE_ORDER.join('|')}]`
 
 export const SETUP_USAGE = `Usage: ${SLASH.init} ${FOLDER_VALUES_HINT} | ${SLASH.configure} ${FOLDER_VALUES_HINT} | ${SLASH.update}`
 
 export const SETUP_PANE_ID = 'alfred-mods-setup'
 
 export const SETUP_PANE_TITLE = 'Plans folder'
-
-// The order the choices are shown in, the recommended one first; the reader's fallback order is PLANS_FOLDERS
-export const CHOICE_ORDER: readonly PlansFolder[] = ['.alfred-mods', '.alfred', 'default']
 
 export const CHOICE_NOTES: Readonly<Record<PlansFolder, string>> = {
   '.alfred-mods': 'recommended - no permission asks',
@@ -36,7 +37,11 @@ export const PANE_HEADING = 'Plans folder'
 
 export const PANE_HELP = 'A press writes plansFolder in .claude/settings.json and moves the files.'
 
-// Update: the cap of files moved in one run, how long a plan with an unfinished step counts as live, the one rm's timeout
+// On the terminal's main screen nothing takes a press: the choices draw as the lines to type
+export const PANE_HELP_TYPED = 'Type a line to write plansFolder in .claude/settings.json and move the files.'
+
+// Update: the cap of files moved in one run, how long a plan with an unfinished step counts as live, the one rm's
+// timeout
 export const MOVE_CAP = 50
 
 export const LIVE_PLAN_MS = 24 * 3_600_000
@@ -59,6 +64,13 @@ export const MORE_LINE = `more to move - run ${SLASH.update} again`
 export const DONE_LINE = 'update done'
 
 export const NOTHING_LINE = 'nothing to update'
+
+// Why a file is named 'not moved': its copy was not whole text, or a check that would make the move safe failed
+export const NOT_UTF8_REASON = 'not UTF-8 text'
+
+export const UNCHECKED_DESTINATION_REASON = 'could not check the destination'
+
+export const UNCHECKED_COPY_REASON = 'could not check the copy'
 
 export const LIST_SEPARATOR = ', '
 

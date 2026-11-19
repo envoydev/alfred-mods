@@ -24,7 +24,7 @@ test('parseFolderValue refuses an unknown folder or an extra word', () => {
 
 test('the usage line names the three commands', () => {
   expect(SETUP_USAGE).toBe(
-    'Usage: /alfred-mods:init [default|.alfred|.alfred-mods] | /alfred-mods:configure [default|.alfred|.alfred-mods] | /alfred-mods:update',
+    'Usage: /alfred-mods:init [.alfred-mods|.alfred|default] | /alfred-mods:configure [.alfred-mods|.alfred|default] | /alfred-mods:update',
   )
 })
 

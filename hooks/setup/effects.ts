@@ -1,12 +1,12 @@
-// The setup folder's effects: '/alfred-mods:init', '/alfred-mods:configure' and '/alfred-mods:update', and the pane that offers the choice. The plans
-// folder is a project setting (.claude/settings.json), written only here.
+// The setup folder's effects: '/alfred-mods:init', '/alfred-mods:configure' and '/alfred-mods:update', and the pane
+// that offers the choice. The plans folder is a project setting (.claude/settings.json), written only here.
 import type { EngineInterface } from 'claude-code'
 import type { MatchedInput } from '../core/types'
 import { drawLines } from '../core/draw'
 import { oneLine } from '../core/format'
 import { isNoColor } from '../core/effects'
 import { PLANS_ROOTS, PLANS_SUBFOLDER, SCORES_SUBFOLDER } from '../plan/constants'
-import { noteMovedFiles } from '../plan/effects'
+import { noteMovedFiles, originalMtime } from '../plan/effects'
 import { parsePlan, plansRoots } from '../plan/plan'
 import type { PlansFolder } from '../plan/types'
 import { loadSettings, plansFolderInForce, resolvedSettings, writeProjectField, writeUserFieldResult } from '../settings/effects'
@@ -18,8 +18,8 @@ import {
 import { choiceLines, configuredLine, livesLine, hasNoValue, parseFolderValue, setupPaneLines, shadowLine, unplacedLine, writerNote } from './setup'
 import type { Copy, CopyResult, ListedFile } from './types'
 import {
-  closeReport, copiedLine, copyPath, coversRoot, earlierChoicesLine, failureLine, gitignoreAppend, gitignoreByHandLine, gitignoreLine, folderPathOf, isLivePlan, keptBothLine,
-  leftInPlaceLine, movedLine, moveQueue, notMovedLine, oldInstallKeys, oldInstallLine, statusFilesLine,
+  closeReport, copiedLine, copyFailureLine, copyPath, coversRoot, earlierChoicesLine, failureLine, gitignoreAppend, gitignoreByHandLine, gitignoreLine,
+  folderPathOf, isLivePlan, isUtf8Text, keptBothLine, leftInPlaceLine, movedLine, moveQueue, notUtf8Line, oldInstallKeys, oldInstallLine, statusFilesLine,
 } from './update'
 
 // What the pane draws: the last update's report, and the folder a press just wrote (the settings in force are stale
@@ -28,13 +28,15 @@ const setupMemory = { report: [] as string[], chosen: null as PlansFolder | null
 
 const isJsonFile = (entry: { kind: string; name: string }): boolean => entry.kind === 'file' && entry.name.endsWith(JSON_SUFFIX)
 
-// A missing folder is empty
+// A missing folder is empty. A file an earlier update copied lists with its source's time, so a second move reads an
+// abandoned plan as the abandoned plan it is; `diskMtimeMs` stays the file's own, for the check before the rm.
 async function listKind($: EngineInterface, root: string, kind: string): Promise<ListedFile[]> {
   const dir = `${root}/${kind}`
   const entries = await $.fs.list(dir).catch(() => [])
-  return entries.filter(isJsonFile).map(entry => ({
-    name: entry.name.slice(0, -JSON_SUFFIX.length), root, path: `${dir}/${entry.name}`, mtimeMs: entry.mtimeMs, size: entry.size,
-  }))
+  return entries.filter(isJsonFile).map(entry => {
+    const path = `${dir}/${entry.name}`
+    return { name: entry.name.slice(0, -JSON_SUFFIX.length), root, path, mtimeMs: originalMtime(path, entry.mtimeMs, entry.size), diskMtimeMs: entry.mtimeMs, size: entry.size }
+  })
 }
 
 async function queueOf($: EngineInterface, kind: string, chosenRoot: string, others: readonly string[]) {
@@ -44,34 +46,38 @@ async function queueOf($: EngineInterface, kind: string, chosenRoot: string, oth
   return moveQueue(chosen, byFolder)
 }
 
-// One file into the chosen root, read back. A name that has a file in the chosen root by now - or whose check fails -
-// is never written over. A copy that read back equal is noted at once, so a listing before the rm sees its source's time.
-// A destination that does not read back equal is left as found: someone else wrote it.
+// One file into the chosen root, read back. A name that has a file in the chosen root by now is never written over, and
+// neither is one whose check fails. A copy that read back equal is noted at once, so a listing before the rm sees its
+// source's time; one that cannot be stat-ed is not noted and its source stays. A destination that does not read back
+// equal is left as found: someone else wrote it.
 async function copyFile($: EngineInterface, copy: Copy, text: string): Promise<CopyResult> {
-  if (await $.fs.exists(copy.destination).catch(() => true)) return 'exists'
+  const exists = await $.fs.exists(copy.destination).then(found => found, () => null)
+  if (exists === null) return 'unchecked'
+  if (exists) return 'exists'
   try {
     await $.fs.write(copy.destination, text)
     if ((await $.fs.read(copy.destination)) !== text) return 'differs'
-    const stat = await $.fs.stat(copy.destination).catch(() => null)
-    if (stat !== null) noteMovedFiles([{ path: copy.destination, mtimeMs: copy.file.mtimeMs, copyMtimeMs: stat.mtimeMs, copySize: stat.size }])
-    return 'copied'
   } catch {
     return 'differs'
   }
+  const stat = await $.fs.stat(copy.destination).catch(() => null)
+  if (stat === null) return 'unstatted'
+  noteMovedFiles([{ path: copy.destination, mtimeMs: copy.file.mtimeMs, copyMtimeMs: stat.mtimeMs, copySize: stat.size }])
+  return 'copied'
 }
 
-// Each copied source is stat-ed again: one whose size or mtimeMs moved was written after the copy and stays
-async function unchangedSince($: EngineInterface, copied: readonly ListedFile[]): Promise<ListedFile[]> {
+// Each file to remove is stat-ed again: one whose size or own mtimeMs moved was written after the check and stays
+async function unchangedSince($: EngineInterface, checked: readonly ListedFile[]): Promise<ListedFile[]> {
   const kept: ListedFile[] = []
-  for (const file of copied) {
+  for (const file of checked) {
     const stat = await $.fs.stat(file.path).catch(() => null)
-    if (stat !== null && stat.size === file.size && stat.mtimeMs === file.mtimeMs) kept.push(file)
+    if (stat !== null && stat.size === file.size && stat.mtimeMs === file.diskMtimeMs) kept.push(file)
   }
   return kept
 }
 
-// One rm of every source that read back equal and did not change; never of a destination. Where it rejects or exits
-// non-zero the sources stay.
+// One rm of every source that is whole in the chosen root and did not change; never of a destination. Where it rejects
+// or exits non-zero the sources stay.
 async function removeSources($: EngineInterface, chosenRoot: string, sources: readonly ListedFile[]): Promise<string[]> {
   if (sources.length === 0) return []
   const ran = await $.process.run([...RM_ARGV, ...sources.map(file => file.path)], { timeoutMs: RM_TIMEOUT_MS }).catch(() => null)
@@ -80,8 +86,9 @@ async function removeSources($: EngineInterface, chosenRoot: string, sources: re
 }
 
 // Spec D4 step 1: the plans and scores of the other roots copied into the chosen one, oldest first, then one rm of the
-// sources. A plan whose writer still uses it stays, and so do the scores beside it in its own root; scores also stay with
-// a plan that did not move; a name the chosen root holds stays; past the cap the rest wait.
+// sources. A plan whose writer still uses it stays, and so do the scores beside it in its own root; scores also stay
+// with a plan that did not move; a name the chosen root holds stays unless its copy there is byte-equal; only a file
+// that can move counts toward the cap, past which the rest wait.
 async function moveFiles($: EngineInterface, folder: PlansFolder): Promise<string[]> {
   const chosenRoot = PLANS_ROOTS[folder]
   const others = plansRoots(folder).slice(1)
@@ -89,52 +96,74 @@ async function moveFiles($: EngineInterface, folder: PlansFolder): Promise<strin
   const plans = await queueOf($, PLANS_SUBFOLDER, chosenRoot, others)
   const scores = await queueOf($, SCORES_SUBFOLDER, chosenRoot, others)
   const copies: Copy[] = []
+  const equal: ListedFile[] = []
   const live = new Set<string>()
   const waiting = new Set<string>()
   const held = new Set<string>()
-  const clashes = new Set([...plans.clashed, ...scores.clashed].map(file => file.name))
+  const clashes = new Set<string>()
   const notMoved: string[] = []
   const texts = new Map<string, string | null>()
   let hasMore = false
-  const planText = async (file: ListedFile): Promise<string | null> => {
+  const isFull = (): boolean => copies.length + equal.length >= MOVE_CAP
+  const textOf = async (file: ListedFile): Promise<string | null> => {
     if (!texts.has(file.path)) texts.set(file.path, await $.fs.read(file.path).catch(() => null))
     return texts.get(file.path) ?? null
   }
   const isLive = async (file: ListedFile): Promise<boolean> => {
-    const text = await planText(file)
+    const text = await textOf(file)
     return text === null || isLivePlan(parsePlan(text), file.mtimeMs, now)
   }
+  // The plan beside a scores file, in their own root, whichever plan of that name is newer elsewhere
+  const ownPlanIsLive = async (file: ListedFile): Promise<boolean> => {
+    const own = plans.listed.find(plan => plan.root === file.root && plan.name === file.name)
+    return own !== undefined && (await isLive(own))
+  }
   const attempt = async (kind: string, file: ListedFile, text: string): Promise<boolean> => {
+    if (!isUtf8Text(text, file.size)) {
+      notMoved.push(notUtf8Line(file.name))
+      return false
+    }
     const copy = { file, destination: copyPath(chosenRoot, kind, file.name) }
     const result = await copyFile($, copy, text)
     if (result === 'copied') copies.push(copy)
     else if (result === 'exists') clashes.add(file.name)
-    else notMoved.push(notMovedLine(file.name, chosenRoot, kind))
+    else notMoved.push(copyFailureLine(result, file.name, chosenRoot, kind))
     return result === 'copied'
   }
+  // A clash whose chosen copy is byte-equal to its source is whole there: the source is removed like a moved one
+  const settleClashes = async (kind: string, clashed: readonly ListedFile[], isLiveFile: (file: ListedFile) => Promise<boolean>) => {
+    for (const file of clashed) {
+      const text = await textOf(file)
+      const isEqual = text !== null && isUtf8Text(text, file.size) && !(await isLiveFile(file)) &&
+        (await $.fs.read(copyPath(chosenRoot, kind, file.name)).catch(() => null)) === text
+      if (!isEqual) clashes.add(file.name)
+      else if (isFull()) hasMore = true
+      else equal.push(file)
+    }
+  }
   for (const file of plans.queue) {
-    if (copies.length >= MOVE_CAP) {
+    const text = await textOf(file)
+    if (await isLive(file)) live.add(file.name)
+    else if (isFull()) {
       hasMore = true
       waiting.add(file.name)
-      continue
-    }
-    const text = await planText(file)
-    if (await isLive(file)) live.add(file.name)
-    else if (text !== null && !(await attempt(PLANS_SUBFOLDER, file, text))) held.add(file.name)
+    } else if (text !== null && !(await attempt(PLANS_SUBFOLDER, file, text))) held.add(file.name)
   }
+  await settleClashes(PLANS_SUBFOLDER, plans.clashed, isLive)
+  // A plan that stays with another plan of its name beside it keeps its scores, as one whose copy failed does
+  for (const file of plans.clashed) if (!equal.includes(file)) held.add(file.name)
   for (const file of scores.queue) {
-    // The plan beside the scores, in their own root, whichever plan of that name is newer elsewhere
-    const own = plans.listed.find(plan => plan.root === file.root && plan.name === file.name)
-    if (own !== undefined && (await isLive(own))) live.add(file.name)
+    if (await ownPlanIsLive(file)) live.add(file.name)
     if (live.has(file.name) || held.has(file.name)) continue
-    if (copies.length >= MOVE_CAP || waiting.has(file.name)) {
+    if (isFull() || waiting.has(file.name)) {
       hasMore = true
       continue
     }
-    const text = await $.fs.read(file.path).catch(() => null)
+    const text = await textOf(file)
     if (text !== null) await attempt(SCORES_SUBFOLDER, file, text)
   }
-  const removed = await removeSources($, chosenRoot, await unchangedSince($, copies.map(copy => copy.file)))
+  await settleClashes(SCORES_SUBFOLDER, scores.clashed, ownPlanIsLive)
+  const removed = await removeSources($, chosenRoot, await unchangedSince($, [...copies.map(copy => copy.file), ...equal]))
   const shown = [...clashes].filter(name => !live.has(name))
   return [...[...live].map(leftInPlaceLine), ...shown.map(keptBothLine), ...notMoved, ...removed, ...(hasMore ? [MORE_LINE] : [])]
 }
@@ -151,7 +180,8 @@ async function ignoreRoot($: EngineInterface, folder: PlansFolder): Promise<stri
   return [isWritten ? gitignoreLine(root) : gitignoreByHandLine(root)]
 }
 
-// Spec D4 step 3: a choice of before 0.8 that no settings file holds goes into the user file, so the store's copy retires
+// Spec D4 step 3: a choice of before 0.8 that no settings file holds goes into the user file, so the store's copy
+// retires
 async function keepEarlierChoices($: EngineInterface): Promise<string[]> {
   const resolved = resolvedSettings()
   if (resolved === null) return []
@@ -176,7 +206,8 @@ async function oldInstalls($: EngineInterface): Promise<string[]> {
   return [...keys].map(oldInstallLine)
 }
 
-// Spec D4 step 5: the old stack's status files, counted only while the new folder exists; an old stack still writes there
+// Spec D4 step 5: the old stack's status files, counted only while the new folder exists; an old stack still writes
+// there
 async function oldStatusFiles($: EngineInterface): Promise<string[]> {
   if (!(await $.fs.list(NEW_STATUS_DIR).then(() => true, () => false))) return []
   const count = (await $.fs.list(OLD_STATUS_DIR).catch(() => [])).filter(isJsonFile).length
@@ -185,8 +216,8 @@ async function oldStatusFiles($: EngineInterface): Promise<string[]> {
 
 const reasonOf = (error: unknown): string => oneLine(error instanceof Error ? error.message : 'unknown error', REASON_MAX)
 
-// The report of /alfred-mods:update on `folder`, a line for each step with work and a closing line. Every root and
-// line comes from `folder`, never from the settings in force: a press has just written it and they are stale. A step that
+// The report of /alfred-mods:update on `folder`, a line for each step with work and a closing line. Every root and line
+// comes from `folder`, never from the settings in force: a press has just written it and they are stale. A step that
 // fails ends the run on a line naming the reason, with the lines before it kept.
 async function runUpdate($: EngineInterface, folder: PlansFolder): Promise<string[]> {
   const lines: string[] = []
@@ -283,5 +314,7 @@ export async function runUpdateCommand($: EngineInterface, e: MatchedInput<'comm
 export async function drawSetupPane($: EngineInterface, e: MatchedInput<'ui.render', { component: 'Pane', requestId: 'alfred-mods-setup' }>) {
   const press: Record<string, () => unknown> = {}
   for (const folder of CHOICE_ORDER) press[`${BUTTON_KEY_PREFIX}${folder}`] = () => pressChoice($, folder).catch(() => undefined)
-  return drawLines($.ui.resolve(e), e, setupPaneLines(currentFolder(), setupMemory.report), { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
+  // On the terminal's main screen nothing takes a press, as /inspect's pane finds: each choice draws as its command
+  const isMain = e.surface === 'terminal' && e.viewport?.isFullscreen === false
+  return drawLines($.ui.resolve(e), e, setupPaneLines(currentFolder(), setupMemory.report, isMain), { noColor: await isNoColor($), press, columns: e.props.bodyColumns })
 }

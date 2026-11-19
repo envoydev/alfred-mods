@@ -57,7 +57,7 @@ type Options = {
   // Store keys whose first delete is refused, as a store that fails once would
   refuseDelete?: string[]
   // Paths whose writes, or whose existence checks, are refused, as a guard or a read-only disk would
-  refuseWrite?: string[]; refuseExists?: string[]
+  refuseWrite?: string[]; refuseExists?: string[]; refuseStat?: string[]
   // Paths whose writes land with a line added, so a read-back of the copy differs from what was written
   mangleWrite?: string[]
   // What `rm` answers: rejected with `deny`, or exit `exitCode` (0 by default); each call is recorded in the returned `rm`
@@ -71,8 +71,9 @@ type Options = {
 export const gitResult = (stdout: string, exitCode = 0, stderr = ''): ProcessRunResult =>
   ({ exitCode, stdout, stderr, isStdoutTruncated: false, isStderrTruncated: false })
 
-// A file the mod lists and reads; `size` stands in for the text's length when given
+// A file the mod lists and reads; `size` stands in for the text's UTF-8 byte length when given
 export type FileStub = { text: string; mtimeMs: number; size?: number }
+const sizeOf = (file: FileStub): number => file.size ?? new TextEncoder().encode(file.text).length
 
 // The text of the file at `path` a test gave or the mod wrote, matched as the end of its key
 export const fileAt = (files: { current: Record<string, FileStub> }, path: string): string | undefined =>
@@ -200,7 +201,7 @@ export function stubAll(on: On, o: Options = {}): {
       value: [
         ...dirsIn.map(path => ({ name: path.slice(path.lastIndexOf('/') + 1), kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false })),
         ...inDir.map(([path, f]) => ({
-          name: path.slice(path.lastIndexOf('/') + 1), kind: 'file' as const, size: f.size ?? f.text.length, mtimeMs: f.mtimeMs, isLink: false,
+          name: path.slice(path.lastIndexOf('/') + 1), kind: 'file' as const, size: sizeOf(f), mtimeMs: f.mtimeMs, isLink: false,
         })),
         ...linksIn.map(path => ({ name: path.slice(path.lastIndexOf('/') + 1), kind: 'other' as const, size: 0, mtimeMs: 0, isLink: true })),
       ],
@@ -208,6 +209,7 @@ export function stubAll(on: On, o: Options = {}): {
   })
   // A link stats as what it leads to, with `realPath` its target when asked; a file as itself, its path its real one
   on('fs.stat', (_, e) => {
+    if (o.refuseStat?.some(path => at(e.path, path)) === true) return { deny: `EACCES: stat refused, ${e.path}` }
     const link = Object.entries(links).find(([path]) => at(e.path, path))
     if (link !== undefined) {
       const isDir = Object.keys(files.current).some(path => path.startsWith(`${link[1]}/`))
@@ -217,7 +219,7 @@ export function stubAll(on: On, o: Options = {}): {
     if (found === undefined) return { deny: `ENOENT: no such file, ${e.path}` }
     // An absolute stub's real path is its own, as a link's target is written: both sides then compare on Windows too
     const realPath = found[0].startsWith('/') ? found[0] : slashed(e.path)
-    return { value: { kind: 'file' as const, size: found[1].size ?? found[1].text.length, mtimeMs: found[1].mtimeMs, isLink: false, ...(e.resolve ? { realPath } : {}) } }
+    return { value: { kind: 'file' as const, size: sizeOf(found[1]), mtimeMs: found[1].mtimeMs, isLink: false, ...(e.resolve ? { realPath } : {}) } }
   })
   // A read rejects over 4 MiB, as Claude Code's does (types, `$.fs.read`)
   on('fs.read', (_, e) => {

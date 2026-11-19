@@ -3,13 +3,14 @@
 // stored, which outlives a reload.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
-import type { SliceClose, Credit, Plan, PlanDrawing, PlanView, Plans, Scores, TaskItem, Watched } from './types'
+import type { SliceClose, Credit, Moved, Plan, PlanDrawing, PlanView, Plans, Scores, TaskItem, Watched } from './types'
 import type { Pending } from '../core/types'
 import { FINISH_SHOWN_MS, creditedPlan, isPlanDone, newUserNotes, parsePlan, parseScores, candidatesByName, planView, plansDirs, isPlanRunning, scoresDirs, scoresView, shownPlan, stepStatusKey, taskStatusKey, taskView, tasksAfter } from './plan'
 import { closeTargetOf, closeSlices, closeWait, liveSpans, sessionTimesOf, openWait, overheadKey, sliceMs, stepKey, sumTimes } from './steptime'
 import { parseAlfredScoring, parseAlfredStatus } from './alfredplan'
 import { minutesText, oneLine } from '../core/format'
 import { scoresLabel } from './planlines'
+import { standInMtime } from './moved'
 import { toast } from '../core/effects'
 import { isLive, stepMarkOf } from '../agents/agents'
 import { readStack } from '../stack/effects'
@@ -326,21 +327,24 @@ async function readWatched<T>(
 
 type Listed = { name: string; mtimeMs: number; size: number; path: string }
 
-// The files `/alfred-mods:update` copied, by path: the source's mtimeMs, and the copy's own mtimeMs and size as the
-// update saw them. A copy is written now, but it is as old as its source: a fresh mtimeMs would make an old plan look
-// written this session. A write after the copy changes the listed mtimeMs or size, which ends the stand-in. A new claude
-// run starts over.
-type Moved = { path: string; mtimeMs: number; copyMtimeMs: number; copySize: number }
+// The files `/alfred-mods:update` copied, by path. A copy is written now, but it is as old as its source: a fresh
+// mtimeMs would make an old plan look written this session. A write after the copy changes the listed mtimeMs or size,
+// which ends the stand-in. A new claude run starts over.
 const movedFiles = new Map<string, Moved>()
 
 export function noteMovedFiles(moves: readonly Moved[]): void {
   for (const move of moves) movedFiles.set(move.path, move)
 }
 
+// The time a file counts as written: its source's while it is a copy the update left as it is, else the listed one.
+// It changes nothing, so a second update lists the same time the plan view does.
+export function originalMtime(path: string, listedMs: number, listedSize: number): number {
+  return standInMtime(movedFiles.get(path), listedMs, listedSize) ?? listedMs
+}
+
 function effectiveMtime(path: string, listedMs: number, listedSize: number): number {
-  const moved = movedFiles.get(path)
-  if (moved === undefined) return listedMs
-  if (listedMs === moved.copyMtimeMs && listedSize === moved.copySize) return moved.mtimeMs
+  const standIn = standInMtime(movedFiles.get(path), listedMs, listedSize)
+  if (standIn !== null) return standIn
   movedFiles.delete(path)
   return listedMs
 }

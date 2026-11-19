@@ -90,11 +90,11 @@ test('a plan whose copy did not read back equal keeps its scores in place too', 
   expect(rm.calls).toEqual([])
 })
 
-test('a check of the destination that rejects is a clash for that name, and the others still move', async ($, on) => {
+test('a check of the destination that rejects is not moved for that name, and the others still move', async ($, on) => {
   const { rm } = await start($, on, {
     files: { [`${OLD_PLANS}/p.json`]: stub(DONE), [`${OLD_PLANS}/q.json`]: stub(DONE) }, refuseExists: ['.alfred-mods/plans/p.json'],
   })
-  expect(await alfred($, 'update')).toEqual(['kept both: p (the newer one shows)', 'moved 1 plan and scores files to .alfred-mods/', 'update done'])
+  expect(await alfred($, 'update')).toEqual(['not moved: p - could not check the destination', 'moved 1 plan and scores files to .alfred-mods/', 'update done'])
   expect(rm.calls).toEqual([['rm', '-f', '--', `${OLD_PLANS}/q.json`]])
 })
 
@@ -140,8 +140,8 @@ test('rm that exits non-zero prints the by-hand line', async ($, on) => {
   expect((await alfred($, 'update'))[0]).toContain('copied 1 files to .alfred-mods/ - remove the old copies in')
 })
 
-test('a name the chosen root already holds prints kept both and moves nothing', async ($, on) => {
-  const { rm } = await start($, on, { files: { [`${OLD_PLANS}/p.json`]: stub(DONE), '.alfred-mods/plans/p.json': stub(DONE) } })
+test('a name the chosen root already holds, with other text, prints kept both and moves nothing', async ($, on) => {
+  const { rm } = await start($, on, { files: { [`${OLD_PLANS}/p.json`]: stub(DONE), '.alfred-mods/plans/p.json': stub(PENDING) } })
   expect(await alfred($, 'update')).toEqual(['kept both: p (the newer one shows)', 'update done'])
   expect(rm.calls).toEqual([])
 })
