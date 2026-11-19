@@ -359,6 +359,8 @@ How to read a row:
 |--------------------------|----------------------------------------------------------------------------------------------|
 | `⏺ <tool> · <what>`      | the tool, then what it worked on: a description, file, page, query, agent type or skill      |
 | `⎿`                      | one step of the call: what it was given, what it did or what came back                       |
+| `waiting…`               | not run yet: waiting at the permission dialog, or queued                                     |
+| `running…`               | still running, while REC is on                                                               |
 | `30 lines ✓`             | done, and how many lines it printed                                                          |
 | `✗`, `✗ exit 1`          | failed (with its exit code), up to 3 error lines under it                                    |
 | `✗ interrupted`          | stopped before it finished                                                                   |
