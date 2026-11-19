@@ -58,6 +58,10 @@ type Options = {
   refuseDelete?: string[]
   // Paths whose writes, or whose existence checks, are refused, as a guard or a read-only disk would
   refuseWrite?: string[]; refuseExists?: string[]
+  // Paths whose writes land with a line added, so a read-back of the copy differs from what was written
+  mangleWrite?: string[]
+  // What `rm` answers: rejected with `deny`, or exit `exitCode` (0 by default); each call is recorded in the returned `rm`
+  rm?: { deny?: boolean; exitCode?: number }
   // Why `$.ui.copy` does not take, when a test gives one
   copyRefused?: 'no-surface' | 'no-clipboard' | 'refused'
 }
@@ -92,6 +96,8 @@ export function stubAll(on: On, o: Options = {}): {
   sources: Record<SettingsSource, Record<string, unknown>>
   // The names of the commands the mod registered, in order
   registered: string[]
+  // Each `rm` argv the mod ran, with its timeout; `deny` is the option, which a test may change mid-test
+  rm: { calls: (readonly string[])[]; timeoutMs: number | null; deny: boolean }
 } {
   const toasts: string[] = []
   // Each toast's timeoutMs, in the order of `toasts`: undefined is the default 4 s
@@ -228,13 +234,20 @@ export function stubAll(on: On, o: Options = {}): {
   on('fs.write', (_, e) => {
     if (o.refuseWrite?.some(path => at(e.path, path)) === true) return { deny: `EACCES: write refused, ${e.path}` }
     const key = Object.keys(files.current).find(path => at(e.path, path)) ?? slashed(e.path)
-    files.current[key] = { text: e.text, mtimeMs: o.now ?? 0 }
+    const text = o.mangleWrite?.some(path => at(e.path, path)) === true ? `${e.text}\n#` : e.text
+    files.current[key] = { text, mtimeMs: o.now ?? 0 }
     files.writes.push(key)
     return { value: undefined }
   })
   const git = { current: o.git ?? gitResult('## main\n'), calls: 0, argv: null as readonly string[] | null, timeoutMs: null as number | null }
   const changes = { diff: o.diff, untracked: o.untracked, revList: o.revList, argv: [] as (readonly string[])[], cwd: null as string | null, timeoutMs: null as number | null }
+  const rm = { calls: [] as (readonly string[])[], timeoutMs: null as number | null, deny: o.rm?.deny ?? false }
   on('process.run', (_, e) => {
+    if (e.argv[0] === 'rm') {
+      rm.calls.push(e.argv)
+      rm.timeoutMs = e.init?.timeoutMs ?? null
+      return rm.deny ? { deny: 'test: rm refused' } : { value: gitResult('', o.rm?.exitCode ?? 0) }
+    }
     const isDiff = e.argv.includes('diff')
     if (e.argv.includes('rev-list')) {
       changes.argv.push(e.argv)
@@ -328,7 +341,7 @@ export function stubAll(on: On, o: Options = {}): {
     writes,
   }
   mock.env(on, o.env ?? {})
-  return { clock, toasts, toastMs, opened, escapes, closed, copied, usage, panes, listed, files, store, session, git, changes, prompt, invalidates, statuses, sources, registered }
+  return { clock, toasts, toastMs, opened, escapes, closed, copied, usage, panes, listed, files, store, session, git, changes, prompt, invalidates, statuses, sources, registered, rm }
 }
 
 // Claude Code's own answers to the events a session raises, for a test that drives a whole turn. A test hooks an

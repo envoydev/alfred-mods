@@ -52,7 +52,5 @@ export function setupPaneLines(now: PlansFolder | null, report: readonly string[
   return out
 }
 
-// The stub update's one line, until Task 4 gives update its steps
-export function noUpdateLine(folder: PlansFolder): string {
-  return `nothing to update for ${folder}`
-}
+// $.ui.open answered that the pane is open but no surface drew it, as /inspect says it
+export const unplacedLine = (reason: string): string => `The pane is open but not drawn: ${reason}.`

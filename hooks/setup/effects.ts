@@ -3,23 +3,173 @@
 import type { EngineInterface } from 'claude-code'
 import type { MatchedInput } from '../core/types'
 import { drawLines } from '../core/draw'
+import { oneLine } from '../core/format'
 import { isNoColor } from '../core/effects'
+import { PLANS_ROOTS, PLANS_SUBFOLDER, SCORES_SUBFOLDER } from '../plan/constants'
+import { parsePlan, plansRoots } from '../plan/plan'
 import type { PlansFolder } from '../plan/types'
-import { loadSettings, plansFolderInForce, writeProjectField } from '../settings/effects'
-import { sourceFileName } from '../settings/settings'
-import { BUTTON_KEY_PREFIX, CHOICE_ORDER, SETUP_PANE_ID, SETUP_PANE_TITLE, SETUP_USAGE } from './constants'
-import { choiceLines, configuredLine, livesLine, noUpdateLine, parseSetupArgs, setupPaneLines, shadowLine, writerNote } from './setup'
+import { loadSettings, plansFolderInForce, resolvedSettings, writeProjectField, writeUserField } from '../settings/effects'
+import { DEFAULTS, FIELDS, sourceFileName } from '../settings/settings'
+import {
+  BUTTON_KEY_PREFIX, CHOICE_ORDER, GITIGNORE_FILE, JSON_SUFFIX, MORE_LINE, MOVE_CAP, NEW_STATUS_DIR, OLD_STATUS_DIR, REASON_MAX, RM_ARGV, RM_TIMEOUT_MS,
+  SETUP_PANE_ID, SETUP_PANE_TITLE, SETUP_USAGE, WRITTEN_PREFIX,
+} from './constants'
+import { choiceLines, configuredLine, livesLine, parseSetupArgs, setupPaneLines, shadowLine, unplacedLine, writerNote } from './setup'
+import type { ListedFile } from './types'
+import {
+  closeReport, copiedLine, coversRoot, earlierChoicesLine, failureLine, gitignoreAppend, gitignoreByHandLine, gitignoreLine, isLivePlan, keptBothLine,
+  leftInPlaceLine, movedLine, moveQueue, oldInstallKeys, oldInstallLine, statusFilesLine,
+} from './update'
 
 // What the pane draws: the last update's report, and the folder a press just wrote (the settings in force are stale
 // until Claude Code's ConfigChange). A new claude run starts them over.
 const setupMemory = { report: [] as string[], chosen: null as PlansFolder | null }
 
-// Task 4 gives this its body: the plan and score files moved into the folder's root, one report line each step. The
-// stub names the folder it was given, so a test sees which one every caller passes.
-async function runUpdate(_$: EngineInterface, folder: PlansFolder): Promise<string[]> {
-  return [noUpdateLine(folder)]
+const isJsonFile = (entry: { kind: string; name: string }): boolean => entry.kind === 'file' && entry.name.endsWith(JSON_SUFFIX)
+
+// A missing folder is empty
+async function listKind($: EngineInterface, root: string, kind: string): Promise<ListedFile[]> {
+  const dir = `${root}/${kind}`
+  const entries = await $.fs.list(dir).catch(() => [])
+  return entries.filter(isJsonFile).map(entry => ({
+    name: entry.name.slice(0, -JSON_SUFFIX.length), root, path: `${dir}/${entry.name}`, mtimeMs: entry.mtimeMs, size: entry.size,
+  }))
 }
 
+async function queueOf($: EngineInterface, kind: string, chosenRoot: string, others: readonly string[]) {
+  const chosen = new Set((await listKind($, chosenRoot, kind)).map(file => file.name))
+  const byFolder: ListedFile[][] = []
+  for (const root of others) byFolder.push(await listKind($, root, kind))
+  return moveQueue(chosen, byFolder)
+}
+
+// One file into the chosen root, read back; true only when the copy equals what was read
+async function copyFile($: EngineInterface, chosenRoot: string, kind: string, file: ListedFile, text: string): Promise<boolean> {
+  const destination = `${chosenRoot}/${kind}/${file.name}${JSON_SUFFIX}`
+  try {
+    await $.fs.write(destination, text)
+    return (await $.fs.read(destination)) === text
+  } catch {
+    return false
+  }
+}
+
+// Each copied source is stat-ed again: one whose size or mtimeMs moved was written after the copy and stays
+async function unchangedSince($: EngineInterface, copied: readonly ListedFile[]): Promise<ListedFile[]> {
+  const kept: ListedFile[] = []
+  for (const file of copied) {
+    const stat = await $.fs.stat(file.path).catch(() => null)
+    if (stat !== null && stat.size === file.size && stat.mtimeMs === file.mtimeMs) kept.push(file)
+  }
+  return kept
+}
+
+// One rm of every source that read back equal and did not change; where it rejects or exits non-zero the sources stay
+async function removeSources($: EngineInterface, chosenRoot: string, sources: readonly ListedFile[]): Promise<string[]> {
+  if (sources.length === 0) return []
+  const ran = await $.process.run([...RM_ARGV, ...sources.map(file => file.path)], { timeoutMs: RM_TIMEOUT_MS }).catch(() => null)
+  if (ran !== null && ran.exitCode === 0) return [movedLine(sources.length, chosenRoot)]
+  return [copiedLine(sources.length, chosenRoot, [...new Set(sources.map(file => file.root))])]
+}
+
+// Spec D4 step 1: the plans and scores of the other roots copied into the chosen one, then one rm of the sources.
+// A plan whose writer still uses it stays with its scores; a name the chosen root holds stays; past the cap the rest wait.
+async function moveFiles($: EngineInterface, folder: PlansFolder): Promise<string[]> {
+  const chosenRoot = PLANS_ROOTS[folder]
+  const others = plansRoots(folder).slice(1)
+  const now = await $.clock.now()
+  const plans = await queueOf($, PLANS_SUBFOLDER, chosenRoot, others)
+  const scores = await queueOf($, SCORES_SUBFOLDER, chosenRoot, others)
+  const copied: ListedFile[] = []
+  const live = new Set<string>()
+  const waiting = new Set<string>()
+  let hasMore = false
+  for (const file of plans.queue) {
+    if (copied.length >= MOVE_CAP) {
+      hasMore = true
+      waiting.add(file.name)
+      continue
+    }
+    const text = await $.fs.read(file.path).catch(() => null)
+    if (text === null || isLivePlan(parsePlan(text), file.mtimeMs, now)) live.add(file.name)
+    else if (await copyFile($, chosenRoot, PLANS_SUBFOLDER, file, text)) copied.push(file)
+  }
+  for (const file of scores.queue) {
+    if (live.has(file.name)) continue
+    if (copied.length >= MOVE_CAP || waiting.has(file.name)) {
+      hasMore = true
+      continue
+    }
+    const text = await $.fs.read(file.path).catch(() => null)
+    if (text !== null && (await copyFile($, chosenRoot, SCORES_SUBFOLDER, file, text))) copied.push(file)
+  }
+  const clashes = [...new Set([...plans.clashes, ...scores.clashes])]
+  const moved = await removeSources($, chosenRoot, await unchangedSince($, copied))
+  return [...[...live].map(leftInPlaceLine), ...clashes.map(keptBothLine), ...moved, ...(hasMore ? [MORE_LINE] : [])]
+}
+
+// Spec D4 step 2: the chosen root in the .gitignore, when there is one and no line covers it; `default` is the
+// project's own .claude/ and gets none. A refused check ends the run (runUpdate); a failed read or write is named.
+async function ignoreRoot($: EngineInterface, folder: PlansFolder): Promise<string[]> {
+  if (folder === 'default' || !(await $.fs.exists(GITIGNORE_FILE))) return []
+  const root = PLANS_ROOTS[folder]
+  const text = await $.fs.read(GITIGNORE_FILE).catch(() => null)
+  if (text === null) return [gitignoreByHandLine(root)]
+  if (coversRoot(text, root)) return []
+  const isWritten = await $.fs.write(GITIGNORE_FILE, gitignoreAppend(text, root)).then(() => true, () => false)
+  return [isWritten ? gitignoreLine(root) : gitignoreByHandLine(root)]
+}
+
+// Spec D4 step 3: a choice of before 0.8 that no settings file holds goes into the user file, so the store's copy retires
+async function keepEarlierChoices($: EngineInterface): Promise<string[]> {
+  const resolved = resolvedSettings()
+  if (resolved === null) return []
+  const lines: string[] = []
+  const written: string[] = []
+  for (const field of FIELDS) {
+    if (resolved.from[field] !== 'legacy' || resolved.values[field] === DEFAULTS[field]) continue
+    const answer = await writeUserField($, field, resolved.values[field])
+    if (answer.startsWith(WRITTEN_PREFIX)) written.push(field)
+    else lines.push(answer)
+  }
+  return [...(written.length === 0 ? [] : [earlierChoicesLine(written)]), ...lines]
+}
+
+// Spec D4 step 4: the old plugin name still switched on in the user or project settings
+async function oldInstalls($: EngineInterface): Promise<string[]> {
+  const keys = new Set<string>()
+  for (const source of ['user', 'project'] as const) {
+    const enabled = await $.settings.read({ key: 'enabledPlugins', source }).catch(() => undefined)
+    for (const key of oldInstallKeys(enabled)) keys.add(key)
+  }
+  return [...keys].map(oldInstallLine)
+}
+
+// Spec D4 step 5: the old stack's status files, counted only while the new folder exists; an old stack still writes there
+async function oldStatusFiles($: EngineInterface): Promise<string[]> {
+  if (!(await $.fs.list(NEW_STATUS_DIR).then(() => true, () => false))) return []
+  const count = (await $.fs.list(OLD_STATUS_DIR).catch(() => [])).filter(isJsonFile).length
+  return count === 0 ? [] : [statusFilesLine(count)]
+}
+
+const reasonOf = (error: unknown): string => oneLine(error instanceof Error ? error.message : 'unknown error', REASON_MAX)
+
+// The report of /alfred-mods update on `folder`, a line for each step with work and a closing line. Every root and
+// line comes from `folder`, never from the settings in force: a press has just written it and they are stale. A step that
+// fails ends the run on a line naming the reason, with the lines before it kept.
+async function runUpdate($: EngineInterface, folder: PlansFolder): Promise<string[]> {
+  const lines: string[] = []
+  try {
+    lines.push(...(await moveFiles($, folder)))
+    lines.push(...(await ignoreRoot($, folder)))
+    lines.push(...(await keepEarlierChoices($)))
+    lines.push(...(await oldInstalls($)))
+    lines.push(...(await oldStatusFiles($)))
+  } catch (error) {
+    return [...lines, failureLine(reasonOf(error))]
+  }
+  return closeReport(lines)
+}
 type Written = { ok: true; folder: PlansFolder; first: string; isShadowed: boolean; note: string | null } | { ok: false; why: string }
 
 // One write of the field into the project file. The settings are stale until ConfigChange, so `folder`, the one in
@@ -27,10 +177,12 @@ type Written = { ok: true; folder: PlansFolder; first: string; isShadowed: boole
 async function chooseFolder($: EngineInterface, written: PlansFolder): Promise<Written> {
   const result = await writeProjectField($, 'plansFolder', written)
   if (!result.ok) return { ok: false, why: result.why }
-  const note = writerNote(written)
-  if (result.shadow === null) return { ok: true, folder: written, first: livesLine(written, sourceFileName('project'), false), isShadowed: false, note }
+  if (result.shadow === null) {
+    return { ok: true, folder: written, first: livesLine(written, sourceFileName('project'), false), isShadowed: false, note: writerNote(written) }
+  }
+  // Under a shadow the folder in force is the one new files land in, so its writer note is the one that holds
   const folder = plansFolderInForce().folder
-  return { ok: true, folder, first: shadowLine(folder, sourceFileName(result.shadow)), isShadowed: true, note }
+  return { ok: true, folder, first: shadowLine(folder, sourceFileName(result.shadow)), isShadowed: true, note: writerNote(folder) }
 }
 
 const confirmed = (chosen: Extract<Written, { ok: true }>): string[] => [chosen.first, ...(chosen.note === null ? [] : [chosen.note])]
@@ -56,8 +208,8 @@ async function offerChoices($: EngineInterface): Promise<string> {
   setupMemory.report = []
   setupMemory.chosen = null
   const text = choiceLines(currentFolder()).join('\n')
-  await $.ui.open({ id: SETUP_PANE_ID, title: SETUP_PANE_TITLE, closeOnEscape: true }).catch(() => undefined)
-  return text
+  const opened = await $.ui.open({ id: SETUP_PANE_ID, title: SETUP_PANE_TITLE, closeOnEscape: true }).catch(() => undefined)
+  return opened === undefined || opened.isPlaced ? text : `${text}\n${unplacedLine(opened.reason)}`
 }
 
 export async function runSetupCommand($: EngineInterface, e: MatchedInput<'command.run', { command: 'alfred-mods' }>): Promise<{ text: string }> {
@@ -71,7 +223,9 @@ export async function runSetupCommand($: EngineInterface, e: MatchedInput<'comma
     const chosen = await chooseFolder($, args.folder)
     if (!chosen.ok) return { text: chosen.why }
     if (args.verb === 'init') return { text: [...confirmed(chosen), ...(await runUpdate($, chosen.folder))].join('\n') }
-    return { text: [...(chosen.isShadowed ? [chosen.first] : []), ...(chosen.note === null ? [] : [chosen.note]), configuredLine(chosen.folder)].join('\n') }
+    // The shadow line already says which folder is in force, so it is not said again as the closing line
+    const noted = chosen.note === null ? [] : [chosen.note]
+    return { text: (chosen.isShadowed ? [chosen.first, ...noted] : [...noted, configuredLine(chosen.folder)]).join('\n') }
   }
   if (args.verb === 'init' && inForce.from !== 'default') {
     return { text: [livesLine(inForce.folder, sourceFileName(inForce.from), true), ...(await runUpdate($, inForce.folder))].join('\n') }
