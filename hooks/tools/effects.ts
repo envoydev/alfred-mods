@@ -15,7 +15,7 @@ import { actionOf } from '../agents/agents'
 import { isAllWait, waitMsOf } from '../plan/steptime'
 import { mask } from '../rec/mask'
 import { followEditedFile, pollPlace, workingFolder } from '../place/effects'
-import type { Pending, HookInput, HookNext, MatchedInput, MatchedNext } from '../core/types'
+import type { Line, Pending, HookInput, HookNext, MatchedInput, MatchedNext } from '../core/types'
 import { drawLines } from '../core/draw'
 import { DROPS_RESULT, callLine, groupLines } from './compact'
 import { maskDeep, maskResult, resultLines } from '../rec/sites'
@@ -307,12 +307,16 @@ export async function trackSkillPrompt($: EngineInterface, e: HookInput<'skill.p
   return prompted
 }
 
+// A ToolUse row drawn as the mod's own lines across the row's width, with no button
+async function drawRowLines($: EngineInterface, e: MatchedInput<'ui.render', { component: 'ToolUse' }>, lines: Line[], columns: number) {
+  return drawLines($.ui.resolve(e), e, lines, { noColor: await isNoColor($), press: {}, columns, fill: true })
+}
+
 export async function drawToolUse($: EngineInterface, e: MatchedInput<'ui.render', { component: 'ToolUse' }>, next: MatchedNext<'ui.render', { component: 'ToolUse' }>) {
   if (e.props.isErrored && typeof e.props.output === 'string' && !errorTexts.has(e.props.tool_use_id)) keepErrorText(e.props.tool_use_id, e.props.output)
   if ((await readQuiet($)).isOn && !e.props.isRunning && (e.props.isExpanded !== true || rowMemory.marks.has(e.props.tool_use_id))) {
     const columns = e.viewport?.columns ?? DEFAULT_COLUMNS
-    const lines = callLine(compactCallOf(e.props.tool_use_id, e.props), columns, { cwd: workingFolder() })
-    return drawLines($.ui.resolve(e), e, lines, { noColor: await isNoColor($), press: {}, columns , fill: true })
+    return drawRowLines($, e, callLine(compactCallOf(e.props.tool_use_id, e.props), columns, { cwd: workingFolder() }), columns)
   }
   if (!(await isRecOn($))) return next(e)
   // When a call ends, Claude Code repaints its own row from its own state - the error text, a Bash call's output -
@@ -320,8 +324,7 @@ export async function drawToolUse($: EngineInterface, e: MatchedInput<'ui.render
   // shows this line
   if (e.props.isRunning) {
     const columns = e.viewport?.columns ?? DEFAULT_COLUMNS
-    const lines = callLine({ ...compactCallOf(e.props.tool_use_id, e.props), isRunning: true }, columns, { cwd: workingFolder() })
-    return drawLines($.ui.resolve(e), e, lines, { noColor: await isNoColor($), press: {}, columns, fill: true })
+    return drawRowLines($, e, callLine({ ...compactCallOf(e.props.tool_use_id, e.props), isRunning: true }, columns, { cwd: workingFolder() }), columns)
   }
   // An unfolded group's errored row draws its error text inline, and Claude Code draws that text, not `output` (live,
   // fullscreen, 2026-10-28): with a sample in it, the row draws its compact head and the masked text itself, once
@@ -334,7 +337,7 @@ export async function drawToolUse($: EngineInterface, e: MatchedInput<'ui.render
       const columns = e.viewport?.columns ?? DEFAULT_COLUMNS
       const head = callLine(compactCallOf(e.props.tool_use_id, e.props), columns, { cwd: workingFolder() }).slice(0, 1)
       const isExpanded = e.props.isExpanded === true
-      return drawLines($.ui.resolve(e), e, [...head, ...resultLines(failed.text, { isExpanded, isErrored: true, gutter: e.surface === 'terminal' })], { noColor: await isNoColor($), press: {}, columns , fill: true })
+      return drawRowLines($, e, [...head, ...resultLines(failed.text, { isExpanded, isErrored: true, gutter: e.surface === 'terminal' })], columns)
     }
   }
   const input = maskDeep(e.props.input, mask)
