@@ -205,6 +205,13 @@ export type Parts = {
 }
 export type SkillListing = { listed: number; total: number; tokens: number }
 
+// claude-kit's status line as the mod reads it: each setting by name with the value and the source the line gives, in the
+// line's order, and the note the hook adds when it saved or refused a change (`saved:` or `not saved -`), else null
+export type KitValue = { value: string; source: string }
+export type KitStatus = { values: Record<string, KitValue>; saved: string | null }
+// `seenAt`, the clock time of the turn whose line this is
+export type KitState = { status: KitStatus | null; seenAt: number | null }
+
 declare module 'claude-code' {
   interface PluginState {
     'alfred-mods': {
@@ -214,6 +221,7 @@ declare module 'claude-code' {
       plans: Shaped<Plans>; credit: Shaped<Credit>; tasks: Shaped<TaskItem[]>; rec: Shaped<RecState>; quiet: Shaped<Quiet>; handoff: Shaped<Handoff>
       band: Shaped<BandSetting>
       stack: Shaped<Stack>
+      kit: Shaped<KitState>
       // Blocks per hook script this session (spec C6), so the failure list's cap loses no count
       blockers: Shaped<Record<string, number>>
       parts: Shaped<Parts>

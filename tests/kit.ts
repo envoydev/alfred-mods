@@ -530,6 +530,23 @@ export function seedState(on: On, seeds: Record<string, unknown>): void {
   })
 }
 
+// Answers a read of each key of `keys` as nothing stored, so the atom reads its initial value, as after the engine's own
+// reset, once the returned function is called and until the mod next writes that key
+export function emptyState(on: On, keys: string[]): () => void {
+  const emptied = new Set<string>()
+  on('state.set', async (_, e, next) => {
+    emptied.delete(e.key)
+    return next(e)
+  })
+  on('state.get', async (_, e, next) => {
+    const stored = await next(e)
+    return !emptied.has(e.key) || stored.value === undefined ? stored : { value: { ...stored.value, value: undefined } }
+  })
+  return () => {
+    for (const key of keys) emptied.add(key)
+  }
+}
+
 // A call a test leaves held past its end: the kit rejects it once the test's stubs are gone, which is expected, so the
 // rejection is caught rather than left for the file's end
 export function held(call: Promise<unknown>): void {
