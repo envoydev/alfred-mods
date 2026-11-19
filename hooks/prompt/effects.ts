@@ -50,15 +50,20 @@ function scheduleFlush($: EngineInterface): void {
   })
 }
 
-// What the engine answers is returned as it came. A subagent's attachment is not the main turn's. The kit line goes
-// to the kit folder before the part is added, so the cap can never cost its values.
+// What the engine answers is returned as it came, whatever the recording does: a failure after `next(e)` answered is the
+// mod's own, so it is swallowed here (the text goes in no log) and the engine's answer stands. A subagent's attachment is
+// not the main turn's. The kit line goes to the kit folder before the part is added, so the cap can never cost its values.
 export async function recordAttachment($: EngineInterface, e: HookInput<'prompt.attachment'>, next: HookNext<'prompt.attachment'>) {
   const result = await next(e)
   if (e.agentId !== undefined) return result
-  const now = await $.clock.now()
-  const isKitLine = e.origin.kind === 'hook' && e.origin.event === KIT_HOOK_EVENT && result.text !== null
-  if (isKitLine) await noteKitLine($, result.text ?? '', now)
-  promptMemory.record = addPart(promptMemory.record, partOf(e.type, e.origin, result.text, now))
-  scheduleFlush($)
+  try {
+    const now = await $.clock.now()
+    const text = result.text
+    if (e.origin.kind === 'hook' && e.origin.event === KIT_HOOK_EVENT && text !== null) await noteKitLine($, text, now)
+    promptMemory.record = addPart(promptMemory.record, partOf(e.type, e.origin, text, now))
+    scheduleFlush($)
+  } catch {
+    // the mod's own recording failed: the engine's answer stands
+  }
   return result
 }

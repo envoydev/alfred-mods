@@ -15,6 +15,20 @@ test('a part keeps at most 4000 characters and the full count', () => {
   expect(part).toMatchObject({ type: 'x', origin: 'hook', event: 'UserPromptSubmit', isLeftOut: false, at: 1 })
 })
 
+test('a cut that would fall inside a secret backs up to the whitespace before it', () => {
+  const key = `sk-${'a'.repeat(40)}`
+  const text = `${'x'.repeat(MAX_PART_CHARS - 10)} ${key} tail`
+  const part = partOf('x', { kind: 'hook', event: 'UserPromptSubmit' }, text, 1)
+  expect(part.chars).toBe(text.length)
+  expect(part.text).toBe('x'.repeat(MAX_PART_CHARS - 10))
+  expect(part.text).not.toContain('sk-')
+})
+
+test('a text with no whitespace in its first 4000 characters has the plain cut', () => {
+  expect(partOf('x', { kind: 'engine' }, `${'a'.repeat(MAX_PART_CHARS)} b`, 1).text).toBe('a'.repeat(MAX_PART_CHARS))
+  expect(partOf('x', { kind: 'engine' }, 'a'.repeat(MAX_PART_CHARS + 5), 1).text).toBe('a'.repeat(MAX_PART_CHARS))
+})
+
 test('a part the engine raised has no event', () => {
   expect(partOf('date', { kind: 'engine' }, 'today', 2)).toMatchObject({ origin: 'engine', event: null, chars: 5, text: 'today' })
 })

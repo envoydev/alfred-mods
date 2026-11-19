@@ -91,6 +91,15 @@ test('a part kept shorter than its length ends with its length', () => {
   expect(textsOf(promptLines(record({ parts: [engineCut] }), COLUMNS))).toContain('date · 5,000 chars · short… (5,000 chars)')
 })
 
+test('an engine part both stored cut and cut to the width ends with one ellipsis', () => {
+  const cut = part({ chars: 5000, origin: 'engine', event: null, type: 'note', text: `first ${'w'.repeat(3994)}` })
+  const row = textsOf(promptLines(record({ parts: [cut] }), 60)).find(line => line.startsWith('note · 5,000 chars · first'))
+  expect(row?.endsWith('… (5,000 chars)')).toBe(true)
+  expect(row).not.toContain('……')
+  expect(row).not.toContain('…… ')
+  expect(row?.match(/…/gu)).toHaveLength(1)
+})
+
 test('a part a plugin left out reads left out and draws no text', () => {
   const left = part({ chars: 0, text: '', isLeftOut: true })
   const lines = promptLines(record({ parts: [left] }), COLUMNS)

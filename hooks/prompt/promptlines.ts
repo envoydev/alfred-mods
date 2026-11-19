@@ -36,7 +36,9 @@ function partRows(part: PromptPart, columns: number): Line[] {
   if (part.isLeftOut) return [[{ text: lead }]]
   const note = cutNote(part)
   const room = Math.max(1, columns - [...lead].length - [...note].length)
-  const first = fitLine(part.text, room)
+  const fitted = fitLine(part.text, room)
+  // A text stored cut and cut again to the width would end with two ellipses: the note's own stands
+  const first = note !== '' && fitted.endsWith('…') ? fitted.slice(0, -1) : fitted
   return [[{ text: `${lead}${first}${note}` }]]
 }
 

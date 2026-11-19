@@ -151,3 +151,20 @@ test('start-over, then the same line at once: the kit values stay', async ($, on
   await $.prompt.attachment(kitAttachment(LINE))
   expect((state.get('kit') as KitState).status).toEqual(parseKitStatus(LINE))
 })
+
+test('a recording failure after the engine answered returns that answer once and asks the engine once', async ($, on) => {
+  stubAll(on)
+  engine(on, ['prompt.attachment'])
+  let asked = 0
+  on('prompt.attachment', (_, e) => {
+    asked += 1
+    return { text: `${e.text}!` }
+  })
+  await $.session.start(START)
+  await startTurn($, 'hello')
+  // No origin: reading it throws inside the mod's own recording, after the engine answered
+  const broken = { type: 'date', text: 'Today is a day' } as unknown as Parameters<Engine['prompt']['attachment']>[0]
+  const answer = await $.prompt.attachment(broken)
+  expect(answer).toEqual({ text: 'Today is a day!' })
+  expect(asked).toBe(1)
+})
