@@ -1369,7 +1369,7 @@ function planLines(
   options                                                                                                                       ,
 )         {
   const out         = []
-  if (view === null) out.push([{ text: 'No plan file in .claude/session-inspector/plans/, and no task list this session.', tone: 'dim' }])
+  if (view === null) out.push([{ text: 'No plan file in .alfred-mods/plans/, and no task list this session.', tone: 'dim' }])
   else {
     const head       = [{ text: 'Plan', bold: true, tone: 'plan' }, { text: ` · ${fitLine(view.title, 60)}`, bold: true }, { text: `   ${view.finished}/${view.total}` }]
     if (view.isFinished) head.push({ text: ` · done in ${minutesText(view.workedMs)}` })
@@ -2688,11 +2688,11 @@ function newUserNotes(before              , after              )               {
   })
 }
 
-// The folders the stack writes plans and scores to
-const PLANS_DIR = '.claude/session-inspector/plans'
-const SCORES_DIR = '.claude/session-inspector/scores'
+// The root each value of the plansFolder setting names, as hooks/plan/constants.ts has it: plans sit under
+// <root>/plans, scores under <root>/scores; with the field unset the root is .alfred-mods
+const PLANS_ROOTS = { default: '.claude/session-inspector', '.alfred': '.alfred/alfred-mods', '.alfred-mods': '.alfred-mods' }
 
-return { parsePlan, parseScores, isFinishedStep, isPlanDone, isPlanRunning, shownPlan, creditedPlan, planView, scoresView, tasksAfter, taskView, taskStatusKey, stepStatusKey, FINISH_SHOWN_MS, newUserNotes, PLANS_DIR, SCORES_DIR };
+return { parsePlan, parseScores, isFinishedStep, isPlanDone, isPlanRunning, shownPlan, creditedPlan, planView, scoresView, tasksAfter, taskView, taskStatusKey, stepStatusKey, FINISH_SHOWN_MS, newUserNotes, PLANS_ROOTS };
 })();
 return { bandLines: __m['band/band.ts'].bandLines, statusText: __m['band/band.ts'].statusText, underRows: __m['band/band.ts'].underRows, cellsOf: __m['band/wrap.ts'].cellsOf, groupLines: __m['tools/compact.ts'].groupLines, planView: __m['plan/plan.ts'].planView, newRow: __m['agents/agents.ts'].newRow };
 })();
@@ -2898,6 +2898,7 @@ const BandSettings = (() => {
     { key: 'rec', values: ['off', 'on', 'strict'], def: 'off', bad: 'yes', what: 'mask the screen for a recording' },
     { key: 'handoff', values: ['ask', 'auto', 'off'], def: 'ask', bad: 'never', what: 'save a handoff before the context fills' },
     { key: 'handoffAt', values: steps, def: 80, bad: 100, what: 'the context percent the handoff starts at' },
+    { key: 'plansFolder', values: ['default', '.alfred', '.alfred-mods'], def: '.alfred-mods', bad: 'elsewhere', what: 'where plan and score files live: .claude/session-inspector, .alfred/alfred-mods or .alfred-mods' },
   ]
   // Highest first; the page leaves out --settings and managed settings, which sit above local
   const FILES = ['local', 'project', 'user']
@@ -3511,7 +3512,7 @@ const BAND_PARTS = [
     'Follows Claude: its last cd, or the last file it edited. Read from git after each Bash call, edit and write, and every 30 seconds. The mod never fetches, so the arrows are as of your last fetch.'],
   ['plan:', 'while a plan runs', { running: true, plan: true }, null, null, t => /^plan:/.test(t),
     'The plan\'s title, the steps done, the step in progress, and the plan\'s score with its change from the round before.',
-    'Read from a plan file in .claude/session-inspector/plans/, else Claude\'s task list. With Alfred Code, the plan its status file names comes first.'],
+    'Read from a plan file in <root>/plans/, where the "plansFolder" field names the root (.alfred-mods, .alfred/alfred-mods or .claude/session-inspector; .alfred-mods when unset; the other two are read too, the newest file of a name wins), else Claude\'s task list. With Alfred Code, the plan its status file names comes first.'],
   ['usage:', 'once something is counted', { running: true }, null, null, t => /^usage:/.test(t),
     'The session\'s counts: tool calls, skills loaded, agents dispatched with how many run now, rules in the context, and compactions.',
     'It counts what the four rows under it list, so it stays when "bandRows": false closes them.'],

@@ -65,10 +65,14 @@ its tests to the run or takes it past `claude plugin test`'s limit of 1000 test 
   an error, with the reason in a dim diagnostics row.
   claude-kit is a second source that adds data (the user's ruling, 2026-11-19): the mod reads it only from the
   `kit status (` line a request carries and from the public plan and score files, never from the kit's own files. The
-  plan and score files are `.alfred-mods/plans/<slug>.json` and `.alfred-mods/scores/<slug>.json`: Claude Code asks
-  before each write under `.claude/`, so a skill writes them outside it (the user's ruling, 2026-11-19). The old
-  `.claude/session-inspector/plans/` and `.../scores/` are read as a fallback, a same-named file of the new folder
-  winning. No line leaves the core view as it is.
+  plan and score files are `<root>/plans/<slug>.json` and `<root>/scores/<slug>.json`, the root named by the
+  `plansFolder` field (the user's ruling, 2026-11-19): `default` is `.claude/session-inspector`, `.alfred` is
+  `.alfred/alfred-mods`, `.alfred-mods` is `.alfred-mods`, and unset means `.alfred-mods`. Claude Code asks before each
+  write under `.claude/`, so a skill writes them outside it unless the project chose `default`. The mod reads all three
+  roots, the chosen one first, and a name held in more than one shows its newest file (the earlier root on a tie); a
+  writer that has not caught up still shows. The writers' rule is in the README, 'Plan and score files'.
+  `/alfred-mods update` is the one writer of plan and score files in the mod: it copies one into the chosen root,
+  reads it back, and only then removes the source. No line leaves the core view as it is.
   Every phase is checked in both: a project without Alfred Code and one with it.
 - **Standalone.** The mod does not depend on, require, install or remove Alfred Code or any other plugin; the manifest
   declares no `dependencies`.
