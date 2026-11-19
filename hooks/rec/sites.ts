@@ -6,7 +6,7 @@ import type { Line } from '../core/types'
 import type { Hit, ResultMask } from './types'
 
 // Tools whose masked result does not draw; the live check adds any it finds (spec Risks row 1)
-export const REFUSED: readonly string[] = []
+const REFUSED: readonly string[] = []
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
@@ -63,7 +63,7 @@ function stringsOf(value: unknown): string[] {
 
 
 // The line an errored result draws under REC when the mod never saw its error text
-export const HIDDEN_ERROR = 'Error · text hidden while REC is on'
+const HIDDEN_ERROR = 'Error · text hidden while REC is on'
 
 // A result block's masked form: its output rewritten in place; for a tool on the refused list, the masked strings as
 // text for the mod's own lines; 'same' when masking changes nothing. An errored call draws its error text and not

@@ -28,13 +28,19 @@ project names, no absolute local paths, no tokens, nothing from a user's machine
 npm run validate     # claude plugin validate --strict on a copy of the files git ships
 npm test             # claude plugin test . - every *.test.ts, no session, sign-in or network
 npm run kit:check    # the files claude-kit manages are unedited, and no CLAUDE.md hides this file
-npm run typecheck    # tsc -p . - needs .claude-plugin/types/, see below
+npm run typecheck    # tsc on tsconfig.json and tsconfig.scripts.json - needs npm install and .claude-plugin/types/
 claude --plugin-dir .   # load the working tree for one session; it reloads on save
 ```
 
 The first three are what CI runs on Linux, macOS and Windows, in that order. `typecheck` is CI's fourth job, on Linux
 only: it reads `.claude-plugin/types/`, which Claude Code writes when an interactive `--plugin-dir` session loads the
-mod, so run one such session first (the folder is git-ignored and belongs to the running build).
+mod, so run one such session first (the folder is git-ignored and belongs to the running build). It also needs
+`npm install` once in a fresh clone: `typescript` and `@types/node`, pinned exactly in `devDependencies` with no
+lockfile, check `scripts/` under `tsconfig.scripts.json` (nodenext, Node's types). Nothing the mod ships imports them.
+
+`npm run validate` runs `scripts/validate.ts` on Node's type stripping, so a maintainer's Node is 22.18 or newer
+on the 22 line, or 23.6 or newer (https://nodejs.org/api/typescript.md); `engines` stays `>=22`. CI's
+`node-version: 22` takes the newest 22.x.
 
 ## Layout
 
@@ -43,8 +49,8 @@ mod, so run one such session first (the folder is git-ignored and belongs to the
 - `hooks/<folder>/` - one feature each (`band`, `inspect`, `handoff`, `plan`, `tools`, `agents`, `cache`, ...):
   `types.ts`, logic files that take no `$`, and `effects.ts`, the folder's only file that touches `$`.
 - `tests/` - each hook's `*.test.ts` at the same path as its source, with shared helpers in `tests/kit.ts`.
-- `types/` - the mod's own `index.d.ts`; `scripts/validate.js` - the validate run; `docs/` - the brief and the
-  band explorer.
+- `types/` - the mod's own `index.d.ts`; `scripts/validate.ts` - the validate run, on Node's type stripping;
+  `docs/` - the brief and the band explorer.
 
 ## Invariants
 
@@ -67,11 +73,17 @@ mod, so run one such session first (the folder is git-ignored and belongs to the
 - **Never rename or drop the id `alfred-mods`.** Every install goes silent and does not self-heal. The one rename,
   `session-inspector` to `alfred-mods` in 0.5.0, was the user's ruling of 2026-11-06: the `envoydev` catalog dropped
   `session-inspector` in alfred-code 3.9.2 (the same day, the user's call), so an old install goes silent until moved.
-  The project paths under `.claude/session-inspector/` and the handoff marker kept their names: the stack writes the
-  status file there.
+  The handoff file `.claude/session-inspector/HANDOFF.md` and its marker kept their names. The stack's per-session
+  status file moved: it writes `<project root>/.alfred/state/sessions/status/<session id>.json` from the release after
+  alfred-code 3.12.1, which wrote `.claude/session-inspector/status/<session id>.json`. The mod reads, first found wins,
+  the new path under the root, under the root read at session start, the old path under the root, then the old path
+  relative to the working folder (`statusPaths` in `hooks/handoff/handoff.ts`).
 - **The root holds only the mod's own plugin folders.** Claude Code scans a plugin root's default folders whatever the
   manifest says, so `commands/`, `agents/`, `skills/`, `output-styles/`, `workflows/`, `monitors/`, `themes/`, `bin/`,
-  `.mcp.json`, `.lsp.json`, `settings.json` and a root `SKILL.md` never appear here unless the mod ships them.
+  `.mcp.json`, `.lsp.json`, `settings.json` and a root `SKILL.md` never appear here unless the mod ships them. The one
+  exception is a git-ignored, machine-local `.mcp.json` for development: it never ships, but a `claude --plugin-dir .`
+  session reads it as the mod's own MCP server (`plugin details` lists it), so a check of what the mod adds to a
+  session loads a copy of the files git lists, as `npm run validate` does.
 - **A mod observes and draws.** It never approves, denies or rewrites a tool call, unless the brief names the case.
   No `$.http.fetch` and no `$.model` calls; `$.process` only where the brief allows it, with a timeout. No prompt,
   tool input, secret or account email in any log or file.

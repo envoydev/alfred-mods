@@ -21,7 +21,7 @@ const changesMemory = { isRunning: false, again: false, lines: new Map<string, {
 
 // The folder holding `.git` at or above `cwd`, and its HEAD file and branch: a worktree's `.git` is a file naming its
 // git folder. No git process runs for the branch (spec: the user, 2026-11-11); the change counts run their own two.
-export async function findGitHead($: EngineInterface, cwd: string): Promise<{ dir: string; head: string; branch: string | null } | null> {
+async function findGitHead($: EngineInterface, cwd: string): Promise<{ dir: string; head: string; branch: string | null } | null> {
   let dir: string | null = cwd
   for (let depth = 0; dir !== null && depth < 40; depth += 1, dir = parentOf(dir)) {
     const file = await readTextFile($, joinPath(dir, '.git'))
@@ -70,13 +70,13 @@ export async function followEditedFile($: EngineInterface, file: string): Promis
   else countChangesSoon($)
 }
 
-export function countChangesSoon($: EngineInterface): void {
+function countChangesSoon($: EngineInterface): void {
   $.clock.after(0, () => {
     countChanges($).catch(() => undefined)
   })
 }
 
-export async function countChanges($: EngineInterface): Promise<void> {
+async function countChanges($: EngineInterface): Promise<void> {
   if (changesMemory.isRunning) {
     changesMemory.again = true
     return
@@ -94,7 +94,7 @@ export async function countChanges($: EngineInterface): Promise<void> {
   }
 }
 
-export async function readUncommittedLines($: EngineInterface): Promise<{ added: number; removed: number } | null> {
+async function readUncommittedLines($: EngineInterface): Promise<{ added: number; removed: number } | null> {
   const dir = placeMemory.repo
   if (dir === null) return null
   const diff = await $.process.run(['git', '--no-optional-locks', 'diff', '--numstat', 'HEAD'], { cwd: dir, timeoutMs: 2000 })
@@ -123,7 +123,7 @@ export async function readUncommittedLines($: EngineInterface): Promise<{ added:
 // Commits ahead of and behind the branch's upstream (the user, 2026-11-12: 'git:(band-order) arrow-up-symbol 1
 // arrow-down-symbol 2'), as of the last fetch: the mod never fetches. No upstream, a detached HEAD, a refusal or a
 // timeout leaves them out
-export async function readUpstreamSync($: EngineInterface): Promise<{ ahead: number; behind: number } | null> {
+async function readUpstreamSync($: EngineInterface): Promise<{ ahead: number; behind: number } | null> {
   const dir = placeMemory.repo
   if (dir === null) return null
   const result = await $.process.run(['git', '--no-optional-locks', 'rev-list', '--left-right', '--count', '@{upstream}...HEAD'], { cwd: dir, timeoutMs: 2000 })

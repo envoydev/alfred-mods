@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
-import type { EngineInterface, On, RenderElement, RenderInput, RenderPropsOf } from 'claude-code'
+import type { EngineInterface, On, RenderElement, RenderInput, RenderPropsOf, ToolCallResult } from 'claude-code'
 
 import { callLine, groupLines } from '../../hooks/tools/compact'
 import { KEYS } from '../../hooks/rec/samples'
@@ -9,32 +9,43 @@ import type { Line } from '../../hooks/core/types'
 import type { CompactCall } from '../../hooks/tools/types'
 
 const SURFACES = ['terminal', 'desktop'] as const
-const KEY = KEYS[0]!
+// With no key sample every REC test below fails by value
+const KEY = KEYS[0] ?? { text: '', masked: '' }
 
 const text = (lines: Line[]): string[] => lines.map(l => l.map(s => ('text' in s ? s.text : '')).join(''))
 
 const CALL: CompactCall = { tool: 'Bash', input: {}, output: undefined, isErrored: false, isInterrupted: false, outcome: null, reason: null }
 const bash = (input: Record<string, unknown>, more: Partial<CompactCall> = {}): CompactCall => ({ ...CALL, input, ...more })
 const read = (file_path: string): CompactCall => ({ ...CALL, tool: 'Read', input: { file_path }, output: { type: 'text' } })
-const OUT = (stdout: string, stderr = '') => ({ stdout, stderr, interrupted: false, isImage: false, noOutputExpected: false })
+const bashOut = (stdout: string, stderr = '') => ({ stdout, stderr, interrupted: false, isImage: false, noOutputExpected: false })
 const THIRTY = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`).join('\n')
 
 test('a Bash call draws ⏺ Bash · Show CI failure lines 1038-1042 · 30 lines ✓', () => {
-  const c = bash({ command: 'sed -n 1038,1042p ci.log', description: 'Show CI failure lines 1038-1042' }, { output: OUT(THIRTY) })
-  expect(text(callLine(c, 120))).toEqual(['⏺ Bash · Show CI failure lines 1038-1042 · 30 lines ✓'])
+  const call = bash({ command: 'sed -n 1038,1042p ci.log', description: 'Show CI failure lines 1038-1042' }, { output: bashOut(THIRTY) })
+  expect(text(callLine(call, 120))).toEqual(['⏺ Bash · Show CI failure lines 1038-1042 · 30 lines ✓'])
+})
+
+// Live, 2026-11-19: a call held at the permission dialog drew '✓' before it ran; the types leave `output` undefined
+// until a call resolves
+test('a call not yet run - at the permission dialog or queued - draws waiting…, never ✓', () => {
+  expect(text(callLine(bash({ command: 'mkdir -p d', description: 'Create d' }, { isWaiting: true }), 120))).toEqual(['⏺ Bash · Create d · waiting…'])
+})
+
+test('a call still running draws running… in place of its result', () => {
+  expect(text(callLine(bash({ command: 'npm test', description: 'Run the suite' }, { isRunning: true }), 120))).toEqual(['⏺ Bash · Run the suite · running…'])
 })
 
 test("no description falls back to the command's first 60 characters", () => {
   const long = `sleep 25; gh run list --limit 5 --json status,conclusion,name,headBranch`
-  expect(text(callLine(bash({ command: long }, { output: OUT('') }), 120))).toEqual([`⏺ Bash · ${long.slice(0, 59)}… · ✓`])
-  expect(text(callLine(bash({ command: 'ls' }, { output: OUT('a\nb') }), 120))).toEqual(['⏺ Bash · ls · 2 lines ✓'])
+  expect(text(callLine(bash({ command: long }, { output: bashOut('') }), 120))).toEqual([`⏺ Bash · ${long.slice(0, 59)}… · ✓`])
+  expect(text(callLine(bash({ command: 'ls' }, { output: bashOut('a\nb') }), 120))).toEqual(['⏺ Bash · ls · 2 lines ✓'])
 })
 
 test('a failure draws ✗ exit 1 and up to 3 error lines', () => {
-  const c = bash({ command: 'npm test', description: 'Run guard tests' }, {
+  const call = bash({ command: 'npm test', description: 'Run guard tests' }, {
     isErrored: true, output: 'Exit code 1\nfirst\nsecond\n\nAssertionError: expected blocked (guard-sensitive-data.test.js:425)\nlast',
   })
-  expect(text(callLine(c, 120))).toEqual([
+  expect(text(callLine(call, 120))).toEqual([
     '⏺ Bash · Run guard tests · ✗ exit 1',
     '    second',
     '    AssertionError: expected blocked (guard-sensitive-data.test.js:425)',
@@ -59,7 +70,7 @@ test('four reads draw ⏺ 4 reads · ✓ and a step per file, one read twice as 
   // Each step cut to the row width
   const narrow = text(groupLines([read('/w/habits-scorer-card.test.js'), read('/w/secret-chain.js'), read('/w/layout.js')], 30))
   expect(narrow.every(l => l.length <= 30)).toBe(true)
-  expect(narrow[1]!.endsWith('…')).toBe(true)
+  expect(narrow[1]?.endsWith('…')).toBe(true)
 })
 
 test('a non-text output draws its row without a count', () => {
@@ -72,7 +83,7 @@ test('an interrupted call draws ✗ interrupted', () => {
 })
 
 test('a group draws one callLine per Bash and one reads line per run of reads', () => {
-  const lines = groupLines([read('/w/a'), read('/w/b'), bash({ command: 'ls' }, { output: OUT('x') }), read('/w/c')], 120)
+  const lines = groupLines([read('/w/a'), read('/w/b'), bash({ command: 'ls' }, { output: bashOut('x') }), read('/w/c')], 120)
   expect(text(lines)).toEqual(['⏺ 2 reads · ✓', '  ⎿ read /w/a', '  ⎿ read /w/b', '⏺ Bash · ls · 1 line ✓', '⏺ 1 read · ✓', '  ⎿ read /w/c'])
 })
 
@@ -88,10 +99,10 @@ function sites(on: On): void {
   on('ui.render', { component: 'AssistantMessage' }, json)
 }
 
-async function start($: Engine, on: On, store: Record<string, unknown>, calls?: (e: { tool: string }) => unknown): Promise<ReturnType<typeof stubAll>> {
+async function start($: Engine, on: On, store: Record<string, unknown>, calls?: (e: { tool: string }) => ToolCallResult): Promise<ReturnType<typeof stubAll>> {
   const kit = stubAll(on, { env: { HOME: '/Users/jane' }, store })
   sites(on)
-  if (calls !== undefined) on('tool.call', (_, e) => calls(e) as never)
+  if (calls !== undefined) on('tool.call', (_, e) => calls(e))
   engine(on, calls === undefined ? [] : ['tool.call'])
   await $.session.start(START)
   return kit
@@ -102,12 +113,12 @@ async function draw<C extends keyof RenderPropsOf>($: Engine, surface: (typeof S
   const ui = await $.ui.mount({ plugin: 'alfred-mods', surface, component, props, viewport: { columns: 120, rows: 40 } })
   const lines = await rows(ui)
   await ui.unmount()
-  const only = lines.length === 1 ? lines[0]! : ''
+  const only = lines.length === 1 ? (lines[0] ?? '') : ''
   return { props: only.startsWith('{') ? JSON.parse(only) as Record<string, unknown> : null, lines }
 }
 
 const USE = { tool_use_id: 'c1', isRunning: false, isErrored: false, isInterrupted: false } as const
-const BASH_USE = { ...USE, tool: 'Bash', input: { command: 'ls', description: 'List files' }, output: OUT('a\nb') }
+const BASH_USE = { ...USE, tool: 'Bash', input: { command: 'ls', description: 'List files' }, output: bashOut('a\nb') }
 const groupCall = (id: string, tool: string, input: unknown, more: object = {}) => ({ tool_use_id: id, tool, input, isRunning: false, isErrored: false, isInterrupted: false, output: { type: 'text' }, ...more })
 const QUIET = { 'settings:quiet': true }
 
@@ -124,8 +135,8 @@ for (const surface of SURFACES) {
   // bare ⎿ (2026-10-28), so their result blocks draw nothing under the compact row
   test(`with /quiet on, Bash, Edit and Write results draw an empty Box, other tools untouched (${surface})`, async ($, on) => {
     await start($, on, QUIET)
-    const b = await draw($, surface, 'ToolResult', { tool_use_id: 'c1', tool: 'Bash', output: OUT('a\nb', 'warn'), isErrored: false })
-    expect([b.props, b.lines.join('')]).toEqual([null, ''])
+    const bashResult = await draw($, surface, 'ToolResult', { tool_use_id: 'c1', tool: 'Bash', output: bashOut('a\nb', 'warn'), isErrored: false })
+    expect([bashResult.props, bashResult.lines.join('')]).toEqual([null, ''])
     const editOut = { filePath: '/w/a.ts', oldString: 'a', newString: 'b', originalFile: 'a', structuredPatch: [{ lines: ['-a', '+b'] }], userModified: false, replaceAll: false }
     const edit = await draw($, surface, 'ToolResult', { tool_use_id: 'c2', tool: 'Edit', output: editOut, isErrored: false })
     expect([edit.props, edit.lines.join('')]).toEqual([null, ''])
@@ -140,7 +151,7 @@ for (const surface of SURFACES) {
     // The ask answered with no dialog, as tools.test.ts stands in for the classifier's allow
     on('tool.check', () => ({ decision: 'ask' }))
     on('classic.PermissionRequest', () => ({ decision: { behavior: 'allow' } }))
-    await start($, on, QUIET, () => ({ result: OUT('a\nb'), text: 'a\nb' }))
+    await start($, on, QUIET, () => ({ result: bashOut('a\nb'), text: 'a\nb' }))
     await $.classic.UserPromptSubmit({ prompt: 'q', permission_mode: 'auto' })
     await $.tool.call({ tool: 'Bash', command: 'ls', description: 'List files', tool_use_id: 'c1' })
     expect((await draw($, surface, 'ToolUse', BASH_USE)).lines).toEqual(['⏺ Bash · List files · 2 lines ✓', '  ⎿ allowed by auto mode'])
@@ -157,7 +168,7 @@ for (const surface of SURFACES) {
 
   test(`a group with isCallsOnly true draws one callLine per Bash and one reads line per run of reads (${surface})`, async ($, on) => {
     await start($, on, QUIET)
-    const calls = [groupCall('g1', 'Read', { file_path: '/w/a.ts' }), groupCall('g2', 'Read', { file_path: '/w/b.ts' }), groupCall('g3', 'Bash', { command: 'ls' }, { output: OUT('x') })]
+    const calls = [groupCall('g1', 'Read', { file_path: '/w/a.ts' }), groupCall('g2', 'Read', { file_path: '/w/b.ts' }), groupCall('g3', 'Bash', { command: 'ls' }, { output: bashOut('x') })]
     const group = await draw($, surface, 'ToolGroup', { calls, isActive: false, isExpanded: false, isCallsOnly: true })
     // Each path read from the session's folder, /w
     expect(group.lines).toEqual(['⏺ 2 reads · ✓', '  ⎿ read a.ts', '  ⎿ read b.ts', '⏺ Bash · ls · 1 line ✓'])
@@ -208,14 +219,21 @@ for (const surface of SURFACES) {
     expect((await draw($, surface, 'ToolGroup', group)).props).toEqual(group)
     const running = { ...USE, tool: 'Bash', input: { command: 'sleep 9' }, isRunning: true }
     expect((await draw($, surface, 'ToolUse', running)).props).toEqual(running)
-    const result = { tool_use_id: 'c1', tool: 'Bash', output: OUT('a'), isErrored: false, isExpanded: true }
+    const result = { tool_use_id: 'c1', tool: 'Bash', output: bashOut('a'), isErrored: false, isExpanded: true }
     expect((await draw($, surface, 'ToolResult', result)).props).toEqual(result)
+  })
+
+  test(`/quiet on: a row with no output that the mod never saw settle reads waiting…, one it saw reads its outcome (${surface})`, async ($, on) => {
+    await start($, on, QUIET)
+    const waiting = await draw($, surface, 'ToolUse', { ...USE, tool_use_id: 'w1', tool: 'Bash', input: { command: 'mkdir -p d', description: 'Create d' } })
+    expect(waiting.lines).toEqual(['⏺ Bash · Create d · waiting…'])
+    expect((await draw($, surface, 'ToolUse', BASH_USE)).lines).toEqual(['⏺ Bash · List files · 2 lines ✓'])
   })
 
   test(`with /quiet off every site passes next(e) (${surface})`, async ($, on) => {
     await start($, on, {})
     expect((await draw($, surface, 'ToolUse', BASH_USE)).props).toEqual(BASH_USE)
-    const result = { tool_use_id: 'c1', tool: 'Bash', output: OUT('a'), isErrored: false }
+    const result = { tool_use_id: 'c1', tool: 'Bash', output: bashOut('a'), isErrored: false }
     expect((await draw($, surface, 'ToolResult', result)).props).toEqual(result)
     const group = { calls: [groupCall('g1', 'Read', { file_path: '/w/a' })], isActive: false, isExpanded: false, isCallsOnly: true }
     expect((await draw($, surface, 'ToolGroup', group)).props).toEqual(group)
@@ -228,11 +246,24 @@ for (const surface of SURFACES) {
     expect((await draw($, surface, 'ToolUse', BASH_USE)).lines).toEqual(['⏺ Bash · List files · 2 lines ✓'])
   })
 
-  test(`REC on and /quiet on: a running row, an expanded row and an MCP result holding a fake key draw ‹key› (${surface})`, async ($, on) => {
+  // Live, 2026-11-19: when a call ends, Claude Code repaints its own running row from its own state - the error text
+  // under a masked header - a frame before it asks the mod again; a row the mod draws itself leaves nothing to repaint
+  for (const isQuiet of [true, false]) {
+    test(`REC on: a running row is the mod's own line, never Claude Code's row (${surface}, quiet ${isQuiet})`, async ($, on) => {
+      await start($, on, { ...(isQuiet ? QUIET : {}), 'settings:rec': 'on' })
+      const running = await draw($, surface, 'ToolUse', { ...USE, tool: 'Bash', input: { command: `export T=${KEY.text}` }, isRunning: true })
+      expect(running.props).toBeNull()
+      expect(running.lines).toEqual([`⏺ Bash · export T=${KEY.masked} · running…`])
+      // ctrl+o's expanded view draws the same line: Claude Code's own row there repaints the same way
+      const expanded = await draw($, surface, 'ToolUse', { ...USE, tool: 'Bash', input: { command: `export T=${KEY.text}` }, isRunning: true, isExpanded: true })
+      expect(expanded).toEqual({ props: null, lines: [`⏺ Bash · export T=${KEY.masked} · running…`] })
+    })
+  }
+
+  test(`REC on and /quiet on: an expanded row and an MCP result holding a fake key draw ‹key› (${surface})`, async ($, on) => {
     await start($, on, { ...QUIET, 'settings:rec': 'on' })
     const running = await draw($, surface, 'ToolUse', { ...USE, tool: 'Bash', input: { command: `export T=${KEY.text}` }, isRunning: true })
-    expect(JSON.stringify(running.props)).toContain('‹key›')
-    const expanded = await draw($, surface, 'ToolUse', { ...BASH_USE, output: OUT(KEY.text), isExpanded: true })
+    const expanded = await draw($, surface, 'ToolUse', { ...BASH_USE, output: bashOut(KEY.text), isExpanded: true })
     expect(JSON.stringify(expanded.props)).toContain('‹key›')
     const mcp = await draw($, surface, 'ToolResult', { tool_use_id: 'm1', tool: 'mcp__vault__read', output: { secret: KEY.text }, isErrored: false })
     expect(mcp.props?.output).toEqual({ secret: '‹key›' })
@@ -249,7 +280,7 @@ for (const surface of SURFACES) {
 
   test(`with REC on a compact row whose call holds a fake key draws ‹key› (${surface})`, async ($, on) => {
     await start($, on, { ...QUIET, 'settings:rec': 'on' })
-    const row = await draw($, surface, 'ToolUse', { ...USE, tool: 'Bash', input: { command: `export T=${KEY.text}` }, output: OUT('') })
+    const row = await draw($, surface, 'ToolUse', { ...USE, tool: 'Bash', input: { command: `export T=${KEY.text}` }, output: bashOut('') })
     expect(row.lines).toEqual(['⏺ Bash · export T=‹key› · ✓'])
   })
 
@@ -257,7 +288,7 @@ for (const surface of SURFACES) {
     await start($, on, { ...QUIET, 'settings:rec': 'on' })
     const cmd = `echo ${KEY.text} | tee out.txt`
     expect(cmd.length > 60).toBe(true)
-    const row = await draw($, surface, 'ToolUse', { ...USE, tool: 'Bash', input: { command: cmd }, output: OUT('') })
+    const row = await draw($, surface, 'ToolUse', { ...USE, tool: 'Bash', input: { command: cmd }, output: bashOut('') })
     expect(row.lines).toEqual(['⏺ Bash · echo ‹key› | tee out.txt · ✓'])
     expect(row.lines.join('')).not.toContain(KEY.text.slice(0, 8))
   })

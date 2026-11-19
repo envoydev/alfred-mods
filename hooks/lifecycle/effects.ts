@@ -4,7 +4,7 @@ import { armCacheToast, readCache, readCacheConfig, resetCache, takeResumeRate }
 import { setCostBaseline, bumpTick, dropPassedWindows, forgetMidTurnRead, forgetStoredWindows, forgetTurnSpend, refreshUsageMidTurn, isMidTurnReadDue, isTodayStale, markResumed, pruneCost, readLive, readModelAndVersion, readUsage, resetLive, resetSession, resetPace, resetTick, resetTotals, resetTurns, resetUsage, seedRateWindows, refreshUsage, readTodayUsd } from '../session/effects'
 import { readAgents, refreshLiveAgents, resetAgents, resetLoops } from '../agents/effects'
 import { notePermissionMode, resetBlockers, resetFailures, resetQuiet, resetStats } from '../tools/effects'
-import { openKeepWindow, readStatusFile, readStatusAfterStartOver, resetStack } from '../stack/effects'
+import { openKeepWindow, readStatusFile, readStatusAfterStartOver, rememberStartRoot, resetStack } from '../stack/effects'
 import { queuePlanReload, resetCredit, resetPlans, resetTasks, restartPlanWatch, schedulePlanReload, seedSessionTimes, startPlanWatch, readStoredTimes } from '../plan/effects'
 import { forgetRecNote, readRecHome, resetRec } from '../rec/effects'
 import { fillResumePrompt, forgetHandoffSteps, resetHandoff } from '../handoff/effects'
@@ -29,7 +29,7 @@ const tickMemory = { minute: -1 }
 
 // What the band shows before the first reply: the model, Claude Code's version, the place, the stored windows and the
 // context's parts. Each read stands alone: a refusal leaves its value as it was.
-export async function readStartFacts($: EngineInterface): Promise<void> {
+async function readStartFacts($: EngineInterface): Promise<void> {
   await readModelAndVersion($)
   await readPlace($).catch(() => undefined)
   await seedRateWindows($).catch(() => undefined)
@@ -40,7 +40,7 @@ export async function readStartFacts($: EngineInterface): Promise<void> {
 
 // Once a second: the engine's list moves the live agent rows, the band's figures are read every 5 seconds and the
 // clocks on screen redraw while anything runs, and the clocks redraw once a minute while the band is full
-export async function runTick($: EngineInterface): Promise<void> {
+async function runTick($: EngineInterface): Promise<void> {
   const rows = await readAgents($)
   const anyLive = rows.some(row => isLive(row.status))
   const now = await $.clock.now()
@@ -71,7 +71,7 @@ export async function runTick($: EngineInterface): Promise<void> {
   await syncStatusLine($)
 }
 
-export async function resetState($: EngineInterface): Promise<void> {
+async function resetState($: EngineInterface): Promise<void> {
   forgetTurnSpend()
   await resetStats($)
   await resetFailures($)
@@ -105,7 +105,7 @@ export async function resetState($: EngineInterface): Promise<void> {
 // as one too, and gets the resume prompt in an empty draft, never sent. A prompt that found the id has left the box,
 // which is not filled after it. No session.end hook tells them apart: a managed plugin that skips the mod's hooks may
 // skip that one too, and the mod hooks no event it did not hook before.
-export function startOver($: EngineInterface, source: string | null, calls: Map<string, ToolCall>, pending: Pending): Promise<void> {
+function startOver($: EngineInterface, source: string | null, calls: Map<string, ToolCall>, pending: Pending): Promise<void> {
   const run = (conversationMemory.starting ?? Promise.resolve()).catch(() => undefined).then(async () => {
     conversationMemory.id = await $.session.id()
     const isClear = source === 'clear' || (source === null && (await $.session.turns()) <= 1)
@@ -162,7 +162,7 @@ export async function followSessionStart($: EngineInterface, e: HookInput<'class
       await takeResumeRate($, cost, tokens, model)
     }
   }
-  await readCacheConfig($, pending)
+  await readCacheConfig($)
   if (e.source !== 'startup') return next(e)
   // A start: the stack's own SessionStart hook, beneath, writes this session's file, so it is read once those hooks
   // have run, not at the next poll. A compaction's rewrite waits for the poll: read here, it would step the handoff
@@ -179,6 +179,7 @@ export async function startSession($: EngineInterface, e: HookInput<'session.sta
   await $.command.register({ name: 'auto-handoff', description: 'Save a handoff now, set the handoff mode or first ask in ~/.claude/settings.json, or show them', argumentHint: '[ask|auto|off|at <percent>|now|compact|later]' })
   await readRecHome($)
   await loadSettings($, true)
+  await rememberStartRoot($)
   await readStatusFile($)
   forgetMidTurnRead()
   conversationMemory.id = await $.session.id()
@@ -198,8 +199,7 @@ export async function startSession($: EngineInterface, e: HookInput<'session.sta
   await setCostBaseline($, reading)
   await readStartFacts($)
   if (isFresh && (await $.session.turns().catch(() => 0)) > 0) await markResumed($)
-  pending.isTerminal = e.surface === 'terminal' && e.isInteractive
-  await readCacheConfig($, pending)
+  await readCacheConfig($)
   // A reload keeps $.state but not the module's timer: a cache still warm gets its toast armed again
   await armCacheToast($, pending)
   // A plan's file must be written after this to run; a reload keeps the first start's time

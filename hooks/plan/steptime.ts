@@ -1,9 +1,8 @@
 // Where a loop's working time goes, and its $.store keys: `step:<plan>:<step id>:<session id>` holds
 // `{ ms, isShared, at }` and `overhead:<plan>:<session id>` holds `{ ms, at }`. Each session writes only its own keys,
-// so two sessions never race; a read sums them all. Pure functions; register.ts reads and writes the store.
+// so two sessions never race; a read sums them all. Pure functions; plan/effects.ts reads and writes the store.
 import { isFinishedStep, isPlanRunning } from './plan'
 import type { CallWait, SliceClose, Credit, NamedStep, Plan, Slice, StepTime, CloseTarget, Watched } from './types'
-import type { Outcome } from '../tools/types'
 import type { CostEntries } from '../session/types'
 
 

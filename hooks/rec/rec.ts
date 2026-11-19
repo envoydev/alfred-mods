@@ -73,6 +73,7 @@ const WORD_EDGE = String.raw`[\p{L}\p{N}_]`
 // A home and its other spelling on Windows: Git Bash's HOME /c/Users/jane is C:\Users\jane to Claude Code and Windows
 // tools, and a Windows home is /c/Users/jane inside Git Bash
 function homeForms(home: string): string[] {
+  // Each pattern's two groups are required, so a match holds both
   const bash = /^\/([A-Za-z])(\/.+)$/.exec(home)
   if (bash !== null) return [home, `${bash[1]!}:${bash[2]!}`]
   const drive = /^([A-Za-z]):([\\/].+)$/.exec(home)
@@ -90,6 +91,7 @@ function homeClasses(home: string): Klass[] {
     while (parts.length > 0 && parts[parts.length - 1] === '') parts.pop()
     if (parts.filter(part => part !== '').length === 0) continue
     out.push({ re: new RegExp(`${parts.map(escape).join('[\\\\/]')}(?![\\p{L}\\p{N}_.-])`, isWindows ? 'giu' : 'gu'), hit: whole('~') })
+    // The empty parts at the end are gone and one that is not empty is left, so a last part is there
     name = parts[parts.length - 1]!
   }
   if (name.length >= 3) out.push({ re: new RegExp(`(?<!${WORD_EDGE})${escape(name)}(?!${WORD_EDGE})`, 'giu'), hit: whole('‹user›') })
@@ -164,7 +166,7 @@ export function recStatus(level: RecLevel, count: number): string {
   return `● REC ${level} · hiding ${parts.join(' · ')}`
 }
 
-export const REC_USAGE = 'Usage: /rec [on|strict|off|test|words [close]]'
+const REC_USAGE = 'Usage: /rec [on|strict|off|test|words [close]]'
 
 // The model's note for a level, which rides the person's next prompt (spec 'The model's note')
 const NOTE_ON = 'Screen recording is on (alfred-mods REC). Until told it is off, do not write secret values, API keys, tokens, passwords, email addresses or phone numbers in replies; refer to them by name, such as "the token in .env". Work on the task as usual.'
@@ -242,9 +244,9 @@ export function recTest(level: RecLevel, words: string[], home: string | null): 
     const ok = samples.filter(sample => maskText(strict, sample.text) === sample.masked).length
     return `${ok === samples.length ? '✓' : '✗'} ${label} ${ok}/${samples.length}`
   }
-  const home2 = home === null ? [] : strictSamples(home)
-  const homes = home2.filter(sample => sample.masked !== 'by ‹user› today')
-  const account = home2.filter(sample => sample.masked === 'by ‹user› today')
+  const homeSamples = home === null ? [] : strictSamples(home)
+  const homes = homeSamples.filter(sample => sample.masked !== 'by ‹user› today')
+  const account = homeSamples.filter(sample => sample.masked === 'by ‹user› today')
   out.push(`strict: ${[
     home === null ? 'home path skipped (no home folder)' : part('home path', homes),
     home === null ? 'account skipped' : account.length === 0 ? 'account skipped (name under 3 characters)' : part('account', account),

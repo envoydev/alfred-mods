@@ -121,7 +121,9 @@ organization's managed settings allow only its own mods
    ```
 
    Keep the JSON valid: Claude Code drops a file that does not parse, its permission rules with it. The band redraws
-   as soon as you save.
+   as soon as you save. Edit the file in your own editor, or let the commands write it (`/inspect band ...`, `/rec`,
+   `/auto-handoff`): Claude Code loads the key, but its own Edit and Write tools check a settings file against Claude
+   Code's schema and refuse it (`Unrecognized field: alfred-mods`), so asking Claude to make the edit fails.
 
 ### Common setups
 
@@ -141,10 +143,12 @@ organization's managed settings allow only its own mods
 
 A command writes its field into `~/.claude/settings.json` for you. For one project only, put the field in that
 project's `.claude/settings.local.json`, which wins over your user file there ([Which file wins](#which-file-wins)).
-The [Band Explorer](docs/band-explorer.html), one page that runs in a browser, offline too, previews each setting on
-the band and gives each file's block to copy. Its live terminal has example transcripts (reading and testing, editing,
-agents and skills, web research, questions and planning, failures), drawn as compact rows by the mod's own code or as
-Claude Code's own rows with `"quiet": false`.
+The [alfred-mods page](docs/band-explorer.html), which runs in a browser, offline too, explains what the mod
+draws, in tabs: near the message box (each band row, what it shows and how it works, and the handoff), in the terminal
+(the compact tool rows beside Claude Code's own, each `/inspect` tab and Recording mode), and the settings, where a
+live terminal previews each field and each file's block is ready to copy. Its example transcripts (reading and testing,
+editing, agents and skills, web research, questions and planning, failures) are drawn as compact rows by the mod's own
+code.
 
 ## Commands
 
@@ -202,9 +206,9 @@ tab's Compact are Claude Code's own `/compact`. Every switch is a settings value
 ## Settings
 
 The mod's switches are values under one key, `"alfred-mods"`, in Claude Code's own settings files. Add the key to a
-file, save it, and the band redraws. The [Band Explorer](docs/band-explorer.html), one page that runs in a browser,
-offline too, previews each setting on the band and gives each file's block to copy: download the file, or clone the
-repo, and open it.
+file, save it, and the band redraws. The [alfred-mods page](docs/band-explorer.html), which runs in a browser,
+offline too, previews each setting on a live terminal in its settings tab and gives each file's block to copy:
+download the file, or clone the repo, and open it.
 
 ### Where to put them
 
@@ -355,6 +359,8 @@ How to read a row:
 |--------------------------|----------------------------------------------------------------------------------------------|
 | `⏺ <tool> · <what>`      | the tool, then what it worked on: a description, file, page, query, agent type or skill      |
 | `⎿`                      | one step of the call: what it was given, what it did or what came back                       |
+| `waiting…`               | not run yet: waiting at the permission dialog, or queued                                     |
+| `running…`               | still running, while REC is on                                                               |
 | `30 lines ✓`             | done, and how many lines it printed                                                          |
 | `✗`, `✗ exit 1`          | failed (with its exit code), up to 3 error lines under it                                    |
 | `✗ interrupted`          | stopped before it finished                                                                   |
@@ -591,28 +597,38 @@ under `Blocked by hooks`.
 
 An administrator's managed plugin can send events on past the plugins you install, and Claude Code then tells the
 model, once per event and conversation, `alfred-mods: its classic.SessionStart hook was skipped. "<plugin>" runs first
-and sent the event on past it.` One did so for six of the mod's hooks: `classic.SessionStart`, `classic.PostToolUse`,
-`classic.PermissionRequest`, `classic.PostToolUseFailure`, `classic.PermissionDenied` and `skill.prompt`. On such a
-machine, turn on the mod's option `Leave out hooks a managed plugin skips` (`leave_out_skipped_hooks`) in `/config`:
-the mod leaves those six hooks out, so the notices stop, and loses nothing, as they never ran there. It also leaves out
-the hook that sees a rule load by path, `classic.InstructionsLoaded`, which such a plugin may skip too, and the one
-that sees a settings file change, `classic.ConfigChange`. A new install
-asks for it once; leave it off anywhere else. Either way the mod reads a `/clear`, a resume or a branch off the session
-id, so the band starts over within a second and the first prompt carries REC's note. A `/clear` after a saved handoff
-still fills the resume prompt, unless you send a prompt first; resuming a conversation of one prompt fills it too, into
-the empty box, never sent. What it cannot tell without those hooks:
+and sent the event on past it.` One did so for nine of the mod's hooks: `classic.SessionStart`,
+`classic.UserPromptSubmit`, `classic.PostToolUse`, `classic.PermissionRequest`, `classic.PostToolUseFailure`,
+`classic.PermissionDenied` and `skill.prompt`, and after a `/model`, `classic.PreModelSwitch` and
+`classic.PostModelSwitch`. Claude Code's documentation names a tenth, the compaction hook `session.compact`: where its
+built-in guard `sec-default@builtin` loads - on a machine with managed settings or a `managed-mcp.json` file, or in a
+session signed in to a Team or Enterprise plan - that hook of a mod you install never runs, and `/plugin` says so
+([Manage mods for your organization](https://code.claude.com/docs/en/plugins/mods/admin)). On such a machine, turn on
+the mod's option `Leave out hooks a managed plugin skips` (`leave_out_skipped_hooks`) in `/config`: the mod leaves those
+ten hooks out, so the notices stop, and loses nothing, as they never ran there. It also leaves out the hook that sees a
+rule load by path, `classic.InstructionsLoaded`, which such a plugin may skip too, and the one that sees a settings file
+change, `classic.ConfigChange`. A new install asks for it once; leave it off anywhere else. Either way the mod reads a
+`/clear`, a resume or a branch off the session id, so the band starts over within a second and the first prompt carries
+REC's note. A `/clear` after a saved handoff still fills the resume prompt, unless you send a prompt first; resuming a
+conversation of one prompt fills it too, into the empty box, never sent. What it cannot tell without those hooks:
 
-- outside auto mode, a call you were asked about reads `refused`, whether you denied it, it failed after you allowed
-  it, or another plugin's permission hook denied it;
-- a classifier block counts as a new failure;
+- the permission mode is never seen, so auto mode reads as any other: a call that asked for permission and then
+  failed reads `refused` and counts as no new failure - whether you denied it, it failed after you allowed it, another
+  plugin's permission hook denied it or auto mode's classifier blocked it - and no row says `⎿ allowed by auto mode`;
 - a skill typed as `/name` is not counted, and is missing from the band's `skills` row and the Usage tab's `Skills`
   row; one Claude loads with its Skill tool is there;
 - time you spend at a permission prompt counts toward a plan step's time;
-- after a resume, the cache's rewrite cost (`rewrite ≈ $…`) is missing until you switch models;
+- the cache's rewrite cost (`rewrite ≈ $…`) is never shown;
+- after a `/model`, the band names the new model at its first reply, not at once, and until then the cache reads as
+  the old model's, its cold-cache toast included;
 - the band's `rules:` row lists only the rules loaded at start, and ends `by path not tracked`;
+- a compaction Claude Code runs is not counted: the cache is not marked cold, the handoff's ask is not re-armed and the
+  next prompt does not carry REC's note again; one the mod starts (its compact button or key, or
+  `/auto-handoff compact`) still counts;
 - a change to the mod's [settings](#settings) shows within 30 seconds, not at once.
 
-A call that fails in auto mode still counts as new, and an interrupt is read from the mod's own tool hook.
+Where those hooks run, a call that fails in auto mode counts as new; an interrupt is read from the mod's own tool hook
+either way.
 
 While something needs you - recording mode on, the context at 60% or more, new failures - the mod pins one line under
 the prompt, `⚠ alfred-mods: ● REC · ctx 82% · ✗ 2 new`, which stays while the band is collapsed (Ctrl+X Ctrl+A) or off (`"band": "off"`).
@@ -636,7 +652,8 @@ and `/rec off` set it in your user file ([Settings](#settings), [Commands](#comm
 - **It holds** across sessions and restarts while a settings file gives it. Mid-session it never goes down because a
   file stopped giving it, a typo included ([REC holds](#rec-holds)). A red `● REC` leads the band while it is on.
 - **Where it masks:** the band, every pane tab, toasts, the spinner, the mod's own command output, Claude's messages,
-  command output, tool rows (each call drawn as its own row while REC is on) and Claude's question dialogs. Masked
+  command output, tool rows (each call drawn as its own row while REC is on; a call still running reads
+  `running…`, its live output, its timer, an agent's live steps and its ctrl+o detail hidden until it ends) and Claude's question dialogs. Masked
   values read `‹key›`, `‹email›`, `‹phone›` and `‹private›`. Only the drawing changes: the stored messages and what
   Claude reads stay as they are.
 - **Claude is told:** while REC is on, your next prompt carries a short note asking Claude not to write secret values,
@@ -702,8 +719,8 @@ the ask comes before that compaction.
   check that the branch it names is checked out, and continue from its Next section.` into an empty prompt, never
   sending it. With something already typed, a toast names the file instead. A new session started elsewhere gets no
   fill; ask Claude to read the file.
-- **With Alfred Code:** in a project whose stack publishes `.claude/session-inspector/status/<session id>.json` with
-  `fullContext` `fresh-session` or `compact`, the stack handles a full context and the mod stands down for that
+- **With Alfred Code:** in a project whose stack publishes `.alfred/state/sessions/status/<session id>.json` (`.claude/session-inspector/status/<session id>.json` through
+  alfred-code 3.12.1) with `fullContext` `fresh-session` or `compact`, the stack handles a full context and the mod stands down for that
   session: no ask, no automatic save and no resume prompt, while `/auto-handoff now` still saves. With `fullContext`
   `off`, or no file, the mod's handoff runs. A file that does not parse, has another schema or names another session
   leaves the handoff running, and the ALFRED CODE section in `/inspect` says why.
@@ -714,8 +731,8 @@ the ask comes before that compaction.
 ## With Alfred Code
 
 In a project where [Alfred Code](https://github.com/envoydev/alfred-code) publishes
-`.claude/session-inspector/status/<session id>.json` for the session, the mod reads that one file at the session's
-start, every 30 seconds and after `/clear`, and shows more:
+`.alfred/state/sessions/status/<session id>.json` for the session (`.claude/session-inspector/status/<session id>.json`
+through alfred-code 3.12.1, which the mod still reads), the mod reads that one file at the session's start, every 30 seconds and after `/clear`, and shows more:
 
 - **The mode banner:** `auto-run · auto-compact 490k · scoring 80 │` leads the band from the session's start while the
   stack's auto-run, auto-compact or scoring is on, after `● REC` while recording. `490k` is where Claude Code compacts

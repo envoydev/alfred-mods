@@ -31,7 +31,7 @@ const turn = (n: number, contextPercent: number | null = null): Turn => ({
   turnNumber: n, turnId: `t${n}`, promptAt: P, replyAt: R, durationMs: 3000, tokensIn: 0, tokensOut: 0, toolCalls: 19, toolFailures: 0, contextPercent, endReason: 'answer',
 })
 const CACHE: Cache = {
-  tier: '1h', tierAt: null, tierBilling: 'plan', config: { pin: null, isIdleCompactOff: false, idleMinTokens: 200_000, isTerminal: false },
+  tier: '1h', tierAt: null, tierBilling: 'plan', config: { pin: null, isIdleCompactOff: false, idleMinTokens: 200_000, isIdleSurface: false },
   ratePerToken: null, rateModel: null, lastRequestAt: NOW - 6 * 60_000, lastRequest: { read: 1000, write: 0, input: 10 },
   sessionCounts: { read: 1000, write: 0, input: 10 }, toastedForRequestAt: null,
 }
@@ -40,7 +40,7 @@ const WINDOWS = [
   { kind: 'seven_day', percentUsed: 40, resetsAt: '2026-10-31T09:00:00Z' },
 ]
 
-// The full band's mockup session, idle and healthy, at 200 columns (as tests/fullband.test.ts draws it)
+// The full band's mockup session, idle and healthy, at 200 columns (as tests/band/fullband.test.ts draws it)
 function input(o: Partial<BandInput> = {}): BandInput {
   return {
     now: NOW, columns: 200, isWorking: false, mode: 'full',
@@ -504,7 +504,7 @@ test('the project row shows the session project, the branch, then the folder Cla
   expect(deep).toContain('project: w │ git:(main) │ folder: …/src/app/features/billing/invoices')
 })
 
-// The changes after the branch (the user, 2026-11-12), tests/changes.test.ts for how they are read
+// The changes after the branch (the user, 2026-11-12), tests/place/changes.test.ts for how they are read
 test('the project row shows the changes after the branch, and none when the tree is clean', () => {
   expect(placed({ project: 'alfred-mods', folder: 'hooks', branch: 'web-steps', changes: { added: 5323, removed: 123 } }))
     .toContain('project: alfred-mods │ git:(web-steps) +5323 −123 │ folder: hooks')

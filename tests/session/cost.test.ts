@@ -5,7 +5,7 @@ import { localDate } from '../../hooks/core/forecast'
 import type { CostEntries } from '../../hooks/session/types'
 
 // Local times, as the day the cost belongs to is the machine's
-const at = (day: number, h: number, m: number): number => new Date(2026, 9, day, h, m).getTime()
+const at = (day: number, hours: number, minutes: number): number => new Date(2026, 9, day, hours, minutes).getTime()
 const NOON = at(28, 12, 0)
 
 // A store in memory: each reading's writes land on it, as the functions taking `$` do through $.store

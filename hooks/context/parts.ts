@@ -85,28 +85,27 @@ export function partsOf(breakdown: SessionContextBreakdown, cwd: string, at: num
 
 // The section's label column: 'In context' fills the tab's 10 cells, so its rows take 12, as spec C1 draws them
 export const PARTS_LABEL = 12
-const LABEL = PARTS_LABEL
 
 // The Usage tab's rows after Tokens; none before a breakdown
 export function partsLines(parts: Parts): Line[] {
   if (parts.breakdownAt === null) return []
   const out: Line[] = []
   const used = parts.categories.map(category => `${category.name} ${tokensText(category.tokens)}`)
-  out.push([{ text: 'In context', width: LABEL }, { text: [`est. ${clockText(parts.breakdownAt)}`, ...used].join(' · ') }])
+  out.push([{ text: 'In context', width: PARTS_LABEL }, { text: [`est. ${clockText(parts.breakdownAt)}`, ...used].join(' · ') }])
   if (parts.plugins.length > 0) {
     const named = parts.plugins.map(plugin => {
       const what = [plugin.agents > 0 ? `${plugin.agents} agents` : null, plugin.skills > 0 ? `${plugin.skills} skills` : null]
         .filter((count): count is string => count !== null)
       return `${plugin.name} ${tokensText(plugin.agentTokens + plugin.skillTokens)}: ${what.join(', ')}`
     })
-    out.push([{ text: 'Plugins', width: LABEL }, { text: named.join(' · ') }])
+    out.push([{ text: 'Plugins', width: PARTS_LABEL }, { text: named.join(' · ') }])
   }
   if (parts.memory.files > 0) {
     const memory = parts.memory
     const rest = memory.files - memory.top.length
     const shown = [`${memory.files} ${memory.files === 1 ? 'file' : 'files'} ${tokensText(memory.tokens)}`,
       ...memory.top.map(topFile => `${topFile.name} ${tokensText(topFile.tokens)}`), ...(rest > 0 ? [`+${rest}`] : [])]
-    out.push([{ text: 'Memory', width: LABEL }, { text: shown.join(' · ') }])
+    out.push([{ text: 'Memory', width: PARTS_LABEL }, { text: shown.join(' · ') }])
   }
   return out
 }

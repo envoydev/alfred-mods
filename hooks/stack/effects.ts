@@ -4,7 +4,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Timer } from 'claude-code'
 import type { Stack } from './types'
-import { statusPath } from '../handoff/handoff'
+import { statusPaths } from '../handoff/handoff'
 import { NO_FILE, STACK_TOASTS, UNREADABLE, fillReady, fillToast, parseStack } from './stack'
 import { followStatusFile } from '../handoff/effects'
 
@@ -29,12 +29,19 @@ export function resetStack($: EngineInterface) {
 const stackMemory = {
   prompt: null as string | null, last: null as Stack | null, keepUntil: 0, reading: Promise.resolve(false) as Promise<boolean>,
   reread: null as Timer | null,
+  // The project root `$.session.root()` gave at session.start, which a root that moves mid-session leaves behind
+  startRoot: null as string | null,
 }
 
 // Alfred Code's scoring level while its status file is in use and scoring is on, which colours the band's score
 export async function readScoreLevel($: EngineInterface): Promise<number | null> {
   const stack = await readStack($)
   return stack.state === 'used' && stack.scorer !== null && stack.scorer.on ? stack.scorer.level : null
+}
+
+// The root at session start, kept for the session so a status file under it is still found after the root moves
+export async function rememberStartRoot($: EngineInterface): Promise<void> {
+  stackMemory.startRoot = await $.session.root().catch(() => null)
 }
 
 // Reads run one at a time; each resolves to whether the session's status file exists
@@ -47,20 +54,24 @@ export function readStatusFile($: EngineInterface, keep = false): Promise<boolea
 // The stack's status file for this session, one read for both atoms. F8's stand-down (Decision 13): a missing or
 // unreadable file is no file, unless `keep` or the window holds a stand-down across a /clear until a later read. The
 // `stack` atom (Phase 5): no file, unreadable, ignored with Phase 4's reason, or used field by field.
-export async function readStatusFileNow($: EngineInterface, keep: boolean): Promise<boolean> {
+async function readStatusFileNow($: EngineInterface, keep: boolean): Promise<boolean> {
   const id = await $.session.id()
-  const path = statusPath(id)
+  const root = await $.session.root().catch(() => null)
   const now = await $.clock.now()
   const inWindow = keep || now < stackMemory.keepUntil
   let exists = false
   let text: string | null = null
-  if (path !== null) {
+  // The first candidate that exists wins; one that cannot be checked is skipped, one that exists and cannot be read
+  // stands as an unreadable file
+  for (const path of statusPaths(id, { root, startRoot: stackMemory.startRoot })) {
     try {
-      exists = await $.fs.exists(path)
-      if (exists) text = await $.fs.read(path)
+      if (!(await $.fs.exists(path))) continue
     } catch {
-      text = null
+      continue
     }
+    exists = true
+    text = await $.fs.read(path).catch(() => null)
+    break
   }
   await writeStackFrom($, { exists, text, id, now, inWindow })
   await followStatusFile($, text, id, inWindow)
@@ -69,17 +80,17 @@ export async function readStatusFileNow($: EngineInterface, keep: boolean): Prom
 
 // The `stack` atom from one read: inside the window a missing file writes back the last value and keeps the prompt;
 // every other read writes its own value, and `last` with it
-export async function writeStackFrom(
-  $: EngineInterface, read: { exists: boolean; text: string | null; id: string; now: number; inWindow: boolean },
+async function writeStackFrom(
+  $: EngineInterface, reading: { exists: boolean; text: string | null; id: string; now: number; inWindow: boolean },
 ): Promise<void> {
-  if (!read.exists && read.inWindow) {
+  if (!reading.exists && reading.inWindow) {
     const last = stackMemory.last
     if (last !== null) await updateStack($, stored => (JSON.stringify(stored) === JSON.stringify(last) ? stored : last))
     return
   }
-  const parsed = read.text === null ? null : parseStack(read.text, read.id)
-  const base: Stack = { ...INITIAL_STACK, readAt: read.now }
-  const next: Stack = !read.exists ? { ...base, reason: NO_FILE }
+  const parsed = reading.text === null ? null : parseStack(reading.text, reading.id)
+  const base: Stack = { ...INITIAL_STACK, readAt: reading.now }
+  const next: Stack = !reading.exists ? { ...base, reason: NO_FILE }
     : parsed === null ? { ...base, state: 'ignored', reason: UNREADABLE }
     : parsed.state === 'ignored' ? { ...base, state: 'ignored', reason: parsed.reason }
     : { ...base, ...parsed.fields, state: 'used', hasPrompt: parsed.prompt !== null }

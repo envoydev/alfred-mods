@@ -32,5 +32,5 @@ Adding, changing, renaming or removing anything the mod ships. `AGENTS.md` holds
 ## Proof
 
 - Per batch: `npm test` and `npm run validate`.
-- Once after a change that draws or hooks something: a `claude --plugin-dir .` session in a scratch project under an isolated `CLAUDE_CONFIG_DIR` and `HOME`, in a project without Alfred Code and in one with it, reporting what each draws. A Desktop Code tab is checked before a release, or reported NOT RUN.
+- Once after a change that draws or hooks something: a `claude --plugin-dir .` session in a scratch project under an isolated `CLAUDE_CONFIG_DIR` and `HOME`, in a project without Alfred Code and in one with it, reporting what each draws. In the one with Alfred Code the isolated user settings carry `"enabledPlugins": { "alfred-mods@inline": true }`: from the alfred-code release after 3.12.1 the stack writes its status file only while the user's, the project's or a managed settings file sets an `alfred-mods@` or `session-inspector@` key to true (alfred-code `stack/hooks/session-status.js`, `readerOn`), and a `--plugin-dir` load is `alfred-mods@inline`, on with no key (code.claude.com/docs/en/plugins/loading, 'Find where a plugin came from', read 2026-11-19). A Desktop Code tab is checked before a release, or reported NOT RUN.
 - The repo is public: no private project names or absolute local paths in a tracked file.

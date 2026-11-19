@@ -1,4 +1,5 @@
 // Plain values to the strings the band and the pane draw: bars, token counts, times, money, one-line cuts.
+import { DIGIT_HOTKEY, FAMILIES, MODEL_ID } from './constants'
 import type { Family } from './types'
 
 // The one bar, in the band and the pane: 5 cells of 20%, ▰ filled and ▱ empty; a cell fills only when its share is
@@ -114,13 +115,23 @@ export function widthOf(line: readonly object[]): number {
   return line.reduce<number>((width, s) => width + ('text' in s && typeof s.text === 'string' ? masker(s.text).length : 0), 0)
 }
 
+// Whether a button draws plain, '<hotkey>: <label>': asked to, or on a digit, which also answers from the empty prompt
+export function isPlainButton(button: { hotkey?: string; plain?: boolean }): boolean {
+  return button.plain === true || DIGIT_HOTKEY.test(button.hotkey ?? '')
+}
+
+// A button's cells as the terminal draws it: '<hotkey>: <label>' when plain, '[ <label> ]' otherwise
+export function buttonCells(labelCells: number, hotkey: string | undefined, isPlain: boolean): number {
+  return isPlain ? (hotkey === undefined ? 0 : hotkey.length + 2) + labelCells : labelCells + 4
+}
 
 // A model id's family and version: 'claude-opus-5-5' is opus 5.5; an id with no known family has none
 export function modelParts(model: string): { family: Family; version: string | null } | null {
-  const match = /(opus|sonnet|haiku|fable)(?:-(\d+)(?:-(\d+))?)?/.exec(model)
-  if (match === null) return null
+  const match = MODEL_ID.exec(model)
+  const family = FAMILIES.find(name => name === match?.[1])
+  if (match === null || family === undefined) return null
   const version = match[2] === undefined ? null : match[3] === undefined ? match[2] : `${match[2]}.${match[3]}`
-  return { family: match[1] as Family, version }
+  return { family, version }
 }
 
 // 'opus 5.5', or 'Opus 5.5' as a title; the id as given when no family matches

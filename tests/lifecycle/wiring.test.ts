@@ -3,7 +3,7 @@ import type { Engine } from 'claude-code/testing'
 
 import { SPAWN, START, SWITCH, engine, stubAll } from '../kit'
 
-// The rules file Claude Code reports loaded, as tests/band-rows.test.ts raises it
+// The rules file Claude Code reports loaded, as tests/band/band-rows.test.ts raises it
 const LOAD = { file_path: '/w/.claude/rules/web.md', memory_type: 'Project', load_reason: 'path_glob_match', globs: ['src/**/*.ts'], trigger_file_path: '/w/src/app.ts' } as never
 
 // Each gating hook still answers with the answer beneath it while every state read and write is refused: the hooks

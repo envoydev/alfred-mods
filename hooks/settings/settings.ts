@@ -1,10 +1,10 @@
 // The mod's switches as values under one "alfred-mods" key in Claude Code's settings files (spec 2026-11-11
 // settings-values, S1-S3): each field read per file, the first valid value in the order policy, flag, local, project,
-// user, then an earlier command's choice, then the default. Pure: register.ts reads the files and the store.
+// user, then an earlier command's choice, then the default. Pure: settings/effects.ts reads the files and the store.
 import { MODES, isThreshold } from '../handoff/handoff'
+import { isRecord } from '../core/guards'
 import { LEVELS } from '../rec/rec'
 import type { BandMode } from '../band/types'
-import type { HandoffMode } from '../handoff/types'
 import type { RecLevel } from '../rec/types'
 import type { Field, From, ResolvedSettings, Skip, Source, SettingsValues } from './types'
 
@@ -15,7 +15,6 @@ export const DEFAULTS: SettingsValues = { band: 'full', bandPlace: 'above', band
 // "off" draws no band, above or under (the user, 2026-11-12: '/inspect band off' hides it where nothing takes a key)
 export const BAND_MODES: readonly BandMode[] = ['full', 'calm', 'off']
 
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 const isBool = (value: unknown): value is boolean => typeof value === 'boolean'
 
 // Each field's test and the words its toast uses for the values it takes

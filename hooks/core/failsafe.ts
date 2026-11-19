@@ -22,3 +22,8 @@ export function paneFailed(kind: FailKind, message: string | undefined, isRec: b
   const text = Array.from(printable(message ?? '').replace(/\s+/g, ' ').trim()).slice(0, 120).join('')
   return isRec || text === '' ? head : `${head}: ${text}`
 }
+
+// A command whose hook failed answers with its name and the failure's kind alone: the message can quote what REC hides
+export function commandFailed(command: string, kind: FailKind): string {
+  return `alfred-mods: ${command} failed (${kind})`
+}

@@ -4,7 +4,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, TurnStepInput, TurnStepResult } from 'claude-code'
 import type { AgentRow, Loop } from './types'
-import { addLoopStep, stepMarkOf, newRow, refreshAgents, upsertSpawn } from './agents'
+import { addLoopStep, contextTokensOf, stepMarkOf, newRow, refreshAgents, upsertSpawn } from './agents'
 import { countAgentType } from '../session/effects'
 import type { HookInput, HookNext } from '../core/types'
 import { addStepMark } from '../plan/effects'
@@ -57,9 +57,7 @@ export async function trackAgentStep($: EngineInterface, e: TurnStepInput, step:
   }
   await updateAgentRow($, id, row => ({
     ...row, model: e.model, effort: e.effort === undefined ? row.effort : String(e.effort),
-    contextTokens: stepUsage === null
-      ? row.contextTokens
-      : stepUsage.input_tokens + stepUsage.cache_read_input_tokens + stepUsage.cache_creation_input_tokens + stepUsage.output_tokens,
+    contextTokens: stepUsage === null ? row.contextTokens : contextTokensOf(stepUsage),
     lastStop: step.stopReason ?? null,
   }))
 }

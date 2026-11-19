@@ -7,8 +7,12 @@
   "engines": { "node": ">=22" },
   "scripts": {
     "test": "claude plugin test .",
-    "validate": "node scripts/validate.js",
-    "typecheck": "tsc -p .",
+    "validate": "node scripts/validate.ts",
+    "typecheck": "tsc -p . && tsc -p tsconfig.scripts.json",
     "kit:check": "node .claude/kit/check.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "6.0.3"
   }
 }

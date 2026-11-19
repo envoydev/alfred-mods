@@ -3,9 +3,9 @@ import { fitLine, widthOf } from '../core/format'
 import { planRowParts, scoreSeg } from '../plan/planlines'
 import type { BandInput } from './types'
 import type { Line, Seg } from '../core/types'
-import { ROW_JOIN, ROW_LABEL, rowLabel, toggleForms } from './detail'
+import { ROW_JOIN, ROW_LABEL } from './constants'
+import { rowLabel, toggleForms } from './detail'
 
-// The labels' width, so the items of every row line up, and the band rows' joiner, as the owner's target draws them
 // A folder past `max` cells: its last parts that fit after '…/', or its last part cut
 function fitFolder(folder: string, max: number): string {
   if (widthOf([{ text: folder }]) <= max) return folder
@@ -26,7 +26,7 @@ const lastPart = (folder: string): string => (folder.includes('/') ? `…/${fold
 export function planRow(input: BandInput): Line[] {
   if (input.mode !== 'full' || input.plan === null) return []
   const score: Line = input.score === null || input.isPlanScore === false ? [] : [{ text: ' · ' }, ...scoreSeg(input.score, input.scoreLevel ?? null)]
-  return [[{ text: 'plan:'.padEnd(ROW_LABEL), tone: 'dim' }, ...planRowParts(input.plan, input.columns - ROW_LABEL, score)]]
+  return [[rowLabel('plan:'), ...planRowParts(input.plan, input.columns - ROW_LABEL, score)]]
 }
 
 const dimSeg = (text: string): Seg => ({ text, tone: 'dim' })

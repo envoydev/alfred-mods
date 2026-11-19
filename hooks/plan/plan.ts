@@ -1,7 +1,8 @@
 // Plan and scores files: their parse, the plan view and the scores view. The contract is the README's 'Plan and score
-import type { Finding, Plan, PlanChange, PlanStep, PlanView, Plans, ScoreRound, Scores, ScoresView, Severity, StepRow, StepStatus, StepTime, TaskItem, Watched } from './types'
 // files', from the brief's 'Data contracts for the plan and scorer skills'. What a file requires makes it invalid when
 // missing; an optional field that does not fit is dropped.
+import { isRecord } from '../core/guards'
+import type { Finding, Plan, PlanChange, PlanStep, PlanView, Plans, ScoreRound, Scores, ScoresView, Severity, StepRow, StepStatus, StepTime, TaskItem, Watched } from './types'
 
 const STATUSES: readonly string[] = ['pending', 'in_progress', 'done', 'failed', 'blocked', 'skipped']
 const KINDS: readonly string[] = ['created', 'step_added', 'step_changed', 'step_removed', 'integrated']
@@ -12,26 +13,25 @@ const FINDING_STATUSES: readonly string[] = ['open', 'fixed', 'improved', 'wontf
 const NOTE_MAX = 200
 
 type Obj = Record<string, unknown>
-const isObj = (value: unknown): value is Obj => typeof value === 'object' && value !== null && !Array.isArray(value)
 const str = (value: unknown): string | null => (typeof value === 'string' ? value : null)
-const time = (value: unknown): number | null => {
+export const time = (value: unknown): number | null => {
   const parsed = typeof value === 'string' ? Date.parse(value) : NaN
   return Number.isFinite(parsed) ? parsed : null
 }
 const num = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
 
 // JSON after a leading byte-order mark; CRLF is JSON whitespace
-function json(text: string): Obj | null {
+export function json(text: string): Obj | null {
   try {
     const value: unknown = JSON.parse(text.replace(/^﻿/, ''))
-    return isObj(value) ? value : null
+    return isRecord(value) ? value : null
   } catch {
     return null
   }
 }
 
 function stepOf(value: unknown): PlanStep | null {
-  if (!isObj(value)) return null
+  if (!isRecord(value)) return null
   const id = str(value.id)
   const title = str(value.title)
   if (id === null || id === '' || title === null || typeof value.status !== 'string' || !STATUSES.includes(value.status)) return null
@@ -40,7 +40,7 @@ function stepOf(value: unknown): PlanStep | null {
 }
 
 function changeOf(value: unknown): PlanChange | null {
-  if (!isObj(value) || typeof value.kind !== 'string' || !KINDS.includes(value.kind) || typeof value.source !== 'string' || !SOURCES.includes(value.source)) return null
+  if (!isRecord(value) || typeof value.kind !== 'string' || !KINDS.includes(value.kind) || typeof value.source !== 'string' || !SOURCES.includes(value.source)) return null
   const note = str(value.note)
   return {
     at: time(value.at), kind: value.kind as PlanChange['kind'], source: value.source as PlanChange['source'],
@@ -59,7 +59,7 @@ export function parsePlan(text: string): Plan | null {
 }
 
 function findingOf(value: unknown): Finding | null {
-  if (!isObj(value)) return null
+  if (!isRecord(value)) return null
   const text = str(value.text)
   if (text === null) return null
   return {
@@ -71,16 +71,16 @@ function findingOf(value: unknown): Finding | null {
 }
 
 function roundOf(value: unknown): ScoreRound | null {
-  if (!isObj(value) || !num(value.round) || !Number.isInteger(value.round) || !num(value.total)) return null
+  if (!isRecord(value) || !num(value.round) || !Number.isInteger(value.round) || !num(value.total)) return null
   const criteria: Record<string, number> = {}
-  if (isObj(value.criteria)) for (const [name, score] of Object.entries(value.criteria)) if (num(score)) criteria[name] = score
+  if (isRecord(value.criteria)) for (const [name, score] of Object.entries(value.criteria)) if (num(score)) criteria[name] = score
   const findings = Array.isArray(value.findings) ? value.findings.map(findingOf).filter((finding): finding is Finding => finding !== null) : []
   return { round: value.round, at: time(value.at), total: value.total, criteria, findings }
 }
 
 export function parseScores(text: string): Scores | null {
   const value = json(text)
-  if (value === null || value.version !== 1 || !isObj(value.subject) || !num(value.scale) || value.scale <= 0 || !Array.isArray(value.rounds)) return null
+  if (value === null || value.version !== 1 || !isRecord(value.subject) || !num(value.scale) || value.scale <= 0 || !Array.isArray(value.rounds)) return null
   const { kind, ref } = value.subject
   if (typeof kind !== 'string' || !SUBJECTS.includes(kind) || typeof ref !== 'string') return null
   const rounds = value.rounds.map(roundOf)
@@ -208,7 +208,7 @@ const TASK_STATUSES: readonly string[] = ['pending', 'in_progress', 'completed']
 // replaces the list, each item's id its index, and an item whose subject was there before keeps its time.
 export function tasksAfter(items: TaskItem[], tool: string, input: Record<string, unknown>, result: unknown): TaskItem[] | null {
   if (tool === 'TaskCreate') {
-    const task = isObj(result) && isObj(result.task) ? result.task : null
+    const task = isRecord(result) && isRecord(result.task) ? result.task : null
     const id = task === null ? null : str(task.id)
     const subject = str(task?.subject) ?? str(input.subject)
     return id === null || subject === null ? items : [...items, { id, subject, status: 'pending', workedMs: 0 }]
@@ -222,7 +222,7 @@ export function tasksAfter(items: TaskItem[], tool: string, input: Record<string
   }
   if (tool === 'TodoWrite') {
     if (!Array.isArray(input.todos)) return items
-    return input.todos.filter(isObj).map((todo, i) => {
+    return input.todos.filter(isRecord).map((todo, i) => {
       const subject = str(todo.content) ?? ''
       const status = typeof todo.status === 'string' && TASK_STATUSES.includes(todo.status) ? (todo.status as TaskItem['status']) : 'pending'
       return { id: String(i), subject, status, workedMs: items.find(listed => listed.subject === subject)?.workedMs ?? 0 }

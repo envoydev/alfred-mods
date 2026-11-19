@@ -26,7 +26,9 @@
     "- A feature folder is `hooks/<feature>/`: `types.ts`, `constants.ts`, logic files, `effects.ts`.",
     "- The outside world is `$`, the mods API: only `effects.ts` takes it, and each `$.state` atom is made, read and updated in its owner folder's `effects.ts`.",
     "- Shared code: `hooks/core/`.",
-    "- Tests: `tests/<feature>/<name>.test.ts`, with the shared helpers in `tests/kit.ts`.",
+    "- The mod's `$.state` declarations: `types/index.d.ts`, declarations only; the feature `types.ts` files re-export the ones they use from it.",
+    "- Scripts outside the mod: `scripts/`, flat, run on Node's type stripping and checked by `tsconfig.scripts.json`.",
+    "- Tests: `tests/<feature>/<name>.test.ts`, with the shared helpers in `tests/kit.ts` and the plan and scores fixtures the tests share in `tests/plans.ts`.",
     "- Literals that stay literals, because `claude plugin validate` reads the source: the event name in each `on(...)`, and every mods API call written in full. A relative import names its file with no extension.",
     "- The folders written before 2026-11-15 keep constants in their logic files; they follow the shape as they are changed."
   ],
@@ -46,10 +48,10 @@
         "Each hook's test is a *.test.ts at the same path under tests/, run by claude plugin test (npm test) with every mods API call the hook makes stubbed.",
         "A mod observes and draws: no hook approves, denies or rewrites a tool call unless the brief names the case, so the module owes no block ledger and its coverage map is what it must never do itself.",
         "No $.http.fetch and no $.model calls, $.process only where the brief allows it and with a timeout, and no prompt, tool input, secret or account email in any log or file.",
-        "Every registration ends in .catch(($, e, next) => next(e)) so a throwing handler passes the event on.",
+        "Every registration but turn.step ends in a .catch, so a throwing handler fails open alone: an observing hook's passes the event on (.catch(($, e, next) => next(e))); a ui.render site's passes the event on or draws in the hook's place - with REC on, the row hidden or its words made neutral, and for the band and the two panes their failure note (hooks/core/failsafe.ts); a command.run's answers with the command's name and the failure's kind (commandFailed). turn.step, a stream whose handler keeps its own code in try blocks, carries none: its one throw is a failed model request beneath next, which a .catch would send a second time (probe 2026-11-18, Claude Code 2.1.327).",
         "Mods limits per the repo's record (mods docs read 2026-10-28, Claude Code 2.1.312; the types in .claude-plugin/types/ win): a hook's own time 10 s (keep each under 50 ms, heavy work on a timer), a .catch 1 s, all session.end hooks 1.5 s together, $.store 4 MiB, $.fs 4 MiB per file, redraws throttled to 10 a second (30 in the terminal).",
         "claude plugin validate reads the module statically: each mods API call is written in full, each event name in on(...) is a string literal, no second on inside register, relative imports name files with no extension, and there is no require or dynamic import().",
-        "The userConfig leave_out_skipped_hooks leaves out the six hooks a managed plugin can skip (classic.PostToolUseFailure, classic.PostToolUse, classic.PermissionRequest among them), the rules hook and the settings-change hook (classic.ConfigChange); check that switch's wiring parity too.",
+        "The userConfig leave_out_skipped_hooks leaves out twelve registrations, the two `if (!isLeftOut)` blocks of hooks/register.ts: the ten hooks a managed plugin skips (classic.SessionStart, classic.UserPromptSubmit, classic.PostToolUse, classic.PostToolUseFailure, classic.PermissionRequest, classic.PermissionDenied, skill.prompt, classic.PreModelSwitch and classic.PostModelSwitch, seen skipped in sessions, and session.compact, which the mods admin docs list), the rules hook (classic.InstructionsLoaded) and the settings-change hook (classic.ConfigChange); check that switch's wiring parity too, against README.md, .claude-plugin/plugin.json's userConfig, docs/session-inspector-brief.md and tests/lifecycle/passed-by.test.ts.",
         "The repo ships no rules, skills or agents: hooks are read against AGENTS.md (the why), docs/session-inspector-brief.md and the user's rulings.",
         "A change that hooks or draws something is proven once in a claude --plugin-dir . session in a scratch project under an isolated CLAUDE_CONFIG_DIR and HOME, once without Alfred Code and once with it, reporting what each draws.",
         "The hooks share events with Alfred Code's command hooks when both are installed; read the collision map against that stack's hook wiring where a session has both."
@@ -67,10 +69,10 @@
       ],
       "notes": [
         "The plugin is a mod: the repo root is the plugin root and its only component is a hooks module - `hooks/hooks.json` `modules` names `./register.ts`, which holds every `on(...)`, each calling one feature folder under `hooks/`; no skills, agents, rules, commands or MCP servers ship, so the conflict and token maps read the hook injections and draws only.",
-        "PROFILES are `without-alfred-code` and `with-alfred-code`: every check runs in a project without Alfred Code and in one with it, where the mod also reads the per-session status file under `.claude/session-inspector/` and the plan folder its `plan` field names.",
-        "No fixture or session-surface tool exists: install by hand with `claude --plugin-dir .` in a scratch project under an isolated `CLAUDE_CONFIG_DIR` and `HOME` in the session scratchpad, never the real account (it once left records in `~/.claude/plugins/installed_plugins.json` and ended logged out); ask before any run against the real account.",
-        "A mod observes and draws: it never approves, denies or rewrites a tool call unless `docs/session-inspector-brief.md` names the case, makes no `$.http.fetch` or `$.model` call, uses `$.process` only where the brief allows it with a timeout, and logs no prompt, tool input, secret or account email - S4 checks these instead of guard coverage.",
-        "The mod states no project facts by design and injects nothing into context: S5 fixes only what it promises a session - the band, the `/inspect` pane and their rows - and that it adds no context.",
+        "PROFILES are `without-alfred-code` and `with-alfred-code`: every check runs in a project without Alfred Code and in one with it, where the mod also reads the stack's per-session status file - `<project root>/.alfred/state/sessions/status/<session id>.json` first, then the `.claude/session-inspector/status/<session id>.json` paths alfred-code wrote through 3.12.1 (`statusPaths` in `hooks/handoff/handoff.ts`) - and the plan folder its `plan` field names.",
+        "No fixture or session-surface tool exists: install by hand with `claude --plugin-dir .` in a scratch project under an isolated `CLAUDE_CONFIG_DIR` and `HOME` in the session scratchpad, never the real account (it once left records in `~/.claude/plugins/installed_plugins.json` and ended logged out); ask before any run against the real account. The `with-alfred-code` fixture is set up as `.claude/rules/plugin-handling.md` 'Proof' says, its `enabledPlugins` key included; without it the stack writes no status file and the map reads the 'no status file' path.",
+        "A mod observes and draws: it never approves, denies or rewrites a tool call unless `docs/session-inspector-brief.md` names the case, makes no `$.http.fetch` or `$.model` call, uses `$.process` only where the brief's 'Security' list (under 'Constraints and limits') allows it, with a timeout, and logs no prompt, tool input, secret or account email - S4 checks these instead of guard coverage.",
+        "The mod states no project facts by design, and the one text it adds to the model's context is Recording mode's note, which rides the person's next prompt after a change of REC level and again after a compaction (`trackPrompt` in `hooks/session/effects.ts`, the note's text in `hooks/rec/rec.ts`): S5 fixes only what it promises a session - the band, the `/inspect` pane and their rows - and that it adds nothing else.",
         "Mod hook limits for S3: a hook's own time 10 s (each kept under 50 ms, heavy work on a timer), a `.catch` 1 s, all `session.end` hooks 1.5 s together, `$.store` 4 MiB of JSON, `$.fs` 4 MiB per file, redraws throttled to 10 a second (30 in the terminal).",
         "`claude plugin validate` reads the source without running it: each mods API call is written in full, each `on(...)` event name is a string literal, imports are relative with no extension, and an atom handed to another file is refused - the packaging grade reads these.",
         "No `evals/` suite exists; `npm test` (`claude plugin test .`) is the tested surface - the packaging grade states whether `claude plugin eval` applies to a hooks-only mod or names `npm test` as the substitute, with the reason.",
@@ -81,6 +83,32 @@
         "The repo-root `.mcp.json` is a git-ignored, machine-local dev file the kit sync writes; it never ships in an install but a `claude --plugin-dir .` fixture would read it as a plugin MCP server, so the map attributes it to the dev checkout, not the plugin.",
         "`.claude-plugin/types/` is regenerated per build and git-ignored, and `probe/` is a machine-local Phase 0 probe mod; neither ships.",
         "A release also needs a Desktop Code tab check, or it is reported NOT RUN.",
+        "The repo is public: no private project names or absolute local paths in a tracked file."
+      ]
+    },
+    "code": {
+      "roots": [
+        "hooks",
+        "tests",
+        "scripts",
+        "types"
+      ],
+      "scope_with": [
+        "tsconfig.json",
+        "tsconfig.scripts.json"
+      ],
+      "checks": [
+        "npm run typecheck",
+        "npm test",
+        "npm run validate"
+      ],
+      "notes": [
+        "A mods module: ES modules in TypeScript, built and loaded by Claude Code. claude plugin validate reads the source statically, so the event name in each on(...) and every mods API call stay written in full.",
+        "tsconfig.json extends .claude-plugin/types/tsconfig.json, which Claude Code generates and git ignores: its include is hooks, types and tests under moduleResolution bundler, and a relative import names its file with no extension.",
+        "scripts/validate.ts is the one script outside the mods module - what npm run validate runs, on the repo's own Node (22.18 or newer, type stripping). It is checked by tsconfig.scripts.json (nodenext, Node's types) beside the mods config; typescript and @types/node are exact-pinned dev dependencies with no lockfile, and nothing the mod ships imports them.",
+        "npm test is claude plugin test . - the mods test kit, not Node's runner.",
+        "hooks is also the hooks audit's root: that audit owns each registration's event, chain, .catch and time limit, this one the rest.",
+        "types/index.d.ts holds declarations only.",
         "The repo is public: no private project names or absolute local paths in a tracked file."
       ]
     }

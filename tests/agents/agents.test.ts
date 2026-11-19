@@ -1,12 +1,12 @@
 import { expect, test } from 'claude-code/testing'
 
-import { actionOf, agentTree, isLive, keepRows, newRow, promptLines, refreshAgents, statusAt, toolSummary, upsertSpawn } from '../../hooks/agents/agents'
+import { actionOf, agentTree, contextTokensOf, isLive, keepRows, newRow, promptLines, refreshAgents, statusAt, toolSummary, upsertSpawn } from '../../hooks/agents/agents'
 import { modelParts, modelText } from '../../hooks/core/format'
-import { SPAWN, engine, spawns, stubAll, watchState } from '../kit'
+import { SPAWN, agentInfo, engine, spawns, stubAll, watchState } from '../kit'
 import type { AgentRow } from '../../hooks/agents/types'
 import type { ToolStat } from '../../hooks/tools/types'
 
-const s = (calls: number, ok: number, failed: number, stopped: number): ToolStat => ({ calls, ok, failed, stopped })
+const stat = (calls: number, ok: number, failed: number, stopped: number): ToolStat => ({ calls, ok, failed, stopped })
 
 // A row as a spawn makes it, at `t`, under `parentId`
 const row = (id: string, parentId: string | null, t: number, status: AgentRow['status'] = 'running'): AgentRow => ({
@@ -60,10 +60,10 @@ test('a parent cycle sits under the root', () => {
 })
 
 test('tools read with their failures, skills apart', () => {
-  expect(toolSummary({ Read: s(6, 6, 0, 0), Grep: s(3, 3, 0, 0), Bash: s(1, 0, 1, 0), 'Skill: watch': s(1, 1, 0, 0) }))
+  expect(toolSummary({ Read: stat(6, 6, 0, 0), Grep: stat(3, 3, 0, 0), Bash: stat(1, 0, 1, 0), 'Skill: watch': stat(1, 1, 0, 0) }))
     .toEqual({ tools: ['Read ×6 ✓', 'Grep ×3 ✓', 'Bash ×1 ✗'], skills: ['watch ×1'] })
-  expect(toolSummary({ Bash: s(4, 2, 1, 1) }).tools).toEqual(['Bash ×4 ✗1 ⊘1'])
-  expect(toolSummary({ Edit: s(2, 0, 0, 2) }).tools).toEqual(['Edit ×2 ⊘'])
+  expect(toolSummary({ Bash: stat(4, 2, 1, 1) }).tools).toEqual(['Bash ×4 ✗1 ⊘1'])
+  expect(toolSummary({ Edit: stat(2, 0, 0, 2) }).tools).toEqual(['Edit ×2 ⊘'])
 })
 
 test('fifty rows are kept, the oldest ended dropped first, never a live one', () => {
@@ -78,7 +78,7 @@ test('fifty rows are kept, the oldest ended dropped first, never a live one', ()
 
 test('the list moves live rows only', () => {
   const info = (id: string, status: AgentRow['status'], parentId?: string) =>
-    ({ id, description: id, type: 'Explore', status, ...(parentId === undefined ? {} : { parentId }) })
+    agentInfo({ id, description: id, type: 'Explore', status, ...(parentId === undefined ? {} : { parentId }) })
   const rows = [
     row('w', null, 1), row('f', null, 2), row('c', null, 3, 'completed'),
     { ...row('gone', null, 4), isListed: true }, row('never', null, 5),
@@ -95,6 +95,11 @@ test('the list moves live rows only', () => {
 test('an action is the tool and its target', () => {
   expect(actionOf('Grep', 'AuthService')).toBe('Grep AuthService')
   expect(actionOf('TodoWrite', '')).toBe('TodoWrite')
+})
+
+test("an agent's context is its step's uncached input, cache reads, cache writes and output", () => {
+  expect(contextTokensOf({ input_tokens: 1000, cache_read_input_tokens: 20_000, cache_creation_input_tokens: 10_000, output_tokens: 200 })).toBe(31_200)
+  expect(contextTokensOf({ input_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: 0 })).toBe(0)
 })
 
 test('a spawn adds a running row with its type, model, lines and parent, and keeps no prompt', async ($, on) => {

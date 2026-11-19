@@ -2,10 +2,10 @@
 // appears only when a threshold is crossed, something failed or a turn runs.
 import { isLive } from '../agents/agents'
 import { widthOf } from '../core/format'
-import { paceForecast } from '../core/forecast'
 import type { BandInput } from './types'
 import type { RecLevel } from '../rec/types'
 import type { Line, Seg } from '../core/types'
+import { ROW_JOIN } from './constants'
 import { fiveHourPace, gauges, narrowGauges, percentText } from './gauges'
 import { cellsOf } from './wrap'
 import { toolRows } from './detail'
@@ -70,7 +70,7 @@ function bandRows(input: BandInput, keep: Keep): Line[] {
   const isNarrow = input.columns < 100
   const marks: Line[] = [input.rec !== undefined && input.rec.level !== 'off' ? [REC_MARK] : [], input.banner ?? []].filter(segs => segs.length > 0)
   if (marks.length === 0) return bandBody(input, isNarrow, keep)
-  const sep: Seg = { text: ' │ ', tone: 'dim' }
+  const sep: Seg = { text: ROW_JOIN, tone: 'dim' }
   const alone: Line = marks.flatMap((mark, i) => (i === 0 ? mark : [sep, ...mark]))
   const lead: Line = [...alone, sep]
   // Only line 1 shares its row with the marks: the lines under it are fitted to the band's whole width
@@ -85,7 +85,7 @@ function bandBody(band: BandInput, isNarrow: boolean, keep: Keep): Line[] {
   // Before the first reading the calm band waits; the full band draws once the model or a stored window is known
   const isFullKnown = band.mode === 'full' && (band.session.model !== null || usage.rateWindows.length > 0)
   if (band.turns.length === 0 && usage.contextPercent === null && !isFullKnown) return []
-  const invalid: Line = band.isPlanInvalid ? [{ text: ' │ ', tone: 'dim' }, { text: 'plan file invalid', tone: 'warn' }] : []
+  const invalid: Line = band.isPlanInvalid ? [{ text: ROW_JOIN, tone: 'dim' }, { text: 'plan file invalid', tone: 'warn' }] : []
   const gaugeLine = isNarrow ? narrowGauges(usage, band.runway) : withToday(band, gauges(band), invalid)
   const line2 = [...gaugeLine, ...invalid]
   // The info line, then the project, plan and usage rows, then the detail rows while `bandRows` opens them; the full

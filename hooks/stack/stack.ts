@@ -1,9 +1,11 @@
 // Alfred Code's status file past Phase 4's fields (Phase 5 spec 'The reader'): each field checked alone, a bad one
 // read as unknown and named in `ignored`, the rest of the file still used.
 import { clockText, fitLine, tokensText } from '../core/format'
+import { isRecord } from '../core/guards'
 import { parseStatus } from '../handoff/handoff'
 import type { Line, Seg } from '../core/types'
 import type { Usage } from '../session/types'
+import { MAX_TOKENS, MIN_WINDOW } from './constants'
 import type { FullContext, Runway, Stack, StackAutoCompact, StackRead, StackScorer } from './types'
 
 export const NO_FILE = 'no status file for this session'
@@ -16,7 +18,6 @@ const CONTROL = /[\u0000-\u001f\u007f-\u009f]/
 // The prompt's: every control character but a line feed and a tab
 const PROMPT_CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/
 
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 const isWhole = (value: unknown, min: number, max: number): value is number => typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max
 
 // A field's rule: the value it reads as, or `bad`; a missing field never reaches a rule
@@ -24,7 +25,7 @@ type Rule<T> = (value: unknown) => T | 'bad'
 
 const fullContextRule: Rule<FullContext> = value => CONTEXTS.find(context => context === value) ?? 'bad'
 const modelRule: Rule<string | null> = value => value === null || (typeof value === 'string' && value.length >= 1 && value.length <= 100 && !CONTROL.test(value)) ? value : 'bad'
-const windowRule: Rule<number | null> = value => value === null || isWhole(value, 1000, 10_000_000) ? value : 'bad'
+const windowRule: Rule<number | null> = value => value === null || isWhole(value, MIN_WINDOW, MAX_TOKENS) ? value : 'bad'
 const autoRunRule: Rule<boolean> = value => typeof value === 'boolean' ? value : 'bad'
 const scorerRule: Rule<StackScorer | null> = value => {
   if (value === null) return null
@@ -33,7 +34,7 @@ const scorerRule: Rule<StackScorer | null> = value => {
 }
 const autoCompactRule: Rule<StackAutoCompact | null> = value => {
   if (value === null) return null
-  if (!isRecord(value) || typeof value.on !== 'boolean' || !(value.at === null || isWhole(value.at, 1, 10_000_000))) return 'bad'
+  if (!isRecord(value) || typeof value.on !== 'boolean' || !(value.at === null || isWhole(value.at, 1, MAX_TOKENS))) return 'bad'
   return { on: value.on, at: value.at }
 }
 // The plan folder (alfred-code's plan folder contract): relative to the project root, forward slashes, each segment a
@@ -62,8 +63,8 @@ export function parseStack(text: string, session: string): StackRead {
   const fullContext = field('fullContext', fullContextRule)
   const model = field('model', modelRule)
   const window = field('window', windowRule)
-  // Under the file's own valid window, else under 10,000,000; a file's own null means no offer at this window
-  const resumeAt = field<number | null>('resumeAt', value => value === null || isWhole(value, 1000, (window ?? 10_000_000) - 1) ? value : 'bad')
+  // Under the file's own valid window, else under MAX_TOKENS; a file's own null means no offer at this window
+  const resumeAt = field<number | null>('resumeAt', value => value === null || isWhole(value, MIN_WINDOW, (window ?? MAX_TOKENS) - 1) ? value : 'bad')
   const noOffer = value.resumeAt === null
   const autoRun = field('autoRun', autoRunRule)
   const scorer = field('scorer', scorerRule)
@@ -150,7 +151,7 @@ export function stackLines(stack: Stack, opts: { prompt: string | null; runway: 
     if (!modelsAgree(stack.model, opts.sessionModel)) row.push({ text: ` · this session runs ${opts.sessionModel ?? ''}: runway not used`, tone: 'warn' })
     out.push(row)
   }
-  if (opts.prompt !== null && (stack.fullContext === 'fresh-session' || stack.fullContext === 'compact')) {
+  if (fillReady(stack, opts.prompt)) {
     out.push([{ text: `resume: ${fitLine(opts.prompt, Math.max(1, opts.columns - BESIDE))}  ` }, FILL])
   }
   const written = stack.updatedAt === null ? '' : ` · written ${clockText(stack.updatedAt)}`

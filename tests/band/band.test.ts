@@ -4,7 +4,7 @@ import type { On, RenderElement, RenderSurface, SessionRateLimit, SessionUsage }
 
 import { drawLines } from '../../hooks/core/draw'
 import { clockText, whenText } from '../../hooks/core/format'
-import { mask } from '../../hooks/rec/mask'
+import { setRec } from '../../hooks/rec/mask'
 import { SPAWN, START, engine, held, rows, spawns, stubAll } from '../kit'
 
 const SURFACES = ['terminal', 'desktop'] as const
@@ -364,13 +364,17 @@ test('the chart\'s SVG keeps its hex', async ($, on) => {
   expect(String((await ui.find({ type: 'Svg' }))?.props.source)).toContain('stroke="#60a5fa"')
 })
 
-test('every drawn string passes through mask', async ($, on) => {
-  // drawLines draws a site the mod leaves to the engine, with a hook's `$`
-  on('ui.render', (h$, e) => drawLines(h$.ui.resolve(e), e, [[{ text: 'abc' }]], { noColor: false, press: {}, columns: 80 }))
-  const ui = await $.ui.mount({
-    plugin: 'alfred-mods', surface: 'terminal', component: 'Pane', requestId: 'mask-check',
-    props: { title: 'mask', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 10 }, view: {} },
-  })
-
-  expect((await ui.find({ type: 'Text' }))?.text).toBe(mask('abc'))
+test('every drawn string passes through mask: a private word draws hidden', async ($, on) => {
+  // drawLines draws a site the mod leaves to the engine, with a hook's `$`; REC is set on this file's own mask()
+  on('ui.render', (h$, e) => drawLines(h$.ui.resolve(e), e, [[{ text: 'Zephyrine' }]], { noColor: false, press: {}, columns: 80 }))
+  setRec('on', ['Zephyrine'], null)
+  try {
+    const ui = await $.ui.mount({
+      plugin: 'alfred-mods', surface: 'terminal', component: 'Pane', requestId: 'mask-check',
+      props: { title: 'mask', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 10 }, view: {} },
+    })
+    expect((await ui.find({ type: 'Text' }))?.text).toBe('‹private›')
+  } finally {
+    setRec('off', [], null)
+  }
 })

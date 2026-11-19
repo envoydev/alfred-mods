@@ -1,30 +1,17 @@
 // Alfred Code's plan folder (alfred-code's plan folder contract, schema 1, the user's ruling of 2026-11-13):
-import type { Plan, PlanStep, ScoreRound, Scores, Severity, StepStatus } from './types'
 // `status.json` read as a plan and `scoring.json` as that plan's scores, so the band, the Plan tab and the step times
 // treat them as any other plan. A file breaking the contract reads as null, which keeps its last good read.
+import { isRecord } from '../core/guards'
+import { json, time } from './plan'
+import type { Plan, PlanStep, ScoreRound, Scores, Severity, StepStatus } from './types'
 
-type Obj = Record<string, unknown>
-const isObj = (value: unknown): value is Obj => typeof value === 'object' && value !== null && !Array.isArray(value)
 const isWhole = (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value) && value >= 0
-const time = (value: unknown): number | null => {
-  const parsed = typeof value === 'string' ? Date.parse(value) : NaN
-  return Number.isFinite(parsed) ? parsed : null
-}
-
-function json(text: string): Obj | null {
-  try {
-    const value: unknown = JSON.parse(text.replace(/^﻿/, ''))
-    return isObj(value) ? value : null
-  } catch {
-    return null
-  }
-}
 
 // The contract's five words; `todo` is the mod's pending
 const STATUSES: Record<string, StepStatus> = { todo: 'pending', in_progress: 'in_progress', blocked: 'blocked', done: 'done', failed: 'failed' }
 
 function taskOf(value: unknown): PlanStep | null {
-  if (!isObj(value) || typeof value.id !== 'string' || value.id === '' || typeof value.title !== 'string') return null
+  if (!isRecord(value) || typeof value.id !== 'string' || value.id === '' || typeof value.title !== 'string') return null
   const status = typeof value.status === 'string' && Object.hasOwn(STATUSES, value.status) ? STATUSES[value.status] : undefined
   if (status === undefined) return null
   if (!(value.estimateMin === null || value.estimateMin === undefined || isWhole(value.estimateMin))) return null
@@ -45,9 +32,9 @@ export function parseAlfredStatus(text: string): Plan | null {
 const SEVERITIES: readonly Severity[] = ['BLOCKER', 'MATERIAL', 'MINOR']
 
 function roundOf(value: unknown): ScoreRound | null {
-  if (!isObj(value) || !isWhole(value.round) || typeof value.total !== 'number' || !Number.isFinite(value.total)) return null
+  if (!isRecord(value) || !isWhole(value.round) || typeof value.total !== 'number' || !Number.isFinite(value.total)) return null
   const counts: Partial<Record<Severity, number>> = {}
-  if (isObj(value.severities)) for (const severity of SEVERITIES) if (isWhole(value.severities[severity])) counts[severity] = value.severities[severity]
+  if (isRecord(value.severities)) for (const severity of SEVERITIES) if (isWhole(value.severities[severity])) counts[severity] = value.severities[severity]
   return { round: value.round, at: time(value.at), total: value.total, criteria: {}, findings: [], counts }
 }
 

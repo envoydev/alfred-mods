@@ -15,7 +15,6 @@ concurrency:
 env:
   # The build each release was checked against; a release moves it
   CLAUDE_CODE_VERSION: 2.1.322
-  TYPESCRIPT_VERSION: 6.0.3
   # Keep the pinned CLI from updating itself or sending telemetry
   DISABLE_AUTOUPDATER: 1
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: 1
@@ -104,5 +103,8 @@ jobs:
           fi
           ls -R "$types"
 
-      - name: tsc -p .
-        run: npx -y -p "typescript@${{ env.TYPESCRIPT_VERSION }}" tsc -p .
+      - name: npm install
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: npm run typecheck
+        run: npm run typecheck

@@ -13,8 +13,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // Node starts no .cmd or .bat file without a shell since 18.20.2 and 20.12.2 (CVE-2024-27980), and npm's global
 // `claude` on Windows may be a .cmd shim: there it runs through the shell, each argument double-quoted, which starts a
 // shim and an .exe alike. Elsewhere it starts directly, as before.
-const quote = (arg) => `"${arg.replace(/"/g, '\\"')}"`;
-function claude(args)
+const quote = (arg: string) => `"${arg.replace(/"/g, '\\"')}"`;
+function claude(args: string[])
 {
     if (process.platform !== 'win32') return spawnSync('claude', args, { encoding: 'utf8' });
     return spawnSync(['claude', ...args.map(quote)].join(' '), { encoding: 'utf8', shell: true });
@@ -39,7 +39,7 @@ try
         fs.copyFileSync(path.join(root, f), path.join(copy, f));
     }
     // the mod also runs the checks Anthropic's plugin directory makes (an icon, a README, no OS metadata files)
-    const runs = [
+    const runs: [string, string[]][] = [
         ['plugin root', [copy, '--strict']],
         ['mod', [path.join(copy, '.claude-plugin', 'plugin.json'), '--profile', 'directory', '--strict']],
     ];

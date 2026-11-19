@@ -62,7 +62,7 @@ export type Session = {
   pathRules?: string[]
 }
 export type Tab = 'now' | 'usage' | 'agents' | 'tools' | 'cache' | 'timeline' | 'plan'
-// `planSlug`: the plan `/inspect plan <name>` pinned, shown while its file parses
+// `pinnedPlan`: the plan `/inspect plan <name>` pinned, shown while its file parses
 export type View = { tab: Tab; expandedIds: string[]; pinnedPlan: string | null }
 export type PacePoint = { at: number; percent: number }
 export type Pace = Record<string, { resetsAt: string | null; points: PacePoint[]; toastedMarks: number[] }>
@@ -88,8 +88,10 @@ export type CacheTier = '5m' | '1h'
 export type Billing = 'plan' | 'credits' | 'other'
 export type CacheCounts = { read: number; write: number; input: number }
 // What the variables and settings choose; `from` names the variable or key that pinned the tier.
-// `isTerminal`: the session started in the terminal's REPL, the one place idle compaction runs for every account.
-export type CacheConfig = { pin: { tier: CacheTier; from: string } | null; isIdleCompactOff: boolean; idleMinTokens: number; isTerminal: boolean }
+// `isIdleSurface`: the session draws on a surface where Claude Code compacts an idle conversation itself - the terminal,
+// VS Code's chat panel or the desktop app's Code tab, when the session runs on the machine or over SSH (settings-reference, `idleCompaction`, read
+// 2026-11-19).
+export type CacheConfig = { pin: { tier: CacheTier; from: string } | null; isIdleCompactOff: boolean; idleMinTokens: number; isIdleSurface: boolean }
 export type Cache = {
   // The last model switch's report, and the billing it was made under
   tier: CacheTier | null; tierAt: number | null; tierBilling: Billing | null
@@ -108,9 +110,9 @@ export type PlanChange = {
 }
 // A step's working time, every session's summed; shared when a turn was split among several running steps
 export type StepTime = { ms: number; isShared: boolean }
-// A loop's working time since its turn began: the main loop's, or an agent's by its id. `named`: the main slice's
-// `<plan>:<step>` marks, one per agent naming a step that was live during the turn; `waits`: its all-wait calls still
-// open, by call id, with their start
+// A loop's working time since its turn began: the main loop's, or an agent's by its id. `namedSteps`: the main
+// slice's `<plan>:<step>` marks, one per agent naming a step that was live during the turn; `openWaits`: its all-wait
+// calls still open, by call id, with their start
 export type Slice = { openedAt: number; waitMs: number; namedSteps: string[]; openWaits?: Record<string, number> }
 // The open slices, and this session's step and overhead totals by their $.store key
 export type Credit = { slices: Record<string, Slice>; sessionTimes: Record<string, StepTime> }
@@ -148,7 +150,7 @@ export type Plans = {
   alfredFolder: { name: string; folder: string } | null
 }
 // A main-loop task list item, from TaskCreate, TaskUpdate or TodoWrite: its subject is a tool input, kept in $.state
-// only; `ms`, the working time credited to it while in progress
+// only; `workedMs`, the working time credited to it while in progress
 export type TaskItem = { id: string; subject: string; status: 'pending' | 'in_progress' | 'completed'; workedMs: number }
 // REC's level: off, on (keys, emails, phones, private words) or strict (also the account, home paths and $ amounts)
 export type RecLevel = 'off' | 'on' | 'strict'
@@ -161,8 +163,9 @@ export type BandMode = 'full' | 'calm' | 'off'
 // `isToolsOpen`: the full band's detail rows are open ("bandRows"); `isUnder`: the band draws under the input on the
 // terminal ("bandPlace": "under", spec 2026-11-11 band-under U1), set only while under
 export type BandSetting = { mode: BandMode; isToolsOpen?: boolean; isUnder?: boolean }
-// F8: the stored mode and threshold; `point`, the tokens where Claude Code compacts by itself; `handled`, the highest
-// step handled; `lastSave`, the last save's time and result; `alfred`, the stack's status file as last read
+// F8: the stored mode and threshold; `compactPoint`, the tokens where Claude Code compacts by itself; `handledStep`,
+// the highest step handled; `lastSave`, the last save's time and result; `stackStatus`, the stack's status file as last
+// read
 export type HandoffMode = 'ask' | 'auto' | 'off'
 export type SaveResult = { at: number; isOk: boolean; reason: string | null }
 export type Handoff = {
@@ -171,7 +174,8 @@ export type Handoff = {
 }
 
 // The stack's status file past Phase 4's fields (Phase 5): `state` none (no file), used, or ignored with `reason`;
-// `null` is unknown, but a file's own `resumeAt: null` sets `noOffer`; `ignored`, the fields that failed their rule.
+// `null` is unknown, but a file's own `resumeAt: null` sets `hasNoOffer`; `ignoredFields`, the fields that failed
+// their rule.
 // The resume prompt's text is never here: module memory only, `hasPrompt` says whether it is known.
 export type FullContext = 'fresh-session' | 'compact' | 'off'
 export type StackScorer = { on: boolean; level: number; rounds: number }
@@ -187,8 +191,9 @@ export type Stack = {
   updatedAt: number | null; readAt: number | null; ignoredFields: string[]
 }
 
-// What fills the context (spec C1), from the last breakdown read: `at` null before one. Categories of kind `used` only;
-// plugins by name, from their agents and skills; memory files named inside the project, else by type and base name.
+// What fills the context (spec C1), from the last breakdown read: `breakdownAt` null before one. Categories of kind
+// `used` only; plugins by name, from their agents and skills; memory files named inside the project, else by type and
+// base name.
 export type PartsPlugin = { name: string; agents: number; agentTokens: number; skills: number; skillTokens: number }
 export type Parts = {
   breakdownAt: number | null; categories: { name: string; tokens: number }[]; plugins: PartsPlugin[]

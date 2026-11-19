@@ -80,11 +80,11 @@ export async function applyBandSetting($: EngineInterface): Promise<BandMode> {
 }
 
 // Under the input on the terminal, once its footer has drawn, the site above is Claude Code's (spec band-under U2)
-export const isPassingAbove = (surface: string): boolean => bandMemory.isUnder && surface === 'terminal' && bandMemory.hasFooter
+const isPassingAbove = (surface: string): boolean => bandMemory.isUnder && surface === 'terminal' && bandMemory.hasFooter
 
 // The band's lines from the session's state, for the site above or the footer (spec band-under U2): the same reads, the
 // place's own width, rows and turn
-export async function readBandInput(
+async function readBandInput(
   $: EngineInterface, at: { columns: number; maxRows: number | undefined; isWorking: boolean; under?: BandInput['under']; isLeftOut: boolean },
 ): Promise<BandInput> {
   // Read so the running times redraw each second while a turn runs
@@ -112,7 +112,7 @@ export async function readBandInput(
 }
 
 // What the band's buttons do, above or under
-export function bandButtons($: EngineInterface, pending: Pending): Record<string, () => unknown> {
+function bandButtons($: EngineInterface, pending: Pending): Record<string, () => unknown> {
   return { inspect: () => openInspectFromBand($), compact: () => compactNow($, pending), handoff: () => saveNow($) }
 }
 

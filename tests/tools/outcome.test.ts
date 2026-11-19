@@ -99,8 +99,8 @@ test("a permission hook's deny is blocked with its message", () => {
 })
 
 test('a long multi-line reason is one line of 80', () => {
-  const r = classifyCall({ ...base, failedInTool: true, result: { isError: true, deny: null, text: `${'e'.repeat(300)}\nstack` } })
-  expect(r.reason.length).toBe(80)
+  const classified = classifyCall({ ...base, failedInTool: true, result: { isError: true, deny: null, text: `${'e'.repeat(300)}\nstack` } })
+  expect(classified.reason.length).toBe(80)
 })
 
 test('keys and targets', () => {

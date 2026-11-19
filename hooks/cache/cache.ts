@@ -1,23 +1,24 @@
 // The prompt cache (F4): its tier by Claude Code's own rule, its warmth, reuse and rewrite cost, the line the band and
 // the Cache tab draw, the warning's window and whether Claude Code compacts an idle conversation itself.
 // The rule: https://code.claude.com/docs/en/prompt-caching.md; idle compaction: settings-reference, `idleCompaction`.
-import type { ModelUsage } from 'claude-code'
+import type { ModelUsage, RenderSurface } from 'claude-code'
 
 import { barText, toneOf, tokensText, usdText } from '../core/format'
 import type { Billing, Cache, CacheConfig, CacheTier, CacheView, TierOf } from './types'
 import type { Line, Tone } from '../core/types'
+import { IDLE_COMPACT_SURFACES } from './constants'
 import type { RateWindow } from '../session/types'
 
-export const TTL_MS: Record<CacheTier, number> = { '5m': 300_000, '1h': 3_600_000 }
+const TTL_MS: Record<CacheTier, number> = { '5m': 300_000, '1h': 3_600_000 }
 // The warning's window: a 1h cache's last 5 minutes, a 5m cache's last minute
-export const CLOSE_MS: Record<CacheTier, number> = { '5m': 60_000, '1h': 300_000 }
+const CLOSE_MS: Record<CacheTier, number> = { '5m': 60_000, '1h': 300_000 }
 // Claude Code compacts an idle 1h conversation after about 54 minutes
 export const IDLE_COMPACT_MS = 3_240_000
 // Where it should, the warning waits for a 1h cache's last 3 minutes: its compaction makes the cache cold first
-export const SELF_CLOSE_MS = 180_000
+const SELF_CLOSE_MS = 180_000
 // No warning under 100k cached on either tier: the rewrite is cheap, and a compaction would lose more than it saves
 // (the user's ruling, 2026-10-28; Claude Code's own idle compaction has the same floor)
-export const WARN_MIN_TOKENS = 100_000
+const WARN_MIN_TOKENS = 100_000
 
 // Within the plan's usage while a 5h or 7d window reads under 100; on usage credits once one reads 100 or more
 export function billingOf(windows: RateWindow[]): Billing {
@@ -109,17 +110,22 @@ export function cacheView(cache: Cache, billing: Billing, now: number, contextTo
   }
 }
 
-// Claude Code should compact the conversation itself at about 54 minutes idle: the terminal's REPL, the 1h tier, idle
-// compaction not turned off, and a context at its threshold. A feature flag it fetches gates it too, which the mod
-// cannot see, so this delays the warning and never withholds it.
+// Whether the session draws where Claude Code compacts an idle conversation itself; a plain -p run draws nowhere
+export function isIdleSurfaceOf(surfaces: readonly RenderSurface[]): boolean {
+  return surfaces.some(surface => IDLE_COMPACT_SURFACES.has(surface))
+}
+
+// Claude Code compacts an idle conversation itself where settings-reference's `idleCompaction` says it does: on a
+// surface `isIdleSurface` records, with the 1h tier, idle compaction not turned off and a context at its threshold. A
+// feature flag it fetches gates it too, which the mod cannot see, so this delays the warning and never withholds it.
 export function selfCompacts(cache: Cache, billing: Billing, contextTokens: number | null): boolean {
-  return cache.config.isTerminal && tierOf(cache, billing).tier === '1h' && !cache.config.isIdleCompactOff && contextTokens !== null
+  return cache.config.isIdleSurface && tierOf(cache, billing).tier === '1h' && !cache.config.isIdleCompactOff && contextTokens !== null
     && contextTokens >= cache.config.idleMinTokens
 }
 
 // How long before cold the warning comes: a 1h cache's last 5 minutes, or 3 where Claude Code should compact it first;
 // a 5m cache's last minute
-export function closeMs(cache: Cache, billing: Billing, contextTokens: number | null): number {
+function closeMs(cache: Cache, billing: Billing, contextTokens: number | null): number {
   const tier = tierOf(cache, billing).tier
   return tier === '1h' && selfCompacts(cache, billing, contextTokens) ? SELF_CLOSE_MS : CLOSE_MS[tier]
 }

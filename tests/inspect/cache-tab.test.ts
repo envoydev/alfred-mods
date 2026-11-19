@@ -85,14 +85,14 @@ for (const surface of SURFACES) {
     expect(lines).toContain(`Tier      1h, from the model switch at ${clockText(0)} · rewrite priced on Opus 5.5`)
   })
 
-  for (const [name, r, tier] of [
+  for (const [name, usage, tier] of [
     ['within plan usage', PLAN, '≈1h'], ['off a subscription', reading(30, null), '≈5m'], ['on usage credits', reading(30, 100), '≈5m'],
   ] as const) {
     test(`before a model switch the Cache tab shows Claude Code's default ${name} as an estimate (${surface})`, async ($, on) => {
-      stubAll(on, { usage: r })
+      stubAll(on, { usage })
       engine(on)
       stepEngine(on, () => MAIN)
-      await measure($, r)
+      await measure($, usage)
       await mainStep($)
       await inspect($, 'cache')
 

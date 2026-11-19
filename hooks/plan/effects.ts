@@ -30,7 +30,7 @@ export function resetPlans($: EngineInterface) {
 
 const INITIAL_CREDIT: Credit = { slices: {}, sessionTimes: {} }
 const creditAtom = atom({ plugin: 'alfred-mods', key: 'credit' } as const, INITIAL_CREDIT, { shape: 'credit-2' })
-export function readCredit($: EngineInterface) {
+function readCredit($: EngineInterface) {
   return read($, creditAtom)
 }
 function updateCredit($: EngineInterface, change: (value: Credit) => Credit) {
@@ -62,7 +62,7 @@ export async function readStoredTimes($: EngineInterface): Promise<Record<string
 }
 
 // Each plan's time: every other session's from the store, this session's from its own totals
-export async function planTimesOf($: EngineInterface, files: Watched<Plan>[]): Promise<Pick<Plans, 'stepTimes' | 'overheadMs'>> {
+async function planTimesOf($: EngineInterface, files: Watched<Plan>[]): Promise<Pick<Plans, 'stepTimes' | 'overheadMs'>> {
   const entries = { ...(await readStoredTimes($)), ...(await readCredit($)).sessionTimes }
   const times: Plans['stepTimes'] = {}
   const overhead: Plans['overheadMs'] = {}
@@ -116,7 +116,7 @@ export async function closeLoopSlices($: EngineInterface, pending: Pending, loop
 }
 
 // Where each named open loop's span goes (Decision 9)
-export async function closeTargetsOf($: EngineInterface, credit: Credit, loops: string[], plans: Plans, shown: Watched<Plan> | 'tasks' | null): Promise<SliceClose[]> {
+async function closeTargetsOf($: EngineInterface, credit: Credit, loops: string[], plans: Plans, shown: Watched<Plan> | 'tasks' | null): Promise<SliceClose[]> {
   const rows = await readAgents($)
   const session = await $.session.id()
   return loops.map(loop => {
@@ -128,7 +128,7 @@ export async function closeTargetsOf($: EngineInterface, credit: Credit, loops: 
 }
 
 // The open slices' time so far, by step id (or task id) and as overhead, for the shown plan or task list to draw
-export async function liveStepTimes($: EngineInterface, plans: Plans, shown: Watched<Plan> | 'tasks' | null, now: number): Promise<{ steps: Record<string, number>; overhead: number }> {
+async function liveStepTimes($: EngineInterface, plans: Plans, shown: Watched<Plan> | 'tasks' | null, now: number): Promise<{ steps: Record<string, number>; overhead: number }> {
   const credit = await readCredit($)
   const loops = Object.keys(credit.slices)
   if (loops.length === 0 || shown === null) return { steps: {}, overhead: 0 }
@@ -166,7 +166,7 @@ export async function readPlanDrawing($: EngineInterface, now: number): Promise<
   const own = ownOf(nameOf(credited))
   const newest = own ?? scored[0]
   return {
-    shown: tab.v, band: band.isRunning ? band.v : null, invalid: shown !== null && shown !== 'tasks' && shown.isInvalid,
+    shown: tab.view, band: band.isRunning ? band.view : null, invalid: shown !== null && shown !== 'tasks' && shown.isInvalid,
     scores: full === undefined ? null : scoresView(full.value), score: newest === undefined ? null : scoresView(newest.value),
     isPlanScore: own !== undefined,
     others: plans.planFiles.filter(planFile => planFile.name !== name).map(file => (file.value === null ? `${file.name} (invalid)` : file.name)).sort(),
@@ -178,17 +178,17 @@ export async function readPlanDrawing($: EngineInterface, now: number): Promise<
 // One plan's view with its live time, and whether the band draws it
 export async function planViewOf(
   $: EngineInterface, plans: Plans, items: TaskItem[], choice: Watched<Plan> | 'tasks' | null, now: number,
-): Promise<{ v: PlanView | null; isRunning: boolean }> {
+): Promise<{ view: PlanView | null; isRunning: boolean }> {
   const live = await liveStepTimes($, plans, choice, now)
   if (choice === 'tasks') {
-    return { v: taskView(items, live.steps), isRunning: items.some(item => item.status !== 'completed') && items.some(task => task.status !== 'pending') }
+    return { view: taskView(items, live.steps), isRunning: items.some(item => item.status !== 'completed') && items.some(task => task.status !== 'pending') }
   }
-  if (choice === null || choice.value === null) return { v: null, isRunning: false }
+  if (choice === null || choice.value === null) return { view: null, isRunning: false }
   const doneAt = plans.finishedAt[choice.name]
   const view = planView(choice.value, plans.stepTimes[choice.name] ?? {}, (plans.overheadMs[choice.name] ?? 0) + live.overhead, live.steps, now)
   // Alfred Code's named plan draws while open, begun or awaiting approval
   const isNamed = plans.alfredFolder !== null && plans.alfredFolder !== undefined && plans.alfredFolder.name === choice.name && !view.isFinished
-  return { v: view, isRunning: isNamed || isPlanRunning(choice, plans.watchedSince) || (doneAt !== undefined && now - doneAt < FINISH_SHOWN_MS) }
+  return { view, isRunning: isNamed || isPlanRunning(choice, plans.watchedSince) || (doneAt !== undefined && now - doneAt < FINISH_SHOWN_MS) }
 }
 
 // A loop's slice opens at its turn's start; the main slice marks each live agent that names a step
@@ -228,7 +228,7 @@ export async function seedSessionTimes($: EngineInterface): Promise<void> {
 // The plan and scores folders read again. A step whose status changed closes and reopens the open slices first, so
 // the time before the change goes to the steps that were running then. A note the file's previous good parse this
 // session lacks, and a plan that finishes this session (its previous good parse unfinished), raise their toasts once.
-export async function reloadPlanFiles($: EngineInterface, pending: Pending): Promise<void> {
+async function reloadPlanFiles($: EngineInterface, pending: Pending): Promise<void> {
   const before = await readPlans($)
   const now = await $.clock.now()
   const ownPlans = await readJsonFolder($, PLANS_DIR, before.planFiles, parsePlan)
@@ -304,8 +304,26 @@ export function schedulePlanReload($: EngineInterface, pending: Pending): void {
 // parse keeps its last good parse, marked invalid; one over 4 MiB is invalid unread, as `$.fs.read` refuses it.
 const MAX_BYTES = 4 * 1024 * 1024
 
+// One listed file: its last read while unchanged since a good one, else read again; one that will not read or parse
+// keeps its last good parse, marked invalid
+async function readWatched<T>(
+  $: EngineInterface, path: string, name: string, entry: { mtimeMs: number; size: number }, had: Watched<T> | undefined, parse: (text: string) => T | null,
+): Promise<Watched<T>> {
+  const { mtimeMs, size } = entry
+  if (had !== undefined && !had.isInvalid && had.mtimeMs === mtimeMs && had.size === size) return had
+  let value: T | null = null
+  if (size <= MAX_BYTES) {
+    try {
+      value = parse(await $.fs.read(path))
+    } catch {
+      value = null
+    }
+  }
+  return value === null ? { name, mtimeMs, size, value: had?.value ?? null, isInvalid: true } : { name, mtimeMs, size, value, isInvalid: false }
+}
+
 // Never rejects: a missing folder is empty, a file that will not read is invalid
-export async function readJsonFolder<T>($: EngineInterface, dir: string, known: Watched<T>[], parse: (text: string) => T | null): Promise<Watched<T>[]> {
+async function readJsonFolder<T>($: EngineInterface, dir: string, known: Watched<T>[], parse: (text: string) => T | null): Promise<Watched<T>[]> {
   let entries
   try {
     entries = await $.fs.list(dir)
@@ -316,21 +334,7 @@ export async function readJsonFolder<T>($: EngineInterface, dir: string, known: 
   for (const entry of entries) {
     if (entry.kind !== 'file' || !entry.name.endsWith('.json')) continue
     const name = entry.name.slice(0, -'.json'.length)
-    const had = known.find(knownFile => knownFile.name === name)
-    const { mtimeMs, size } = entry
-    if (had !== undefined && !had.isInvalid && had.mtimeMs === mtimeMs && had.size === size) {
-      out.push(had)
-      continue
-    }
-    let value: T | null = null
-    if (size <= MAX_BYTES) {
-      try {
-        value = parse(await $.fs.read(`${dir}/${entry.name}`))
-      } catch {
-        value = null
-      }
-    }
-    out.push(value === null ? { name, mtimeMs, size, value: had?.value ?? null, isInvalid: true } : { name, mtimeMs, size, value, isInvalid: false })
+    out.push(await readWatched($, `${dir}/${entry.name}`, name, entry, known.find(knownFile => knownFile.name === name), parse))
   }
   return out
 }
@@ -338,7 +342,7 @@ export async function readJsonFolder<T>($: EngineInterface, dir: string, known: 
 // Alfred Code's plan folder, the one the status file names (alfred-code's plan folder contract): its `status.json`
 // and `scoring.json`, each named by the folder, as the plans folder's files are by theirs. A missing file is null; one
 // unchanged since its last good read keeps it; one that will not parse keeps its last good parse, marked invalid.
-export async function readAlfredFolder<P, S>(
+async function readAlfredFolder<P, S>(
   $: EngineInterface, folder: string, known: { plan?: Watched<P>; scores?: Watched<S> },
   parsePlan: (text: string) => P | null, parseScores: (text: string, name: string) => S | null,
 ): Promise<{ name: string; plan: Watched<P> | null; scores: Watched<S> | null }> {
@@ -351,18 +355,7 @@ export async function readAlfredFolder<P, S>(
   }
   async function one<T>(file: string, had: Watched<T> | undefined, parse: (text: string) => T | null): Promise<Watched<T> | null> {
     const entry = entries.find(listed => listed.kind === 'file' && listed.name === file)
-    if (entry === undefined) return null
-    const { mtimeMs, size } = entry
-    if (had !== undefined && !had.isInvalid && had.mtimeMs === mtimeMs && had.size === size) return had
-    let value: T | null = null
-    if (size <= MAX_BYTES) {
-      try {
-        value = parse(await $.fs.read(`${folder}/${file}`))
-      } catch {
-        value = null
-      }
-    }
-    return value === null ? { name, mtimeMs, size, value: had?.value ?? null, isInvalid: true } : { name, mtimeMs, size, value, isInvalid: false }
+    return entry === undefined ? null : readWatched($, `${folder}/${file}`, name, entry, had, parse)
   }
   return {
     name,

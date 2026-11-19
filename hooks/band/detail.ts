@@ -5,6 +5,7 @@ import type { AgentRow } from '../agents/types'
 import type { BandInput, RulesInput } from './types'
 import type { ToolStat } from '../tools/types'
 import type { Line, Seg } from '../core/types'
+import { ROW_JOIN, ROW_LABEL } from './constants'
 import { wrapRows } from './wrap'
 
 const isSkill = (key: string): boolean => key.startsWith('Skill: ')
@@ -51,9 +52,8 @@ export function toolRows(input: BandInput): Line[] {
   const hasRules = drawn.always.length + drawn.byPath.length > 0
   const skills = skillSegs(input.session.loadedSkills, isResumed)
   if (input.skillListing !== undefined && input.skillListing !== null) skills.push({ text: listedText(input.skillListing), tone: 'dim' })
-  const label = (text: string): Seg => ({ text: text.padEnd(ROW_LABEL), tone: 'dim' })
   const under: Seg = { text: ' '.repeat(ROW_LABEL) }
-  const row = (name: string, items: Line[]): Line[] => wrapRows(label(name), under, items, input.columns, ROW_JOIN)
+  const row = (name: string, items: Line[]): Line[] => wrapRows(rowLabel(name), under, items, input.columns, ROW_JOIN)
   const one = (segs: Seg[]): Line[] => segs.map(seg => [seg])
   return [
     ...(used.length === 0 ? [] : row('tools:', one(used.map(([key, stat]): Seg => ({ text: `${key} ×${stat.calls}` }))))),
@@ -66,7 +66,7 @@ export function toolRows(input: BandInput): Line[] {
 const NO_RULES: RulesInput = { always: [], byPath: [], isTracked: true }
 
 // The rules drawn, each name once, an always-on name winning: the always-on ones, then the by-path ones not among them
-export function rulesDrawn(rules: RulesInput): { always: string[]; byPath: string[] } {
+function rulesDrawn(rules: RulesInput): { always: string[]; byPath: string[] } {
   const always = [...new Set(rules.always)]
   return { always, byPath: [...new Set(rules.byPath)].filter(name => !always.includes(name)) }
 }
@@ -102,10 +102,6 @@ export function agentSegs(rows: AgentRow[], types: Record<string, number> | unde
   const since: Line[] = isResumed ? [[{ text: 'since resume', tone: 'dim' }]] : []
   return [...items, ...since, [{ text: `${running} running`, tone: running > 0 ? 'warn' : 'dim' }]]
 }
-
-export const ROW_LABEL = 9
-
-export const ROW_JOIN = ' │ '
 
 export const rowLabel = (text: string): Seg => ({ text: text.padEnd(ROW_LABEL), tone: 'dim' })
 

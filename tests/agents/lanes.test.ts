@@ -2,15 +2,14 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, RenderSurface } from 'claude-code'
 
-import { PRESENTATION, SPAWN, START, engine, rows, spawns, stubAll } from '../kit'
+import { PRESENTATION, SPAWN, START, engine, isDrawn, rows, spawns, stubAll } from '../kit'
+import type { Drawn } from '../kit'
 
 // Spec C2: two or more agents draw on one time axis between the Agents tab's head and its tree
 const PANE = { title: 'Inspect', isFocused: false, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 40 }, view: {} }
 const complete = (turnId: string, more: object = {}) =>
   ({ answer: '', durationMs: 3000, isAborted: false, turnId, reason: 'answer' as const, ...more })
 
-type Drawn = { type: string; props?: Record<string, unknown>; children?: unknown[] }
-const isDrawn = (n: unknown): n is Drawn => typeof n === 'object' && n !== null && typeof (n as Drawn).type === 'string'
 function all(tree: unknown, type: string): Drawn[] {
   if (!isDrawn(tree)) return []
   return [...(tree.type === type ? [tree] : []), ...(tree.children ?? []).flatMap(c => all(c, type))]

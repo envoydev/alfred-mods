@@ -10,12 +10,15 @@ export function rememberCall(calls: Map<string, ToolCall>, id: string, tool: str
       startedAt: null, durationMs: null, pendingMs: null,
     }
     calls.set(id, call)
-    if (calls.size > 100) calls.delete(calls.keys().next().value as string)
+    if (calls.size > 100) {
+      const oldest = calls.keys().next()
+      if (!oldest.done) calls.delete(oldest.value)
+    }
   }
   return call
 }
 
-export const NO_FACTS: Omit<CallFacts, 'tool'> = {
+const NO_FACTS: Omit<CallFacts, 'tool'> = {
   checked: null, checkReason: null, asked: false, failedInTool: false, interrupted: false, classifierReason: null, hookDeny: null, result: null,
   aborted: false, autoMode: false,
 }

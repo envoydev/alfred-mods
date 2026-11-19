@@ -104,9 +104,9 @@ test('idle with no agent, the tick reads no usage', async ($, on) => {
 // The step's own result, as the generator returns it: the kit's stream carries no `result`
 async function stepResult($: Engine, e: TurnStepInput): Promise<TurnStepResult> {
   const stream = $.turn.step(e)
-  let r = await stream.next()
-  while (r.done !== true) r = await stream.next()
-  return r.value
+  let result = await stream.next()
+  while (result.done !== true) result = await stream.next()
+  return result.value
 }
 
 test('a usage read that fails leaves the step and the figures as they were', async ($, on) => {

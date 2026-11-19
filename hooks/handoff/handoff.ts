@@ -5,15 +5,14 @@ import type { ProcessRunResult } from 'claude-code'
 
 import { barSegs, percentSeg } from '../band/gauges'
 import { clockText, durationText, minutesText, modelText, tokensText, usdText } from '../core/format'
+import { isRecord } from '../core/guards'
 import type { Line, Seg } from '../core/types'
+import { joinPath } from '../place/place'
 import type { Handoff, HandoffMode, HandoffView, PlanPart, SaveInput, SaveResult } from './types'
-import type { Severity, StepStatus } from '../plan/types'
 import type { Runway } from '../stack/types'
 import type { Usage } from '../session/types'
 
 export const MODES: HandoffMode[] = ['ask', 'auto', 'off']
-
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
 
 // A whole percent from 10 to 95, the only thresholds the command takes
 export function isThreshold(value: unknown): value is number {
@@ -67,9 +66,30 @@ export function parseStatus(text: string, session: string): { state: 'stood-down
 export const HANDOFF_PATH = '.claude/session-inspector/HANDOFF.md'
 export const HANDOFF_USAGE = 'Usage: /auto-handoff [ask|auto|off|at <percent>|now|compact|later]. The mode is the "handoff" field of "alfred-mods" in a settings file ("ask", "auto" or "off"), the first ask "handoffAt" (10 to 95); ask, auto, off and at <percent> set them in ~/.claude/settings.json. now saves a handoff, compact saves one then compacts, later puts the ask off until the next step.'
 
-// The status path for a session id; an id that could leave the folder has none
+// Where the stack publishes the session's status file: under `.alfred/state/` from the release after alfred-code 3.12.1,
+// under `.claude/session-inspector/` through it (and, relative to each turn's cwd, from older stacks)
+const STATUS_DIR = '.alfred/state/sessions/status'
+const OLD_STATUS_DIR = '.claude/session-inspector/status'
+
+// The old relative status path for a session id; an id that could leave the folder has none
 export function statusPath(id: string): string | null {
-  return /^[\w-]+$/.test(id) ? `.claude/session-inspector/status/${id}.json` : null
+  return /^[\w-]+$/.test(id) ? `${OLD_STATUS_DIR}/${id}.json` : null
+}
+
+// The places to look for a session's status file, first found wins: the new path under the root now, under the root
+// read at session start (a root that moved mid-session; skipped when it is the same), the old path under the root now (a
+// stack on 3.12.1 or older), then the old relative path, which `$.fs` resolves against the working folder. A refused
+// root gives no root path; an id that could leave the folder gives no path at all.
+export function statusPaths(id: string, roots: { root: string | null; startRoot: string | null }): string[] {
+  const relative = statusPath(id)
+  if (relative === null) return []
+  const { root, startRoot } = roots
+  const paths: string[] = []
+  if (root !== null) paths.push(joinPath(root, `${STATUS_DIR}/${id}.json`))
+  if (startRoot !== null && startRoot !== root) paths.push(joinPath(startRoot, `${STATUS_DIR}/${id}.json`))
+  if (root !== null) paths.push(joinPath(root, relative))
+  paths.push(relative)
+  return paths
 }
 
 export const MARKER = '<!-- session-inspector handoff v1 -->'
@@ -225,10 +245,15 @@ export function handoffLines(view: HandoffView, _columns: number): Line[] {
 
 export const RESUME_WINDOW_MS = 2 * 60 * 60_000
 
+// F8's context percent: the tokens in use over the compaction point, else over the window; null while either is unknown
+export function handoffPercent(handoff: Pick<Handoff, 'compactPoint'>, usage: Pick<Usage, 'contextTokens' | 'contextWindow'>): number | null {
+  const point = handoff.compactPoint ?? usage.contextWindow
+  return usage.contextTokens === null || point === null ? null : percentOf(usage.contextTokens, point)
+}
+
 // The Now tab's HANDOFF section reads the atom with F8's percent and the runway
 export function handoffViewOf(handoff: Handoff, usage: Usage, isWorking: boolean, runway: Runway | null): HandoffView {
-  const point = handoff.compactPoint ?? usage.contextWindow
-  return { ...handoff, percent: usage.contextTokens === null || point === null ? null : percentOf(usage.contextTokens, point), window: usage.contextWindow, isWorking, runway }
+  return { ...handoff, percent: handoffPercent(handoff, usage), window: usage.contextWindow, isWorking, runway }
 }
 
 // What the forecast counts to: the stack's resume trigger over the window while the runway applies and the window is

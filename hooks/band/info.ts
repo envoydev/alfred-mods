@@ -1,6 +1,6 @@
 // The full band's info line: model, effort, speed, cache and times
 import { billingOf, cacheView, minutesLeftText } from '../cache/cache'
-import { minutesText, modelParts, modelText, tokensText } from '../core/format'
+import { minutesText, modelParts, modelText } from '../core/format'
 import type { BandInput } from './types'
 import type { Line, Seg } from '../core/types'
 import { timeParts } from './gauges'

@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>alfred-mods Band Explorer</title>
+<title>alfred-mods</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
 <style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
 </head>
 <body>
 <style>
-/* Layout: a live terminal on top (pinned while scrolling only on request), the editor under it, then a gallery of every band state built from the same data. */
+/* Layout: a map of where the mod draws, then four tabs - near the message box (the band), in the terminal (tool rows, the pane, REC), the settings with a live terminal, and a gallery of every band state built from the same data. */
 :root {
   --bg: #f3f4f6; --panel: #ffffff; --fg: #1d2330; --muted: #5d6677; --line: #d9dde5; --accent: #3b5bdb; --chip: #e8ecf8; --bad: #c92a2a;
   --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -31,7 +31,7 @@ p { margin: 0; }
 .legend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; color: var(--muted); }
 .legend b { color: var(--fg); font-weight: 500; }
 .live { background: var(--bg); padding-block: 8px; display: grid; gap: 6px; }
-.live.pinned { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; max-height: 60vh; overflow-y: auto; border-bottom: 1px solid var(--line); }
+.live.pinned { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 47px); z-index: 5; max-height: 60vh; overflow-y: auto; border-bottom: 1px solid var(--line); }
 .live-tools { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
 .live-tools label { display: inline-flex; align-items: center; gap: 8px; }
 /* As the settings table's selects: the browser's arrow off, a drawn chevron 10px in from the right edge */
@@ -122,75 +122,242 @@ table.settings select:focus-visible { outline: 2px solid var(--accent); outline-
 .toast { font: 12px var(--mono); background: var(--t-bg); color: var(--t-warn); border-radius: 6px; padding: 6px 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .card .cfg { font: 12px var(--mono); color: var(--muted); display: grid; gap: 2px; overflow-x: auto; }
 .card .cfg b { color: var(--accent); font-weight: 600; }
+/* Tabs: the page's sections, one in view; the bar stays at the top while scrolling */
+.tabs { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 6; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; background: var(--bg); border-bottom: 1px solid var(--line); padding-top: 6px; }
+.tabs button, .subtabs button { flex: none; border: 0; border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0; padding: 9px 14px; font-size: 14px; line-height: 20px; color: var(--muted); white-space: nowrap; }
+.tabs button:hover, .subtabs button:hover { color: var(--fg); }
+.tabs button:focus-visible, .subtabs button:focus-visible { outline-offset: -2px; }
+.tabs button[aria-selected="true"], .subtabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+.subtabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--line); }
+.subtabs button { font-size: 13px; padding: 6px 12px; }
+.tabpanel { display: grid; gap: 20px; min-width: 0; }
+h3 { font-size: 14px; margin: 0; font-weight: 600; }
+code { font-family: var(--mono); font-size: .92em; }
+a { color: var(--accent); }
+/* The map: where the mod draws, each zone a way into its tab */
+.map { display: grid; gap: 4px; }
+.mapzone { display: grid; grid-template-columns: minmax(0, 1fr) minmax(200px, 320px); padding: 0; text-align: left; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.mapzone:hover { background: var(--panel); border-color: var(--accent); }
+.mapzone.on { border-color: var(--accent); }
+.mapzone .term { display: block; width: auto; overflow: hidden; background: var(--t-bg); font-size: 11px; padding: 8px 12px; }
+.zone-label { display: grid; align-content: center; gap: 2px; padding: 8px 14px; font-size: 13px; font-weight: 400; color: var(--muted); }
+.zone-label b { font-size: 14px; font-weight: 600; color: var(--fg); }
+.mapzone.on .zone-label b { color: var(--accent); }
+@media (max-width: 640px) { .mapzone { grid-template-columns: minmax(0, 1fr); } .zone-label { order: -1; } }
+/* A picker never widens the page: its longest option is cut, not the panel around it */
+.panel > *, .live-tools > * { min-width: 0; max-width: 100%; }
+.live-tools select { min-width: min(220px, 100%); max-width: 100%; flex: 0 1 auto; text-overflow: ellipsis; }
+.live-tools output { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--accent); min-width: 3ch; }
+.live-tools label.width { flex: 1 1 280px; max-width: 440px; }
+.live-tools label.width input { flex: 1; min-width: 90px; }
+.cap { font-size: 13px; font-weight: 500; color: var(--muted); }
+.small { font-size: 13px; }
+.cfg { font: 12px var(--mono); color: var(--muted); display: grid; gap: 2px; overflow-x: auto; }
+.cfg b { color: var(--accent); font-weight: 600; }
+.compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 12px; }
+.compare > div { display: grid; gap: 6px; min-width: 0; align-content: start; }
+/* Reference tables: a name, what it shows, how it works */
+table.ref { border-collapse: collapse; width: 100%; font-size: 13px; }
+table.ref th, table.ref td { padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+table.ref thead th { font-weight: 600; font-size: 12px; background: var(--chip); }
+table.ref tbody th { font-weight: 600; }
+table.ref tbody th span { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }
+table.ref tbody:last-child tr:last-child > * { border-bottom: 0; }
+table.ref .mark { font-family: var(--mono); font-size: 12px; font-weight: 400; white-space: nowrap; }
+table.parts { table-layout: fixed; min-width: 760px; }
+table.parts col.c-name { width: 17%; }
+table.parts tr.ex > td { padding-bottom: 0; border-bottom: 0; }
+table.parts tr.ex + tr > td { padding-top: 6px; }
+table.steps { min-width: 720px; }
+.foot { display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 14px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
 <div class="wrap">
-  <header style="display:grid;gap:8px">
-    <h1>alfred-mods Band Explorer</h1>
-    <p class="muted">How the alfred-mods band looks with its switches moved into settings files: the mod reads them from an <code>"alfred-mods"</code> key in <code>~/.claude/settings.json</code>, <code>.claude/settings.json</code> and <code>.claude/settings.local.json</code>, the local file first. Every band row and the pinned line are drawn by the mod's own code, bundled into this page, so a change to a setting, a number or a list redraws them as a session would.</p>
-    <p class="note">This page shows alfred-mods 0.8.4. Open it in a browser, offline too (the fonts then fall back to the system's): change a setting, and the band redraws as a session would.</p>
-    <div class="legend"><span><b>Exact</b>: every band row, how it wraps, what it drops when short of room, and the pinned line's text, from the mod's own code; the settings' order and toasts, as the mod settles them</span><span><b>Sketched</b>: the frame around the band (the transcript, the prompt box, Claude Code's own footer line) and the band's width, taken as the terminal's less 4 columns above and less 5 under</span><span><b>Default</b>: no file sets anything - above the input, full, detail rows open, compact tool rows, REC off, handoff ask from 80%</span></div>
+  <header style="display:grid;gap:10px">
+    <h1>alfred-mods</h1>
+    <p class="muted">What alfred-mods adds to a Claude Code session, and what each part means. It draws in two places: <b>in the terminal</b>, where the conversation scrolls, and <b>near the message box</b>, where you type. Pick a place:</p>
+    <div class="map" id="map"></div>
   </header>
 
-  <section class="live" aria-label="Live terminal">
-    <div class="live-head"><strong>Live terminal</strong><span class="muted" id="liveInfo"></span></div>
-    <div class="live-tools">
-      <label for="liveExample">Transcript <select id="liveExample"></select></label>
-      <label class="switch" for="livePinned"><input type="checkbox" role="switch" id="livePinned">Pin to the top while scrolling</label>
-      <span class="muted" id="liveExampleNote"></span>
-    </div>
-    <div class="term-scroll"><div class="term" id="liveTerm"></div></div>
+  <div class="tabs" role="tablist" aria-label="What to look at" id="tabs">
+    <button type="button" role="tab" id="tab-box" aria-controls="panel-box" data-tab="box">Near the message box</button>
+    <button type="button" role="tab" id="tab-terminal" aria-controls="panel-terminal" data-tab="terminal">In the terminal</button>
+    <button type="button" role="tab" id="tab-settings" aria-controls="panel-settings" data-tab="settings">Settings and commands</button>
+    <button type="button" role="tab" id="tab-variants" aria-controls="panel-variants" data-tab="variants">Every variant</button>
+  </div>
+
+  <section class="tabpanel" role="tabpanel" id="panel-box" aria-labelledby="tab-box">
+    <section class="panel" aria-label="The band">
+      <div><h2>The band - the session at a glance</h2>
+        <p class="muted">The band sits right above the box you type in. It shows where the session stands without a command: how full the context is, your limits, the cost, and what Claude is using. When something needs you, it adds a row that says what, and which key to press. Pick a situation to see it react.</p></div>
+      <div class="live-tools">
+        <label for="preset">Situation <select id="preset"></select></label>
+        <label class="width" for="cols">Terminal width <output id="colsOut"></output><input type="range" id="cols" min="24" max="270" step="1"></label>
+        <button type="button" id="reset">Reset everything</button>
+      </div>
+      <p id="presetNote"></p>
+      <div class="cfg" id="presetCfg"></div>
+      <div class="term-scroll"><div class="term" id="boxTerm"></div></div>
+      <div class="muted small" id="boxInfo"></div>
+      <details><summary>Change the session by hand</summary>
+        <div style="display:grid;gap:14px;margin-top:10px">
+          <p class="muted small">Not settings: what the session is doing, which the band reacts to.</p>
+          <div class="chips" id="switches"></div>
+          <div class="sizes">
+            <label for="rows">Rows the band may use above the input <output id="rowsOut"></output><input type="range" id="rows" min="2" max="14" step="1"></label>
+            <label for="termRows">Terminal height, for the band under the input in fullscreen <output id="termRowsOut"></output><input type="range" id="termRows" min="16" max="60" step="1"></label>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <section class="panel" aria-label="What each row means">
+      <div><h2>What each row means</h2>
+        <p class="muted">Top to bottom, as the full band draws them. Each example is drawn by the mod's own code from this page's sample session. A row shows once it has something to say, so a new session starts with a short band.</p></div>
+      <div class="table-scroll"><table class="ref parts" id="bandParts"></table></div>
+      <p class="muted small">Short of width, a row wraps or drops its last items; short of rows, the band gives rows up from the bottom and keeps the row that needs you. Drag the width above to see it. <code>"band": "calm"</code> keeps the first two lines only, and <code>"bandPlace": "under"</code> moves the band under the message box, in the terminal only.</p>
+    </section>
+
+    <section class="panel" aria-label="Handoff">
+      <div><h2>Handoff - carrying on in a fresh session</h2>
+        <p class="muted">A long session fills the context, and Claude Code then compacts the conversation by itself. Before that point the mod saves a handoff: a file the next session reads to carry on where this one stopped.</p></div>
+      <div class="table-scroll"><table class="ref steps">
+        <thead><tr><th scope="col" style="width:20%">Step</th><th scope="col" style="width:36%">What you see</th><th scope="col">How it works</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">1. The context passes 80%</th><td><span class="mark">⚠ ctx past 80% 4: Handoff</span><br>on the band, once Claude has answered</td><td>Press 4, or run <code>/auto-handoff now</code>. The percent is of the point where Claude Code compacts, not of the model's window. It asks again every 5 points, up to 95.</td></tr>
+          <tr><th scope="row">2. The handoff is saved</th><td><span class="mark">Handoff saved to .claude/session-inspector/HANDOFF.md - /clear fills a resume prompt</span><br>in a toast</td><td>The file holds what is on disk or counted: the plan's steps, the git branch with its changed paths, and the session's turn, tools, failures and cost. Never a prompt, a command or a tool's input.</td></tr>
+          <tr><th scope="row">3. You run <code>/clear</code></th><td><span class="mark">Read .claude/session-inspector/HANDOFF.md, …</span><br>filled into the empty message box</td><td>Within 2 hours of the save, the mod fills the prompt that resumes the work and never sends it: Enter is yours.</td></tr>
+        </tbody>
+      </table></div>
+      <p class="muted small"><code>"handoff": "auto"</code> saves at each step with no ask, <code>"off"</code> never asks, and <code>"handoffAt"</code> moves the first step. Where Alfred Code handles a full context itself, the mod's handoff stands down for that session.</p>
+    </section>
   </section>
 
-  <section class="panel" aria-label="Settings">
-    <div class="row" style="justify-content:space-between"><h2>Settings - the mod's switches</h2><button type="button" id="resetSettings">Clear every file</button></div>
-    <p class="muted">Each field is a value under <code>"alfred-mods"</code> in a settings file. Pick one per file, or leave it unset: for each field the mod takes the highest file with a valid value - <code>.claude/settings.local.json</code>, then <code>.claude/settings.json</code>, then <code>~/.claude/settings.json</code>, then a choice an earlier command stored, then the default. A bad value is skipped as if absent. Mid-session REC never falls because a file went quiet: it holds until that file says a lower level, or the next <code>claude</code> run. A change to any file redraws the band within seconds.</p>
-    <div class="table-scroll"><table class="settings" id="settingsTable"></table></div>
-    <div class="toasts" id="settingsToasts"></div>
-    <div class="group-title">What each file holds</div>
-    <div class="files" id="settingsFiles"></div>
-    <p class="note"><b>Keep the JSON valid.</b> Claude Code reads a settings file whole or not at all: one that does not parse is skipped entirely - its permission rules included, not only <code>"alfred-mods"</code>. At a session's start it stops on a 'Settings Error' dialog; mid-session the file drops out with no warning - which is why REC holds its level when the file that set it goes quiet.</p>
+  <section class="tabpanel" role="tabpanel" id="panel-terminal" aria-labelledby="tab-terminal" hidden>
+    <section class="panel" aria-label="Tool rows">
+      <div><h2>Tool rows - one line per call</h2>
+        <p class="muted">A conversation fills fast with commands and their output. With <code>"quiet": true</code>, the default, the mod draws each tool call as one line: what it did, how much it printed, and ✓ or ✗, with <code>⎿</code> steps that name what it worked on. Only the drawing changes: the call, its output and what Claude reads stay the same, and Ctrl+O expands a row.</p></div>
+      <div class="live-tools">
+        <label for="rowsExample">Example <select id="rowsExample"></select></label>
+        <span class="muted small" id="rowsNote"></span>
+      </div>
+      <div class="compare">
+        <div><div class="cap">With alfred-mods: <code>"quiet": true</code></div><div class="term-scroll"><div class="term" id="rowsQuiet"></div></div></div>
+        <div><div class="cap">Claude Code's own rows: <code>"quiet": false</code></div><div class="term-scroll"><div class="term" id="rowsFull"></div></div></div>
+      </div>
+      <h3>How to read a row</h3>
+      <div class="table-scroll"><table class="ref">
+        <thead><tr><th scope="col" style="width:30%">Mark</th><th scope="col">Meaning</th></tr></thead>
+        <tbody>
+          <tr><th scope="row" class="mark">⏺ &lt;tool&gt; · &lt;what&gt;</th><td>The tool, then what it worked on: a description, file, page, query, agent type or skill</td></tr>
+          <tr><th scope="row" class="mark">⎿</th><td>One step of the call: what it was given, what it did or what came back</td></tr>
+          <tr><th scope="row" class="mark">30 lines ✓</th><td>Done, and how many lines it printed</td></tr>
+          <tr><th scope="row" class="mark">✗ exit 1</th><td>Failed, with its exit code and up to 3 error lines under it</td></tr>
+          <tr><th scope="row" class="mark">⊘ denied by you</th><td>You said no to it</td></tr>
+          <tr><th scope="row" class="mark">⊘ blocked: &lt;reason&gt;</th><td>A rule, a hook or the permission classifier stopped it</td></tr>
+          <tr><th scope="row" class="mark">· 3 times in a row</th><td>The same call with the same result ran 3 times back to back, drawn once</td></tr>
+          <tr><th scope="row" class="mark">4 reads</th><td>Reads and searches in a row, folded into one row with a step each</td></tr>
+          <tr><th scope="row" class="mark">+3 −1</th><td>Lines the edit or write added and removed</td></tr>
+          <tr><th scope="row" class="mark">+2 more</th><td>Steps left out to keep the row short; Ctrl+O shows them all</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section class="panel" aria-label="The /inspect pane">
+      <div><h2>The /inspect pane - the details behind the band</h2>
+        <p class="muted">Type <code>/inspect</code> and a pane opens with seven tabs, each answering one question. <code>/inspect usage</code> opens it on a tab; with the keys in the pane (Ctrl+X Tab), <code>n</code> <code>u</code> <code>a</code> <code>t</code> <code>k</code> <code>l</code> <code>p</code> switch tabs. Esc at an empty prompt, or <code>/inspect close</code>, closes it. <span id="placement"></span></p></div>
+      <div class="subtabs" role="tablist" aria-label="The pane's tabs" id="paneTabs"></div>
+      <div role="tabpanel" id="panePanel" style="display:grid;gap:8px;min-width:0">
+        <div><h3 id="paneAsk"></h3><p class="muted small" id="paneNote"></p></div>
+        <div class="term-scroll"><div class="term" id="paneTerm"></div></div>
+      </div>
+      <div class="sizes"><label for="paneW">Pane width in columns <output id="paneWOut"></output><input type="range" id="paneW" min="24" max="140" step="1"></label></div>
+      <details><summary>Edit the pane's own data (JSON): plan steps, scores, agents, failures, cache, timeline, usage, Alfred Code</summary>
+        <div style="display:grid;gap:6px;margin-top:8px"><textarea class="pane-data" id="paneData" spellcheck="false" aria-label="Pane data as JSON"></textarea><span class="err" id="paneErr"></span></div>
+      </details>
+      <p class="muted small">These tabs are sketched from alfred-mods' design brief, not drawn by its code as the band is. A row longer than the pane is cut here with …, where the real pane may wrap it.</p>
+    </section>
+
+    <section class="panel" aria-label="Recording mode">
+      <div><h2>Recording mode - masking the screen</h2>
+        <p class="muted">For a screen recording or a shared screen. <code>/rec on</code> masks keys, emails, phone numbers and your private words wherever the mod and Claude Code's message rows draw them, and a red <code>● REC</code> leads the band while it is on. Only the drawing changes: files, the stored conversation and what Claude reads stay as they are.</p></div>
+      <div class="term-scroll"><div class="term"><span class="dim">off:     </span>export API_KEY=sk-live-4f9a… · jane.doe@example.com · /Users/jane/app · $12.40
+<span class="dim">on:      </span>export API_KEY=<span class="warn">‹key›</span> · <span class="warn">‹email›</span> · /Users/jane/app · $12.40
+<span class="dim">strict:  </span>export API_KEY=<span class="warn">‹key›</span> · <span class="warn">‹email›</span> · <span class="warn">~/app</span> · <span class="warn">$••.••</span></div></div>
+      <div class="table-scroll"><table class="ref">
+        <thead><tr><th scope="col" style="width:22%">Level</th><th scope="col" style="width:39%">Hides</th><th scope="col">How to set it</th></tr></thead>
+        <tbody>
+          <tr><th scope="row" class="mark">"on"</th><td>Keys and tokens, emails, phone numbers and your private words</td><td><code>/rec on</code>, or <code>"rec": "on"</code> in a settings file</td></tr>
+          <tr><th scope="row" class="mark">"strict"</th><td>The same, plus your user name, home folder paths and dollar amounts</td><td><code>/rec strict</code>, or <code>"rec": "strict"</code></td></tr>
+          <tr><th scope="row" class="mark">"off"</th><td>Nothing: the default</td><td><code>/rec off</code>, or <code>"rec": "off"</code></td></tr>
+        </tbody>
+      </table></div>
+      <p class="note"><b>Before you record.</b> REC cannot hide what you type in the message box, Claude Code's own screens and dialogs, or rows drawn before it went on. Run <code>/rec test</code> to check the mask on fake samples, add private words in <code>/rec words</code>, then clear the terminal. Every limit is in the <a href="https://github.com/envoydev/alfred-mods#recording-mode">README</a>.</p>
+    </section>
   </section>
 
-  <section class="panel" aria-label="Situation">
-    <h2>The session - what is happening</h2>
-    <p class="muted">Not settings: what the session is doing, which the band reacts to.</p>
-    <div class="chips" id="switches"></div>
-    <div class="group-title">Terminal size</div>
-    <div class="sizes">
-      <label for="cols">Width in columns <output id="colsOut"></output><input type="range" id="cols" min="24" max="270" step="1"></label>
-      <label for="rows">Rows the band may use above the input <output id="rowsOut"></output><input type="range" id="rows" min="2" max="14" step="1"></label>
-      <label for="termRows">Terminal height, for the band under the input in fullscreen <output id="termRowsOut"></output><input type="range" id="termRows" min="16" max="60" step="1"></label>
-    </div>
+  <section class="tabpanel" role="tabpanel" id="panel-settings" aria-labelledby="tab-settings" hidden>
+    <section class="live" aria-label="Live terminal">
+      <div class="live-head"><strong>Live terminal</strong><span class="muted" id="liveInfo"></span></div>
+      <div class="live-tools">
+        <label for="liveExample">Transcript <select id="liveExample"></select></label>
+        <label class="switch" for="livePinned"><input type="checkbox" role="switch" id="livePinned">Pin to the top while scrolling</label>
+        <span class="muted" id="liveExampleNote"></span>
+      </div>
+      <div class="term-scroll"><div class="term" id="liveTerm"></div></div>
+    </section>
+
+    <section class="panel" aria-label="Settings">
+      <div class="row" style="justify-content:space-between"><h2>Settings - the mod's switches</h2><button type="button" id="resetSettings">Clear every file</button></div>
+      <p class="muted">Each switch is a value under <code>"alfred-mods"</code> in a Claude Code settings file. Pick values below and watch the live terminal. For each field the mod takes the first file with a valid value - <code>.claude/settings.local.json</code>, then <code>.claude/settings.json</code>, then <code>~/.claude/settings.json</code>, then a choice a command stored before 0.8, then the default. A bad value is skipped as if absent, and a saved file redraws the band within seconds.</p>
+      <div class="table-scroll"><table class="settings" id="settingsTable"></table></div>
+      <div class="toasts" id="settingsToasts"></div>
+      <div class="group-title">What each file holds</div>
+      <div class="files" id="settingsFiles"></div>
+      <p class="note"><b>Keep the JSON valid.</b> Claude Code reads a settings file whole or not at all: one that does not parse is skipped entirely - its permission rules included, not only <code>"alfred-mods"</code>. At a session's start it stops on a 'Settings Error' dialog; mid-session the file drops out with no warning - which is why REC holds its level when the file that set it goes quiet, until that file says a lower level or the next <code>claude</code> run.</p>
+    </section>
+
+    <section class="panel" aria-label="Commands">
+      <div><h2>Commands - typed in the message box</h2>
+        <p class="muted">A command that sets a switch writes that one field under <code>"alfred-mods"</code> in <code>~/.claude/settings.json</code>, so it holds in every session. Every button the mod draws has a command, so nothing needs a click.</p></div>
+      <div class="table-scroll"><table class="ref" style="min-width:640px">
+        <thead><tr><th scope="col" style="width:40%">Command</th><th scope="col">What it does</th></tr></thead>
+        <tbody>
+          <tr><th scope="row" class="mark">/inspect · /inspect usage</th><td>Opens the pane, on Now or on the tab you name; <code>/inspect close</code> closes it</td></tr>
+          <tr><th scope="row" class="mark">/inspect band off | calm | full</th><td>Sets how much the band shows, the <code>"band"</code> field</td></tr>
+          <tr><th scope="row" class="mark">/inspect show 2 · /inspect copy 2</th><td>Expands the error of failure 2, or copies it; with no number, the newest</td></tr>
+          <tr><th scope="row" class="mark">/rec on | strict | off</th><td>Sets Recording mode's level, the <code>"rec"</code> field; a bare <code>/rec</code> prints the level and the file it comes from</td></tr>
+          <tr><th scope="row" class="mark">/rec test · /rec words</th><td>Checks the mask on fake samples; opens the pane where you add private words</td></tr>
+          <tr><th scope="row" class="mark">/auto-handoff ask | auto | off</th><td>Sets how a handoff is saved, the <code>"handoff"</code> field; <code>/auto-handoff at 70</code> sets the percent it starts at</td></tr>
+          <tr><th scope="row" class="mark">/auto-handoff now</th><td>Saves a handoff at once, in any mode</td></tr>
+        </tbody>
+      </table></div>
+    </section>
   </section>
 
-  <section class="panel" aria-label="Data">
-    <div class="row" style="justify-content:space-between"><div class="group-title">The numbers</div><button type="button" id="reset">Reset everything to the defaults</button></div>
-    <div class="fields" id="fields"></div>
-    <div class="group-title">The detail rows - one per line</div>
-    <div class="lists">
-      <label for="tools">tools: - a tool, then its calls (usage: counts their sum)<textarea id="tools" spellcheck="false"></textarea></label>
-      <label for="skills">skills: - a skill, then how often it loaded<textarea id="skills" spellcheck="false"></textarea></label>
-      <label for="agents">agents: - a type, how many ran, then "running" and what it does now<textarea id="agents" spellcheck="false"></textarea></label>
-      <label for="rules">rules: - a rule file, then "path" for one loaded by path<textarea id="rules" spellcheck="false"></textarea></label>
-    </div>
-  </section>
-
-  <section class="panel" aria-label="The /inspect pane">
-    <div style="display:grid;gap:4px"><h2>The /inspect pane - every tab</h2>
-      <p class="muted">What <code>/inspect</code> opens today: seven tabs, drawn from the same numbers, tools, agents and switches as the band above, plus the pane's own data below. These tabs are sketched from alfred-mods' design brief, not drawn by its code as the band above is; a row longer than the pane is cut here with …, where the real pane may wrap it. <span id="placement"></span></p></div>
-    <div class="sizes"><label for="paneW">Pane width in columns <output id="paneWOut"></output><input type="range" id="paneW" min="24" max="140" step="1"></label></div>
-    <details><summary>Edit the pane's own data (JSON): plan steps, scores, agents, failures, cache, timeline, usage, Alfred Code</summary>
-      <div style="display:grid;gap:6px;margin-top:8px"><textarea class="pane-data" id="paneData" spellcheck="false" aria-label="Pane data as JSON"></textarea><span class="err" id="paneErr"></span></div>
+  <section class="tabpanel" role="tabpanel" id="panel-variants" aria-labelledby="tab-variants" hidden>
+    <div><h2>Every variant of the band</h2><p class="muted">Each card is the same sample session in another situation, with the settings files it takes. "Open in the live terminal" copies its situation and writes its files into the settings table, emptying the rest.</p></div>
+    <details class="panel" aria-label="Sample data"><summary>Edit the sample session every preview draws from</summary>
+      <div style="display:grid;gap:14px;margin-top:12px">
+        <div class="group-title">The numbers</div>
+        <div class="fields" id="fields"></div>
+        <div class="group-title">The detail rows - one per line</div>
+        <div class="lists">
+          <label for="tools">tools: - a tool, then its calls (usage: counts their sum)<textarea id="tools" spellcheck="false"></textarea></label>
+          <label for="skills">skills: - a skill, then how often it loaded<textarea id="skills" spellcheck="false"></textarea></label>
+          <label for="agents">agents: - a type, how many ran, then "running" and what it does now<textarea id="agents" spellcheck="false"></textarea></label>
+          <label for="rules">rules: - a rule file, then "path" for one loaded by path<textarea id="rules" spellcheck="false"></textarea></label>
+        </div>
+      </div>
     </details>
-    <div class="panes" id="panes"></div>
-  </section>
-
-  <section style="display:grid;gap:10px" aria-label="Every variant">
-    <div><h2>Every variant of the band</h2><p class="muted">Each card is the same data in another situation, with the settings files it shows. "Open in the live terminal" copies its situation up top and writes its files into the settings panel, emptying the rest.</p></div>
     <div class="gallery" id="gallery"></div>
   </section>
+
+  <footer class="foot">
+    <p class="note">This page shows alfred-mods 0.8.4. Open it in a browser, offline too (the fonts then fall back to the system's).</p>
+    <div class="legend"><span><b>Exact</b>: every band row, how it wraps, what it drops when short of room, the pinned line's text and the compact tool rows, from the mod's own code bundled into this page; the settings' order and toasts, as the mod settles them</span><span><b>Sketched</b>: the frame around the band (the transcript, the prompt box, Claude Code's own rows and footer line), the /inspect tabs, and the band's width, taken as the terminal's less 4 columns above and less 5 under</span><span><b>Default</b>: no file sets anything - above the input, full, detail rows open, compact tool rows, REC off, handoff ask from 80%</span></div>
+  </footer>
 </div>
 
 <script>
@@ -642,11 +809,12 @@ function cacheView(cache       , billing         , now        , contextTokens   
   }
 }
 
-// Claude Code should compact the conversation itself at about 54 minutes idle: the terminal's REPL, the 1h tier, idle
-// compaction not turned off, and a context at its threshold. A feature flag it fetches gates it too, which the mod
+// Claude Code should compact the conversation itself at about 54 minutes idle: a surface where it does (the terminal,
+// VS Code's chat panel, the desktop app's Code tab), the 1h tier, idle compaction not turned off, and a context at its
+// threshold. A feature flag it fetches gates it too, which the mod
 // cannot see, so this delays the warning and never withholds it.
 function selfCompacts(cache       , billing         , contextTokens               )          {
-  return cache.config.isTerminal && tierOf(cache, billing).tier === '1h' && !cache.config.isIdleCompactOff && contextTokens !== null
+  return cache.config.isIdleSurface && tierOf(cache, billing).tier === '1h' && !cache.config.isIdleCompactOff && contextTokens !== null
     && contextTokens >= cache.config.idleMinTokens
 }
 
@@ -2654,7 +2822,7 @@ const BandAdapter = (() => {
       },
       turns, newFailures: num(d.failures), pace: {}, agents,
       cache: {
-        tier: '1h', tierAt: null, tierBilling: null, config: { pin: null, isIdleCompactOff: false, idleMinTokens: 200_000, isTerminal: false },
+        tier: '1h', tierAt: null, tierBilling: null, config: { pin: null, isIdleCompactOff: false, idleMinTokens: 200_000, isIdleSurface: false },
         ratePerToken: null, rateModel: null, lastRequestAt: m.fresh ? null : now - Math.max(0, 60 - num(d.cacheMin)) * MIN,
         lastRequest: { read: 1000, write: 0, input: 10 }, sessionCounts: m.fresh ? { read: 0, write: 0, input: 0 } : { read: 1000, write: 0, input: 10 }, toastedForRequestAt: null,
       },
@@ -2880,8 +3048,16 @@ const eff = (m, c) => Object.assign({}, m, BandSettings.asModes(BandSettings.res
 const store = { get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
 let data = Object.assign({}, DATA0, store.get('band4-data') || {});
+// The sample session without any situation's own numbers: each situation starts from it, so one's failures or full
+// context never leak into the next
+let base = Object.assign({}, DATA0, store.get('band4-base') || store.get('band4-data') || {});
 let modes = Object.assign({}, MODES0, store.get('band4-modes') || {});
 let cfg = cfgOf(store.get('band4-cfg') || BAND_CFG0);
+// The situation picked near the message box, an index into BAND_PRESETS; -1 once anything is changed by hand
+let presetIx = -1;
+// The page's tab in view, and the /inspect pane's
+const TAB_IDS = ['box', 'terminal', 'settings', 'variants'];
+let tab = 'box';
 
 // ---------- rendering ----------
 const S = (t, c) => ({ t: String(t), c });
@@ -3030,8 +3206,9 @@ let liveEx = 0;
 
 // The band in a sketch of the terminal: above, between the transcript and the prompt with Claude Code's [-] on its first
 // row; under, after Claude Code's own footer line, which Claude Code keeps first whatever order a mod gives (probed
-// 2026-11-11, both layouts). `m` is the situation with the settings applied (eff).
-function terminal(d, m, ex) {
+// 2026-11-11, both layouts). `m` is the situation with the settings applied (eff). `part` 'box' leaves the tool rows
+// out: the band, the prompt and the footer under the transcript's last line.
+function terminal(d, m, ex, part) {
   const r = BandAdapter.draw(d, m), cols = m.cols, out = [];
   const t = TRANSCRIPTS[ex || 0] || TRANSCRIPTS[0];
   const calls = () => m.quiet ? BandCore.groupLines(t.calls, Math.max(20, cols - 2), { cwd: CWD }).map(l => BandAdapter.lineHtml(l)) : t.full.map(html);
@@ -3039,7 +3216,7 @@ function terminal(d, m, ex) {
   const edge = `<span class="edge">${'─'.repeat(cols)}</span>`;
   if (m.fresh) out.push(html([S('⏺ ', 'ok'), S('New session', 'dim')]));
   else {
-    out.push(...calls());
+    if (part !== 'box') out.push(...calls());
     out.push(m.running ? html([S('· ', 'warn'), S(`Actioning… (${d.turnTime} · ↓ 19.6k tokens)`, 'warn')]) : html([S('⏺ ', 'ok'), S('Claude finished the reply', 'dim')]));
   }
   if (!m.under) {
@@ -3059,8 +3236,8 @@ function terminal(d, m, ex) {
   foot.forEach(f => out.push('  ' + f));
   return { text: out.join('\n'), r };
 }
-function terminalOrNote(d, m, ex) {
-  try { return terminal(d, m, ex); }
+function terminalOrNote(d, m, ex, part) {
+  try { return terminal(d, m, ex, part); }
   catch (e) { return { text: html([S('The band could not draw from these values: ' + e.message, 'bad')]), r: null }; }
 }
 
@@ -3089,9 +3266,9 @@ function buildSettings() {
   document.querySelectorAll('#settingsTable select').forEach(el => el.addEventListener('change', () => {
     const src = cfg[el.dataset.s];
     if (el.value === '') delete src[el.dataset.f]; else src[el.dataset.f] = JSON.parse(el.value);
-    save(); draw();
+    presetIx = -1; save(); draw();
   }));
-  $('resetSettings').addEventListener('click', () => { cfg = cfgOf(BAND_CFG0); save(); fill(); draw(); });
+  $('resetSettings').addEventListener('click', () => { cfg = cfgOf(BAND_CFG0); presetIx = -1; save(); fill(); draw(); });
   $('settingsFiles').addEventListener('click', e => {
     const b = e.target.closest('button[data-copy]');
     if (!b) return;
@@ -3138,11 +3315,12 @@ function drawSettings() {
 function buildEditor() {
   $('switches').innerHTML = SWITCHES.map(([k, l]) => `<label class="chip" for="sw-${k}"><input type="checkbox" id="sw-${k}" data-k="${k}">${l}</label>`).join('');
   $('fields').innerHTML = FIELDS.map(([k, l, n]) => `<label for="f-${k}">${l}<input id="f-${k}" data-k="${k}" ${n ? 'type="number" step="any"' : 'type="text"'}></label>`).join('');
-  document.querySelectorAll('#switches input').forEach(el => el.addEventListener('change', () => { modes[el.dataset.k] = el.checked; save(); draw(); }));
-  document.querySelectorAll('#fields input').forEach(el => el.addEventListener('input', () => { data[el.dataset.k] = el.value; save(); draw(); }));
-  ['tools', 'skills', 'agents', 'rules'].forEach(k => $(k).addEventListener('input', () => { data[k] = $(k).value; save(); draw(); }));
+  document.querySelectorAll('#switches input').forEach(el => el.addEventListener('change', () => { modes[el.dataset.k] = el.checked; presetIx = -1; save(); draw(); }));
+  // A value typed by hand is the sample session's own, so it holds under every situation picked after it
+  document.querySelectorAll('#fields input').forEach(el => el.addEventListener('input', () => { data[el.dataset.k] = base[el.dataset.k] = el.value; save(); draw(); }));
+  ['tools', 'skills', 'agents', 'rules'].forEach(k => $(k).addEventListener('input', () => { data[k] = base[k] = $(k).value; save(); draw(); }));
   ['cols', 'rows', 'termRows'].forEach(k => $(k).addEventListener('input', () => { modes[k] = +$(k).value; save(); draw(); }));
-  $('reset').addEventListener('click', () => { data = Object.assign({}, DATA0); modes = Object.assign({}, MODES0); cfg = cfgOf(BAND_CFG0); pane = JSON.parse(JSON.stringify(PANE0)); paneRaw = JSON.stringify(PANE0, null, 2); paneW = 90; save(); fill(); draw(); });
+  $('reset').addEventListener('click', () => { data = Object.assign({}, DATA0); base = Object.assign({}, DATA0); modes = Object.assign({}, MODES0); cfg = cfgOf(BAND_CFG0); presetIx = -1; pane = JSON.parse(JSON.stringify(PANE0)); paneRaw = JSON.stringify(PANE0, null, 2); paneW = 90; save(); fill(); draw(); });
   $('paneW').addEventListener('input', () => { paneW = +$('paneW').value; save(); draw(); });
   $('paneData').addEventListener('input', () => {
     paneRaw = $('paneData').value;
@@ -3158,7 +3336,7 @@ function fill() {
   $('cols').value = modes.cols; $('rows').value = modes.rows; $('termRows').value = modes.termRows; fillSettings();
   $('paneW').value = paneW; $('paneData').value = paneRaw;
 }
-function save() { store.set('band4-data', data); store.set('band4-modes', modes); store.set('band4-cfg', cfg); store.set('pane-raw', paneRaw); store.set('pane-w', paneW); }
+function save() { store.set('band4-data', data); store.set('band4-base', base); store.set('band4-modes', modes); store.set('band4-cfg', cfg); store.set('band4-preset', presetIx); store.set('pane-raw', paneRaw); store.set('pane-w', paneW); }
 
 // ---------- gallery ----------
 // A card's settings files, one line each, as the person would write them
@@ -3174,7 +3352,7 @@ function drawGallery() {
   $('gallery').innerHTML = BAND_PRESETS.map(([name, when, set, dset, files], i) => {
     const c = cfgOf(files);
     const m = eff(Object.assign({}, BAND_BASE, { cols: modes.cols }, set), c);
-    const d = Object.assign({}, data, dset ? dset(data) : {});
+    const d = Object.assign({}, base, dset ? dset(base) : {});
     const t = terminalOrNote(d, m);
     const r = BandSettings.resolve(c);
     const toasts = r.skipped.map(k => k.toast).concat(r.keptToast ? [r.keptToast] : []);
@@ -3183,31 +3361,184 @@ function drawGallery() {
       <div class="cfg">${cfgLines(files)}</div>
       <div class="term-scroll"><div class="term">${t.text}</div></div>${toasts.map(x => `<div class="toast">${esc(x)}</div>`).join('')}</article>`;
   }).join('');
+  // The live terminal is in the settings tab, beside the files the card writes
   document.querySelectorAll('#gallery button').forEach(btn => btn.addEventListener('click', () => {
-    const [, , set, dset, files] = BAND_PRESETS[+btn.dataset.i];
-    modes = Object.assign({}, BAND_BASE, { cols: modes.cols }, set);
-    cfg = cfgOf(files);
-    if (dset) Object.assign(data, dset(data));
-    save(); fill(); draw(); window.scrollTo({ top: 0, behavior: 'smooth' });
+    applyPreset(+btn.dataset.i); showTab('settings'); window.scrollTo({ top: 0, behavior: 'smooth' });
   }));
 }
-function draw() {
-  $('colsOut').textContent = modes.cols; $('rowsOut').textContent = modes.rows; $('termRowsOut').textContent = modes.termRows;
-  const m = eff(modes, cfg);
+
+// ---------- a situation ----------
+// A card's situation, numbers and settings files become the page's own, the sample session's numbers under them
+function applyPreset(i) {
+  const [, , set, dset, files] = BAND_PRESETS[i];
+  modes = Object.assign({}, BAND_BASE, { cols: modes.cols }, set);
+  cfg = cfgOf(files);
+  data = Object.assign({}, base, dset ? dset(base) : {});
+  presetIx = i;
+  save(); fill(); draw();
+}
+// The cards the band alone can show: one that changes the tool rows has its place in the terminal tab
+const isBoxPreset = p => !(p[4] && p[4].user && p[4].user.quiet === false);
+function buildPresets() {
+  $('preset').innerHTML = '<option value="-1">Your own mix</option>'
+    + BAND_PRESETS.map((p, i) => isBoxPreset(p) ? `<option value="${i}">${esc(p[0])}</option>` : '').join('');
+  const kept = store.get('band4-preset');
+  presetIx = Number.isInteger(kept) && kept >= 0 && kept < BAND_PRESETS.length ? kept : -1;
+  $('preset').addEventListener('change', () => {
+    const i = +$('preset').value;
+    if (i >= 0) applyPreset(i); else { presetIx = -1; save(); draw(); }
+  });
+}
+
+// ---------- drawing a tab ----------
+// What a drawn terminal holds, in a few words
+function infoText(r, m) {
+  if (!r) return '';
+  const n = r.lines.length;
+  const notes = [m.under ? 'under the input' : 'above the input', `band ${n} row${n === 1 ? '' : 's'} of ${r.input.maxRows} it may use`, `${r.input.columns} columns wide`];
+  if (m.under) notes.push(m.fullscreen ? 'buttons pressed by a click' : 'buttons drawn as commands to type');
+  if (m.under && m.collapsed) notes.push('no collapse under the input');
+  return notes.join(' · ');
+}
+function drawBox(m) {
+  const t = terminalOrNote(data, m, liveEx, 'box');
+  $('boxTerm').innerHTML = t.text;
+  $('boxInfo').textContent = infoText(t.r, m);
+  const p = BAND_PRESETS[presetIx];
+  $('preset').value = String(p && isBoxPreset(p) ? presetIx : -1);
+  $('presetNote').textContent = p ? p[1] : 'Your own mix of session and settings. Pick a situation to start from one.';
+  $('presetCfg').innerHTML = cfgLines(cfg);
+}
+function drawLive(m) {
   const t = terminalOrNote(data, m, liveEx);
   $('liveTerm').innerHTML = t.text;
   const ex = TRANSCRIPTS[liveEx] || TRANSCRIPTS[0];
   $('liveExampleNote').textContent = (m.quiet ? 'Quiet rows, drawn by the mod: ' : 'Claude Code\'s own rows ("quiet" off): ') + ex.note;
-  if (t.r) {
-    const n = t.r.lines.length;
-    const notes = [m.under ? 'under the input' : 'above the input', `band ${n} row${n === 1 ? '' : 's'} of ${t.r.input.maxRows} it may use`, `${t.r.input.columns} columns wide`];
-    if (m.under) notes.push(m.fullscreen ? 'buttons pressed by a click' : 'buttons drawn as commands to type');
-    if (m.under && m.collapsed) notes.push('no collapse under the input');
-    $('liveInfo').textContent = notes.join(' · ');
-  } else $('liveInfo').textContent = '';
-  drawSettings();
-  drawGallery();
-  drawPanes();
+  $('liveInfo').textContent = infoText(t.r, m);
+}
+// The same calls twice: as the mod's compact rows, from its own groupLines, and as Claude Code draws them (sketched)
+const ROWS_COLS = 72;
+function drawRows() {
+  const ex = TRANSCRIPTS[liveEx] || TRANSCRIPTS[0];
+  let quiet;
+  try { quiet = BandCore.groupLines(ex.calls, ROWS_COLS, { cwd: CWD }).map(l => BandAdapter.lineHtml(l)).join('\n'); }
+  catch (e) { quiet = html([S('The rows could not draw: ' + e.message, 'bad')]); }
+  $('rowsQuiet').innerHTML = quiet;
+  $('rowsFull').innerHTML = ex.full.map(html).join('\n');
+  $('rowsNote').textContent = ex.note;
+}
+// Only the tab in view is drawn; showTab draws the next one
+function draw() {
+  $('colsOut').textContent = modes.cols; $('rowsOut').textContent = modes.rows; $('termRowsOut').textContent = modes.termRows;
+  const m = eff(modes, cfg);
+  if (tab === 'box') drawBox(m);
+  else if (tab === 'terminal') { drawRows(); drawPane(); }
+  else if (tab === 'settings') { drawLive(m); drawSettings(); }
+  else drawGallery();
+}
+
+// ---------- the tabs ----------
+function showTab(id) {
+  tab = TAB_IDS.includes(id) ? id : 'box';
+  TAB_IDS.forEach(t => {
+    const on = t === tab;
+    $('tab-' + t).setAttribute('aria-selected', String(on));
+    $('tab-' + t).tabIndex = on ? 0 : -1;
+    $('panel-' + t).hidden = !on;
+  });
+  document.querySelectorAll('#map .mapzone').forEach(z => z.classList.toggle('on', z.dataset.tab === tab));
+  store.set('tab', tab);
+  // The address names the tab, so a link opens it; a page that may not touch its address still switches
+  try { if (location.hash.slice(1) !== tab) history.replaceState(null, '', '#' + tab); } catch {}
+  draw();
+}
+// Arrow keys move along a row of tabs, as a tablist's keys do
+function tabKeys(list, pick) {
+  list.addEventListener('keydown', e => {
+    const all = [...list.querySelectorAll('[role=tab]')], at = all.indexOf(document.activeElement);
+    const to = e.key === 'ArrowRight' ? at + 1 : e.key === 'ArrowLeft' ? at - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? all.length - 1 : null;
+    if (at < 0 || to === null) return;
+    e.preventDefault();
+    const next = all[(to + all.length) % all.length];
+    pick(next); next.focus();
+  });
+}
+function buildTabs() {
+  document.querySelectorAll('#tabs [role=tab]').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
+  tabKeys($('tabs'), b => showTab(b.dataset.tab));
+  addEventListener('hashchange', () => { const id = location.hash.slice(1); if (TAB_IDS.includes(id) && id !== tab) showTab(id); });
+  const asked = location.hash.slice(1), kept = store.get('tab');
+  tab = TAB_IDS.includes(asked) ? asked : TAB_IDS.includes(kept) ? kept : 'box';
+}
+
+// ---------- the map ----------
+// Where the mod draws, from its own code: compact tool rows in the terminal, and the short band, the prompt and the
+// pinned line near the message box. Each zone opens its tab.
+function buildMap() {
+  const cols = 68, edge = `<span class="edge">${'─'.repeat(cols)}</span>`;
+  const zone = (id, lines, title, what) => `<button type="button" class="mapzone" data-tab="${id}"><span class="term">${lines.join('\n')}</span>`
+    + `<span class="zone-label"><b>${title}</b><span>${what}</span></span></button>`;
+  let rows, box;
+  try {
+    rows = BandCore.groupLines(TRANSCRIPTS[1].calls, cols - 2, { cwd: CWD }).map(l => BandAdapter.lineHtml(l));
+    const r = BandAdapter.draw(Object.assign({}, DATA0, { failures: 2, agents: noRun(DATA0.agents) }), eff(Object.assign({}, BAND_BASE, { cols }), cfgOf({ user: { band: 'calm' } })));
+    box = [...r.lines.map(l => BandAdapter.lineHtml(fitBand(l, r.input.columns))), edge, html([S('> ', 'dim'), S('type your next message', 'zone')]), edge,
+      ...(r.pinned ? ['  ' + html([S('⚠ alfred-mods: ', 'warn'), S(r.pinned, '')])] : [])];
+  } catch (e) { rows = box = [html([S('The map could not draw: ' + e.message, 'bad')])]; }
+  $('map').innerHTML = zone('terminal', rows, 'In the terminal', 'Each tool call as one line, the /inspect pane with the details, and the mask for a recording')
+    + zone('box', box, 'Near the message box', 'The band with the session\'s numbers, the row that asks for you, the handoff and the pinned line');
+  document.querySelectorAll('#map .mapzone').forEach(z => z.addEventListener('click', () => { showTab(z.dataset.tab); $('tabs').scrollIntoView({ block: 'start', behavior: 'smooth' }); }));
+}
+
+// ---------- what each band row means ----------
+// [name, when it shows, the situation, the numbers, the settings files, which drawn lines are the example, what it
+// shows, how it works]. The example is the mod's own lines for that situation, at 150 columns.
+const BAND_PARTS = [
+  ['The turn', 'while Claude works', { running: true }, null, null, t => /Turn \d/.test(t),
+    'The turn Claude is on, how long it has run and its tool calls so far, then the agent at work and what it does now.',
+    'Counted from the session\'s own events as they happen. Once Claude has answered, the line stays only while something needs you, as ✓ with the turn\'s total.'],
+  ['Flags', 'in front of the first line', { running: true, alfred: true, autoRun: true, autoCompact: true, scorer: true }, d => ({ agents: noRun(d.agents) }), { user: { rec: 'on' } }, (t, i) => i === 0,
+    'A red ● REC while Recording mode masks the screen. With Alfred Code installed, its modes: auto-run, auto-compact with the size Claude Code compacts at, and scoring with its pass level.',
+    'They lead the first line in every state and are never dropped for width. The modes are read from the one status file Alfred Code publishes; without it, none show.'],
+  ['The gauges', 'always', {}, null, null, t => /^ctx /.test(t),
+    'How full the context is, how much of your 5-hour and weekly limits is used and when each resets, then the session\'s cost and today\'s.',
+    'From the numbers Claude Code reports with each reply; nothing is fetched. Green under 60%, amber to 85%, red past it. Today\'s cost is the mod\'s own count on this machine.'],
+  ['The info line', 'full band', {}, null, null, t => /tok\/s/.test(t),
+    'The model and its effort, the session\'s time, the average output speed, how long the prompt cache stays warm, when you last sent a prompt and Claude last replied, and Claude Code\'s version.',
+    'Drawn by the full band; "band": "calm" leaves it out, with every row under it. Short of width it wraps onto a second row, then gives up the version, then the times.'],
+  ['project:', 'full band', {}, null, null, t => /^project:/.test(t),
+    'The project, the git branch with ↑ commits ahead of and ↓ behind its upstream, the uncommitted lines added and removed, and the folder Claude works in now.',
+    'Follows Claude: its last cd, or the last file it edited. Read from git after each Bash call, edit and write, and every 30 seconds. The mod never fetches, so the arrows are as of your last fetch.'],
+  ['plan:', 'while a plan runs', { running: true, plan: true }, null, null, t => /^plan:/.test(t),
+    'The plan\'s title, the steps done, the step in progress, and the plan\'s score with its change from the round before.',
+    'Read from a plan file in .claude/session-inspector/plans/, else Claude\'s task list. With Alfred Code, the plan its status file names comes first.'],
+  ['usage:', 'once something is counted', { running: true }, null, null, t => /^usage:/.test(t),
+    'The session\'s counts: tool calls, skills loaded, agents dispatched with how many run now, rules in the context, and compactions.',
+    'It counts what the four rows under it list, so it stays when "bandRows": false closes them.'],
+  ['tools: skills: agents: rules:', 'each from its first item', { running: true }, null, null, t => /^(tools|skills|agents|rules):/.test(t),
+    'Every tool with its calls; the skills loaded into the chat and how many the listing carries; each agent type, ◐ while one runs, ✓ done, ✗ failed; the rule files in the context.',
+    '×N is the count this session, agents\' calls included. A row waits for its first item, so a new session shows none of them.'],
+  ['The row that asks', 'between turns', {}, d => ({ failures: 2, ctxUsed: Math.ceil(Number(d.window) * 0.82), agents: noRun(d.agents) }), null, t => /^[⚠✗]/.test(t),
+    'What needs you once Claude has answered: new tool failures, the context past the handoff\'s step, or a cache about to go cold.',
+    'Each ask names its key: 1 opens /inspect on the failures, 4 saves a handoff, 3 compacts. Under the message box, where no key reaches, the same asks show the command to type.'],
+  ['The pinned line', 'under the message box', { collapsed: true }, d => ({ failures: 2, ctxUsed: Math.ceil(Number(d.window) * 0.7), agents: noRun(d.agents) }), { user: { rec: 'on' } }, null,
+    'One line while something needs you: Recording mode on, the context at 60% or more, new failures.',
+    'It stays when the band is folded away (Ctrl+X Ctrl+A) or off. While the band is in view it leaves out what the band already shows, and it clears once nothing needs you.'],
+];
+function buildParts() {
+  const rows = BAND_PARTS.map(([name, when, set, dset, files, pick, shows, works]) => {
+    let example;
+    try {
+      const r = BandAdapter.draw(Object.assign({}, DATA0, dset ? dset(DATA0) : {}), eff(Object.assign({}, BAND_BASE, { cols: 150 }, set), cfgOf(files)));
+      example = pick === null
+        ? html([S('⚠ alfred-mods: ', 'warn'), S(r.pinned || '', '')])
+        : r.lines.filter((l, i) => pick(BandAdapter.lineText(l), i)).map(l => BandAdapter.lineHtml(l)).join('\n');
+    } catch (e) { example = html([S('The example could not draw: ' + e.message, 'bad')]); }
+    return `<tbody><tr class="ex"><th scope="rowgroup" rowspan="2">${esc(name)}<span>${esc(when)}</span></th><td colspan="2"><div class="term-scroll"><div class="term">${example}</div></div></td></tr>`
+      + `<tr><td>${esc(shows)}</td><td>${esc(works)}</td></tr></tbody>`;
+  }).join('');
+  $('bandParts').innerHTML = '<colgroup><col class="c-name"><col><col></colgroup>'
+    + '<thead><tr><th scope="col">Row</th><th scope="col">What it shows</th><th scope="col">How it works</th></tr></thead>' + rows;
 }
 
 // ---------- the /inspect pane ----------
@@ -3255,6 +3586,12 @@ let pane; try { pane = JSON.parse(paneRaw); } catch { pane = JSON.parse(JSON.str
 let paneW = store.get('pane-w') || 90;
 
 const TABS = ['Now', 'Usage', 'Agents', 'Tools', 'Cache', 'Timeline', 'Plan'];
+// The question each tab answers
+const TAB_ASKS = {
+  Now: 'What needs me right now?', Usage: 'What fills the context and my limits?', Agents: 'What are the subagents doing?',
+  Tools: 'Which calls ran, and which failed?', Cache: 'When does the cache go cold?', Timeline: 'What did each turn take?', Plan: 'How far is the plan?'
+};
+let paneTab = TABS.includes(store.get('pane-tab')) ? store.get('pane-tab') : 'Now';
 const TAB_NOTES = {
   Now: 'The tab to keep open while Claude works: the plan step, the handoff state, Alfred Code\'s status, running agents and new failures. Opening it marks failures as seen.',
   Usage: 'What fills the context and the limits, from Claude Code\'s own estimate.',
@@ -3424,28 +3761,40 @@ function tabPlan(d, m, p, w) {
   return L;
 }
 const TAB_FN = { Now: tabNow, Usage: tabUsage, Agents: tabAgents, Tools: tabTools, Cache: tabCache, Timeline: tabTimeline, Plan: tabPlan };
-function drawPanes() {
+// The pane's tabs as a row of tabs, one drawn at a time, as the pane itself shows one
+function buildPane() {
+  $('paneTabs').innerHTML = TABS.map(t => `<button type="button" role="tab" id="pane-${t}" aria-controls="panePanel" data-t="${t}">${t}</button>`).join('');
+  const pick = b => { paneTab = b.dataset.t; store.set('pane-tab', paneTab); drawPane(); };
+  document.querySelectorAll('#paneTabs [role=tab]').forEach(b => b.addEventListener('click', () => pick(b)));
+  tabKeys($('paneTabs'), pick);
+}
+function drawPane() {
   $('paneWOut').textContent = paneW;
-  $('placement').textContent = modes.cols >= 110 ? `At your ${modes.cols}-column terminal it docks beside the transcript (from 110 columns).` : `At your ${modes.cols}-column terminal it opens inline above the prompt (docking needs 110 columns).`;
+  $('placement').textContent = modes.cols >= 110 ? `In a terminal ${modes.cols} columns wide it docks beside the conversation (from 110 columns).` : `In a terminal ${modes.cols} columns wide it opens inline above the prompt (docking needs 110 columns).`;
+  TABS.forEach(t => { const on = t === paneTab; $('pane-' + t).setAttribute('aria-selected', String(on)); $('pane-' + t).tabIndex = on ? 0 : -1; });
+  $('panePanel').setAttribute('aria-labelledby', 'pane-' + paneTab);
+  $('paneAsk').innerHTML = `${esc(TAB_ASKS[paneTab])} <code class="muted" style="font-weight:400">/inspect ${paneTab.toLowerCase()}</code>`;
+  $('paneNote').textContent = TAB_NOTES[paneTab];
   const edge = `<span class="edge">${'─'.repeat(paneW)}</span>`;
-  $('panes').innerHTML = TABS.map(t => {
-    let body;
-    try { body = [header(t, paneW), ...TAB_FN[t](data, eff(modes, cfg), pane || {}, paneW)].map(l => html(cut(l, paneW))).join('\n'); }
-    catch (e) { body = html([S('This tab could not draw from the JSON: ' + e.message, 'bad')]); }
-    return `<article class="card"><div class="card-head"><h2>/inspect ${t.toLowerCase()}</h2></div><p class="muted" style="font-size:13px">${esc(TAB_NOTES[t])}</p>
-      <div class="term-scroll"><div class="term">${edge}\n${body}\n${edge}</div></div></article>`;
-  }).join('');
+  let body;
+  try { body = [header(paneTab, paneW), ...TAB_FN[paneTab](data, eff(modes, cfg), pane || {}, paneW)].map(l => html(cut(l, paneW))).join('\n'); }
+  catch (e) { body = html([S('This tab could not draw from the JSON: ' + e.message, 'bad')]); }
+  $('paneTerm').innerHTML = `${edge}\n${body}\n${edge}`;
 }
 
 // The transcript example and whether the live terminal stays pinned: this viewer's choice, kept in this browser only
 function buildLive() {
-  $('liveExample').innerHTML = TRANSCRIPTS.map((t, i) => `<option value="${i}">${esc(t.name)}</option>`).join('');
+  // One example, two pickers: the terminal tab's tool rows and the settings tab's live terminal show the same calls
+  const pickers = [$('liveExample'), $('rowsExample')];
   const ex = store.get('liveEx'), pinned = store.get('livePinned') === true;
   liveEx = Number.isInteger(ex) && ex >= 0 && ex < TRANSCRIPTS.length ? ex : 0;
-  $('liveExample').value = String(liveEx);
+  pickers.forEach(el => {
+    el.innerHTML = TRANSCRIPTS.map((t, i) => `<option value="${i}">${esc(t.name)}</option>`).join('');
+    el.value = String(liveEx);
+    el.addEventListener('change', () => { liveEx = +el.value; pickers.forEach(other => { other.value = String(liveEx); }); store.set('liveEx', liveEx); draw(); });
+  });
   $('livePinned').checked = pinned;
   document.querySelector('.live').classList.toggle('pinned', pinned);
-  $('liveExample').addEventListener('change', () => { liveEx = +$('liveExample').value; store.set('liveEx', liveEx); draw(); });
   $('livePinned').addEventListener('change', () => {
     const on = $('livePinned').checked;
     document.querySelector('.live').classList.toggle('pinned', on);
@@ -3453,7 +3802,7 @@ function buildLive() {
   });
 }
 
-buildEditor(); buildSettings(); buildLive(); fill(); draw();
+buildEditor(); buildSettings(); buildLive(); buildPresets(); buildPane(); buildParts(); buildMap(); buildTabs(); fill(); showTab(tab);
 </script>
 
 </body></html>

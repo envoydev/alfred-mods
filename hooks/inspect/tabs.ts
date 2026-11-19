@@ -1,11 +1,12 @@
 // Each /inspect tab, from the session's values to lines of styled segments.
 import { LOOPS_NOTE, agentTime, agentTree, isLive, laneFit, lanesOf, loopsLine, reportLine, statusGlyph, toolSummary } from '../agents/agents'
-import { barSegs, percentSeg, windowsInOrder } from '../band/gauges'
+import { barSegs, percentSeg, resetAtOf, windowLabel, windowsInOrder } from '../band/gauges'
 import { wrapRows } from '../band/wrap'
 import { skillSegs } from '../band/detail'
 import { cacheWarning, workingLine } from '../band/working'
 import { REC_MARK } from '../band/band'
 import { IDLE_COMPACT_MS, billingOf, cacheLine, cacheView, selfCompacts, toastAt } from '../cache/cache'
+import { FAMILIES } from '../core/constants'
 import { clockText, durationText, fitLine, modelParts, modelText, printable, tokensText, usdText, whenText } from '../core/format'
 import { paceForecast, turnsLeft } from '../core/forecast'
 import { handoffLines } from '../handoff/handoff'
@@ -15,14 +16,11 @@ import { planSection } from '../plan/planlines'
 import { recStatus } from '../rec/rec'
 import { storedMark } from '../session/windows'
 import { stackLines } from '../stack/stack'
-import type { AgentRow, Loop } from '../agents/types'
-import type { BandInput } from '../band/types'
+import type { AgentRow } from '../agents/types'
 import type { Parts } from '../context/types'
 import type { Line, Seg, Tone } from '../core/types'
-import type { HandoffView } from '../handoff/types'
-import type { Tab, TabInput, View } from './types'
-import type { Totals, Turn } from '../session/types'
-import type { Runway, Stack } from '../stack/types'
+import type { Tab, TabInput } from './types'
+import type { Turn } from '../session/types'
 import type { Failure, ToolStat } from '../tools/types'
 
 
@@ -60,7 +58,7 @@ export function tabBar(tab: Tab, isLive: boolean, columns: number): Line[] {
 }
 
 // 'skills fired: watch ×1 · plugin-authoring ×4', first fired first; null with no skill
-export function skillsLine(stats: Record<string, ToolStat>): Line | null {
+function skillsLine(stats: Record<string, ToolStat>): Line | null {
   const skills = Object.entries(stats).filter(([key]) => key.startsWith('Skill: '))
   if (skills.length === 0) return null
   const line: Line = [{ text: 'skills fired: ', tone: 'dim' }]
@@ -70,8 +68,6 @@ export function skillsLine(stats: Record<string, ToolStat>): Line | null {
   })
   return line
 }
-
-const FAMILIES = ['opus', 'sonnet', 'haiku', 'fable'] as const
 
 // An agent's model as its family, in the family's colour; the model text when it has none
 function familySeg(model: string): Seg {
@@ -196,11 +192,6 @@ function agentsSection(input: TabInput): Line[] {
   return out
 }
 
-const parse = (iso: string | null): number | null => {
-  const ms = iso === null ? NaN : Date.parse(iso)
-  return Number.isNaN(ms) ? null : ms
-}
-
 // The failures the newest first, each with the number '/inspect show <n>' and 'copy <n>' take (the user, 2026-11-12:
 // 'right now I need to count and order'), right-aligned to the widest
 function numberedFailures(input: TabInput): Line[] {
@@ -303,23 +294,21 @@ export function usageLines(input: TabInput): Line[] {
   if (usage.startedAt !== null) head.push({ text: `   session ${durationText(input.now - usage.startedAt)}`, tone: 'dim' })
   const out: Line[] = [head]
 
+  const series = input.turns.flatMap(turn => (turn.contextPercent === null ? [] : [turn.contextPercent]))
   const ctx: Line = [{ text: 'Context', width: LABEL }]
   if (usage.contextPercent === null) ctx.push({ text: '—', tone: 'dim' })
   else {
     ctx.push(...barSegs(usage.contextPercent), percentSeg(usage.contextPercent))
     if (usage.contextTokens !== null && usage.contextWindow !== null) ctx.push({ text: `   ${tokensText(usage.contextTokens)} / ${tokensText(usage.contextWindow)}`, tone: 'dim' })
-    const series = input.turns.flatMap(turn => (turn.contextPercent === null ? [] : [turn.contextPercent]))
     const left = turnsLeft(series, input.forecast?.at)
     if (left !== null) ctx.push({ text: `   ≈${left} turns to ${input.forecast?.label ?? '80%'}`, tone: 'dim' })
   }
   out.push(ctx)
-  const series = input.turns.flatMap(turn => (turn.contextPercent === null ? [] : [turn.contextPercent]))
   if (series.length > 0) out.push([{ text: 'per turn', tone: 'dim', width: LABEL }, { chart: series.slice(-20) }])
 
   for (const rateWindow of windowsInOrder(usage.rateWindows)) {
-    const name = rateWindow.kind === 'five_hour' ? '5h' : rateWindow.kind === 'seven_day' ? '7d' : rateWindow.kind
-    const line: Line = [{ text: name, width: LABEL }, ...barSegs(rateWindow.percentUsed), percentSeg(rateWindow.percentUsed, storedMark(usage.rateWindowsAt))]
-    const reset = parse(rateWindow.resetsAt)
+    const line: Line = [{ text: windowLabel(rateWindow.kind), width: LABEL }, ...barSegs(rateWindow.percentUsed), percentSeg(rateWindow.percentUsed, storedMark(usage.rateWindowsAt))]
+    const reset = resetAtOf(rateWindow)
     if (reset !== null) line.push({ text: `   resets ${whenText(reset)}`, tone: 'dim' })
     const pace = paceForecast(rateWindow.kind, input.pace[rateWindow.kind]?.points ?? [], reset, input.now)
     if (pace === 'on-pace') line.push({ text: '   on pace', tone: 'ok' })

@@ -15,7 +15,7 @@ import { actionOf } from '../agents/agents'
 import { isAllWait, waitMsOf } from '../plan/steptime'
 import { mask } from '../rec/mask'
 import { followEditedFile, pollPlace, workingFolder } from '../place/effects'
-import type { Pending, HookInput, HookNext, MatchedInput, MatchedNext } from '../core/types'
+import type { Line, Pending, HookInput, HookNext, MatchedInput, MatchedNext } from '../core/types'
 import { drawLines } from '../core/draw'
 import { DROPS_RESULT, callLine, groupLines } from './compact'
 import { maskDeep, maskResult, resultLines } from '../rec/sites'
@@ -23,6 +23,7 @@ import { isNoColor } from '../core/effects'
 import { rememberCall } from './calls'
 import { addWaitTime, closeCallWait, followTaskTools, openCallWait, schedulePlanReload } from '../plan/effects'
 import { isRecOn } from '../rec/effects'
+import { DEFAULT_COLUMNS, EDIT_TOOLS } from './constants'
 
 const INITIAL_STATS: Record<string, ToolStat> = {}
 const statsAtom = atom({ plugin: 'alfred-mods', key: 'stats' } as const, INITIAL_STATS, { shape: 'stats-1' })
@@ -62,7 +63,7 @@ export function resetBlockers($: EngineInterface) {
 
 const INITIAL_QUIET: Quiet = { isOn: false }
 const quietAtom = atom({ plugin: 'alfred-mods', key: 'quiet' } as const, INITIAL_QUIET, { shape: 'quiet-1' })
-export function readQuiet($: EngineInterface) {
+function readQuiet($: EngineInterface) {
   return read($, quietAtom)
 }
 function updateQuiet($: EngineInterface, change: (value: Quiet) => Quiet) {
@@ -88,7 +89,7 @@ const errorTexts = new Map<string, string>()
 const errorRowIds = new Set<string>()
 
 // A failure row for a call that was not ok; it is seen at once while the pane shows Now or Tools
-export async function addFailureRow($: EngineInterface, id: string, call: ToolCall, outcome: Exclude<Outcome, 'ok'>, reason: string, isNew: boolean, drop: string | null, by: string | null): Promise<void> {
+async function addFailureRow($: EngineInterface, id: string, call: ToolCall, outcome: Exclude<Outcome, 'ok'>, reason: string, isNew: boolean, drop: string | null, by: string | null): Promise<void> {
   const { tab } = await readView($)
   const isSeen = (tab === 'now' || tab === 'tools') && await isInspectDrawn($)
   const result = call.facts.result
@@ -109,7 +110,7 @@ export async function addFailureRow($: EngineInterface, id: string, call: ToolCa
   })
 }
 
-export function markUnfolded(ids: string[]): void {
+function markUnfolded(ids: string[]): void {
   for (const id of ids) {
     rowMemory.marks.delete(id)
     rowMemory.marks.add(id)
@@ -117,20 +118,22 @@ export function markUnfolded(ids: string[]): void {
   keepNewest(rowMemory.marks)
 }
 
-// A row's or a group call's facts as a compact row reads them; a refusal draws as a block
-export function compactCallOf(
-  id: string | undefined, call: { tool: string; input: unknown; output?: unknown; isErrored: boolean; isInterrupted: boolean },
+// A row's or a group call's facts as a compact row reads them; a refusal draws as a block. A call has not run yet while
+// it carries no `output`, which stays undefined until it resolves (types), and the mod never saw it settle
+function compactCallOf(
+  id: string | undefined, call: { tool: string; input: unknown; output?: unknown; isErrored: boolean; isInterrupted: boolean; isRunning?: boolean },
 ): CompactCall {
   const remembered = id === undefined ? undefined : rowMemory.outcomes.get(id)
+  const isWaiting = id !== undefined && remembered === undefined && call.output === undefined && call.isRunning !== true && !call.isErrored && !call.isInterrupted
   const outcome = remembered?.outcome === 'denied' ? 'denied' : remembered?.outcome === 'blocked' || remembered?.outcome === 'refused' ? 'blocked' : null
   return {
     tool: call.tool, input: call.input, output: call.output, isErrored: call.isErrored, isInterrupted: call.isInterrupted, outcome,
-    reason: outcome === null ? null : remembered?.reason ?? null, isAutoAllowed: remembered?.isAutoAllowed === true,
+    reason: outcome === null ? null : remembered?.reason ?? null, isAutoAllowed: remembered?.isAutoAllowed === true, isWaiting,
   }
 }
 
 // Counts a settled call, or counts it again when a later event changed its outcome
-export async function settleToolCall($: EngineInterface, id: string, call: ToolCall): Promise<void> {
+async function settleToolCall($: EngineInterface, id: string, call: ToolCall): Promise<void> {
   const { outcome, reason, isNew, by } = classifyCall(call.facts)
   rowMemory.outcomes.delete(id)
   // In auto mode a check's ask that no one saw and no hook refused was the classifier's allow (outcome.ts)
@@ -172,7 +175,7 @@ export async function settleToolCall($: EngineInterface, id: string, call: ToolC
   await syncStatusLine($)
 }
 
-export function keepErrorText(id: string, text: string): void {
+function keepErrorText(id: string, text: string): void {
   errorTexts.delete(id)
   errorTexts.set(id, text)
   keepNewest(errorTexts)
@@ -187,7 +190,7 @@ export async function applyQuiet($: EngineInterface): Promise<boolean> {
 
 export async function trackToolCall($: EngineInterface, e: HookInput<'tool.call'>, next: HookNext<'tool.call'>, calls: Map<string, ToolCall>, pending: Pending) {
   if (!(await isTrackedLoop($, e.agentId))) return next(e)
-  const input = e as unknown as Record<string, unknown>
+  const input: Record<string, unknown> = e
   const call = rememberCall(calls, e.tool_use_id, e.tool)
   call.key = toolKey(e.tool, input)
   call.target = targetOf(e.tool, input, await $.session.cwd())
@@ -207,7 +210,7 @@ export async function trackToolCall($: EngineInterface, e: HookInput<'tool.call'
   const ran = await next(e)
   // A `cd` in the main loop's Bash, or a file it edited or wrote, moves the folder Claude works in: the place is read
   // again off the hook
-  const isEdit = ['Edit', 'Write', 'NotebookEdit'].includes(e.tool) && ran.isError !== true && ran.deny === undefined
+  const isEdit = EDIT_TOOLS.includes(e.tool) && ran.isError !== true && ran.deny === undefined
   const edited = isEdit ? String(input.file_path ?? input.notebook_path ?? '') : ''
   if (call.agentId === null && (e.tool === 'Bash' || edited !== '')) {
     $.clock.after(0, () => {
@@ -229,7 +232,7 @@ export async function trackToolCall($: EngineInterface, e: HookInput<'tool.call'
   if (isWait) isClosed = await closeCallWait($, loop, e.tool_use_id, endedAt)
   if (wait === null) call.pendingMs = ms
   else if (!isClosed) await addWaitTime($, loop, wait, endedAt)
-  if (e.tool === 'Write' || e.tool === 'Edit' || e.tool === 'NotebookEdit') schedulePlanReload($, pending)
+  if (EDIT_TOOLS.includes(e.tool)) schedulePlanReload($, pending)
   if (call.agentId === null && call.outcome === 'ok') {
     const result = ran.result
     await followTaskTools($, pending, e.tool, input, result)
@@ -304,26 +307,37 @@ export async function trackSkillPrompt($: EngineInterface, e: HookInput<'skill.p
   return prompted
 }
 
+// A ToolUse row drawn as the mod's own lines across the row's width, with no button
+async function drawRowLines($: EngineInterface, e: MatchedInput<'ui.render', { component: 'ToolUse' }>, lines: Line[], columns: number) {
+  return drawLines($.ui.resolve(e), e, lines, { noColor: await isNoColor($), press: {}, columns, fill: true })
+}
+
 export async function drawToolUse($: EngineInterface, e: MatchedInput<'ui.render', { component: 'ToolUse' }>, next: MatchedNext<'ui.render', { component: 'ToolUse' }>) {
   if (e.props.isErrored && typeof e.props.output === 'string' && !errorTexts.has(e.props.tool_use_id)) keepErrorText(e.props.tool_use_id, e.props.output)
   if ((await readQuiet($)).isOn && !e.props.isRunning && (e.props.isExpanded !== true || rowMemory.marks.has(e.props.tool_use_id))) {
-    const columns = e.viewport?.columns ?? 120
-    const lines = callLine(compactCallOf(e.props.tool_use_id, e.props), columns, { cwd: workingFolder() })
-    return drawLines($.ui.resolve(e), e, lines, { noColor: await isNoColor($), press: {}, columns , fill: true })
+    const columns = e.viewport?.columns ?? DEFAULT_COLUMNS
+    return drawRowLines($, e, callLine(compactCallOf(e.props.tool_use_id, e.props), columns, { cwd: workingFolder() }), columns)
   }
   if (!(await isRecOn($))) return next(e)
+  // When a call ends, Claude Code repaints its own row from its own state - the error text, a Bash call's output -
+  // a frame before it asks the mod again (live, 2026-11-19): under REC a running row is the mod's own, so that frame
+  // shows this line
+  if (e.props.isRunning) {
+    const columns = e.viewport?.columns ?? DEFAULT_COLUMNS
+    return drawRowLines($, e, callLine({ ...compactCallOf(e.props.tool_use_id, e.props), isRunning: true }, columns, { cwd: workingFolder() }), columns)
+  }
   // An unfolded group's errored row draws its error text inline, and Claude Code draws that text, not `output` (live,
   // fullscreen, 2026-10-28): with a sample in it, the row draws its compact head and the masked text itself, once
-  if (e.props.isErrored && !e.props.isRunning) {
+  if (e.props.isErrored) {
     const failed = maskResult({ tool: e.props.tool, output: e.props.output, isErrored: true, error: errorTexts.get(e.props.tool_use_id) ?? null }, mask)
     if (failed.kind === 'tree') {
       errorRowIds.delete(e.props.tool_use_id)
       errorRowIds.add(e.props.tool_use_id)
       keepNewest(errorRowIds)
-      const columns = e.viewport?.columns ?? 120
+      const columns = e.viewport?.columns ?? DEFAULT_COLUMNS
       const head = callLine(compactCallOf(e.props.tool_use_id, e.props), columns, { cwd: workingFolder() }).slice(0, 1)
       const isExpanded = e.props.isExpanded === true
-      return drawLines($.ui.resolve(e), e, [...head, ...resultLines(failed.text, { isExpanded, isErrored: true, gutter: e.surface === 'terminal' })], { noColor: await isNoColor($), press: {}, columns , fill: true })
+      return drawRowLines($, e, [...head, ...resultLines(failed.text, { isExpanded, isErrored: true, gutter: e.surface === 'terminal' })], columns)
     }
   }
   const input = maskDeep(e.props.input, mask)
@@ -337,14 +351,14 @@ export async function drawToolResult($: EngineInterface, e: MatchedInput<'ui.ren
   // only in that view (an unfolded group draws its rows' output inline), so it unmarks its row and redraws it in full
   if (e.props.isExpanded === true && rowMemory.marks.delete(e.props.tool_use_id)) $.ui.invalidate('ui.render')
   const isDropped = e.props.isErrored || DROPS_RESULT.includes(e.props.tool)
-  if (isDropped && e.props.isExpanded !== true && (await readQuiet($)).isOn) return drawLines($.ui.resolve(e), e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
+  if (isDropped && e.props.isExpanded !== true && (await readQuiet($)).isOn) return drawLines($.ui.resolve(e), e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? DEFAULT_COLUMNS , fill: true })
   if (!(await isRecOn($))) return next(e)
-  if (e.props.isErrored && errorRowIds.has(e.props.tool_use_id)) return drawLines($.ui.resolve(e), e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
+  if (e.props.isErrored && errorRowIds.has(e.props.tool_use_id)) return drawLines($.ui.resolve(e), e, [], { noColor: false, press: {}, columns: e.viewport?.columns ?? DEFAULT_COLUMNS , fill: true })
   const masked = maskResult({ ...e.props, error: errorTexts.get(e.props.tool_use_id) ?? null }, mask)
   if (masked.kind === 'same') return next(e)
   if (masked.kind === 'output') return next({ ...e, props: { ...e.props, output: masked.output } })
   const lines = resultLines(masked.text, { isExpanded: e.props.isExpanded === true, isErrored: e.props.isErrored, gutter: e.surface === 'terminal' })
-  return drawLines($.ui.resolve(e), e, lines, { noColor: await isNoColor($), press: {}, columns: e.viewport?.columns ?? 120 , fill: true })
+  return drawLines($.ui.resolve(e), e, lines, { noColor: await isNoColor($), press: {}, columns: e.viewport?.columns ?? DEFAULT_COLUMNS , fill: true })
 }
 
 export async function drawToolGroup($: EngineInterface, e: MatchedInput<'ui.render', { component: 'ToolGroup' }>, next: MatchedNext<'ui.render', { component: 'ToolGroup' }>) {
@@ -356,7 +370,7 @@ export async function drawToolGroup($: EngineInterface, e: MatchedInput<'ui.rend
     return next(e)
   }
   if (isQuiet && !e.props.isActive && e.props.isCallsOnly === true) {
-    const columns = e.viewport?.columns ?? 120
+    const columns = e.viewport?.columns ?? DEFAULT_COLUMNS
     const lines = groupLines(e.props.calls.map(batchCall => compactCallOf(batchCall.tool_use_id, batchCall)), columns, { cwd: workingFolder() })
     return drawLines($.ui.resolve(e), e, lines, { noColor: await isNoColor($), press: {}, columns , fill: true })
   }

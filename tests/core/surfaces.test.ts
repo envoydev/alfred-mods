@@ -2,16 +2,14 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, RenderElement, RenderSurface, SessionUsage } from 'claude-code'
 
-import { PRESENTATION, SPAWN, START, engine, rows as rowsOf, setUser, spawns, step, stepEngine, stubAll } from '../kit'
+import { PRESENTATION, SPAWN, START, engine, isDrawn, rows as rowsOf, setUser, spawns, step, stepEngine, stubAll } from '../kit'
 import { drawLines } from '../../hooks/core/draw'
-import type { FileStub } from '../kit'
+import type { Drawn, FileStub } from '../kit'
 import { NOW, PLAN_JSON, SCORES_JSON } from '../plans'
 import type { Line } from '../../hooks/core/types'
 
 // The tree checks, ported from claude-flightdeck's tests (f9c3c52, tests/flightdeck.test.ts 938-995). The kit lays
 // nothing out, so they read the drawn tree as a row layout would.
-type Drawn = { type: string; props?: Record<string, unknown>; children?: unknown[] }
-const isDrawn = (n: unknown): n is Drawn => typeof n === 'object' && n !== null && typeof (n as Drawn).type === 'string'
 const cellsOf = (s: string): number => [...s].length
 const textOf = (n: unknown): string =>
   typeof n === 'string' || typeof n === 'number' ? String(n) : isDrawn(n) ? (n.children ?? []).map(textOf).join('') : ''
@@ -20,21 +18,21 @@ const num = (v: unknown): number => (typeof v === 'number' ? v : 0)
 // What a graphical surface needs of a line: no Text holds a Text (the Desktop app wraps nested pieces, or lays them out
 // as blocks), no Text alone in a Box starts or ends with a space, and off the terminal no Text holds a run of spaces
 // (a proportional face collapses them)
-export function faults(tree: RenderElement, surface: RenderSurface): string[] {
+function faults(tree: RenderElement, surface: RenderSurface): string[] {
   const out: string[] = []
-  const walk = (n: unknown, path: string, parent: string): void => {
-    if (!isDrawn(n)) return
-    const p = n.props ?? {}
-    const here = `${path}/${String(p.key ?? n.type)}`
-    const kids = (n.children ?? []).filter(isDrawn)
-    if (n.type === 'Text') {
-      const text = textOf(n)
+  const walk = (node: unknown, path: string, parent: string): void => {
+    if (!isDrawn(node)) return
+    const props = node.props ?? {}
+    const here = `${path}/${String(props.key ?? node.type)}`
+    const kids = (node.children ?? []).filter(isDrawn)
+    if (node.type === 'Text') {
+      const text = textOf(node)
       if (kids.some(k => k.type === 'Text')) out.push(`${here}: a Text holds a Text "${text}"`)
       if (parent === 'Box' && text !== text.trim()) out.push(`${here}: edge spaces "${text}"`)
       if (surface !== 'terminal' && text.includes('  ')) out.push(`${here}: a run of spaces "${text}"`)
       return
     }
-    kids.forEach((k, i) => walk(k, `${here}[${i}]`, n.type))
+    kids.forEach((k, i) => walk(k, `${here}[${i}]`, node.type))
   }
   walk(tree, '', '')
   return out
@@ -43,27 +41,27 @@ export function faults(tree: RenderElement, surface: RenderSurface): string[] {
 // The fewest cells an element needs: a truncating Text one, any other Text its length; a Button its label and frame
 // (Decision 12); a Code piece, a chart and an Input one, as each is alone or sized by its Box; a row Box the sum of its
 // children and margins. A Box given a width must hold what it needs.
-export function spills(tree: RenderElement): string[] {
+function spills(tree: RenderElement): string[] {
   const out: string[] = []
-  const needs = (n: unknown, path: string): number => {
-    if (typeof n === 'string') return cellsOf(n)
-    if (!isDrawn(n)) return 0
-    const p = n.props ?? {}
-    const here = `${path}/${String(p.key ?? n.type)}`
-    if (n.type === 'Text') return p.wrap === 'truncate-end' ? 1 : cellsOf(textOf(n))
-    if (n.type === 'Button') {
-      const label = cellsOf(String(p.label ?? ''))
-      return p.plain === true ? (typeof p.hotkey === 'string' ? p.hotkey.length + 2 : 0) + label : label + 4
+  const needs = (node: unknown, path: string): number => {
+    if (typeof node === 'string') return cellsOf(node)
+    if (!isDrawn(node)) return 0
+    const props = node.props ?? {}
+    const here = `${path}/${String(props.key ?? node.type)}`
+    if (node.type === 'Text') return props.wrap === 'truncate-end' ? 1 : cellsOf(textOf(node))
+    if (node.type === 'Button') {
+      const label = cellsOf(String(props.label ?? ''))
+      return props.plain === true ? (typeof props.hotkey === 'string' ? props.hotkey.length + 2 : 0) + label : label + 4
     }
-    if (n.type !== 'Box') return 1
-    const kids = (n.children ?? []).filter(c => c !== null && c !== undefined && c !== false && c !== '')
+    if (node.type !== 'Box') return 1
+    const kids = (node.children ?? []).filter(c => c !== null && c !== undefined && c !== false && c !== '')
     const inner = kids.map((c, i) => needs(c, `${here}[${i}]`))
-    const isColumn = p.flexDirection === 'column'
+    const isColumn = props.flexDirection === 'column'
     const need = isColumn ? Math.max(0, ...inner) : inner.reduce((a, b) => a + b, 0)
-    const margin = num(p.marginLeft) + num(p.marginRight)
-    if (typeof p.width === 'number') {
-      if (need > p.width) out.push(`${here}: needs ${need} in ${p.width}`)
-      return p.width + margin
+    const margin = num(props.marginLeft) + num(props.marginRight)
+    if (typeof props.width === 'number') {
+      if (need > props.width) out.push(`${here}: needs ${need} in ${props.width}`)
+      return props.width + margin
     }
     return need + margin
   }
@@ -433,16 +431,22 @@ test("a tool row takes its slot's width, not the viewport's", async ($, on) => {
   expect(lines.map(l => [l.props?.['width'], l.props?.['overflow']])).toEqual(lines.map(() => [undefined, 'hidden']))
 })
 
-// Rule 2 is linear, so a long run of spaces in tool output does not stall a render hook (the release 2 review)
-test('a 100 kB run of spaces cuts in under 50 ms', async ($, on) => {
+// Rule 2 is linear, so a long run of spaces in tool output does not stall a render hook (the release 2 review). A
+// quadratic cut takes seconds here; the best of five redraws keeps a busy machine's pause (705 ms once, 2026-11-19,
+// under a parallel suite) from failing a linear one
+test('a 100 kB run of spaces cuts in under 50 ms, the best of five redraws', async ($, on) => {
   stubAll(on)
   engine(on)
   fitPane(on, [[{ text: `a${' '.repeat(100_000)}b` }]])
   const ui = await mountFit($, 'terminal', 40)
-  const t0 = performance.now()
-  await ui.redraw({ ...FIT_PANE, bodyColumns: 41 })
-  await ui.drawn()
-  expect(Math.round(performance.now() - t0) < 50).toBe(true)
+  let bestMs = Number.POSITIVE_INFINITY
+  for (let run = 1; run <= 5; run++) {
+    const t0 = performance.now()
+    await ui.redraw({ ...FIT_PANE, bodyColumns: 40 + run })
+    await ui.drawn()
+    bestMs = Math.min(bestMs, performance.now() - t0)
+  }
+  expect(Math.round(bestMs) < 50).toBe(true)
 })
 
 // REC on and /quiet off: an errored row draws its masked text, a blank line in it keeping its row (the release 2 review)

@@ -2,7 +2,7 @@
 import type { FullContext, Stack, StackAutoCompact, StackScorer } from '../../types'
 export type { FullContext, Stack, StackAutoCompact, StackScorer }
 
-export type StackFields = Omit<Stack, 'state' | 'reason' | 'hasPrompt' | 'readAt'>
+type StackFields = Omit<Stack, 'state' | 'reason' | 'hasPrompt' | 'readAt'>
 
 export type StackRead = { state: 'ignored'; reason: string } | { state: 'used'; fields: StackFields; prompt: string | null }
 

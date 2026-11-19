@@ -1,8 +1,8 @@
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
-import type { SessionUsage } from 'claude-code'
+import type { RenderSurface, SessionUsage } from 'claude-code'
 
-import { SPAWN, START, SWITCH, engine, step, stepEngine, stubAll, watchState } from '../kit'
+import { SPAWN, START, SWITCH, engine, seedState, step, stepEngine, stubAll, watchState } from '../kit'
 import type { Cache } from '../../hooks/cache/types'
 import type { Session } from '../../hooks/session/types'
 
@@ -131,20 +131,11 @@ test('after a reload, a warm 1h cache still gets its toast', { timeoutMs: 15_000
   engine(on)
   // A reload keeps $.state and runs register and session.start again: the cache stands warm from a switch at 0
   const warm: Cache = {
-    tier: '1h', tierAt: 0, tierBilling: 'plan', config: { pin: null, isIdleCompactOff: false, idleMinTokens: 200_000, isTerminal: true },
+    tier: '1h', tierAt: 0, tierBilling: 'plan', config: { pin: null, isIdleCompactOff: false, idleMinTokens: 200_000, isIdleSurface: true },
     ratePerToken: 0.000008, rateModel: 'claude-opus-5-5', lastRequestAt: 0, lastRequest: { read: 169_200, write: 10_800, input: 0 },
     sessionCounts: { read: 169_200, write: 10_800, input: 0 }, toastedForRequestAt: null,
   }
-  let isWritten = false
-  on('state.set', async ($, e, next) => {
-    if (e.key === 'cache') isWritten = true
-    return next(e)
-  })
-  on('state.get', async ($, e, next) => {
-    const r = await next(e)
-    if (e.key !== 'cache' || isWritten || r.value === undefined) return r
-    return { value: { ...r.value, value: { shape: 'cache-2', value: warm } } }
-  })
+  seedState(on, { cache: { shape: 'cache-3', value: warm } })
 
   await $.session.start(START)
   await clock.advance(299_000)
@@ -258,12 +249,45 @@ test('the toast stays when idle compaction is off', { timeoutMs: 15_000 }, async
   expect(cacheToasts(toasts)).toHaveLength(1)
 })
 
-test('the toast stays off the terminal, where idle compaction waits for the next message', { timeoutMs: 15_000 }, async ($, on) => {
-  const { clock, toasts } = stubAll(on, { usage: reading(210_000) })
+// Claude Code compacts an idle conversation in the terminal, VS Code's chat panel and the desktop app's Code tab
+// (settings-reference, `idleCompaction`, read 2026-11-19), and the SDK hosts start with no surface: what counts is where
+// the session draws
+for (const surface of ['vscode', 'desktop'] as const) {
+  test(`in ${surface}, Claude Code's own idle compaction delays the warning as in the terminal`, { timeoutMs: 15_000 }, async ($, on) => {
+    const { clock, toasts } = stubAll(on, { usage: reading(210_000), surfaces: [surface] })
+    engine(on)
+    stepEngine(on, () => MAIN)
+
+    await $.session.start({ ...START, surface: null, isInteractive: false })
+    await mainStep($)
+    await clock.advance(3_300_000)
+
+    expect(cacheToasts(toasts)).toEqual([])
+  })
+}
+
+// An SDK host draws nothing at session.start: its surface attaches later, which the turn's end reads again
+test('a surface that attaches after the start delays the warning from the next turn', { timeoutMs: 15_000 }, async ($, on) => {
+  const surfaces: RenderSurface[] = []
+  const { clock, toasts } = stubAll(on, { usage: reading(210_000), surfaces })
   engine(on)
   stepEngine(on, () => MAIN)
 
-  await $.session.start({ ...START, surface: 'desktop', isInteractive: true })
+  await $.session.start({ ...START, surface: null, isInteractive: false })
+  surfaces.push('vscode')
+  await mainStep($)
+  await $.turn.complete({ answer: '', durationMs: 3000, isAborted: false, turnId: 't0', reason: 'answer' })
+  await clock.advance(3_300_000)
+
+  expect(cacheToasts(toasts)).toEqual([])
+})
+
+test('a plain -p run, which draws nowhere, keeps the early warning', { timeoutMs: 15_000 }, async ($, on) => {
+  const { clock, toasts } = stubAll(on, { usage: reading(210_000), surfaces: [] })
+  engine(on)
+  stepEngine(on, () => MAIN)
+
+  await $.session.start({ ...START, surface: null, isInteractive: false })
   await mainStep($)
   await clock.advance(3_300_000)
 
@@ -279,7 +303,7 @@ test('after /clear in the terminal, the toast still waits for self-compaction', 
   await $.session.start({ ...START, surface: 'terminal', isInteractive: true })
   await $.classic.SessionStart({ source: 'clear' })
   await mainStep($)
-  expect((state.get('cache') as Cache).config.isTerminal).toBe(true)
+  expect((state.get('cache') as Cache).config.isIdleSurface).toBe(true)
 
   await clock.advance(3_300_000)
   expect(cacheToasts(toasts)).toEqual([])

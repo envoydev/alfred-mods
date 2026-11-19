@@ -96,6 +96,21 @@ test("outside auto mode the same call stays refused, and the prompt's text is ne
   expect(state.writes.some(w => w.includes('secret-prompt-text'))).toBe(false)
 })
 
+// The cost of leave_out_skipped_hooks: the prompt hook that read the mode is left out with the others, so even in auto
+// mode a call allowed without a dialog that fails reads refused and counts as no new failure
+test('with leave_out_skipped_hooks on, the auto mode a prompt carries is never seen and the call stays refused', { options: { leave_out_skipped_hooks: true } }, async ($, on) => {
+  stubAll(on)
+  const state = watchState(on)
+  on('tool.check', () => ({ decision: 'ask' }))
+  on('classic.PermissionRequest', () => ({ decision: { behavior: 'allow' } }))
+  on('tool.call', () => failed('Exit code 1'))
+
+  await $.classic.UserPromptSubmit({ prompt: 'q', permission_mode: 'auto' })
+  await $.tool.call({ tool: 'Bash', command: 'npm test', tool_use_id: 't1' })
+
+  expect((state.get('failures') as Failure[])[0]).toMatchObject({ outcome: 'refused', isNew: false })
+})
+
 test('with no permission mode ever seen, the same call stays refused', async ($, on) => {
   stubAll(on)
   const state = watchState(on)

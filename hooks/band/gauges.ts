@@ -1,5 +1,4 @@
 // The band's gauges: ctx, the 5h and 7d windows with their resets and pace, and the session's times
-import { isLive } from '../agents/agents'
 import { barText, clockText, toneOf, tokensText, usdText, whenText } from '../core/format'
 import { paceForecast, turnsLeft } from '../core/forecast'
 import { storedMark } from '../session/windows'
@@ -7,10 +6,20 @@ import type { BandInput } from './types'
 import type { Usage, RateWindow } from '../session/types'
 import type { Runway } from '../stack/types'
 import type { Line, Seg } from '../core/types'
+import { ROW_JOIN, WINDOW_LABEL } from './constants'
 
 const ORDER = ['five_hour', 'seven_day']
 
-const LABEL: Record<string, string> = { five_hour: '5h', seven_day: '7d' }
+// A window's short name, '5h' or '7d'; a kind with none keeps its own
+export function windowLabel(kind: string): string {
+  return WINDOW_LABEL[kind] ?? kind
+}
+
+// When a window resets, as a time; null while it reports none or a time that does not parse
+export function resetAtOf(rateWindow: RateWindow): number | null {
+  const reset = rateWindow.resetsAt === null ? NaN : Date.parse(rateWindow.resetsAt)
+  return Number.isNaN(reset) ? null : reset
+}
 
 export const percentText = (percent: number): string => `${Math.round(percent)}%`
 
@@ -31,21 +40,20 @@ export function windowsInOrder(windows: RateWindow[]): RateWindow[] {
 export function fiveHourPace(input: Pick<BandInput, 'usage' | 'pace' | 'now'>): ReturnType<typeof paceForecast> {
   const fiveHour = input.usage.rateWindows.find(rateWindow => rateWindow.kind === 'five_hour')
   if (fiveHour === undefined) return null
-  const reset = fiveHour.resetsAt === null ? NaN : Date.parse(fiveHour.resetsAt)
-  return paceForecast('five_hour', input.pace.five_hour?.points ?? [], Number.isNaN(reset) ? null : reset, input.now)
+  return paceForecast('five_hour', input.pace.five_hour?.points ?? [], resetAtOf(fiveHour), input.now)
 }
 
 // ' (02.11 16:15)': when the window resets, or nothing while it reports none
 function resetSegs(rateWindow: RateWindow): Line {
-  const reset = rateWindow.resetsAt === null ? NaN : Date.parse(rateWindow.resetsAt)
-  return Number.isNaN(reset) ? [] : [{ text: ` (${whenText(reset)})`, tone: 'dim' }]
+  const reset = resetAtOf(rateWindow)
+  return reset === null ? [] : [{ text: ` (${whenText(reset)})`, tone: 'dim' }]
 }
 
 export function gauges(input: BandInput): Line {
   const usage = input.usage
   const out: Line = []
   const sep = (): void => {
-    if (out.length > 0) out.push({ text: ' │ ', tone: 'dim' })
+    if (out.length > 0) out.push({ text: ROW_JOIN, tone: 'dim' })
   }
   out.push(...contextSegs(usage, input.runway))
   if (usage.contextPercent !== null || (input.runway ?? null) !== null) {
@@ -55,7 +63,7 @@ export function gauges(input: BandInput): Line {
   const mark = storedMark(usage.rateWindowsAt)
   for (const rateWindow of windowsInOrder(usage.rateWindows)) {
     sep()
-    const label = LABEL[rateWindow.kind] ?? rateWindow.kind
+    const label = windowLabel(rateWindow.kind)
     if (rateWindow.kind === 'five_hour') {
       out.push({ text: `${label} `, tone: 'usage' }, ...barSegs(rateWindow.percentUsed), percentSeg(rateWindow.percentUsed, mark), ...resetSegs(rateWindow))
       const pace = fiveHourPace(input)
@@ -86,7 +94,7 @@ export function narrowGauges(usage: Usage, runway: Runway | null | undefined): L
   out.push(...contextSegs(usage, runway))
   for (const rateWindow of windowsInOrder(usage.rateWindows)) {
     sep()
-    out.push({ text: `${LABEL[rateWindow.kind] ?? rateWindow.kind} `, tone: 'usage' }, ...barSegs(rateWindow.percentUsed), percentSeg(rateWindow.percentUsed, storedMark(usage.rateWindowsAt)), ...resetSegs(rateWindow))
+    out.push({ text: `${windowLabel(rateWindow.kind)} `, tone: 'usage' }, ...barSegs(rateWindow.percentUsed), percentSeg(rateWindow.percentUsed, storedMark(usage.rateWindowsAt)), ...resetSegs(rateWindow))
   }
   return out
 }

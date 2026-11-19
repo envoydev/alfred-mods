@@ -14,9 +14,9 @@ const READING: SessionUsage = {
 }
 const PLAN_PATH = '.claude/session-inspector/plans/token-refresh.json'
 const PANE = { title: 'REC words', isFocused: false, bodyColumns: 100, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 30 }, view: {} }
-const shapeOf = (v: unknown): unknown =>
-  Array.isArray(v) ? [shapeOf(v[0])] : typeof v === 'object' && v !== null
-    ? Object.fromEntries(Object.keys(v).sort().map(k => [k, shapeOf((v as Record<string, unknown>)[k])])) : typeof v
+const shapeOf = (value: unknown): unknown =>
+  Array.isArray(value) ? [shapeOf(value[0])] : typeof value === 'object' && value !== null
+    ? Object.fromEntries(Object.keys(value).sort().map(k => [k, shapeOf((value as Record<string, unknown>)[k])])) : typeof value
 
 const STORE_SHAPES = {
   'cost-last:s1': { at: 'number', micros: 'number' },
@@ -33,10 +33,10 @@ test('the store keeps its keys and each value\'s fields', { timeoutMs: 15_000 },
   await kit.clock.advance(300)
   await kit.clock.set(1000)
   await $.prompt.submit({ text: 'q', wait: false, origin: { kind: 'composer' } })
-  await $.turn.start({ text: 'q', turnId: 't1' } as never)
+  await $.turn.start({ text: 'q', turnId: 't1' })
   await kit.clock.set(121_000)
-  await $.turn.complete({ answer: '', durationMs: 3000, isAborted: false, turnId: 't1', reason: 'answer' } as never)
-  await $.session.measure({ context: READING.context, rateLimits: READING.rateLimits, changed: ['rateLimits'] } as never)
+  await $.turn.complete({ answer: '', durationMs: 3000, isAborted: false, turnId: 't1', reason: 'answer' })
+  await $.session.measure({ context: READING.context, rateLimits: READING.rateLimits, changed: ['rateLimits'] })
   await $.command.run({ command: 'rec', args: 'words', origin: { kind: 'composer' }, presentation: PRESENTATION })
   const ui = await $.ui.mount({ plugin: 'alfred-mods', surface: 'terminal', component: 'Pane', requestId: 'rec', props: PANE })
   await ui.input({ key: 'word', text: 'Acme' })

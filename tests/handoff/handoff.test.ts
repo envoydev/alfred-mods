@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { TOASTS, gitPart, handoffLines, handoffText, nextStep, parseStatus, percentOf, stepsOf, windowThreshold } from '../../hooks/handoff/handoff'
+import { TOASTS, gitPart, handoffLines, handoffPercent, handoffText, nextStep, parseStatus, percentOf, statusPaths, stepsOf, windowThreshold } from '../../hooks/handoff/handoff'
 import { gitResult } from '../kit'
 import type { Line } from '../../hooks/core/types'
 import type { HandoffView, SaveInput } from '../../hooks/handoff/types'
@@ -27,6 +27,14 @@ test('the percent is over the compaction point, and the forecast threshold over 
   expect(percentOf(311_999, 390_000)).toBe(79)
   expect(windowThreshold(80, 390_000, 1_000_000)).toBe(31)
   expect(windowThreshold(80, 200_000, 200_000)).toBe(80)
+})
+
+test('handoffPercent reads the tokens over the compaction point, else the window, and is null while either side is unknown', () => {
+  expect(handoffPercent({ compactPoint: 390_000 }, { contextTokens: 312_000, contextWindow: 1_000_000 })).toBe(80)
+  expect(handoffPercent({ compactPoint: null }, { contextTokens: 160_000, contextWindow: 200_000 })).toBe(80)
+  expect(handoffPercent({ compactPoint: 390_000 }, { contextTokens: null, contextWindow: 1_000_000 })).toBe(null)
+  expect(handoffPercent({ compactPoint: null }, { contextTokens: null, contextWindow: 200_000 })).toBe(null)
+  expect(handoffPercent({ compactPoint: null }, { contextTokens: 160_000, contextWindow: null })).toBe(null)
 })
 
 test('a status file stands F8 down only when valid and the stack handles a full context', () => {
@@ -176,4 +184,25 @@ test("each F8 toast reads as the spec's table", () => {
   expect(TOASTS.filled(AT)).toBe('Resume prompt filled from the handoff saved 14:05 - press Enter to send')
   expect(TOASTS.fallback(AT)).toBe('Handoff saved 14:05: ask Claude to read .claude/session-inspector/HANDOFF.md')
   expect(TOASTS.failed('boom')).toBe('Handoff not saved: boom')
+})
+
+const NEW = '.alfred/state/sessions/status/s1.json'
+const OLD = '.claude/session-inspector/status/s1.json'
+
+test('statusPaths gives the root, the start root, the old root path, then the relative path', () => {
+  expect(statusPaths('s1', { root: '/moved', startRoot: '/w' })).toEqual([`/moved/${NEW}`, `/w/${NEW}`, `/moved/${OLD}`, OLD])
+})
+
+test('statusPaths drops the start root when it is the root, and joins a root ending in a separator once', () => {
+  expect(statusPaths('s1', { root: '/w', startRoot: '/w' })).toEqual([`/w/${NEW}`, `/w/${OLD}`, OLD])
+  expect(statusPaths('s1', { root: '/w/', startRoot: '/w/' })).toEqual([`/w/${NEW}`, `/w/${OLD}`, OLD])
+})
+
+test('statusPaths with no root keeps the start root and the relative path', () => {
+  expect(statusPaths('s1', { root: null, startRoot: '/w' })).toEqual([`/w/${NEW}`, OLD])
+  expect(statusPaths('s1', { root: null, startRoot: null })).toEqual([OLD])
+})
+
+test('statusPaths gives none for an id that could leave the folder', () => {
+  for (const id of ['a/b', '..', '', 'a b', 'a\\b']) expect(statusPaths(id, { root: '/w', startRoot: '/w' })).toEqual([])
 })

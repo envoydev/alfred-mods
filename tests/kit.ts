@@ -2,8 +2,8 @@
 import { mock } from 'claude-code/testing'
 import type { Engine, MockClock } from 'claude-code/testing'
 import type {
-  AgentInfo, ClassicResult, EngineInterface, On, ProcessRunResult, RenderElement, RenderInput, SessionUsage, Settings, SettingsSource, TurnStepInput, TurnStepResult,
-  TurnUsage, UiPane,
+  AgentInfo, ClassicResult, EngineInterface, On, ProcessRunResult, RenderElement, RenderInput, RenderSurface, SessionUsage, Settings, SettingsSource,
+  TurnStepInput, TurnStepResult, TurnUsage, UiPane,
 } from 'claude-code'
 
 export const NO_READING: SessionUsage = { startedAt: 0, context: { window: 200_000 }, rateLimits: [] }
@@ -12,8 +12,10 @@ export const NO_READING: SessionUsage = { startedAt: 0, context: { window: 200_0
 type Options = {
   usage?: SessionUsage; sessionId?: string; cwd?: string; env?: Record<string, string>; now?: number; unplaced?: string
   // The session's project root (`$.session.root()`); absent, the folder `cwd` names at each call, as a session that
-  // never moved off its root
-  root?: string
+  // never moved off its root; null, a root the call rejects
+  root?: string | null
+  // What `$.session.surfaces()` answers: absent, the terminal alone, as under the REPL; empty, a plain -p run
+  surfaces?: RenderSurface[]
   store?: Record<string, unknown>
   // A read of `key` waits for `until` while it is set, as a slow store would
   holdStore?: { key: string; until: Promise<void> | null }
@@ -66,6 +68,10 @@ export const gitResult = (stdout: string, exitCode = 0, stderr = ''): ProcessRun
 // A file the mod lists and reads; `size` stands in for the text's length when given
 export type FileStub = { text: string; mtimeMs: number; size?: number }
 
+// The text of the file at `path` a test gave or the mod wrote, matched as the end of its key
+export const fileAt = (files: { current: Record<string, FileStub> }, path: string): string | undefined =>
+  Object.entries(files.current).find(([key]) => key === path || key.endsWith(path))?.[1].text
+
 export function stubAll(on: On, o: Options = {}): {
   clock: MockClock; toasts: string[]; toastMs: (number | undefined)[]; opened: string[]; escapes: string[]; closed: string[]; copied: string[]; usage: { current: SessionUsage; breakdowns: number; refuse: boolean; fail: boolean }; panes: UiPane[]
   listed: { current: AgentInfo[]; calls: number }; files: { current: Record<string, FileStub>; reads: string[]; writes: string[]; exists: string[]; lists: string[] }
@@ -81,7 +87,7 @@ export function stubAll(on: On, o: Options = {}): {
   store: { get(key: string): unknown; keys(): string[]; set(key: string, value: unknown): void; writes: string[] }
   // A test changes the session id mid-test, as a /clear does, through `session.id`; `turns` is how many prompts the
   // session's transcript holds, 1 right after a /clear (its own row) and more after a resume
-  session: { id: string; turns: number }
+  session: { id: string; turns: number; root: string | null | undefined }
   // Each settings file by source, which a test changes mid-test, as an edit would: `sources.local['alfred-mods'] = ...`
   sources: Record<SettingsSource, Record<string, unknown>>
   // The names of the commands the mod registered, in order
@@ -106,11 +112,16 @@ export function stubAll(on: On, o: Options = {}): {
     usage.breakdowns++
     return usage.refuse ? { deny: 'test: usage refused' } : { value: usage.current }
   })
-  const session = { id: o.sessionId ?? 's1', turns: 0 }
+  // `root`, once set, is what `$.session.root()` answers, as a `/cd` moves it; null makes the call reject
+  const session = { id: o.sessionId ?? 's1', turns: 0, root: undefined as string | null | undefined }
   on('session.id', () => ({ value: session.id }))
   on('session.turns', () => ({ value: session.turns }))
+  on('session.surfaces', () => ({ value: o.surfaces ?? ['terminal'] }))
   on('session.cwd', () => ({ value: o.cwd ?? '/w' }))
-  on('session.root', () => ({ value: o.root ?? o.cwd ?? '/w' }))
+  on('session.root', () => {
+    const root = session.root === undefined ? o.root : session.root
+    return root === null ? { deny: 'test: no root' } : { value: root ?? o.cwd ?? '/w' }
+  })
   on('session.model', () => (o.model === undefined ? { deny: 'test: no model' } : { value: o.model }))
   on('session.version', () => (o.version === undefined ? { deny: 'test: no version' } : { value: { version: o.version } }))
   on('session.repo', () => (o.repo === undefined ? { deny: 'test: no repo' } : { value: (o.repo === null ? null : { remote: null, internal: false, ...o.repo }) as never }))
@@ -336,6 +347,17 @@ export function engine(on: On, except: string[] = []): void {
 
 export const START = { cwd: '/w', surface: 'terminal', isInteractive: true } as const
 
+// The task fields Claude Code 2.1.326 made required on AgentInfo. They come in through a spread, which takes no
+// excess-property check, so the record type-checks on a build whose AgentInfo lacks them too (CI's pin, 2.1.322)
+const AGENT_TASK: {
+  kind: 'local_agent'; taskStatus: 'running'; label: string; startTime: number; cwd: string; tokenCount: number; tokenSamples: number[]; hasRow: boolean
+} = { kind: 'local_agent', taskStatus: 'running', label: '', startTime: 0, cwd: '/w', tokenCount: 0, tokenSamples: [], hasRow: false }
+
+// One `$.agent.list()` entry from the fields the mod reads
+export function agentInfo(fields: Pick<AgentInfo, 'id' | 'description' | 'type' | 'status'> & Pick<Partial<AgentInfo>, 'parentId'>): AgentInfo {
+  return { ...AGENT_TASK, ...fields }
+}
+
 // A person's edit to their user settings file mid-session: the fields merged under "alfred-mods", then Claude Code's
 // ConfigChange and the clock's next tick, when the mod reads the files again (spec settings-values S4)
 export async function setUser(
@@ -395,6 +417,10 @@ export function watchState(on: On): { get(key: string): unknown; writes: string[
   })
   return { get: key => latest.get(key), writes }
 }
+
+// A node of a drawn tree as a test reads it, and the guard that tells one from a string or a hole
+export type Drawn = { type: string; props?: Record<string, unknown>; children?: unknown[] }
+export const isDrawn = (node: unknown): node is Drawn => typeof node === 'object' && node !== null && typeof (node as Drawn).type === 'string'
 
 function textOf(n: unknown): string {
   if (typeof n === 'string') return n
@@ -489,8 +515,28 @@ export function failState(on: On): { key: string | null } {
   return fail
 }
 
+// Reads each key of `seeds` as the value an earlier version stored under it, until the mod writes that key: a session
+// reloaded over state a test sets
+export function seedState(on: On, seeds: Record<string, unknown>): void {
+  const written = new Set<string>()
+  on('state.set', async (_, e, next) => {
+    written.add(e.key)
+    return next(e)
+  })
+  on('state.get', async (_, e, next) => {
+    const stored = await next(e)
+    const seed = seeds[e.key]
+    return seed === undefined || written.has(e.key) || stored.value === undefined ? stored : { value: { ...stored.value, value: seed } }
+  })
+}
+
 // A call a test leaves held past its end: the kit rejects it once the test's stubs are gone, which is expected, so the
 // rejection is caught rather than left for the file's end
 export function held(call: Promise<unknown>): void {
   void call.catch(() => undefined)
+}
+
+// Settles the clock until `isDone` holds, or 50 times: a hook's work on a 0 ms timer lands off the hook path
+export async function until(clock: MockClock, isDone: () => boolean): Promise<void> {
+  for (let i = 0; i < 50 && !isDone(); i++) await clock.settle()
 }
