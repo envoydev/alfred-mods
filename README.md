@@ -227,9 +227,10 @@ code.
        that cannot be checked, or a copy that cannot be checked after it was written, leaves the source in place:
        `not moved: <name> - could not check the destination` or `not moved: <name> - could not check the copy`. Each
        of these prints one line for each name, and `not moved` one for each name and kind.
-       If `rm` fails or is missing, the sources stay: `copied <n> files to <root>/ - remove the old copies in
-       <folders> by hand`, and a probe file it could not remove is named: `could not remove <file> - delete it by
-       hand`. The line is `moved <n> plan and scores files to <root>/`, and past 50 files the run ends on
+       If `rm` fails or is missing, each source and probe file it left is checked: the sources still there are named
+       as `copied <n> files to <root>/ - remove the old copies in <folders> by hand`, and a probe file still there as
+       `could not remove <file> - delete it by hand`. A probe name that is taken is replaced once, and a taken second
+       name keeps the equal copies. The line is `moved <n> plan and scores files to <root>/`, and past 50 files the run ends on
        `more to move - run /alfred-mods:update again`.
     2. `.gitignore`: when the project has one and no line covers the chosen folder (`.alfred` covers
        `.alfred/alfred-mods`), `<root>/` is appended: `added <root>/ to .gitignore`. `default` adds none, and no
