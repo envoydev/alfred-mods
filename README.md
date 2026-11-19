@@ -192,8 +192,9 @@ code.
     <file>) - /alfred-mods:configure changes it`, then runs `update`. With it unset, `init` prints the three choices,
     the recommended one first - `/alfred-mods:init .alfred-mods (recommended - no permission asks)`,
     `/alfred-mods:init .alfred (beside Alfred Code's state)`, `/alfred-mods:init default (.claude/session-inspector -
-    Claude Code asks before each write)` - and opens a pane, `Plans folder`, with the same three as buttons. A press
-    writes the field and runs `update`, and the report shows in the pane, which stays open. Where no surface draws a
+    Claude Code asks before each write)` - and opens a pane, `Plans folder`, with the same three as buttons (on the
+    terminal's main screen, as the lines to type). A press writes the field and runs `update`, and the report shows in
+    the pane, which stays open. Where no surface draws a
     pane (`claude -p`), the text is the choices and one more line, `The pane is open but not drawn: <reason>.`.
     **`/alfred-mods:init <value>`** writes the field, prints `Plans live in ...` for it, and runs `update`.
   - **`/alfred-mods:configure <value>`** writes the field and moves nothing: it prints `plansFolder is "<value>" -
@@ -205,13 +206,17 @@ code.
     had work, then `update done` (`nothing to update` when none had). It runs on your word only, never by itself:
     1. Plans and scores in the two other folders move into the chosen one, up to 50 files a run: each is copied,
        read back and checked equal, and then one `rm` removes the sources that read back equal and did not change.
-       A plan with a step not done whose file is under 24 hours old, and a plan that does not parse, is live: it stays
-       with its scores, and the line reads `left in place: <name> - its writer still uses it; run
-       /alfred-mods:update after it finishes`. A name the chosen folder already holds stays in both:
-       `kept both: <name> (the newer one shows)`. A copy that did not read back equal leaves the source and the
-       destination as found: `not moved: <name> - its copy did not read back equal; check
-       <root>/<plans|scores>/`. Each of these three prints one line for each name, and `not moved` one for each name
-       and kind.
+       Only a file that can move counts toward the 50. A plan with a step not done whose file is under 24 hours old,
+       and a plan that does not parse, is live: it stays with its scores, and the line reads `left in place: <name> -
+       its writer still uses it; run /alfred-mods:update after it finishes`. A name the chosen folder already holds
+       stays in both, with the scores of that plan beside it: `kept both: <name> (the newer one shows)`. When the
+       chosen folder's copy is byte-equal to the source, the source is removed like a moved one. A copy that did not
+       read back equal leaves the source and the destination as found: `not moved: <name> - its copy did not read
+       back equal; check <root>/<plans|scores>/`. A file that is not UTF-8 text is never copied, as the read would
+       change it: `not moved: <name> - not UTF-8 text`. A destination that cannot be checked, or a copy that cannot be
+       checked after it was written, leaves the source in place: `not moved: <name> - could not check the destination`
+       or `not moved: <name> - could not check the copy`. Each of these prints one line for each name, and `not moved`
+       one for each name and kind.
        If `rm` fails or is missing, the sources stay: `copied <n> files to <root>/ - remove the old copies in
        <folders> by hand`. The line is `moved <n> plan and scores files to <root>/`, and past 50 files,
        `more to move - run /alfred-mods:update again`.
@@ -252,7 +257,7 @@ NEEDS A LOOK
 22 ⊘ 14:47 Bash  Check stamp lines            auto mode: Classifier unavailable /inspect show 22
 ```
 
-An agent's report reads `/inspect report 1`, the handoff ask `/auto-handoff now · /auto-handoff compact ·
+The `Plans folder` pane draws its three choices as `/alfred-mods:init <value>` there. An agent's report reads `/inspect report 1`, the handoff ask `/auto-handoff now · /auto-handoff compact ·
 /auto-handoff later`, and Alfred Code's fill `/inspect fill`. In fullscreen and on the Desktop they stay buttons. The
 tabs keep theirs, as each tab's name is its command's word (`/inspect usage`). The band's `[ /compact ]` and the Cache
 tab's Compact are Claude Code's own `/compact`. Every switch is a settings value ([Settings](#settings)).
