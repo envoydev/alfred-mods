@@ -3,7 +3,7 @@
 import { candidatesByName, isPlanDone } from '../plan/plan'
 import type { Plan } from '../plan/types'
 import {
-  CHANGED_REASON, DONE_LINE, FILE_NOUN, JSON_SUFFIX, LIST_SEPARATOR, LIVE_PLAN_MS, NOT_UTF8_REASON, NOTHING_LINE, OLD_INSTALL_PREFIX, OLD_STATUS_DIR, PROBE_PREFIX, SLASH, UNCHECKED_COPY_REASON,
+  CHANGED_REASON, DONE_LINE, FILE_NOUN, JSON_SUFFIX, LIST_SEPARATOR, LIVE_PLAN_MS, NOT_UTF8_REASON, NOTHING_LINE, OLD_COPY_NOUN, OLD_INSTALL_PREFIX, OLD_STATUS_DIR, PROBE_PREFIX, SLASH, UNCHECKED_COPY_REASON,
   PLAN_FILE_NOUN, STATUS_FILE_NOUN, UNCHECKED_DESTINATION_REASON, UNREAD_NOTE, UNREADABLE_PLAN_NOTE,
 } from './constants'
 import type { CopyFailure, FolderRelation, ListedFile, LiveReason, MoveQueue } from './types'
@@ -93,7 +93,7 @@ const countOf = (count: number, noun: { readonly one: string; readonly many: str
 export const movedLine = (count: number, root: string): string => `moved ${countOf(count, PLAN_FILE_NOUN)} to ${folderOf(root)}`
 
 export const copiedLine = (count: number, root: string, from: readonly string[]): string =>
-  `copied ${countOf(count, FILE_NOUN)} to ${folderOf(root)} - remove the old copies in ${from.map(folderOf).join(LIST_SEPARATOR)} by hand`
+  `copied ${countOf(count, FILE_NOUN)} to ${folderOf(root)} - remove the ${count === 1 ? OLD_COPY_NOUN.one : OLD_COPY_NOUN.many} in ${from.map(folderOf).join(LIST_SEPARATOR)} by hand`
 
 export const leftInPlaceLine = (name: string): string => `left in place: ${name} - its writer still uses it; run ${SLASH.update} after it finishes`
 

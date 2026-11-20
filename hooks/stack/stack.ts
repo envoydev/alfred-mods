@@ -160,7 +160,6 @@ export function stackLines(stack: Stack, opts: { prompt: string | null; runway: 
   return out
 }
 
-
 // A press fills only while line 5 would draw: a used file that owns the full context, with a prompt (Decision 7), so a
 // press from a frame drawn before the file changed fills nothing
 export function fillReady(stack: Stack, prompt: string | null): prompt is string {

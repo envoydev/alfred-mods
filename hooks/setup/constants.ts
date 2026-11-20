@@ -98,3 +98,4 @@ export const REASON_MAX = 60
 export const FILE_NOUN = { one: 'file', many: 'files' } as const
 export const PLAN_FILE_NOUN = { one: 'plan or scores file', many: 'plan and scores files' } as const
 export const STATUS_FILE_NOUN = { one: 'status file', many: 'status files' } as const
+export const OLD_COPY_NOUN = { one: 'old copy', many: 'old copies' } as const

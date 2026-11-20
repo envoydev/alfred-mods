@@ -129,7 +129,7 @@ test('a source whose stat changes between the copy and the delete is not in the 
 test('rm denied prints the by-hand line and the sources stay', async ($, on) => {
   const { files, rm } = await start($, on, { files: { [`${OLD_PLANS}/p.json`]: stub(DONE) }, rm: { deny: true } })
   expect(await alfred($, 'update')).toEqual([
-    'copied 1 file to .alfred-mods/ - remove the old copies in .claude/session-inspector/plans/ by hand', 'update done',
+    'copied 1 file to .alfred-mods/ - remove the old copy in .claude/session-inspector/plans/ by hand', 'update done',
   ])
   expect(rm.calls).toHaveLength(1)
   expect(fileAt(files, '.alfred-mods/plans/p.json')).toBe(DONE)
@@ -137,7 +137,7 @@ test('rm denied prints the by-hand line and the sources stay', async ($, on) => 
 
 test('rm that exits non-zero prints the by-hand line', async ($, on) => {
   await start($, on, { files: { [`${OLD_PLANS}/p.json`]: stub(DONE) }, rm: { exitCode: 1 } })
-  expect((await alfred($, 'update'))[0]).toContain('copied 1 file to .alfred-mods/ - remove the old copies in')
+  expect((await alfred($, 'update'))[0]).toContain('copied 1 file to .alfred-mods/ - remove the old copy in')
 })
 
 test('a name the chosen root already holds, with other text, prints kept both and moves nothing', async ($, on) => {

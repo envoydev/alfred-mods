@@ -59,7 +59,7 @@ test('an rm that fails part way names only the sources and probes that are still
     rm: { exitCode: 1, removes: [`${PROBE}*`, `${OLD_PLANS}/p.json`] },
   })
   expect(await alfred($, 'update')).toEqual([
-    'moved 1 plan or scores file to .alfred-mods/', 'copied 1 file to .alfred-mods/ - remove the old copies in .claude/session-inspector/plans/ by hand', 'update done',
+    'moved 1 plan or scores file to .alfred-mods/', 'copied 1 file to .alfred-mods/ - remove the old copy in .claude/session-inspector/plans/ by hand', 'update done',
   ])
   expect(rm.calls).toHaveLength(1)
 })

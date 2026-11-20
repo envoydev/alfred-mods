@@ -233,7 +233,7 @@ code.
        probe is written and equal copies are kept both. A probe name that is taken is replaced once, and a taken second
        name keeps the equal copies. The line is `moved <n> plan and scores files to <root>/`, and past 50 files the
        run ends on `more to move - run /alfred-mods:update again`. Every count of one reads in the singular: `moved 1
-       plan or scores file`, `copied 1 file`, `1 status file`.
+       plan or scores file`, `copied 1 file ... remove the old copy`, `1 status file`.
     2. `.gitignore`: when the project has one and no line covers the chosen folder (`.alfred` covers
        `.alfred/alfred-mods`), `<root>/` is appended: `added <root>/ to .gitignore`. `default` adds none, and no
        `.gitignore` is made.
