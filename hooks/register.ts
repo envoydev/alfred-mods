@@ -20,6 +20,7 @@ import { drawRecPane, maskAssistantMessage, maskCommandOutput, maskQuestions, ma
 import { drawBandAbove, drawBandAboveFailed, drawBandUnder, drawBandUnderFailed, drawSpinner } from './band/effects'
 import { trackRuleLoad } from './context/effects'
 import { drawInspectPane, runInspectCommand } from './inspect/effects'
+import { runConfigureOrg } from './account/effects'
 import { drawSetupPane, runConfigureCommand, runInitCommand, runUpdateCommand } from './setup/effects'
 import type { ToolCall } from './tools/types'
 import type { Pending } from './core/types'
@@ -131,7 +132,7 @@ export const register: Register = (on, options) => {
   // hook answers it, and init and configure offer the same choices as buttons in a pane that closes only when the
   // person closes it
   on('command.run', { command: 'alfred-mods:init' }, ($, e) => runInitCommand($, e)).catch(($, e, next) => ({ text: commandFailed('/alfred-mods:init', next.error.kind) }))
-  on('command.run', { command: 'alfred-mods:configure' }, ($, e) => runConfigureCommand($, e)).catch(($, e, next) => ({ text: commandFailed('/alfred-mods:configure', next.error.kind) }))
+  on('command.run', { command: 'alfred-mods:configure' }, ($, e) => runConfigureOrg($, e, input => runConfigureCommand($, input))).catch(($, e, next) => ({ text: commandFailed('/alfred-mods:configure', next.error.kind) }))
   on('command.run', { command: 'alfred-mods:update' }, ($, e) => runUpdateCommand($, e)).catch(($, e, next) => ({ text: commandFailed('/alfred-mods:update', next.error.kind) }))
 
   // '/auto-handoff [ask|auto|off|at <percent>|now]': the mode and the first ask are settings values (S5) that ask, auto,

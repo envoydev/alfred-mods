@@ -4,8 +4,8 @@ import { DEFAULTS, FIELDS, SOURCES, holdRec, holdToast, legacyOf, movedToast, so
 import type { Field, ResolvedSettings, Skip, Source, SettingsValues } from '../../hooks/settings/types'
 
 // A valid value for each field that differs from its default, and a second one that differs from both
-const ONE: SettingsValues = { band: 'calm', bandPlace: 'under', bandRows: false, quiet: false, rec: 'on', handoff: 'auto', handoffAt: 70, plansFolder: '.alfred' }
-const TWO: SettingsValues = { band: 'full', bandPlace: 'above', bandRows: true, quiet: true, rec: 'strict', handoff: 'off', handoffAt: 60, plansFolder: 'default' }
+const ONE: SettingsValues = { band: 'calm', bandPlace: 'under', bandRows: false, quiet: false, rec: 'on', handoff: 'auto', handoffAt: 70, plansFolder: '.alfred', expectOrg: 'One Co' }
+const TWO: SettingsValues = { band: 'full', bandPlace: 'above', bandRows: true, quiet: true, rec: 'strict', handoff: 'off', handoffAt: 60, plansFolder: 'default', expectOrg: 'Two Co' }
 
 // The first skip a resolve listed
 function skipOf(r: ResolvedSettings): Skip {
@@ -15,7 +15,7 @@ function skipOf(r: ResolvedSettings): Skip {
 }
 
 test('the fields in their order, the sources highest first', () => {
-  expect([...FIELDS]).toEqual(['band', 'bandPlace', 'bandRows', 'quiet', 'rec', 'handoff', 'handoffAt', 'plansFolder'])
+  expect([...FIELDS]).toEqual(['band', 'bandPlace', 'bandRows', 'quiet', 'rec', 'handoff', 'handoffAt', 'plansFolder', 'expectOrg'])
   expect([...SOURCES]).toEqual(['policy', 'flag', 'local', 'project', 'user'])
 })
 
@@ -84,7 +84,7 @@ test('the old layer sits under the user file', () => {
 test('the defaults', () => {
   const r = resolveSettings({}, {})
   expect(r.values).toEqual(DEFAULTS)
-  expect(DEFAULTS).toEqual({ band: 'full', bandPlace: 'above', bandRows: true, quiet: true, rec: 'off', handoff: 'ask', handoffAt: 80, plansFolder: '.alfred-mods' })
+  expect(DEFAULTS).toEqual({ band: 'full', bandPlace: 'above', bandRows: true, quiet: true, rec: 'off', handoff: 'ask', handoffAt: 80, plansFolder: '.alfred-mods', expectOrg: null })
   for (const field of FIELDS) expect(r.from[field]).toBe('default')
   expect(r.skipped).toEqual([])
   expect(r.userFields).toEqual([])

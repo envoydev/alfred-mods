@@ -137,7 +137,7 @@ organization's managed settings allow only its own mods
 | No `tools:`, `skills:`, `agents:` and `rules:` rows  | `"bandRows": false`    | -                     |
 | Each tool call's full command and output             | `"quiet": false`       | -                     |
 | Keys, emails and phones masked for a recording       | `"rec": "on"`          | `/rec on`             |
-| Also your user name, home paths and dollar amounts   | `"rec": "strict"`      | `/rec strict`         |
+| Also your name, home paths, amounts and the org name | `"rec": "strict"`      | `/rec strict`         |
 | The recording over                                   | `"rec": "off"`         | `/rec off`            |
 | A handoff saved by itself before the context fills   | `"handoff": "auto"`    | `/auto-handoff auto`  |
 | No handoff                                           | `"handoff": "off"`     | `/auto-handoff off`   |
@@ -202,6 +202,13 @@ code.
     `init`, the current one marked `(now)`; a press, or one of those lines typed, writes the field and runs `update`.
     When a higher file sets the field, the line says so instead - `plansFolder is ".alfred" in
     .claude/settings.local.json, which wins over the value written`.
+  - **`/alfred-mods:configure expectOrg <name>`** writes the `"expectOrg"` field (any case for the keyword; the name is the
+    rest of the line, trimmed, in its own case) into the project's `.claude/settings.json` and prints `expectOrg is
+    "<name>" in .claude/settings.json - the band warns when the signed-in organization differs`, or, when a higher file
+    sets it, `expectOrg is "<value>" in <file>, which wins over the value written`. **`/alfred-mods:configure expectOrg`**
+    alone writes the organization the band shows now; while that is unknown it writes nothing and prints `The signed-in
+    organization is unknown - type /alfred-mods:configure expectOrg <name>`. A name over 100 characters prints the usage
+    line.
   - **`/alfred-mods:update`** takes no value. It applies the folder in force and prints one line for each step that
     had work, then `update done` (`nothing to update` when none had). It runs on your word only, never by itself:
     1. Plans and scores in the two other folders move into the chosen one, up to 50 files a run: each is copied, read
@@ -253,7 +260,8 @@ code.
     A bare `init` with the field set prints its `Plans live in ...` line alone, then the `update` report. An unknown
     value, or a value given to `update`, prints the usage line. Nothing of a plan's text is printed.
   - Where the host runs no mod hooks, each command is only its markdown file: the model is told the mod did not
-    answer, and that `"alfred-mods": { "plansFolder": "<value>" }` in `.claude/settings.json` sets the folder by hand.
+    answer, and that `"alfred-mods": { "plansFolder": "<value>" }` in `.claude/settings.json` sets the folder by hand; `configure` adds
+    the same for `"expectOrg"`.
 
 A command that sets a field writes that one field under `"alfred-mods"` in `~/.claude/settings.json` (in
 `$CLAUDE_CONFIG_DIR` when that is set) and leaves every other key, the file's indent and its line ends as they were.
@@ -318,10 +326,11 @@ download the file, or clone the repo, and open it.
 | `handoff`     | `"ask"`, `"auto"`, `"off"`                   | `"ask"`          | how a [handoff](#handoff) is saved before the context fills        |
 | `handoffAt`   | a whole number from 10 to 95                 | `80`             | the context percent where the handoff first asks or saves          |
 | `plansFolder` | `"default"`, `".alfred"`, `".alfred-mods"`   | `".alfred-mods"` | where [plan and score files](#plan-and-score-files) live           |
+| `expectOrg`   | a name of 1 to 100 characters                | none             | the organization the band expects to show; it warns when the signed-in one differs |
 
 `band`, `rec`, `handoff` and `handoffAt` can also be set by a command, which writes the field into your user file;
-`plansFolder` is set by `/alfred-mods:init` or `/alfred-mods:configure`, which write it into the project's
-`.claude/settings.json` ([Commands](#commands)).
+`plansFolder` is set by `/alfred-mods:init` or `/alfred-mods:configure`, and `expectOrg` by `/alfred-mods:configure
+expectOrg`; they write into the project's `.claude/settings.json` ([Commands](#commands)).
 
 ### Each field, with an example
 
@@ -457,7 +466,7 @@ Paths read from the session's working folder; one outside it shows in full.
 
 `"off"` (the default) masks nothing. `"on"` masks keys, emails, phone numbers and your private words wherever the mod
 and Claude Code's message rows draw them, and leads the band with a red `● REC`; `"strict"` also masks your user
-name, home folder paths and dollar amounts. `/rec on|strict|off` sets it ([Recording mode](#recording-mode)).
+name, home folder paths, dollar amounts and the band's organization name. `/rec on|strict|off` sets it ([Recording mode](#recording-mode)).
 
 ```json
 { "alfred-mods": { "rec": "strict" } }
@@ -508,6 +517,28 @@ field is unset. `/alfred-mods:init` and `/alfred-mods:configure` set it in the p
 
 ```json
 { "alfred-mods": { "plansFolder": ".alfred" } }
+```
+
+#### `expectOrg` - the organization the project expects
+
+A name of 1 to 100 characters, none by default. The band's project row shows `org <name>`, the organization the session
+is signed in to, so you can check you are on the right AI account before you open a repository. With `expectOrg` set
+in a settings file, an org that differs - compared without case, spaces at the ends ignored - or is
+unknown draws `org` and the name in the warn colour. The check is a quick one, not proof: the name is read from the
+login record in Claude Code's global config, which you can edit and which can lag behind an account switch, as
+Claude Code does not let a mod ask the server which account is active; the account's web page is the stronger source.
+It resolves like every other field ([Which file wins](#which-file-wins)): managed settings, `--settings`, the local file,
+the project file, then your user file. `/alfred-mods:configure expectOrg <name>` writes it into the project's
+`.claude/settings.json`, and `/alfred-mods:configure expectOrg` alone writes the org the band shows now. A config file
+over 4 MiB cannot be read, and the band then shows `org unknown`.
+
+```json
+{ "alfred-mods": { "expectOrg": "Acme Inc" } }
+```
+
+```text
+project: my-app │ git:(develop) │ org Acme Inc          matches: dim label, plain name
+project: my-app │ git:(develop) │ org Other Co          differs: label and name in the warn colour
 ```
 
 ### Which file wins
@@ -596,7 +627,7 @@ By default the band has an info line under its gauges, and rows under that:
 
 ```text
 Sonnet 5.5 ◑ high │ 9m │ ≈119 tok/s avg │ cache warm ≈60m │ you 17:15 · Claude 17:13 │ CC 2.1.322
-project: my-app │ git:(develop) +12 −3 │ folder: .claude
+project: my-app │ git:(develop) +12 −3 │ org Acme Inc │ folder: .claude
 plan:    Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update interceptor
 usage:   [ 45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ]
 tools:   Bash ×32 │ AskUserQuestion ×4 │ Read ×4 │ Write ×4 │ Grep ×1
@@ -613,13 +644,21 @@ rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ w
   folder Claude works in (left out outside a repository), then `↑1 ↓2`, the commits the branch is ahead of and behind
   its upstream as of your last fetch (the mod never fetches; a side at 0, or a branch with no upstream, is left out),
   then that repository's uncommitted changes as `+added −removed` lines against the last commit, a new untracked file's lines counted as added (left out when there are
-  none), then `folder:`, that folder when it is not the project's
+  none), then `org <name>`, the Claude organization the session is signed in to (`org unknown` for a token login or
+  when the config cannot be read, a file over 4 MiB included; the name is cut to 40 cells), then `folder:`, that folder when it is not the project's
   root. The folder follows Claude: where a Bash `cd` went, or the folder of the last file Claude edited or wrote,
   whichever came last (a folder outside the project shows as `…/<name>`); it is re-read after each Bash call, edit and
   write, and every 30 s. `git:(`, `)` and the arrows are purple, the branch yellow, the added lines green and the removed red, the
   project and the folder in your text's own colour. The counts come from `git diff --numstat HEAD`, `git ls-files` and
   `git rev-list --left-right --count @{upstream}...HEAD`, each with a 2 s timeout; short of width the folder goes first,
-  then the changes, then the arrows.
+  then the changes, then the arrows; the org stays at every width. The org comes from the global config
+  (`$CLAUDE_CONFIG_DIR/.claude.json`, else `~/.claude.json`): the mod reads its `oauthAccount.organizationName` and
+  keeps that name alone, at session start, after a `/clear`, a resume or a branch, and at the end of a turn when 5
+  minutes have passed since the last read. It is a quick check before you open a repository, not proof: the name is
+  the login record on disk, which you can edit and which can lag behind an account switch, and Claude Code does not
+  let a mod ask the server which account is active. The account's web page is the stronger source. With `expectOrg`
+  set in a settings file, an org that differs - or is unknown - draws `org` and the name in the warn colour; under
+  [REC](#recording-mode) `strict` the name reads `‹org›`.
 - **`plan:`** while a plan runs: its title, bar, steps done and the step in progress (the Plan tab has the percent and
   the times), then the plan's score and its change from the round before, `score 85 ▲13`.
 - **`usage:`** in aqua, counts what the rows under it list: tool calls, skills, agents dispatched (and how many run)
@@ -741,7 +780,7 @@ and `/rec off` set it in your user file ([Settings](#settings), [Commands](#comm
 | Level    | Hides                                                                    |
 |----------|--------------------------------------------------------------------------|
 | `on`     | keys, emails, phone numbers and your private words                       |
-| `strict` | the same, plus your local user name, home folder paths and dollar amounts |
+| `strict` | the same, plus your local user name, home folder paths, dollar amounts and the band's organization name (`‹org›`) |
 
 - **It holds** across sessions and restarts while a settings file gives it. Mid-session it never goes down because a
   file stopped giving it, a typo included ([REC holds](#rec-holds)). A red `● REC` leads the band while it is on.

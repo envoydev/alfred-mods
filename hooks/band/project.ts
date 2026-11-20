@@ -3,7 +3,9 @@ import { fitLine, widthOf } from '../core/format'
 import { planRowParts, scoreSeg } from '../plan/planlines'
 import type { BandInput } from './types'
 import type { Line, Seg } from '../core/types'
-import { ROW_JOIN, ROW_LABEL } from './constants'
+import { isOrgMismatch } from '../account/account'
+import { ORG_STRICT } from '../account/constants'
+import { NAME_FLOOR_CELLS, ORG_LABEL, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN, ROW_LABEL } from './constants'
 import { rowLabel, toggleForms } from './detail'
 
 // A folder past `max` cells: its last parts that fit after '…/', or its last part cut
@@ -31,6 +33,29 @@ export function planRow(input: BandInput): Line[] {
 
 const dimSeg = (text: string): Seg => ({ text, tone: 'dim' })
 
+// The signed-in organization, after the changes and before the folder and kept in every width form: 'org <name>', the name
+// cut to 40 cells or '‹org›' under REC strict, both warn-toned when the project's expectOrg is set and differs; none
+// without an account in the input
+function orgSegs(input: BandInput, sep: Seg): Seg[] {
+  const account = input.account
+  if (account === undefined) return []
+  const warn = isOrgMismatch(account.org, account.expectOrg) ? { tone: 'warn' as const } : {}
+  const name = input.rec?.level === 'strict' ? ORG_STRICT : account.org === null ? ORG_UNKNOWN : fitLine(account.org, ORG_MAX_CELLS)
+  return [sep, { text: ORG_LABEL, tone: warn.tone ?? 'dim' }, { text: name, ...warn }]
+}
+
+// The names cut for a row too narrow for any form: the branch to NAME_FLOOR_CELLS cells, then the project down to one, then
+// the branch to one, so the segments after them stay whole
+function cutNames(project: string, branch: string | null): { project: string; branch: string | null }[] {
+  const downTo = (from: number, to: number): number[] => Array.from({ length: Math.max(0, from - to + 1) }, (_, i) => from - i)
+  const branchFloor = branch === null ? 0 : Math.min(NAME_FLOOR_CELLS, branch.length)
+  return [
+    ...(branch === null ? [] : downTo(branch.length - 1, branchFloor).map(cap => ({ project, branch: fitLine(branch, cap) }))),
+    ...downTo(project.length - 1, 1).map(cap => ({ project: fitLine(project, cap), branch: branch === null ? null : fitLine(branch, branchFloor) })),
+    ...(branch === null ? [] : downTo(branchFloor - 1, 1).map(cap => ({ project: fitLine(project, 1), branch: fitLine(branch, cap) }))),
+  ]
+}
+
 // The project row (the user, 2026-11-11): 'project: my-app │ git:(develop) +12 −3 │ folder: .claude' - the session's
 // project, the branch of the repository holding the folder Claude works in, and that folder when it is not the
 // project's root, past 40 cells its last parts after '…/'; short of width the folder takes its last part, then goes
@@ -49,18 +74,23 @@ export function placeRow(input: BandInput): Line[] {
     ...(sync.ahead > 0 ? [{ text: ' ' }, { text: `↑${sync.ahead}`, tone: 'git' as const }] : []),
     ...(sync.behind > 0 ? [{ text: ' ' }, { text: `↓${sync.behind}`, tone: 'git' as const }] : []),
   ]
-  const line = (folder: string | null, withChanges = true, withSync = true): Line => [
-    { text: place.project },
+  const org = orgSegs(input, sep)
+  const line = (folder: string | null, withChanges = true, withSync = true, names = { project: place.project, branch: place.branch }): Line => [
+    { text: names.project },
     // git:( and ) purple, the branch yellow, the folder in the text's own colour (the user, 2026-11-11)
-    ...(place.branch === null ? [] : [sep, { text: 'git:(', tone: 'git' as const }, { text: place.branch, tone: 'branch' as const }, { text: ')', tone: 'git' as const }]),
+    ...(names.branch === null ? [] : [sep, { text: 'git:(', tone: 'git' as const }, { text: names.branch, tone: 'branch' as const }, { text: ')', tone: 'git' as const }]),
     ...(withSync ? synced : []),
     ...(withChanges ? counted : []),
+    ...org,
     ...(folder === null ? [] : [sep, dimSeg('folder: '), { text: folder }]),
   ]
   const folder = place.folder
   // Short of width the folder goes first, then the changes, then the commits ahead and behind
   const forms = [...(folder === undefined ? [] : [line(fitFolder(folder, 40)), line(lastPart(folder))]), line(null), line(null, false), line(null, false, false)]
-  const form = forms.find(candidate => widthOf(candidate) <= input.columns - ROW_LABEL) ?? forms[forms.length - 1] ?? []
+  // Still too wide, the branch and then the project are cut, so the org after them keeps its place and its tone
+  const isFit = (candidate: Line): boolean => widthOf(candidate) <= input.columns - ROW_LABEL
+  const cut = cutNames(place.project, place.branch).map(names => line(null, false, false, names))
+  const form = [...forms, ...cut].find(isFit) ?? forms[forms.length - 1] ?? []
   return [[rowLabel('project:'), ...form]]
 }
 

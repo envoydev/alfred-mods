@@ -15,7 +15,7 @@ export const CHOICE_ORDER: readonly PlansFolder[] = ['.alfred-mods', '.alfred', 
 
 export const FOLDER_VALUES_HINT = `[${CHOICE_ORDER.join('|')}]`
 
-export const SETUP_USAGE = `Usage: ${SLASH.init} ${FOLDER_VALUES_HINT} | ${SLASH.configure} ${FOLDER_VALUES_HINT} | ${SLASH.update}`
+export const SETUP_USAGE = `Usage: ${SLASH.init} ${FOLDER_VALUES_HINT} | ${SLASH.configure} ${FOLDER_VALUES_HINT} | ${SLASH.configure} expectOrg [name] | ${SLASH.update}`
 
 export const SETUP_PANE_ID = 'alfred-mods-setup'
 
