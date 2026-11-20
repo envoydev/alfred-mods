@@ -59,7 +59,7 @@ test('an rm that fails part way names only the sources and probes that are still
     rm: { exitCode: 1, removes: [`${PROBE}*`, `${OLD_PLANS}/p.json`] },
   })
   expect(await alfred($, 'update')).toEqual([
-    'moved 1 plan and scores files to .alfred-mods/', 'copied 1 files to .alfred-mods/ - remove the old copies in .claude/session-inspector/plans/ by hand', 'update done',
+    'moved 1 plan or scores file to .alfred-mods/', 'copied 1 file to .alfred-mods/ - remove the old copies in .claude/session-inspector/plans/ by hand', 'update done',
   ])
   expect(rm.calls).toHaveLength(1)
 })
@@ -71,7 +71,7 @@ test('a probe that the failed rm left is named, and a probe it removed is not', 
   const lines = await alfred($, 'update')
   const probe = kit.rm.calls[0]?.find(isProbe) ?? ''
   expect(probe.startsWith('.alfred-mods/plans/')).toBe(true)
-  expect(lines).toEqual(['moved 1 plan and scores files to .alfred-mods/', `could not remove ${probe} - delete it by hand`, 'update done'])
+  expect(lines).toEqual(['moved 1 plan or scores file to .alfred-mods/', `could not remove ${probe} - delete it by hand`, 'update done'])
 })
 
 test('a plan clash whose source cannot be read prints the could-not-read line, not kept both', async ($, on) => {
@@ -110,7 +110,7 @@ test('a probe name that is taken is replaced once, and the equal copy is then re
   const { rm, files } = await start($, on, {
     files: { [`${OLD_PLANS}/p.json`]: stub(DONE), '.alfred-mods/plans/p.json': stub(DONE) }, taken: { [`.alfred-mods/plans/${PROBE}*`]: 1 },
   })
-  expect(await alfred($, 'update')).toEqual(['moved 1 plan and scores files to .alfred-mods/', 'update done'])
+  expect(await alfred($, 'update')).toEqual(['moved 1 plan or scores file to .alfred-mods/', 'update done'])
   expect(rm.calls[0]?.slice(3)).toContain(`${OLD_PLANS}/p.json`)
   expect(files.writes.filter(isProbe)).toHaveLength(1)
 })

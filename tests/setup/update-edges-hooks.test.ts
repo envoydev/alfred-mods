@@ -16,7 +16,7 @@ const OLD_SCORES = '.claude/session-inspector/scores'
 const DONE = planText({ S1: 'done', S2: 'done', S3: 'done', S4: 'done', S5: 'done' })
 const PENDING = planText({ S1: 'done' })
 const SCORES = '{"version":1,"slug":"p"}'
-const MOVED_ONE = 'moved 1 plan and scores files to .alfred-mods/'
+const MOVED_ONE = 'moved 1 plan or scores file to .alfred-mods/'
 const KEPT_P = 'kept both: p (the newer one shows)'
 const KEPT_Q = 'kept both: q (the newer one shows)'
 const stub = (text: string, mtimeMs = OLD): FileStub => ({ text, mtimeMs })
@@ -151,7 +151,7 @@ test('a CRLF .gitignore gets its line with CRLF', async ($, on) => {
 
 test('two moves in one session never report the first move\'s copy as live', async ($, on) => {
   const { files } = await start($, on, { files: { [`${OLD_PLANS}/p.json`]: stub(PENDING) } })
-  expect(await alfred($, 'init', '.alfred')).toContain('moved 1 plan and scores files to .alfred/alfred-mods/')
+  expect(await alfred($, 'init', '.alfred')).toContain('moved 1 plan or scores file to .alfred/alfred-mods/')
   expect(fileAt(files, '.alfred/alfred-mods/plans/p.json')).toBe(PENDING)
   const second = (await alfred($, 'init', '.alfred-mods')).join('\n')
   expect(second).not.toContain('left in place')

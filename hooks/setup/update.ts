@@ -3,8 +3,8 @@
 import { candidatesByName, isPlanDone } from '../plan/plan'
 import type { Plan } from '../plan/types'
 import {
-  CHANGED_REASON, DONE_LINE, JSON_SUFFIX, LIST_SEPARATOR, LIVE_PLAN_MS, NOT_UTF8_REASON, NOTHING_LINE, OLD_INSTALL_PREFIX, OLD_STATUS_DIR, PROBE_PREFIX, SLASH, UNCHECKED_COPY_REASON,
-  UNCHECKED_DESTINATION_REASON, UNREAD_NOTE, UNREADABLE_PLAN_NOTE,
+  CHANGED_REASON, DONE_LINE, FILE_NOUN, JSON_SUFFIX, LIST_SEPARATOR, LIVE_PLAN_MS, NOT_UTF8_REASON, NOTHING_LINE, OLD_INSTALL_PREFIX, OLD_STATUS_DIR, PROBE_PREFIX, SLASH, UNCHECKED_COPY_REASON,
+  PLAN_FILE_NOUN, STATUS_FILE_NOUN, UNCHECKED_DESTINATION_REASON, UNREAD_NOTE, UNREADABLE_PLAN_NOTE,
 } from './constants'
 import type { CopyFailure, FolderRelation, ListedFile, LiveReason, MoveQueue } from './types'
 import { isRecord } from '../core/guards'
@@ -87,10 +87,13 @@ export const folderPathOf = (path: string): string => path.slice(0, path.lastInd
 
 const folderOf = (root: string): string => `${root}/`
 
-export const movedLine = (count: number, root: string): string => `moved ${count} plan and scores files to ${folderOf(root)}`
+// '1 file', '2 files': a count with its noun
+const countOf = (count: number, noun: { readonly one: string; readonly many: string }): string => `${count} ${count === 1 ? noun.one : noun.many}`
+
+export const movedLine = (count: number, root: string): string => `moved ${countOf(count, PLAN_FILE_NOUN)} to ${folderOf(root)}`
 
 export const copiedLine = (count: number, root: string, from: readonly string[]): string =>
-  `copied ${count} files to ${folderOf(root)} - remove the old copies in ${from.map(folderOf).join(LIST_SEPARATOR)} by hand`
+  `copied ${countOf(count, FILE_NOUN)} to ${folderOf(root)} - remove the old copies in ${from.map(folderOf).join(LIST_SEPARATOR)} by hand`
 
 export const leftInPlaceLine = (name: string): string => `left in place: ${name} - its writer still uses it; run ${SLASH.update} after it finishes`
 
@@ -134,7 +137,7 @@ export const earlierChoicesLine = (fields: readonly string[]): string => `wrote 
 
 export const oldInstallLine = (key: string): string => `an old session-inspector install is still on - claude plugin uninstall ${key}`
 
-export const statusFilesLine = (count: number): string => `${count} status files from Alfred Code 3.12.1 or older in ${folderOf(OLD_STATUS_DIR)} - safe to delete`
+export const statusFilesLine = (count: number): string => `${countOf(count, STATUS_FILE_NOUN)} from Alfred Code 3.12.1 or older in ${folderOf(OLD_STATUS_DIR)} - safe to delete`
 
 // The stack writes this session's status file to the old folder: it is 3.12.1 or older and writes there still
 export const oldStackLine = (): string => `this session's Alfred Code still writes ${folderOf(OLD_STATUS_DIR)} - update Alfred Code to 3.13 or later`

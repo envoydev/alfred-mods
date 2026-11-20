@@ -67,7 +67,7 @@ test('init with the recommended folder prints no writer note', async ($, on) => 
 
 test('init with a folder passes the folder just written to update while the settings in force are stale', async ($, on) => {
   const { files } = await start($, on, { sources: { project: mod({ plansFolder: 'default' }) }, files: plan('.alfred-mods/plans/p.json') })
-  expect((await alfred($, 'init', '.alfred')).split('\n')).toContain('moved 1 plan and scores files to .alfred/alfred-mods/')
+  expect((await alfred($, 'init', '.alfred')).split('\n')).toContain('moved 1 plan or scores file to .alfred/alfred-mods/')
   expect(fileAt(files, '.alfred/alfred-mods/plans/p.json')).toBe(DONE)
 })
 
@@ -111,7 +111,7 @@ test('a higher file that wins over the value written is named, and update follow
   const text = await alfred($, 'init', '.alfred')
   expect(text.split('\n')).toEqual([
     'plansFolder is "default" in .claude/settings.local.json, which wins over the value written', NOTE,
-    'moved 1 plan and scores files to .claude/session-inspector/', 'update done',
+    'moved 1 plan or scores file to .claude/session-inspector/', 'update done',
   ])
 })
 
@@ -153,12 +153,12 @@ test('the verb comes from the command that ran: the same value does a different 
   const { files } = await start($, on, { files: plan('.alfred-mods/plans/p.json') })
   expect(await alfred($, 'configure', '.alfred')).not.toContain('moved')
   expect(files.writes).not.toContain('.alfred/alfred-mods/plans/p.json')
-  expect(await alfred($, 'init', '.alfred')).toContain('moved 1 plan and scores files to .alfred/alfred-mods/')
+  expect(await alfred($, 'init', '.alfred')).toContain('moved 1 plan or scores file to .alfred/alfred-mods/')
 })
 
 test('update prints its report for the folder in force', async ($, on) => {
   await start($, on, { sources: { user: mod({ plansFolder: 'default' }) }, files: plan('.alfred-mods/plans/p.json') })
-  expect(await alfred($, 'update')).toBe('moved 1 plan and scores files to .claude/session-inspector/\nupdate done')
+  expect(await alfred($, 'update')).toBe('moved 1 plan or scores file to .claude/session-inspector/\nupdate done')
 })
 
 test('an unplaced pane is named in the text', async ($, on) => {

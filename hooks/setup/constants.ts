@@ -93,3 +93,8 @@ export const LIST_SEPARATOR = ', '
 export const JSON_SUFFIX = '.json'
 
 export const REASON_MAX = 60
+
+// The nouns of the update report's counts, one and many
+export const FILE_NOUN = { one: 'file', many: 'files' } as const
+export const PLAN_FILE_NOUN = { one: 'plan or scores file', many: 'plan and scores files' } as const
+export const STATUS_FILE_NOUN = { one: 'status file', many: 'status files' } as const

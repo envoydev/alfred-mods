@@ -32,7 +32,7 @@ const alfred = async ($: Engine, verb: string, args = ''): Promise<string[]> =>
 
 test('a plan in the old folder moves to the chosen root and one rm gets its path', async ($, on) => {
   const { files, rm } = await start($, on, { files: { [`${OLD_PLANS}/p.json`]: stub(DONE) } })
-  expect(await alfred($, 'update')).toEqual(['moved 1 plan and scores files to .alfred-mods/', 'update done'])
+  expect(await alfred($, 'update')).toEqual(['moved 1 plan or scores file to .alfred-mods/', 'update done'])
   expect(fileAt(files, '.alfred-mods/plans/p.json')).toBe(DONE)
   expect(rm.calls).toEqual([['rm', '-f', '--', `${OLD_PLANS}/p.json`]])
   expect(rm.timeoutMs).toBe(3000)
@@ -55,7 +55,7 @@ test('a live plan and its scores stay, and the left in place line prints', async
 
 test('an unfinished plan 25 hours old moves', async ($, on) => {
   const { rm } = await start($, on, { files: { [`${OLD_PLANS}/p.json`]: stub(PENDING, NOW - 25 * HOUR) } })
-  expect((await alfred($, 'update'))[0]).toBe('moved 1 plan and scores files to .alfred-mods/')
+  expect((await alfred($, 'update'))[0]).toBe('moved 1 plan or scores file to .alfred-mods/')
   expect(rm.calls).toHaveLength(1)
 })
 
@@ -70,7 +70,7 @@ test('a copy whose read-back differs is named, its destination is left as found 
     files: { [`${OLD_PLANS}/p.json`]: stub(DONE), [`${OLD_PLANS}/q.json`]: stub(DONE) }, mangleWrite: ['.alfred-mods/plans/p.json'],
   })
   expect(await alfred($, 'update')).toEqual([
-    'not moved: p - its copy did not read back equal; check .alfred-mods/plans/', 'moved 1 plan and scores files to .alfred-mods/', 'update done',
+    'not moved: p - its copy did not read back equal; check .alfred-mods/plans/', 'moved 1 plan or scores file to .alfred-mods/', 'update done',
   ])
   expect(rm.calls).toEqual([['rm', '-f', '--', `${OLD_PLANS}/q.json`]])
   expect(fileAt(files, '.alfred-mods/plans/p.json')).toBe(`${DONE}\n#`)
@@ -94,7 +94,7 @@ test('a check of the destination that rejects is not moved for that name, and th
   const { rm } = await start($, on, {
     files: { [`${OLD_PLANS}/p.json`]: stub(DONE), [`${OLD_PLANS}/q.json`]: stub(DONE) }, refuseExists: ['.alfred-mods/plans/p.json'],
   })
-  expect(await alfred($, 'update')).toEqual(['not moved: p - could not check the destination', 'moved 1 plan and scores files to .alfred-mods/', 'update done'])
+  expect(await alfred($, 'update')).toEqual(['not moved: p - could not check the destination', 'moved 1 plan or scores file to .alfred-mods/', 'update done'])
   expect(rm.calls).toEqual([['rm', '-f', '--', `${OLD_PLANS}/q.json`]])
 })
 
@@ -122,14 +122,14 @@ test('a source whose stat changes between the copy and the delete is not in the 
   const kit = await start($, on, { files: { [`${OLD_PLANS}/p.json`]: changing, [`${OLD_PLANS}/q.json`]: stub(DONE) } })
   writes = () => kit.files.writes.length
   // Listed before the copy, both at OLD; the first copy's write moves p.json's mtime on
-  expect(await alfred($, 'update')).toEqual(['moved 1 plan and scores files to .alfred-mods/', 'update done'])
+  expect(await alfred($, 'update')).toEqual(['moved 1 plan or scores file to .alfred-mods/', 'update done'])
   expect(kit.rm.calls).toEqual([['rm', '-f', '--', `${OLD_PLANS}/q.json`]])
 })
 
 test('rm denied prints the by-hand line and the sources stay', async ($, on) => {
   const { files, rm } = await start($, on, { files: { [`${OLD_PLANS}/p.json`]: stub(DONE) }, rm: { deny: true } })
   expect(await alfred($, 'update')).toEqual([
-    'copied 1 files to .alfred-mods/ - remove the old copies in .claude/session-inspector/plans/ by hand', 'update done',
+    'copied 1 file to .alfred-mods/ - remove the old copies in .claude/session-inspector/plans/ by hand', 'update done',
   ])
   expect(rm.calls).toHaveLength(1)
   expect(fileAt(files, '.alfred-mods/plans/p.json')).toBe(DONE)
@@ -137,7 +137,7 @@ test('rm denied prints the by-hand line and the sources stay', async ($, on) => 
 
 test('rm that exits non-zero prints the by-hand line', async ($, on) => {
   await start($, on, { files: { [`${OLD_PLANS}/p.json`]: stub(DONE) }, rm: { exitCode: 1 } })
-  expect((await alfred($, 'update'))[0]).toContain('copied 1 files to .alfred-mods/ - remove the old copies in')
+  expect((await alfred($, 'update'))[0]).toContain('copied 1 file to .alfred-mods/ - remove the old copies in')
 })
 
 test('a name the chosen root already holds, with other text, prints kept both and moves nothing', async ($, on) => {
@@ -256,7 +256,7 @@ test('init .alfred moves into the folder just written and adds that root to .git
     sources: { project: mod({ plansFolder: 'default' }) }, files: { [`${OLD_PLANS}/p.json`]: stub(DONE), '.gitignore': stub('x\n') },
   })
   const lines = await alfred($, 'init', '.alfred')
-  expect(lines).toContain('moved 1 plan and scores files to .alfred/alfred-mods/')
+  expect(lines).toContain('moved 1 plan or scores file to .alfred/alfred-mods/')
   expect(lines).toContain('added .alfred/alfred-mods/ to .gitignore')
   expect(fileAt(files, '.alfred/alfred-mods/plans/p.json')).toBe(DONE)
   expect(fileAt(files, '.gitignore')).toBe('x\n.alfred/alfred-mods/\n')
@@ -309,7 +309,7 @@ test('a moved unfinished plan keeps its old time, so it does not read as running
   engine(on)
   await $.session.start(START)
   await kit.clock.advance(300)
-  expect((await alfred($, 'update'))[0]).toBe('moved 1 plan and scores files to .alfred-mods/')
+  expect((await alfred($, 'update'))[0]).toBe('moved 1 plan or scores file to .alfred-mods/')
   await kit.clock.advance(30_000)
   const plans = plansOf(state)
   const moved = plans.planFiles.find(file => file.path === '.alfred-mods/plans/token-refresh.json')

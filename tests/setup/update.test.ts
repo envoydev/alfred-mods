@@ -117,6 +117,10 @@ test('leftLine gives the line for each reason a plan stays', () => {
 
 test('the report lines read as the spec gives them', () => {
   expect(movedLine(3, '.alfred-mods')).toBe('moved 3 plan and scores files to .alfred-mods/')
+  expect(movedLine(1, '.alfred-mods')).toBe('moved 1 plan or scores file to .alfred-mods/')
+  expect(copiedLine(1, '.alfred-mods', ['.claude/session-inspector/plans'])).toBe(
+    'copied 1 file to .alfred-mods/ - remove the old copies in .claude/session-inspector/plans/ by hand')
+  expect(statusFilesLine(1)).toBe('1 status file from Alfred Code 3.12.1 or older in .claude/session-inspector/status/ - safe to delete')
   expect(copiedLine(2, '.alfred-mods', ['.claude/session-inspector/plans', '.claude/session-inspector/scores'])).toBe(
     'copied 2 files to .alfred-mods/ - remove the old copies in .claude/session-inspector/plans/, .claude/session-inspector/scores/ by hand',
   )
