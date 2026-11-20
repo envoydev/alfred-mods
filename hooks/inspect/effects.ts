@@ -4,7 +4,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, UiOpenResult } from 'claude-code'
 import type { Tab, View } from './types'
-import { BAND_HELP, COPY_WHY, INSPECT_HELP, TAB_NAMES, ordinalOf, outOfRange } from './commands'
+import { BAND_HELP, INSPECT_HELP, TAB_NAMES, copyWhy, ordinalOf, outOfRange } from './commands'
 import { oneLine, printable } from '../core/format'
 import { failureNumberOf } from '../tools/outcome'
 import { loadSettings, plansFolderInForce, resolvedSettings, writeUserField } from '../settings/effects'
@@ -100,7 +100,7 @@ async function runFailureCommand($: EngineInterface, action: 'show' | 'copy', wo
   if (action === 'copy') {
     if (failure.outcome !== 'error') return `Nothing to copy: ${name} was ${failure.outcome}, not an error.`
     const done = await $.ui.copy({ text: failure.detail })
-    return done.isCopied ? `Copied the error of ${name}.` : `Not copied: ${COPY_WHY[done.reason]}.`
+    return done.isCopied ? `Copied the error of ${name}.` : `Not copied: ${copyWhy(done.reason)}.`
   }
   if (failure.outcome !== 'error' && failure.outcome !== 'blocked') return `Nothing to show: ${name} was ${failure.outcome}.`
   return runToggleCommand($, failure.id, name, 'now', ['now', 'tools'])

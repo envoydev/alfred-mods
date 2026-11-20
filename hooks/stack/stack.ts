@@ -5,7 +5,7 @@ import { isRecord } from '../core/guards'
 import { parseStatus } from '../handoff/handoff'
 import type { Line, Seg } from '../core/types'
 import type { Usage } from '../session/types'
-import { MAX_TOKENS, MIN_WINDOW } from './constants'
+import { FILL_REFUSALS, MAX_TOKENS, MIN_WINDOW, STACK_TOASTS } from './constants'
 import type { FullContext, Runway, Stack, StackAutoCompact, StackRead, StackScorer } from './types'
 
 export const NO_FILE = 'no status file for this session'
@@ -160,24 +160,15 @@ export function stackLines(stack: Stack, opts: { prompt: string | null; runway: 
   return out
 }
 
-// The fill's toasts (spec 'The fill'), none carrying the prompt's text
-export const STACK_TOASTS = {
-  filled: "Alfred Code's resume prompt filled - Enter in the prompt box sends it",
-  notEmpty: "Prompt not empty: clear it, then press f to fill Alfred Code's resume prompt",
-  dialog: 'A dialog holds the keys: close it, then press f again',
-  noBox: 'No prompt box here to fill',
-  notFilled: "Alfred Code's resume prompt was not filled",
-  gone: 'Alfred Code has no resume prompt now',
-}
-
 // A press fills only while line 5 would draw: a used file that owns the full context, with a prompt (Decision 7), so a
 // press from a frame drawn before the file changed fills nothing
 export function fillReady(stack: Stack, prompt: string | null): prompt is string {
   return prompt !== null && stack.state === 'used' && (stack.fullContext === 'fresh-session' || stack.fullContext === 'compact')
 }
 
-// The toast for what the prompt box answered; an absent cause is a hook's refusal, unknown
-export function fillToast(result: { isFilled: boolean; refusal?: 'no_composer' | 'dialog' }): string {
+// The toast for what the prompt box answered; an absent cause is a hook's refusal, unknown. 'unanswered' (a headless
+// app silent for 5 s) arrived in Claude Code 2.1.329, and a refusal a later build adds reads as not filled
+export function fillToast(result: { isFilled: boolean; refusal?: string }): string {
   if (result.isFilled) return STACK_TOASTS.filled
-  return result.refusal === 'dialog' ? STACK_TOASTS.dialog : result.refusal === 'no_composer' ? STACK_TOASTS.noBox : STACK_TOASTS.notFilled
+  return (result.refusal === undefined ? undefined : FILL_REFUSALS.get(result.refusal)) ?? STACK_TOASTS.notFilled
 }

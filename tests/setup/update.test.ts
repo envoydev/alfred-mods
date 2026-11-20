@@ -4,7 +4,7 @@ import { parsePlan } from '../../hooks/plan/plan'
 import {
   changedLine, closeReport, copiedLine, copyFailureLine, coversRoot, earlierChoicesLine, folderRelation, gitignoreAppend, gitignoreLine, isLivePlan,
   isSeparateCopy, isUtf8Text, keptBothLine, leftInPlaceLine, liveReason, movedLine, moveQueue, notMovedLine, notUtf8Line, oldInstallKeys, oldInstallLine,
-  leftLine, sameFolderLine, statusFilesLine, unknownFolderLine, unreadablePlanLine, unreadPlanLine,
+  leftLine, sameFolderLine, oldStackLine, statusFilesLine, statusLines, unknownFolderLine, unreadablePlanLine, unreadPlanLine,
 } from '../../hooks/setup/update'
 import { MORE_LINE } from '../../hooks/setup/constants'
 import { planText } from '../plans'
@@ -117,6 +117,10 @@ test('leftLine gives the line for each reason a plan stays', () => {
 
 test('the report lines read as the spec gives them', () => {
   expect(movedLine(3, '.alfred-mods')).toBe('moved 3 plan and scores files to .alfred-mods/')
+  expect(movedLine(1, '.alfred-mods')).toBe('moved 1 plan or scores file to .alfred-mods/')
+  expect(copiedLine(1, '.alfred-mods', ['.claude/session-inspector/plans'])).toBe(
+    'copied 1 file to .alfred-mods/ - remove the old copy in .claude/session-inspector/plans/ by hand')
+  expect(statusFilesLine(1)).toBe('1 status file from Alfred Code 3.12.1 or older in .claude/session-inspector/status/ - safe to delete')
   expect(copiedLine(2, '.alfred-mods', ['.claude/session-inspector/plans', '.claude/session-inspector/scores'])).toBe(
     'copied 2 files to .alfred-mods/ - remove the old copies in .claude/session-inspector/plans/, .claude/session-inspector/scores/ by hand',
   )
@@ -143,6 +147,16 @@ test('the report lines read as the spec gives them', () => {
     'an old session-inspector install is still on - claude plugin uninstall session-inspector@envoydev',
   )
   expect(statusFilesLine(4)).toBe('4 status files from Alfred Code 3.12.1 or older in .claude/session-inspector/status/ - safe to delete')
+  expect(oldStackLine()).toBe('this session\'s Alfred Code still writes .claude/session-inspector/status/ - update Alfred Code to 3.13 or later')
+})
+
+test('statusLines: an old stack gets the update line alone, a new one the count of every old file', () => {
+  const stack = oldStackLine()
+  expect(statusLines({ oldNames: ['a.json', 's1.json'], own: 's1.json', hasNewFolder: true, isOwnInNew: false })).toEqual([stack])
+  expect(statusLines({ oldNames: ['s1.json'], own: 's1.json', hasNewFolder: false, isOwnInNew: false })).toEqual([stack])
+  expect(statusLines({ oldNames: ['a.json', 's1.json'], own: 's1.json', hasNewFolder: true, isOwnInNew: true })).toEqual([statusFilesLine(2)])
+  expect(statusLines({ oldNames: ['a.json'], own: 's1.json', hasNewFolder: false, isOwnInNew: false })).toEqual([])
+  expect(statusLines({ oldNames: [], own: 's1.json', hasNewFolder: true, isOwnInNew: false })).toEqual([])
 })
 
 test('closeReport ends on update done, or nothing to update when no step printed', () => {
