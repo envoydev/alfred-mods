@@ -5,7 +5,8 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Timer } from 'claude-code'
 import type { Stack } from './types'
 import { statusPaths } from '../handoff/handoff'
-import { NO_FILE, STACK_TOASTS, UNREADABLE, fillReady, fillToast, parseStack } from './stack'
+import { STACK_TOASTS } from './constants'
+import { NO_FILE, UNREADABLE, fillReady, fillToast, parseStack } from './stack'
 import { followStatusFile } from '../handoff/effects'
 
 const INITIAL_STACK: Stack = {

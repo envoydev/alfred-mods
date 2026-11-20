@@ -6,7 +6,7 @@ import type { Engine } from 'claude-code/testing'
 import type { On, RenderSurface, RenderViewport } from 'claude-code'
 
 import { resolveSettings, skippedToast } from '../../hooks/settings/settings'
-import { STACK_TOASTS } from '../../hooks/stack/stack'
+import { STACK_TOASTS } from '../../hooks/stack/constants'
 import { PRESENTATION, SPAWN, START, engine, engineSites, fileAt, rows, setUser, stubAll, until, watchState } from '../kit'
 import type { Handoff } from '../../hooks/handoff/types'
 import type { View } from '../../hooks/inspect/types'
