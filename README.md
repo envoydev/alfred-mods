@@ -240,14 +240,25 @@ code.
     3. A choice made before 0.8 is written to your user file when no settings file sets that field and the choice
        differs from the default: `wrote your earlier choices to ~/.claude/settings.json: <fields>` (it may name
        several fields; [From 0.7](#from-07)).
-    4. A switched-on old install is named: `an old session-inspector install is still on - claude plugin uninstall
-       session-inspector@<marketplace>`.
+    4. A switched-on old install is switched off: each `session-inspector@<marketplace>` key set `true` in your user,
+       project or local settings file is set `false` there; only that one value changes and the rest of the file stays as it was:
+       `turned off the old session-inspector install in <file> - claude plugin uninstall <key> removes its files`
+       (the user file is named by its full path). A file that does not parse, whose `enabledPlugins` is not an object,
+       or where that key and `true` are not found exactly once, is never rewritten; the file is read again right
+       before the write, and nothing is created. A key that managed settings or a flag sets, or a
+       write that fails, is named as before: `an old session-inspector install is still on - claude plugin uninstall
+       <key>`. This is the one plugin switch the mod makes: it never installs, removes or switches any other plugin.
     5. A project's sessions share one installed stack. Where this session's own status file is in
        `.claude/session-inspector/status/` and not in `.alfred/state/sessions/status/`, the stack is 3.12.1 or older
        and any file there may be live: `this session's Alfred Code still writes .claude/session-inspector/status/ -
-       update Alfred Code to 3.13 or later`, and nothing is called safe to delete. Otherwise the old files are counted
-       while the new status folder exists: `<n> status files from Alfred Code 3.12.1 or older in
-       .claude/session-inspector/status/ - safe to delete`. Nothing is removed.
+       update Alfred Code to 3.13 or later`, and nothing there is removed. Otherwise, while the new status folder exists,
+       the old `*.json` files directly in `.claude/session-inspector/status/` go in the same one `rm` as step 1, at most 100 a run (`<n> more old status
+       files - run /alfred-mods:update again`), and none that changed in the last 24 hours, as another stack may still
+       write it (`<n> status files from Alfred Code 3.12.1 or older changed in the last 24 hours - left in place`):
+       `removed <n> status files from Alfred Code 3.12.1 or older`. Each is checked afterwards, and one still there, or every
+       file where `rm` does not run, reads `<n> status files from Alfred Code 3.12.1 or older in
+       .claude/session-inspector/status/ - delete them by hand`. The folder, `HANDOFF.md` and anything else under
+       `.claude/session-inspector/` stay.
   - The confirm lines of `init <value>`, `configure <value>` and a pane press add, for a folder other than
     `.alfred-mods`, `new plans land there once each writer reads plansFolder - claude-kit does from its 0b09406 sync`.
     A bare `init` with the field set prints its `Plans live in ...` line alone, then the `update` report. An unknown

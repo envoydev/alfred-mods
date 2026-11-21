@@ -119,7 +119,7 @@ async function toastMovedOnce($: EngineInterface, resolved: ResolvedSettings): P
 
 // The user settings file Claude Code reads: settings.json in CLAUDE_CONFIG_DIR when set, else in ~/.claude; null with no
 // home to find it from
-async function userSettingsPath($: EngineInterface): Promise<string | null> {
+export async function userSettingsPath($: EngineInterface): Promise<string | null> {
   const dir = (await $.env.get('CLAUDE_CONFIG_DIR')) ?? ''
   if (dir !== '') return `${dir.replace(/[\\/]+$/, '')}/settings.json`
   const home = (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE')) ?? ''
