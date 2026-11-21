@@ -1,13 +1,14 @@
 // The update's pure parts: which plans are live, which files move, the .gitignore test and the report lines.
-// setup/effects.ts lists, copies and deletes.
+// update/effects.ts lists, copies and deletes.
 import { candidatesByName, isPlanDone } from '../plan/plan'
 import type { Plan } from '../plan/types'
 import {
-  CHANGED_REASON, DONE_LINE, FILE_NOUN, JSON_SUFFIX, LIST_SEPARATOR, LIVE_PLAN_MS, NOT_UTF8_REASON, NOTHING_LINE, OLD_COPY_NOUN, OLD_INSTALL_PREFIX, OLD_STATUS_DIR, PROBE_PREFIX, SLASH, UNCHECKED_COPY_REASON,
-  PLAN_FILE_NOUN, STATUS_FILE_NOUN, UNCHECKED_DESTINATION_REASON, UNREAD_NOTE, UNREADABLE_PLAN_NOTE,
+  CHANGED_REASON, DONE_LINE, FILE_NOUN, JSON_SUFFIX, LIST_SEPARATOR, LIVE_PLAN_MS, NOT_UTF8_REASON, NOTHING_LINE, OLD_COPY_NOUN, OLD_INSTALL_PREFIX, OLD_STATUS_DIR, PROBE_PREFIX, STATUS_CAP, STATUS_LIVE_MS, UNCHECKED_COPY_REASON,
+  MORE_STATUS_NOUN, PLAN_FILE_NOUN, STATUS_FILE_NOUN, UNCHECKED_DESTINATION_REASON, UNREAD_NOTE, UNREADABLE_PLAN_NOTE,
 } from './constants'
 import type { CopyFailure, FolderRelation, ListedFile, LiveReason, MoveQueue } from './types'
 import { isRecord } from '../core/guards'
+import { SLASH } from '../setup/constants'
 import { sourceFileName } from '../settings/settings'
 
 // Why a plan stays, or null when it moves. A plan with a step not done stays while its file is under 24 hours old: its
@@ -137,19 +138,47 @@ export const earlierChoicesLine = (fields: readonly string[]): string => `wrote 
 
 export const oldInstallLine = (key: string): string => `an old session-inspector install is still on - claude plugin uninstall ${key}`
 
-export const statusFilesLine = (count: number): string => `${countOf(count, STATUS_FILE_NOUN)} from Alfred Code 3.12.1 or older in ${folderOf(OLD_STATUS_DIR)} - safe to delete`
+export const turnedOffLine = (file: string, key: string): string =>
+  `turned off the old session-inspector install in ${file} - claude plugin uninstall ${key} removes its files`
+
+export const statusRemovedLine = (count: number): string => `removed ${countOf(count, STATUS_FILE_NOUN)} from Alfred Code 3.12.1 or older`
+
+export const statusByHandLine = (count: number): string =>
+  `${countOf(count, STATUS_FILE_NOUN)} from Alfred Code 3.12.1 or older in ${folderOf(OLD_STATUS_DIR)} - delete ${count === 1 ? 'it' : 'them'} by hand`
 
 // The stack writes this session's status file to the old folder: it is 3.12.1 or older and writes there still
 export const oldStackLine = (): string => `this session's Alfred Code still writes ${folderOf(OLD_STATUS_DIR)} - update Alfred Code to 3.13 or later`
 
+type StatusFacts = { oldFiles: readonly { name: string; mtimeMs: number }[]; now: number; own: string; hasNewFolder: boolean; isOwnInNew: boolean }
+
 // Spec D4 step 5. A project's sessions share one installed stack, so this session's own file says which one it is: in
 // the old folder and not the new, the stack is 3.12.1 or older and every old file may be live, so it is told to update
-// and none is called safe to delete. Otherwise the old files are counted once the new folder exists, this session's
-// old copy included.
-export function statusLines(o: { oldNames: readonly string[]; own: string; hasNewFolder: boolean; isOwnInNew: boolean }): string[] {
-  if (o.oldNames.includes(o.own) && !o.isOwnInNew) return [oldStackLine()]
-  return o.hasNewFolder && o.oldNames.length > 0 ? [statusFilesLine(o.oldNames.length)] : []
+// and none is removed
+const isOldStack = (o: StatusFacts): boolean => o.oldFiles.some(file => file.name === o.own) && !o.isOwnInNew
+
+export const statusLines = (o: StatusFacts): string[] => (isOldStack(o) ? [oldStackLine()] : [])
+
+// Otherwise the old files go once the new folder exists, this session's old copy included - but not one changed in the
+// last 24 hours (`recent`: another stack, with another config folder, may still write it), and no more than the cap a
+// run (`waiting`: the rest are for the next run)
+export function statusPlan(o: StatusFacts): { removable: string[]; recent: number; waiting: number } {
+  if (isOldStack(o) || !o.hasNewFolder) return { removable: [], recent: 0, waiting: 0 }
+  const isRecent = (file: { mtimeMs: number }): boolean => o.now - file.mtimeMs < STATUS_LIVE_MS
+  const eligible = o.oldFiles.filter(file => !isRecent(file)).map(file => file.name)
+  return { removable: eligible.slice(0, STATUS_CAP), recent: o.oldFiles.filter(isRecent).length, waiting: Math.max(0, eligible.length - STATUS_CAP) }
 }
+
+// The old status files the run did not take: the recent ones, then the ones that wait for another run
+export const statusHeldLines = (recent: number, waiting: number): string[] => [
+  ...(recent > 0 ? [`${countOf(recent, STATUS_FILE_NOUN)} from Alfred Code 3.12.1 or older changed in the last 24 hours - left in place`] : []),
+  ...(waiting > 0 ? [`${countOf(waiting, MORE_STATUS_NOUN)} - run ${SLASH.update} again`] : []),
+]
+
+// What the one rm did to the files it was given: the count gone, then the count still there
+export const statusResultLines = (removed: number, left: number): string[] => [
+  ...(removed > 0 ? [statusRemovedLine(removed)] : []),
+  ...(left > 0 ? [statusByHandLine(left)] : []),
+]
 
 export const gitignoreByHandLine = (root: string): string => `could not update .gitignore - add ${folderOf(root)} by hand`
 

@@ -187,62 +187,217 @@ test('the default folder adds no .gitignore line', async ($, on) => {
   expect(fileAt(files, '.gitignore')).toBe('node_modules\n')
 })
 
-test('an enabledPlugins key for the old install prints the uninstall line', async ($, on) => {
-  await start($, on, { sources: { user: { enabledPlugins: { 'session-inspector@envoydev': true, 'alfred-mods@envoydev': true } } } })
-  expect(await alfred($, 'update')).toEqual([
-    'an old session-inspector install is still on - claude plugin uninstall session-inspector@envoydev', 'update done',
-  ])
+const OLD_KEY = 'session-inspector@envoydev'
+const USER_FILE = '/home/u/.claude/settings.json'
+const HOME = { HOME: '/home/u' }
+const withKey = (value: boolean, extra: Record<string, unknown> = {}): string =>
+  `${JSON.stringify({ theme: 'dark', enabledPlugins: { 'alfred-mods@envoydev': true, [OLD_KEY]: value }, ...extra }, null, 2)}\n`
+const turnedOff = (file: string): string => `turned off the old session-inspector install in ${file} - claude plugin uninstall ${OLD_KEY} removes its files`
+const OLD_LINE = `an old session-inspector install is still on - claude plugin uninstall ${OLD_KEY}`
+
+test('an old install key set true in the user file is turned off there, every other key kept', async ($, on) => {
+  const { files } = await start($, on, { env: HOME, sources: { user: { enabledPlugins: { [OLD_KEY]: true } } }, files: { [USER_FILE]: stub(withKey(true)) } })
+  expect(await alfred($, 'update')).toEqual([turnedOff(USER_FILE), 'update done'])
+  expect(fileAt(files, USER_FILE)).toBe(withKey(false))
 })
 
-test('an old install key set false prints nothing', async ($, on) => {
-  await start($, on, { sources: { project: { enabledPlugins: { 'session-inspector@envoydev': false } } } })
+test('an old install key set true in the project and local files is turned off in each', async ($, on) => {
+  const { files } = await start($, on, {
+    sources: { project: { enabledPlugins: { [OLD_KEY]: true } }, local: { enabledPlugins: { [OLD_KEY]: true } } },
+    files: { '.claude/settings.json': stub(withKey(true)), '.claude/settings.local.json': stub(withKey(true, { model: 'opus' })) },
+  })
+  expect(await alfred($, 'update')).toEqual([turnedOff('.claude/settings.json'), turnedOff('.claude/settings.local.json'), 'update done'])
+  expect(fileAt(files, '.claude/settings.json')).toBe(withKey(false))
+  expect(fileAt(files, '.claude/settings.local.json')).toBe(withKey(false, { model: 'opus' }))
+})
+
+test('the user file under CLAUDE_CONFIG_DIR is the one turned off when that folder is set, and the line names that path', async ($, on) => {
+  const { files } = await start($, on, { env: { ...HOME, CLAUDE_CONFIG_DIR: '/cfg' }, sources: { user: { enabledPlugins: { [OLD_KEY]: true } } }, files: { '/cfg/settings.json': stub(withKey(true)) } })
+  expect(await alfred($, 'update')).toEqual([turnedOff('/cfg/settings.json'), 'update done'])
+  expect(fileAt(files, '/cfg/settings.json')).toBe(withKey(false))
+})
+
+test('an old install key set false, or in no file, prints nothing and writes nothing', async ($, on) => {
+  const { files } = await start($, on, { sources: { project: { enabledPlugins: { [OLD_KEY]: false } } }, files: { '.claude/settings.json': stub(withKey(false)) } })
   expect(await alfred($, 'update')).toEqual(['nothing to update'])
+  expect(files.writes).toEqual([])
+})
+
+test('a key set true by policy only keeps the uninstall line and writes nothing', async ($, on) => {
+  const { files } = await start($, on, { sources: { policy: { enabledPlugins: { [OLD_KEY]: true } } } })
+  expect(await alfred($, 'update')).toEqual([OLD_LINE, 'update done'])
+  expect(files.writes).toEqual([])
+})
+
+test('a key set true by a flag only keeps the uninstall line and writes nothing', async ($, on) => {
+  const { files } = await start($, on, { sources: { flag: { enabledPlugins: { [OLD_KEY]: true } } } })
+  expect(await alfred($, 'update')).toEqual([OLD_LINE, 'update done'])
+  expect(files.writes).toEqual([])
+})
+
+test('a key set true in the user file and by policy is turned off in the file and still named, as policy keeps it on', async ($, on) => {
+  await start($, on, {
+    env: HOME, sources: { user: { enabledPlugins: { [OLD_KEY]: true } }, policy: { enabledPlugins: { [OLD_KEY]: true } } }, files: { [USER_FILE]: stub(withKey(true)) },
+  })
+  expect(await alfred($, 'update')).toEqual([turnedOff(USER_FILE), OLD_LINE, 'update done'])
+})
+
+test('a committed file keeps its own formatting: only the one value changes', async ($, on) => {
+  const text = `{\r\n    "model":"opus",\r\n    "enabledPlugins":{ "a@x":true,\r\n      "${OLD_KEY}":   true },\r\n    "hooks": {}\r\n}`
+  const { files } = await start($, on, { sources: { project: { enabledPlugins: { [OLD_KEY]: true } } }, files: { '.claude/settings.json': stub(text) } })
+  expect(await alfred($, 'update')).toEqual([turnedOff('.claude/settings.json'), 'update done'])
+  expect(fileAt(files, '.claude/settings.json')).toBe(text.replace('true }', 'false }'))
+})
+
+test('a file that names the key set true twice is not written, and keeps the uninstall line', async ($, on) => {
+  const text = `{ "enabledPlugins": { "${OLD_KEY}": true }, "extra": { "${OLD_KEY}": true } }\n`
+  const { files } = await start($, on, { sources: { project: { enabledPlugins: { [OLD_KEY]: true } } }, files: { '.claude/settings.json': stub(text) } })
+  expect(await alfred($, 'update')).toEqual([OLD_LINE, 'update done'])
+  expect(files.writes).toEqual([])
+})
+
+test('a write that fails keeps the uninstall line', async ($, on) => {
+  const { files } = await start($, on, { env: HOME, sources: { user: { enabledPlugins: { [OLD_KEY]: true } } }, files: { [USER_FILE]: stub(withKey(true)) }, refuseWrite: [USER_FILE] })
+  expect(await alfred($, 'update')).toEqual([OLD_LINE, 'update done'])
+  expect(fileAt(files, USER_FILE)).toBe(withKey(true))
+})
+
+test('a file that does not parse, or whose enabledPlugins is no object, is never rewritten', async ($, on) => {
+  const { files } = await start($, on, {
+    sources: { project: { enabledPlugins: { [OLD_KEY]: true } }, local: { enabledPlugins: { [OLD_KEY]: true } } },
+    files: { '.claude/settings.json': stub('{ not json'), '.claude/settings.local.json': stub('{ "enabledPlugins": [true] }') },
+  })
+  expect(await alfred($, 'update')).toEqual([OLD_LINE, 'update done'])
+  expect(files.writes).toEqual([])
+})
+
+test('the file is read right before the write: a key that is no longer true there is not written', async ($, on) => {
+  const { files } = await start($, on, { sources: { project: { enabledPlugins: { [OLD_KEY]: true } } }, files: { '.claude/settings.json': stub(withKey(false)) } })
+  expect(await alfred($, 'update')).toEqual([OLD_LINE, 'update done'])
+  expect(files.writes).toEqual([])
 })
 
 const UPDATE_STACK = 'this session\'s Alfred Code still writes .claude/session-inspector/status/ - update Alfred Code to 3.13 or later'
+const OLD_STATUS = '.claude/session-inspector/status'
+const NEW_STATUS = '.alfred/state/sessions/status'
+const REMOVED = (count: number): string => `removed ${count} status file${count === 1 ? '' : 's'} from Alfred Code 3.12.1 or older`
+const BY_HAND = (count: number): string =>
+  `${count} status file${count === 1 ? '' : 's'} from Alfred Code 3.12.1 or older in .claude/session-inspector/status/ - delete ${count === 1 ? 'it' : 'them'} by hand`
 
-test('old Alfred Code status files print their count while the new folder exists', async ($, on) => {
-  await start($, on, {
-    files: {
-      '.alfred/state/sessions/status/s.json': stub('{}'),
-      '.claude/session-inspector/status/a.json': stub('{}'), '.claude/session-inspector/status/b.json': stub('{}'),
-    },
+test('old Alfred Code status files are removed by the one rm while the new folder exists', async ($, on) => {
+  const { rm, files } = await start($, on, {
+    files: { [`${NEW_STATUS}/s.json`]: stub('{}'), [`${OLD_STATUS}/a.json`]: stub('{}'), [`${OLD_STATUS}/b.json`]: stub('{}') },
+    rm: { removes: [`${OLD_STATUS}/a.json`, `${OLD_STATUS}/b.json`] },
   })
-  expect(await alfred($, 'update')).toEqual([
-    '2 status files from Alfred Code 3.12.1 or older in .claude/session-inspector/status/ - safe to delete', 'update done',
-  ])
+  expect(await alfred($, 'update')).toEqual([REMOVED(2), 'update done'])
+  expect(rm.calls).toEqual([['rm', '-f', '--', `${OLD_STATUS}/a.json`, `${OLD_STATUS}/b.json`]])
+  expect(rm.timeoutMs).toBe(3000)
+  expect(fileAt(files, `${NEW_STATUS}/s.json`)).toBe('{}')
 })
 
-test('a stack that still writes this session\'s file to the old folder gets the update line, and no file there is called safe to delete', async ($, on) => {
-  await start($, on, {
+test('one status file removed reads in the singular', async ($, on) => {
+  await start($, on, { files: { [`${NEW_STATUS}/s.json`]: stub('{}'), [`${OLD_STATUS}/a.json`]: stub('{}') }, rm: { removes: [`${OLD_STATUS}/a.json`] } })
+  expect(await alfred($, 'update')).toEqual([REMOVED(1), 'update done'])
+})
+
+test('only *.json files directly in the old status folder go; HANDOFF.md, other files and a folder stay', async ($, on) => {
+  const { rm, files } = await start($, on, {
     files: {
-      '.alfred/state/sessions/status/s.json': stub('{}'),
-      '.claude/session-inspector/status/a.json': stub('{}'), '.claude/session-inspector/status/s1.json': stub('{}'),
+      [`${NEW_STATUS}/s.json`]: stub('{}'), [`${OLD_STATUS}/a.json`]: stub('{}'), [`${OLD_STATUS}/notes.txt`]: stub('x'), [`${OLD_STATUS}/deep/c.json`]: stub('{}'),
+      '.claude/session-inspector/HANDOFF.md': stub('# handoff'), '.claude/session-inspector/other.json': stub('{}'),
     },
+    rm: { removes: [`${OLD_STATUS}/a.json`] },
+  })
+  expect(await alfred($, 'update')).toEqual([REMOVED(1), 'update done'])
+  expect(rm.calls).toEqual([['rm', '-f', '--', `${OLD_STATUS}/a.json`]])
+  for (const kept of [`${OLD_STATUS}/notes.txt`, `${OLD_STATUS}/deep/c.json`, '.claude/session-inspector/HANDOFF.md', '.claude/session-inspector/other.json']) {
+    expect(fileAt(files, kept)).toBeDefined()
+  }
+})
+
+test('files the rm left are named to delete by hand', async ($, on) => {
+  await start($, on, { files: { [`${NEW_STATUS}/s.json`]: stub('{}'), [`${OLD_STATUS}/a.json`]: stub('{}'), [`${OLD_STATUS}/b.json`]: stub('{}') } })
+  expect(await alfred($, 'update')).toEqual([BY_HAND(2), 'update done'])
+})
+
+test('an rm that removed some and exited non-zero names the removed and the left', async ($, on) => {
+  await start($, on, {
+    files: { [`${NEW_STATUS}/s.json`]: stub('{}'), [`${OLD_STATUS}/a.json`]: stub('{}'), [`${OLD_STATUS}/b.json`]: stub('{}') },
+    rm: { exitCode: 1, removes: [`${OLD_STATUS}/a.json`] },
+  })
+  expect(await alfred($, 'update')).toEqual([REMOVED(1), BY_HAND(1), 'update done'])
+})
+
+test('where rm does not run, the old status files are named to delete by hand and no rm of them is tried', async ($, on) => {
+  const { rm } = await start($, on, {
+    files: { [`${NEW_STATUS}/s.json`]: stub('{}'), [`${OLD_STATUS}/a.json`]: stub('{}'), [`${OLD_STATUS}/b.json`]: stub('{}') }, rm: { deny: true },
+  })
+  expect(await alfred($, 'update')).toEqual([BY_HAND(2), 'update done'])
+  expect(rm.calls).toEqual([])
+})
+
+test('past the cap of 100 old status files a run, the rest wait for the next run', async ($, on) => {
+  const names = Array.from({ length: 103 }, (_, i) => `a${String(i).padStart(3, '0')}.json`)
+  const { rm } = await start($, on, {
+    files: { [`${NEW_STATUS}/s.json`]: stub('{}'), ...Object.fromEntries(names.map(name => [`${OLD_STATUS}/${name}`, stub('{}')])) },
+    rm: { removes: names.slice(0, 100).map(name => `${OLD_STATUS}/${name}`) },
+  })
+  expect(await alfred($, 'update')).toEqual([REMOVED(100), '3 more old status files - run /alfred-mods:update again', 'update done'])
+  expect(rm.calls).toEqual([['rm', '-f', '--', ...names.slice(0, 100).map(name => `${OLD_STATUS}/${name}`)]])
+})
+
+test('an old status file changed in the last 24 hours is left in place and named, the others go', async ($, on) => {
+  const { rm, files } = await start($, on, {
+    files: { [`${NEW_STATUS}/s.json`]: stub('{}'), [`${OLD_STATUS}/a.json`]: stub('{}'), [`${OLD_STATUS}/live.json`]: stub('{}', NOW - HOUR) },
+    rm: { removes: [`${OLD_STATUS}/a.json`] },
+  })
+  expect(await alfred($, 'update')).toEqual([REMOVED(1), '1 status file from Alfred Code 3.12.1 or older changed in the last 24 hours - left in place', 'update done'])
+  expect(rm.calls).toEqual([['rm', '-f', '--', `${OLD_STATUS}/a.json`]])
+  expect(fileAt(files, `${OLD_STATUS}/live.json`)).toBe('{}')
+})
+
+test('old status files that all changed in the last 24 hours run no rm', async ($, on) => {
+  const { rm } = await start($, on, { files: { [`${NEW_STATUS}/s.json`]: stub('{}'), [`${OLD_STATUS}/live.json`]: stub('{}', NOW - HOUR) } })
+  expect(await alfred($, 'update')).toEqual(['1 status file from Alfred Code 3.12.1 or older changed in the last 24 hours - left in place', 'update done'])
+  expect(rm.calls).toEqual([])
+})
+
+test('a plan to move and old status files go in the same one rm', async ($, on) => {
+  const { rm } = await start($, on, {
+    files: { [`${OLD_PLANS}/p.json`]: stub(DONE), [`${NEW_STATUS}/s.json`]: stub('{}'), [`${OLD_STATUS}/a.json`]: stub('{}') },
+    rm: { removes: [`${OLD_PLANS}/p.json`, `${OLD_STATUS}/a.json`] },
+  })
+  expect(await alfred($, 'update')).toEqual(['moved 1 plan or scores file to .alfred-mods/', REMOVED(1), 'update done'])
+  expect(rm.calls).toEqual([['rm', '-f', '--', `${OLD_PLANS}/p.json`, `${OLD_STATUS}/a.json`]])
+})
+
+test('a stack that still writes this session\'s file to the old folder gets the update line, and nothing there is removed', async ($, on) => {
+  const { rm } = await start($, on, {
+    files: { [`${NEW_STATUS}/s.json`]: stub('{}'), [`${OLD_STATUS}/a.json`]: stub('{}'), [`${OLD_STATUS}/s1.json`]: stub('{}') },
   })
   expect(await alfred($, 'update')).toEqual([UPDATE_STACK, 'update done'])
+  expect(rm.calls).toEqual([])
 })
 
 test('an old stack in a project that never had the new folder still gets the update line', async ($, on) => {
-  await start($, on, { files: { '.claude/session-inspector/status/s1.json': stub('{}') } })
+  const { rm } = await start($, on, { files: { [`${OLD_STATUS}/s1.json`]: stub('{}') } })
   expect(await alfred($, 'update')).toEqual([UPDATE_STACK, 'update done'])
+  expect(rm.calls).toEqual([])
 })
 
-test('once the stack writes this session\'s file to the new folder, its old copy counts as safe to delete', async ($, on) => {
-  await start($, on, {
-    files: {
-      '.alfred/state/sessions/status/s1.json': stub('{}'),
-      '.claude/session-inspector/status/a.json': stub('{}'), '.claude/session-inspector/status/s1.json': stub('{}'),
-    },
+test('once the stack writes this session\'s file to the new folder, its old copy goes with the rest', async ($, on) => {
+  const { rm } = await start($, on, {
+    files: { [`${NEW_STATUS}/s1.json`]: stub('{}'), [`${OLD_STATUS}/a.json`]: stub('{}'), [`${OLD_STATUS}/s1.json`]: stub('{}') },
+    rm: { removes: [`${OLD_STATUS}/a.json`, `${OLD_STATUS}/s1.json`] },
   })
-  expect(await alfred($, 'update')).toEqual([
-    '2 status files from Alfred Code 3.12.1 or older in .claude/session-inspector/status/ - safe to delete', 'update done',
-  ])
+  expect(await alfred($, 'update')).toEqual([REMOVED(2), 'update done'])
+  expect(rm.calls).toEqual([['rm', '-f', '--', `${OLD_STATUS}/a.json`, `${OLD_STATUS}/s1.json`]])
 })
 
-test('old status files print nothing while the new folder is missing', async ($, on) => {
-  await start($, on, { files: { '.claude/session-inspector/status/a.json': stub('{}') } })
+test('old status files are left alone while the new folder is missing', async ($, on) => {
+  const { rm } = await start($, on, { files: { [`${OLD_STATUS}/a.json`]: stub('{}') } })
   expect(await alfred($, 'update')).toEqual(['nothing to update'])
+  expect(rm.calls).toEqual([])
 })
 
 test('an earlier choice from before 0.8 is written to the user file', async ($, on) => {

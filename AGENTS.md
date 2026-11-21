@@ -75,7 +75,8 @@ its tests to the run or takes it past `claude plugin test`'s limit of 1000 test 
   reads it back, and only then removes the source. No line leaves the core view as it is.
   Every phase is checked in both: a project without Alfred Code and one with it.
 - **Standalone.** The mod does not depend on, require, install or remove Alfred Code or any other plugin; the manifest
-  declares no `dependencies`.
+  declares no `dependencies`. The one exception: `/alfred-mods:update` switches off the mod's own former id
+  `session-inspector@` in a settings file; it never installs, removes or switches any other plugin.
 - **One version, in `.claude-plugin/plugin.json`.** The marketplace entry carries none, and a change without a bump is
   not delivered: an installed mod is cached by version.
 - **One marketplace for users: `envoydev`.** The `envoydev` marketplace (envoydev/plugins-marketplaces, since

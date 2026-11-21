@@ -4,9 +4,10 @@ import { parsePlan } from '../../hooks/plan/plan'
 import {
   changedLine, closeReport, copiedLine, copyFailureLine, coversRoot, earlierChoicesLine, folderRelation, gitignoreAppend, gitignoreLine, isLivePlan,
   isSeparateCopy, isUtf8Text, keptBothLine, leftInPlaceLine, liveReason, movedLine, moveQueue, notMovedLine, notUtf8Line, oldInstallKeys, oldInstallLine,
-  leftLine, sameFolderLine, oldStackLine, statusFilesLine, statusLines, unknownFolderLine, unreadablePlanLine, unreadPlanLine,
-} from '../../hooks/setup/update'
-import { MORE_LINE } from '../../hooks/setup/constants'
+  leftLine, sameFolderLine, oldStackLine, statusByHandLine, statusHeldLines, statusLines, statusPlan, statusRemovedLine, statusResultLines, turnedOffLine, unknownFolderLine,
+  unreadablePlanLine, unreadPlanLine,
+} from '../../hooks/update/update'
+import { MORE_LINE } from '../../hooks/update/constants'
 import { planText } from '../plans'
 
 const HOUR = 3_600_000
@@ -120,7 +121,8 @@ test('the report lines read as the spec gives them', () => {
   expect(movedLine(1, '.alfred-mods')).toBe('moved 1 plan or scores file to .alfred-mods/')
   expect(copiedLine(1, '.alfred-mods', ['.claude/session-inspector/plans'])).toBe(
     'copied 1 file to .alfred-mods/ - remove the old copy in .claude/session-inspector/plans/ by hand')
-  expect(statusFilesLine(1)).toBe('1 status file from Alfred Code 3.12.1 or older in .claude/session-inspector/status/ - safe to delete')
+  expect(statusByHandLine(1)).toBe('1 status file from Alfred Code 3.12.1 or older in .claude/session-inspector/status/ - delete it by hand')
+  expect(statusRemovedLine(1)).toBe('removed 1 status file from Alfred Code 3.12.1 or older')
   expect(copiedLine(2, '.alfred-mods', ['.claude/session-inspector/plans', '.claude/session-inspector/scores'])).toBe(
     'copied 2 files to .alfred-mods/ - remove the old copies in .claude/session-inspector/plans/, .claude/session-inspector/scores/ by hand',
   )
@@ -146,17 +148,62 @@ test('the report lines read as the spec gives them', () => {
   expect(oldInstallLine('session-inspector@envoydev')).toBe(
     'an old session-inspector install is still on - claude plugin uninstall session-inspector@envoydev',
   )
-  expect(statusFilesLine(4)).toBe('4 status files from Alfred Code 3.12.1 or older in .claude/session-inspector/status/ - safe to delete')
+  expect(statusByHandLine(4)).toBe('4 status files from Alfred Code 3.12.1 or older in .claude/session-inspector/status/ - delete them by hand')
+  expect(statusRemovedLine(4)).toBe('removed 4 status files from Alfred Code 3.12.1 or older')
+  expect(turnedOffLine('.claude/settings.json', 'session-inspector@envoydev')).toBe(
+    'turned off the old session-inspector install in .claude/settings.json - claude plugin uninstall session-inspector@envoydev removes its files',
+  )
   expect(oldStackLine()).toBe('this session\'s Alfred Code still writes .claude/session-inspector/status/ - update Alfred Code to 3.13 or later')
 })
 
-test('statusLines: an old stack gets the update line alone, a new one the count of every old file', () => {
+const status = (names: readonly (string | [string, number])[], o: { own?: string; hasNewFolder?: boolean; isOwnInNew?: boolean } = {}) => ({
+  oldFiles: names.map(entry => (typeof entry === 'string' ? { name: entry, mtimeMs: NOW - 100 * HOUR } : { name: entry[0], mtimeMs: entry[1] })),
+  now: NOW, own: 's1.json', hasNewFolder: true, isOwnInNew: false, ...o,
+})
+
+test('statusLines: an old stack gets the update line alone, and a new one no line of its own', () => {
   const stack = oldStackLine()
-  expect(statusLines({ oldNames: ['a.json', 's1.json'], own: 's1.json', hasNewFolder: true, isOwnInNew: false })).toEqual([stack])
-  expect(statusLines({ oldNames: ['s1.json'], own: 's1.json', hasNewFolder: false, isOwnInNew: false })).toEqual([stack])
-  expect(statusLines({ oldNames: ['a.json', 's1.json'], own: 's1.json', hasNewFolder: true, isOwnInNew: true })).toEqual([statusFilesLine(2)])
-  expect(statusLines({ oldNames: ['a.json'], own: 's1.json', hasNewFolder: false, isOwnInNew: false })).toEqual([])
-  expect(statusLines({ oldNames: [], own: 's1.json', hasNewFolder: true, isOwnInNew: false })).toEqual([])
+  expect(statusLines(status(['a.json', 's1.json']))).toEqual([stack])
+  expect(statusLines(status(['s1.json'], { hasNewFolder: false }))).toEqual([stack])
+  expect(statusLines(status(['a.json', 's1.json'], { isOwnInNew: true }))).toEqual([])
+  expect(statusLines(status(['a.json'], { hasNewFolder: false }))).toEqual([])
+})
+
+test('statusPlan: every old file, only once the new folder exists and this session\'s own file is not the old stack\'s', () => {
+  expect(statusPlan(status(['a.json', 's1.json'], { isOwnInNew: true }))).toEqual({ removable: ['a.json', 's1.json'], recent: 0, waiting: 0 })
+  expect(statusPlan(status(['a.json']))).toEqual({ removable: ['a.json'], recent: 0, waiting: 0 })
+  expect(statusPlan(status(['a.json', 's1.json']))).toEqual({ removable: [], recent: 0, waiting: 0 })
+  expect(statusPlan(status(['s1.json'], { hasNewFolder: false }))).toEqual({ removable: [], recent: 0, waiting: 0 })
+  expect(statusPlan(status(['a.json'], { hasNewFolder: false }))).toEqual({ removable: [], recent: 0, waiting: 0 })
+  expect(statusPlan(status([], { isOwnInNew: true }))).toEqual({ removable: [], recent: 0, waiting: 0 })
+})
+
+test('statusPlan: a file changed in the last 24 hours is left, one 24 hours old or older goes', () => {
+  const plan = statusPlan(status([['new.json', NOW - HOUR], ['edge.json', NOW - 24 * HOUR], ['almost.json', NOW - 24 * HOUR + 1], ['future.json', NOW + HOUR], 'old.json']))
+  expect(plan).toEqual({ removable: ['edge.json', 'old.json'], recent: 3, waiting: 0 })
+})
+
+test('statusPlan: past the cap of 100 files a run the rest wait', () => {
+  const names = Array.from({ length: 103 }, (_, i) => `a${String(i).padStart(3, '0')}.json`)
+  const plan = statusPlan(status(names))
+  expect(plan.removable).toEqual(names.slice(0, 100))
+  expect(plan).toMatchObject({ recent: 0, waiting: 3 })
+})
+
+test('statusHeldLines: the files left for being recent, then the ones that wait for the next run', () => {
+  expect(statusHeldLines(2, 0)).toEqual(['2 status files from Alfred Code 3.12.1 or older changed in the last 24 hours - left in place'])
+  expect(statusHeldLines(1, 1)).toEqual([
+    '1 status file from Alfred Code 3.12.1 or older changed in the last 24 hours - left in place', '1 more old status file - run /alfred-mods:update again',
+  ])
+  expect(statusHeldLines(0, 5)).toEqual(['5 more old status files - run /alfred-mods:update again'])
+  expect(statusHeldLines(0, 0)).toEqual([])
+})
+
+test('statusResultLines: what was removed, then what is still there to delete by hand', () => {
+  expect(statusResultLines(2, 0)).toEqual([statusRemovedLine(2)])
+  expect(statusResultLines(0, 2)).toEqual([statusByHandLine(2)])
+  expect(statusResultLines(1, 1)).toEqual([statusRemovedLine(1), statusByHandLine(1)])
+  expect(statusResultLines(0, 0)).toEqual([])
 })
 
 test('closeReport ends on update done, or nothing to update when no step printed', () => {
