@@ -3,17 +3,15 @@
 // user, then an earlier command's choice, then the default. Pure: settings/effects.ts reads the files and the store.
 import { MODES, isThreshold } from '../handoff/handoff'
 import { isRecord } from '../core/guards'
-import { isExpectOrg } from '../account/account'
-import { EXPECT_ORG_MAX } from '../account/constants'
 import { LEVELS } from '../rec/rec'
 import { PLANS_FOLDERS, UNSET_PLANS_FOLDER } from '../plan/constants'
 import type { BandMode } from '../band/types'
 import type { RecLevel } from '../rec/types'
 import type { Field, From, ResolvedSettings, Skip, Source, SettingsValues } from './types'
 
-export const FIELDS: readonly Field[] = ['band', 'bandPlace', 'bandRows', 'quiet', 'rec', 'handoff', 'handoffAt', 'plansFolder', 'expectOrg']
+export const FIELDS: readonly Field[] = ['band', 'bandPlace', 'bandRows', 'quiet', 'rec', 'handoff', 'handoffAt', 'plansFolder']
 export const SOURCES: readonly Source[] = ['policy', 'flag', 'local', 'project', 'user']
-export const DEFAULTS: SettingsValues = { band: 'full', bandPlace: 'above', bandRows: true, quiet: true, rec: 'off', handoff: 'ask', handoffAt: 80, plansFolder: UNSET_PLANS_FOLDER, expectOrg: null }
+export const DEFAULTS: SettingsValues = { band: 'full', bandPlace: 'above', bandRows: true, quiet: true, rec: 'off', handoff: 'ask', handoffAt: 80, plansFolder: UNSET_PLANS_FOLDER }
 
 // "off" draws no band, above or under (the user, 2026-11-12: '/inspect band off' hides it where nothing takes a key)
 export const BAND_MODES: readonly BandMode[] = ['full', 'calm', 'off']
@@ -29,8 +27,7 @@ const RULES: Record<Field, { isValid: (value: unknown) => boolean; takes: string
   rec: { isValid: value => LEVELS.some(level => level === value), takes: '"off", "on" or "strict"' },
   handoff: { isValid: value => MODES.some(mode => mode === value), takes: '"ask", "auto" or "off"' },
   handoffAt: { isValid: isThreshold, takes: 'a whole number from 10 to 95' },
-  plansFolder: { isValid: value => PLANS_FOLDERS.some(folder => folder === value), takes: '"default", ".alfred" or ".alfred-mods"' },
-  expectOrg: { isValid: isExpectOrg, takes: `a name of 1 to ${EXPECT_ORG_MAX} characters` }
+  plansFolder: { isValid: value => PLANS_FOLDERS.some(folder => folder === value), takes: '"default", ".alfred" or ".alfred-mods"' }
 }
 
 const NAMES: Record<From, string> = {

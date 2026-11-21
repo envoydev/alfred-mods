@@ -1,8 +1,8 @@
-// The account folder's pure logic: where Claude Code's global config lives, the one organization name read out of its
-// text, the check against a project's expectOrg and the words of /alfred-mods:configure expectOrg
+// The account folder's pure logic: where Claude Code's global config lives, and the one text the band shows read out of
+// it - 'Personal' for a free, Pro or Max account, the company's name for any other
 import { expect, test } from 'claude-code/testing'
 
-import { configPathOf, isExpectOrg, isOrgMismatch, orgOf, parseOrgArgs } from '../../hooks/account/account'
+import { configPathOf, orgOf } from '../../hooks/account/account'
 
 const configWith = (account: unknown): string => JSON.stringify({ numStartups: 3, oauthAccount: account })
 
@@ -40,37 +40,24 @@ test('orgOf is null for text that is no JSON object', () => {
   for (const text of ['', '{ bad', '[]', '"Acme"', 'null', '7']) expect(orgOf(text)).toBeNull()
 })
 
-test('no expectOrg means no warning', () => {
-  expect(isOrgMismatch('Acme', null)).toBe(false)
-  expect(isOrgMismatch(null, null)).toBe(false)
+test('a free, Pro or Max account shows as Personal, whatever its organization is called', () => {
+  for (const organizationType of ['claude_free', 'claude_pro', 'claude_max']) {
+    expect(orgOf(configWith({ organizationType, organizationName: 'jane@example.com\'s Organization' }))).toBe('Personal')
+  }
 })
 
-test('the shown organization is compared to expectOrg trimmed and without case', () => {
-  expect(isOrgMismatch('Acme Inc', 'acme inc')).toBe(false)
-  expect(isOrgMismatch(' Acme Inc ', 'ACME INC')).toBe(false)
-  expect(isOrgMismatch('Acme Inc', 'Other Co')).toBe(true)
+test('a personal account shows as Personal even with no organization name', () => {
+  expect(orgOf(configWith({ organizationType: 'claude_max' }))).toBe('Personal')
+  expect(orgOf(configWith({ organizationType: 'claude_pro', organizationName: '  ' }))).toBe('Personal')
 })
 
-test('an unknown organization is a mismatch when expectOrg is set', () => {
-  expect(isOrgMismatch(null, 'Acme')).toBe(true)
+test('a Team or Enterprise account, an unknown type or none shows the organization name', () => {
+  for (const organizationType of ['claude_team', 'claude_enterprise', 'claude_other', 7, null]) {
+    expect(orgOf(configWith({ organizationType, organizationName: 'Acme Inc' }))).toBe('Acme Inc')
+  }
+  expect(orgOf(configWith({ organizationName: 'Acme Inc' }))).toBe('Acme Inc')
 })
 
-test('expectOrg is a name of 1 to 100 characters once trimmed', () => {
-  expect(isExpectOrg('Acme')).toBe(true)
-  expect(isExpectOrg(' a ')).toBe(true)
-  expect(isExpectOrg('x'.repeat(100))).toBe(true)
-  for (const bad of ['', '   ', 'x'.repeat(101), 5, null, undefined, ['Acme']]) expect(isExpectOrg(bad)).toBe(false)
-})
-
-test('parseOrgArgs reads the keyword in any case and the name as the rest, case kept', () => {
-  expect(parseOrgArgs('expectOrg Acme Inc')).toEqual({ kind: 'name', name: 'Acme Inc' })
-  expect(parseOrgArgs('  EXPECTORG   Acme  Inc  ')).toEqual({ kind: 'name', name: 'Acme  Inc' })
-  expect(parseOrgArgs('expectOrg')).toEqual({ kind: 'pin' })
-  expect(parseOrgArgs(' expectorg  ')).toEqual({ kind: 'pin' })
-})
-
-test('parseOrgArgs refuses a name over 100 characters, and leaves other arguments to the folder command', () => {
-  expect(parseOrgArgs(`expectOrg ${'x'.repeat(101)}`)).toEqual({ kind: 'usage' })
-  expect(parseOrgArgs(`expectOrg ${'x'.repeat(100)}`)).toEqual({ kind: 'name', name: 'x'.repeat(100) })
-  for (const args of ['', '.alfred', 'default', 'expectOrgs Acme', 'bogus expectOrg']) expect(parseOrgArgs(args)).toEqual({ kind: 'other' })
+test('a company account with no usable name is unknown', () => {
+  for (const organizationType of ['claude_team', 'claude_enterprise']) expect(orgOf(configWith({ organizationType }))).toBeNull()
 })

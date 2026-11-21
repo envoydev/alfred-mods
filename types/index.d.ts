@@ -221,8 +221,8 @@ export type PromptOrigin = 'engine' | 'hook' | 'plugin'
 export type PromptPart = { type: string; origin: PromptOrigin; event: string | null; chars: number; text: string; isLeftOut: boolean; at: number }
 export type PromptRecord = { startedAt: number | null; typedChars: number | null; parts: PromptPart[]; dropped: number }
 
-// The signed-in Claude organization's display name, from the global config's oauthAccount.organizationName; null when
-// unknown (a token login, no config, a read that failed). Nothing else of that file is kept.
+// What the band shows for the signed-in account, from the global config's oauthAccount: 'Personal' for a free, Pro or
+// Max type, else the organization's name; null when unknown (a token login, no config, a read that failed). Nothing else of that file is kept.
 export type Account = { org: string | null }
 
 declare module 'claude-code' {

@@ -1,6 +1,6 @@
-// The signed-in organization in the band's project row (spec: the org name read from the global config): 'org <name>'
-// after the branch's sync and changes, before the folder, in every width form; warn-toned against a project's
-// expectOrg, '‹org›' under REC strict
+// The signed-in organization in the band's project row (spec: the org read from the global config): 'org Personal' or
+// 'org <company name>' after the branch's sync and changes, before the folder, in every width form; '‹org›' under REC
+// strict for a company name
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { RenderSurface } from 'claude-code'
@@ -33,7 +33,7 @@ function input(o: Partial<BandInput> = {}): BandInput {
 const text = (line: Line): string => line.map(s => ('text' in s ? s.text : '')).join('')
 const projectRow = (o: Partial<BandInput>): Line => bandLines(input(o)).find(line => text(line).startsWith('project:')) ?? []
 const drawn = (account: BandInput['account'], o: Partial<BandInput> = {}): string => text(projectRow({ account, ...o }))
-const known = (org: string | null, expectOrg: string | null = null): BandInput['account'] => ({ org, expectOrg })
+const known = (org: string | null): BandInput['account'] => ({ org })
 
 test('the project row shows the org after the sync and the changes, before the folder', () => {
   expect(drawn(known('Acme Inc'))).toBe('project: Example │ git:(develop) ↑1 ↓2 +12 −3 │ org Acme Inc │ folder: Frontend/src/app')
@@ -68,11 +68,11 @@ test('narrow, the folder, the changes and the sync go in their order and the org
 test('narrower still, a long branch is cut so the org stays whole', () => {
   const branch = `feature/${'b'.repeat(22)}`
   const place = { project: 'alfred-mods', branch }
-  const row = projectRow({ account: known('Acme', 'Other Co'), columns: 60, session: { ...input().session, place } })
+  const row = projectRow({ account: known('Acme'), columns: 60, session: { ...input().session, place } })
   expect(widthOf(row)).toBeLessThanOrEqual(60)
   expect(text(row)).toMatch(/git:\(feature\/b+…\) │ org Acme$/)
-  expect(row).toContainEqual({ text: 'org ', tone: 'warn' })
-  expect(row).toContainEqual({ text: 'Acme', tone: 'warn' })
+  expect(row).toContainEqual({ text: 'org ', tone: 'dim' })
+  expect(row).toContainEqual({ text: 'Acme' })
 })
 
 test('narrower still, a long project is cut after the branch, and the org stays whole', () => {
@@ -82,32 +82,24 @@ test('narrower still, a long project is cut after the branch, and the org stays 
   expect(text(row)).toMatch(/^project: p+… │ git:\(b+…\) │ org Acme$/)
 })
 
-test('the label is dim and the name plain when the org matches expectOrg, or none is set', () => {
-  for (const account of [known('Acme Inc'), known('Acme Inc', 'acme inc')]) {
-    const row = projectRow({ account })
+test('the label is dim and the value plain, for a company name, Personal and unknown alike', () => {
+  for (const org of ['Acme Inc', 'Personal', null]) {
+    const row = projectRow({ account: known(org) })
     expect(row).toContainEqual({ text: 'org ', tone: 'dim' })
-    expect(row).toContainEqual({ text: 'Acme Inc' })
+    expect(row).toContainEqual({ text: org ?? 'unknown' })
   }
 })
 
-test('the label and the name take the warn tone when the org differs from expectOrg', () => {
-  const row = projectRow({ account: known('Acme Inc', 'Other Co') })
-  expect(row).toContainEqual({ text: 'org ', tone: 'warn' })
-  expect(row).toContainEqual({ text: 'Acme Inc', tone: 'warn' })
-})
-
-test('an unknown org is warn-toned when expectOrg is set', () => {
-  const row = projectRow({ account: known(null, 'Other Co') })
-  expect(row).toContainEqual({ text: 'org ', tone: 'warn' })
-  expect(row).toContainEqual({ text: 'unknown', tone: 'warn' })
-})
-
-test('REC strict draws the name as ‹org›, the label and the tone kept', () => {
+test('REC strict draws a company name as ‹org›, the label kept', () => {
   const plain = drawn(known('Acme Inc'), { rec: { level: 'strict', words: 0 } })
   expect(plain).toContain('│ org ‹org› │')
   expect(plain).not.toContain('Acme')
-  const warned = projectRow({ account: known('Acme Inc', 'Other Co'), rec: { level: 'strict', words: 0 } })
-  expect(warned).toContainEqual({ text: '‹org›', tone: 'warn' })
+  expect(projectRow({ account: known('Acme Inc'), rec: { level: 'strict', words: 0 } })).toContainEqual({ text: '‹org›' })
+})
+
+test('REC strict leaves Personal and unknown as they are', () => {
+  expect(drawn(known('Personal'), { rec: { level: 'strict', words: 0 } })).toContain('│ org Personal │')
+  expect(drawn(known(null), { rec: { level: 'strict', words: 0 } })).toContain('│ org unknown │')
 })
 
 test('REC on leaves the org name as it is', () => {
@@ -136,16 +128,11 @@ test('the session draws the org unknown when no config is found', async ($, on) 
   expect((await rows(await mount($, 'terminal'))).join('\n')).toContain('│ org unknown')
 })
 
-test('a project expectOrg that differs is drawn from the session start', async ($, on) => {
-  await started($, on, { env: { CLAUDE_CONFIG_DIR: '/cfg' }, files: { ...orgFile('Acme Inc'), '.git/HEAD': { text: 'ref: refs/heads/develop\n', mtimeMs: 0 } }, sources: { project: { 'alfred-mods': { expectOrg: 'Other Co' } } } })
+test('a Pro or Max account is drawn as Personal, with no warn tone', async ($, on) => {
+  const file = { '/cfg/.claude.json': { text: JSON.stringify({ oauthAccount: { organizationType: 'claude_max', organizationName: 'jane@example.com\'s Organization' } }), mtimeMs: 0 } }
+  await started($, on, { env: { CLAUDE_CONFIG_DIR: '/cfg' }, files: { ...file, '.git/HEAD': { text: 'ref: refs/heads/develop\n', mtimeMs: 0 } } })
   const tree = JSON.stringify(await (await mount($, 'terminal')).drawn())
-  expect(tree).toContain('Acme Inc')
-  expect(tree).toContain('"warning"')
-})
-
-test('a project expectOrg that matches draws no warn tone', async ($, on) => {
-  await started($, on, { env: { CLAUDE_CONFIG_DIR: '/cfg' }, files: { ...orgFile('Acme Inc'), '.git/HEAD': { text: 'ref: refs/heads/develop\n', mtimeMs: 0 } }, sources: { project: { 'alfred-mods': { expectOrg: 'acme inc' } } } })
-  const tree = JSON.stringify(await (await mount($, 'terminal')).drawn())
-  expect(tree).toContain('Acme Inc')
+  expect(tree).toContain('Personal')
+  expect(tree).not.toContain('jane@example.com')
   expect(tree).not.toContain('"warning"')
 })

@@ -135,7 +135,7 @@ test('a project file that does not parse is refused and nothing is written', asy
   expect(files.writes).toEqual([])
 })
 
-const USAGE = 'Usage: /alfred-mods:init [.alfred-mods|.alfred|default] | /alfred-mods:configure [.alfred-mods|.alfred|default] | /alfred-mods:configure expectOrg [name] | /alfred-mods:update'
+const USAGE = 'Usage: /alfred-mods:init [.alfred-mods|.alfred|default] | /alfred-mods:configure [.alfred-mods|.alfred|default] | /alfred-mods:update'
 
 test('an unknown folder or an extra word prints the usage line, whichever command was typed', async ($, on) => {
   const { files } = await start($, on)

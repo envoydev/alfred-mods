@@ -107,7 +107,7 @@ async function readBandInput(
     newFailures: (await readFailures($)).filter(failure => failure.isNew).length, pace: await readPace($), agents: await readAgents($),
     cache: await readCache($), plan: drawing.band, isPlanInvalid: drawing.invalid, score: drawing.score, isPlanScore: drawing.isPlanScore, scoreLevel: (await readScoreLevel($)) ?? (await readKitScoreLevel($)), rec: recSummary(await readRec($)),
     forecast: forecastTargetOf(handoff, usage, runway), handoffAskStep: handoff.isAskUp ? handoff.handledStep : null, runway, banner: bannerSegs(st), kitBanner: kitBannerSegs(await readKit($)),
-    account: { org: (await readAccount($)).org, expectOrg: settingsInForce().expectOrg },
+    account: { org: (await readAccount($)).org },
     mode: setting.mode, totals: await readTotals($), stats: await readStats($),
     isToolsOpen: setting.isToolsOpen === true, skillListing: parts.skills ?? null,
     rules: { always: parts.rules ?? [], byPath: session.pathRules ?? [], isTracked: !at.isLeftOut },

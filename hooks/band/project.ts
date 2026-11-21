@@ -3,8 +3,7 @@ import { fitLine, widthOf } from '../core/format'
 import { planRowParts, scoreSeg } from '../plan/planlines'
 import type { BandInput } from './types'
 import type { Line, Seg } from '../core/types'
-import { isOrgMismatch } from '../account/account'
-import { ORG_STRICT } from '../account/constants'
+import { ORG_STRICT, PERSONAL } from '../account/constants'
 import { NAME_FLOOR_CELLS, ORG_LABEL, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN, ROW_LABEL } from './constants'
 import { rowLabel, toggleForms } from './detail'
 
@@ -33,15 +32,15 @@ export function planRow(input: BandInput): Line[] {
 
 const dimSeg = (text: string): Seg => ({ text, tone: 'dim' })
 
-// The signed-in organization, after the changes and before the folder and kept in every width form: 'org <name>', the name
-// cut to 40 cells or '‹org›' under REC strict, both warn-toned when the project's expectOrg is set and differs; none
-// without an account in the input
+// The signed-in account, after the changes and before the folder and kept in every width form: 'org Personal', 'org <company
+// name>' cut to 40 cells, or 'org unknown'. Under REC strict a company name draws '‹org›'; Personal and unknown stay. None
+// without an account in the input.
 function orgSegs(input: BandInput, sep: Seg): Seg[] {
-  const account = input.account
-  if (account === undefined) return []
-  const warn = isOrgMismatch(account.org, account.expectOrg) ? { tone: 'warn' as const } : {}
-  const name = input.rec?.level === 'strict' ? ORG_STRICT : account.org === null ? ORG_UNKNOWN : fitLine(account.org, ORG_MAX_CELLS)
-  return [sep, { text: ORG_LABEL, tone: warn.tone ?? 'dim' }, { text: name, ...warn }]
+  const org = input.account?.org
+  if (org === undefined) return []
+  const isCompany = org !== null && org !== PERSONAL
+  const name = org === null ? ORG_UNKNOWN : isCompany && input.rec?.level === 'strict' ? ORG_STRICT : fitLine(org, ORG_MAX_CELLS)
+  return [sep, { text: ORG_LABEL, tone: 'dim' }, { text: name }]
 }
 
 // The names cut for a row too narrow for any form: the branch to NAME_FLOOR_CELLS cells, then the project down to one, then

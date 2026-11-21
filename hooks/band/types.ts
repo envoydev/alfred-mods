@@ -49,9 +49,9 @@ export type BandInput = {
   // The band drawn under the input (spec 2026-11-11 band-under, U2 and U3): its action row after the gauges, and its
   // buttons pressed by a click (fullscreen) or drawn as the commands that do their jobs (the main screen)
   under?: { buttons: 'click' | 'text' }
-  // The signed-in organization's name, null while unknown, and the project's expectOrg, null when none: the project row
-  // draws 'org <name>' after the branch's sync and changes, warn-toned when expectOrg is set and differs; absent, no segment
-  account?: { org: string | null; expectOrg: string | null }
+  // What the project row shows for the signed-in account: 'Personal', a company's name, or null while unknown. The row
+  // draws 'org <text>' after the branch's sync and changes; absent, no segment
+  account?: { org: string | null }
 }
 
 export type RulesInput = { always: string[]; byPath: string[]; isTracked: boolean }

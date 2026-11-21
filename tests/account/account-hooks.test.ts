@@ -38,6 +38,14 @@ test('with CLAUDE_CONFIG_DIR set, the org is read from the global config in that
   expect(org()).toBe('Acme Inc')
 })
 
+test('a Pro or Max account keeps Personal in the atom, never its organization name', async ($, on) => {
+  const text = JSON.stringify({ oauthAccount: { organizationType: 'claude_pro', organizationName: `${EMAIL}'s Organization`, emailAddress: EMAIL } })
+  const { state, org } = await start($, on, { env: { CLAUDE_CONFIG_DIR: '/cfg' }, files: { [CONFIG]: { text, mtimeMs: 0 } } })
+  expect(org()).toBe('Personal')
+  expect(state.get('account')).toEqual({ org: 'Personal' })
+  expect(JSON.stringify(state.writes)).not.toContain(EMAIL)
+})
+
 test('a trailing separator on CLAUDE_CONFIG_DIR changes nothing', async ($, on) => {
   const { org } = await start($, on, { env: { CLAUDE_CONFIG_DIR: '/cfg/' }, files: { [CONFIG]: configOf('Acme Inc') } })
   expect(org()).toBe('Acme Inc')
