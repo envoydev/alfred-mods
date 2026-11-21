@@ -4,11 +4,11 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Timer } from 'claude-code'
 import type { HookInput, HookNext } from '../core/types'
+import { refreshKit } from '../kit/effects'
+import { KIT_HOOK_EVENT } from '../kit/constants'
 import type { PromptRecord } from './types'
 import { EMPTY_RECORD, FLUSH_MS } from './constants'
 import { addPart, partOf, startRecord } from './record'
-import { noteKitLine } from '../kit/effects'
-import { KIT_HOOK_EVENT } from '../kit/constants'
 
 const promptAtom = atom({ plugin: 'alfred-mods', key: 'prompt' } as const, EMPTY_RECORD, { shape: 'prompt-1' })
 
@@ -52,14 +52,19 @@ function scheduleFlush($: EngineInterface): void {
 
 // What the engine answers is returned as it came, whatever the recording does: a failure after `next(e)` answered is the
 // mod's own, so it is swallowed here (the text goes in no log) and the engine's answer stands. A subagent's attachment is
-// not the main turn's. The kit line goes to the kit folder before the part is added, so the cap can never cost its values.
+// not the main turn's. The kit's hook writes its settings file during UserPromptSubmit, so its context part has the file read
+// again, off the hook, for the band to show this turn's modes.
 export async function recordAttachment($: EngineInterface, e: HookInput<'prompt.attachment'>, next: HookNext<'prompt.attachment'>) {
   const result = await next(e)
   if (e.agentId !== undefined) return result
   try {
     const now = await $.clock.now()
     const text = result.text
-    if (e.origin.kind === 'hook' && e.origin.event === KIT_HOOK_EVENT && text !== null) await noteKitLine($, text, now)
+    if (e.origin.kind === 'hook' && e.origin.event === KIT_HOOK_EVENT) {
+      $.clock.after(0, () => {
+        refreshKit($).catch(() => undefined)
+      })
+    }
     promptMemory.record = addPart(promptMemory.record, partOf(e.type, e.origin, text, now))
     scheduleFlush($)
   } catch {

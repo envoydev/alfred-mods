@@ -1445,28 +1445,24 @@ return { planLine, planRowParts, narrowPlan, planSection, scoreSeg, scoresLabel,
 })();
 // ---- hooks/kit/constants.ts
 __m['kit/constants.ts'] = (() => {
-// What the kit's status line is made of: the marker that opens it, the notes the hook adds, and the settings the mod
-// reads by name. The line is claude-kit's `.claude/kit/status-hook.mjs` output, measured 2026-11-19.
-const KIT_MARKER = 'kit status ('
-const KIT_HEAD_END = '):'
-const SAVED_PREFIX = 'saved:'
-const NOT_SAVED_PREFIX = 'not saved -'
-const KIT_HOOK_EVENT = 'UserPromptSubmit'
-const KIT_ON = 'on'
-// Ends each item and the note, so the note's text stops at the last one
-const KIT_ITEM_END = ';'
+// What the mod reads of claude-kit: its settings file, the names in it with the values each takes, and the words the band
+// and the Now tab use for them. The file is `.claude/kit/settings.json` at the project root (claude-kit 8af3151).
+const KIT_FILE = '.claude/kit/settings.json'
 
-// One item: the name, the value (no blank in it, a cut one may end `...`), then the source in parentheses up to the
-// first `);`, so parentheses inside a source stay in it and no source runs past a `;`
-const KIT_ITEM = /^([a-z_]+)=(\S*) \(([^;]*?)\);/
-const WHOLE_NUMBER = /^\d+$/
+// A file longer than this is no kit file: the kit's own is under 1 KiB
+const KIT_FILE_MAX_CHARS = 16_384
+
+const KIT_ON = 'on'
+const KIT_OFF = 'off'
 const PASS_SCORE_MIN = 1
 const PASS_SCORE_MAX = 100
 
-// A line noted again inside this time, with nothing changed, writes nothing; after it the atom's `seenAt` moves on
-const KIT_SEEN_REFRESH_MS = 1000
-
 const KIT_NAMES = { autoRun: 'auto_run', scoring: 'scoring', passScore: 'pass_score', autoApprove: 'auto_approve' }         
+
+// The switches take 'on' or 'off'; a model takes one of these names
+const KIT_SWITCH_NAMES                    = [KIT_NAMES.autoRun, KIT_NAMES.scoring, KIT_NAMES.autoApprove]
+
+const KIT_MODEL_NAMES                    = ['sonnet', 'opus', 'haiku', 'fable']
 
 // Each model role with the setting that names its model
 const KIT_MODEL_ROLES = [
@@ -1478,7 +1474,7 @@ const KIT_SECTION_HEAD = 'CLAUDE-KIT'
 const KIT_BANNER_LABEL = 'kit'
 const KIT_SETTING_ROWS = [['auto-run', KIT_NAMES.autoRun], ['scoring', KIT_NAMES.scoring], ['auto-approve', KIT_NAMES.autoApprove]]         
 
-return { KIT_MARKER, KIT_HEAD_END, SAVED_PREFIX, NOT_SAVED_PREFIX, KIT_HOOK_EVENT, KIT_ON, KIT_ITEM_END, KIT_ITEM, WHOLE_NUMBER, PASS_SCORE_MIN, PASS_SCORE_MAX, KIT_SEEN_REFRESH_MS, KIT_NAMES, KIT_MODEL_ROLES, KIT_SECTION_HEAD, KIT_BANNER_LABEL, KIT_SETTING_ROWS };
+return { KIT_FILE, KIT_FILE_MAX_CHARS, KIT_ON, KIT_OFF, PASS_SCORE_MIN, PASS_SCORE_MAX, KIT_NAMES, KIT_SWITCH_NAMES, KIT_MODEL_NAMES, KIT_MODEL_ROLES, KIT_SECTION_HEAD, KIT_BANNER_LABEL, KIT_SETTING_ROWS };
 })();
 // ---- hooks/band/constants.ts
 __m['band/constants.ts'] = (() => {
@@ -2228,7 +2224,7 @@ function orgMark(input           )       {
 // REC, the org, Alfred Code's banner, then claude-kit's. The kit's yields first: it keeps a form (full, then `kit`) only where the
 // marks stay within the band and the band's rows are the plain band's, line 1's body items included - the body's first
 // line shares line 1 with the marks exactly where it did without the kit's banner, and loses nothing to the narrower
-// width. Else it is left out, and REC and Alfred Code's banner stay as they are
+// width. Else it is left out, and REC, the org mark and Alfred Code's banner stay as they are
 function marksOf(input           , isNarrow         , keep      )         {
   const base         = [input.rec !== undefined && input.rec.level !== 'off' ? [REC_MARK] : [], orgMark(input), input.banner ?? []].filter(segs => segs.length > 0)
   const full = input.kitBanner ?? []
@@ -2280,7 +2276,9 @@ function bandBody(band           , isNarrow         , keep      )         {
   const ask = handoffAsk(band)
   if (!isHot && band.newFailures === 0 && !band.isWorking && !agentsRun && warning === null && ask === null) {
     // Idle and healthy, the full band keeps its colours, as while it works (the user, 2026-11-12: 'colors by default ...
-    // not only when active work'); the calm band stays one dim line until something needs you
+    // not only when active work'); the calm band stays one dim line until something needs you. Its marks are no part of
+    // that line: line 1's org mark, like the red REC mark, keeps its own tones (a dim label, a plain value) so the
+    // account check reads easily (the owner, 2026-11-21)
     if (band.mode === 'full') return [[...gaugeLine, ...invalid], ...info]
     const calm = isNarrow ? gaugeLine : withTimes(band, gaugeLine)
     const dim = (line      )       => line.map(seg => ('text' in seg ? { text: seg.text, tone: 'dim'          } : seg))
@@ -4026,7 +4024,7 @@ function tabPrompt() {
     [S('Last turn', 'bold'), S(' · 14:02 · you 38 chars · 3 parts · 1,240 chars', '')],
     [S('From hooks', 'bold')],
     [S('UserPromptSubmit · hook_additional_context · 310 chars', 'bold')],
-    [S('UserPromptSubmit hook additional context: kit status (...', 'dim')],
+    [S('UserPromptSubmit hook additional context: Today is a day to...', 'dim')],
     [S('From plugins', 'bold')],
     [S('alfred-code-status · 640 chars', 'bold')],
     [S('From Claude Code', 'bold')],

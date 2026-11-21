@@ -63,8 +63,9 @@ its tests to the run or takes it past `claude plugin test`'s limit of 1000 test 
   and `scoring.json`; the user's ruling, 2026-11-13: 'alfred mods must learn Alfred's code plans'), and from nothing
   else in the stack. An absent file, an unknown schema or another session's file leaves the core view as it is, never
   an error, with the reason in a dim diagnostics row.
-  claude-kit is a second source that adds data (the user's ruling, 2026-11-19): the mod reads it only from the
-  `kit status (` line a request carries and from the public plan and score files, never from the kit's own files. The
+  claude-kit is a second source that adds data (the user's ruling, 2026-11-21, replacing 2026-11-19's line-only ruling):
+  the mod reads it from `.claude/kit/settings.json` in the project and from the public plan and score files, and from no
+  other file of the kit's. The
   plan and score files are `<root>/plans/<slug>.json` and `<root>/scores/<slug>.json`, the root named by the
   `plansFolder` field (the user's ruling, 2026-11-19): `default` is `.claude/session-inspector`, `.alfred` is
   `.alfred/alfred-mods`, `.alfred-mods` is `.alfred-mods`, and unset means `.alfred-mods`. Claude Code asks before each
