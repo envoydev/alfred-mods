@@ -190,7 +190,7 @@ table.steps { min-width: 720px; }
   <section class="tabpanel" role="tabpanel" id="panel-box" aria-labelledby="tab-box">
     <section class="panel" aria-label="The band">
       <div><h2>The band - the session at a glance</h2>
-        <p class="muted">The band sits right above the box you type in. It shows where the session stands without a command: how full the context is, your limits, the cost, and what Claude is using. When something needs you, it adds a row that says what, and which key to press. Pick a situation to see it react.</p></div>
+        <p class="muted">The band sits right above the box you type in. It shows where the session stands without a command: how full the context is, your limits, the cost, and what Claude is using. When something needs you, it adds a row that says what, and which key to press. Line 1 starts with the account you are signed in to: <code>org Personal</code> for a free, Pro or Max plan, the company's name for a Team or Enterprise plan, and <code>org unknown</code> for a token login. It is a quick check, not proof. Pick a situation to see it react.</p></div>
       <div class="live-tools">
         <label for="preset">Situation <select id="preset"></select></label>
         <label class="width" for="cols">Terminal width <output id="colsOut"></output><input type="range" id="cols" min="24" max="270" step="1"></label>
@@ -214,7 +214,7 @@ table.steps { min-width: 720px; }
 
     <section class="panel" aria-label="What each row means">
       <div><h2>What each row means</h2>
-        <p class="muted">Top to bottom, as the full band draws them. Each example is drawn by the mod's own code from this page's sample session. A row shows once it has something to say, so a new session starts with a short band.</p></div>
+        <p class="muted">Top to bottom, as the full band draws them. Each example is drawn by the mod's own code from this page's sample session. A row shows once it has something to say, so a new session starts with a short band. The one exception is the <code>org</code> mark that leads line 1: it shows from the first second, in every mode but off, and never gives way for width. It comes from the login record on disk, which can be edited and can lag an account switch, so treat it as a quick check before you open a repository, not proof.</p></div>
       <div class="table-scroll"><table class="ref parts" id="bandParts"></table></div>
       <p class="muted small">Short of width, a row wraps or drops its last items; short of rows, the band gives rows up from the bottom and keeps the row that needs you. Drag the width above to see it. <code>"band": "calm"</code> keeps the first two lines only, and <code>"bandPlace": "under"</code> moves the band under the message box, in the terminal only.</p>
     </section>
@@ -281,7 +281,7 @@ table.steps { min-width: 720px; }
 
     <section class="panel" aria-label="Recording mode">
       <div><h2>Recording mode - masking the screen</h2>
-        <p class="muted">For a screen recording or a shared screen. <code>/rec on</code> masks keys, emails, phone numbers and your private words wherever the mod and Claude Code's message rows draw them, and a red <code>● REC</code> leads the band while it is on. Only the drawing changes: files, the stored conversation and what Claude reads stay as they are.</p></div>
+        <p class="muted">For a screen recording or a shared screen. <code>/rec on</code> masks keys, emails, phone numbers and your private words wherever the mod and Claude Code's message rows draw them, and a red <code>● REC</code> leads the band while it is on. Only the drawing changes: files, the stored conversation and what Claude reads stay as they are. Strict also hides a company name in the band's <code>org</code> mark, as <code>org ‹org›</code>; <code>Personal</code> and <code>unknown</code> stay.</p></div>
       <div class="term-scroll"><div class="term"><span class="dim">off:     </span>export API_KEY=sk-live-4f9a… · jane.doe@example.com · /Users/jane/app · $12.40
 <span class="dim">on:      </span>export API_KEY=<span class="warn">‹key›</span> · <span class="warn">‹email›</span> · /Users/jane/app · $12.40
 <span class="dim">strict:  </span>export API_KEY=<span class="warn">‹key›</span> · <span class="warn">‹email›</span> · <span class="warn">~/app</span> · <span class="warn">$••.••</span></div></div>
@@ -361,12 +361,29 @@ table.steps { min-width: 720px; }
 </div>
 
 <script>
-// alfred-mods band code, bundled from hooks/ (core/format.ts, agents/agents.ts, cache/cache.ts, core/forecast.ts, session/windows.ts, place/place.ts, context/parts.ts, plan/planlines.ts, band/gauges.ts, band/wrap.ts, band/detail.ts, band/project.ts, band/info.ts, band/working.ts, band/band.ts, tools/compact.ts, plan/plan.ts)
+// alfred-mods band code, bundled from hooks/ (core/constants.ts, core/format.ts, agents/agents.ts, cache/constants.ts, cache/cache.ts, core/forecast.ts, session/windows.ts, place/place.ts, context/parts.ts, plan/planlines.ts, kit/constants.ts, band/constants.ts, band/gauges.ts, band/wrap.ts, band/detail.ts, band/project.ts, band/info.ts, band/working.ts, account/constants.ts, band/band.ts, core/guards.ts, tools/constants.ts, tools/compact.ts, plan/constants.ts, plan/plan.ts)
 const BandCore = (() => {
 const __m = {};
+// ---- hooks/core/constants.ts
+__m['core/constants.ts'] = (() => {
+// The named values the folders share
+
+// The model families the mod names and colours, in the order the Agents tab counts them
+const FAMILIES = ['opus', 'sonnet', 'haiku', 'fable']         
+
+// A model id's family and its version's two numbers: 'claude-opus-5-5' is opus 5.5
+const MODEL_ID = new RegExp(`(${FAMILIES.join('|')})(?:-(\\d+)(?:-(\\d+))?)?`)
+
+// A hotkey of one digit, which also answers from the empty prompt
+const DIGIT_HOTKEY = /^\d$/
+
+
+return { FAMILIES, MODEL_ID, DIGIT_HOTKEY };
+})();
 // ---- hooks/core/format.ts
 __m['core/format.ts'] = (() => {
 // Plain values to the strings the band and the pane draw: bars, token counts, times, money, one-line cuts.
+const { DIGIT_HOTKEY, FAMILIES, MODEL_ID } = __m['core/constants.ts'];
                                      
 
 // The one bar, in the band and the pane: 5 cells of 20%, ▰ filled and ▱ empty; a cell fills only when its share is
@@ -482,13 +499,23 @@ function widthOf(line                   )         {
   return line.reduce        ((width, s) => width + ('text' in s && typeof s.text === 'string' ? masker(s.text).length : 0), 0)
 }
 
+// Whether a button draws plain, '<hotkey>: <label>': asked to, or on a digit, which also answers from the empty prompt
+function isPlainButton(button                                      )          {
+  return button.plain === true || DIGIT_HOTKEY.test(button.hotkey ?? '')
+}
+
+// A button's cells as the terminal draws it: '<hotkey>: <label>' when plain, '[ <label> ]' otherwise
+function buttonCells(labelCells        , hotkey                    , isPlain         )         {
+  return isPlain ? (hotkey === undefined ? 0 : hotkey.length + 2) + labelCells : labelCells + 4
+}
 
 // A model id's family and version: 'claude-opus-5-5' is opus 5.5; an id with no known family has none
 function modelParts(model        )                                                    {
-  const match = /(opus|sonnet|haiku|fable)(?:-(\d+)(?:-(\d+))?)?/.exec(model)
-  if (match === null) return null
+  const match = MODEL_ID.exec(model)
+  const family = FAMILIES.find(name => name === match?.[1])
+  if (match === null || family === undefined) return null
   const version = match[2] === undefined ? null : match[3] === undefined ? match[2] : `${match[2]}.${match[3]}`
-  return { family: match[1]          , version }
+  return { family, version }
 }
 
 // 'opus 5.5', or 'Opus 5.5' as a title; the id as given when no family matches
@@ -499,12 +526,12 @@ function modelText(model        , title = false)         {
   return parts.version === null ? name : `${name} ${parts.version}`
 }
 
-return { barText, toneOf, tokensText, durationText, minutesText, elapsedText, clockText, whenText, usdText, printable, fingerprint, setMasker, oneLine, fitLine, cutMasked, widthOf, modelParts, modelText };
+return { barText, toneOf, tokensText, durationText, minutesText, elapsedText, clockText, whenText, usdText, printable, fingerprint, setMasker, oneLine, fitLine, cutMasked, widthOf, isPlainButton, buttonCells, modelParts, modelText };
 })();
 // ---- hooks/agents/agents.ts
 __m['agents/agents.ts'] = (() => {
 // Agents as rows: what a spawn says, how a run ends, which rows are kept, the tree they draw and their tool counts.
-                                            
+                                                        
 
 const { durationText, oneLine, tokensText } = __m['core/format.ts'];
                                                                             
@@ -648,6 +675,11 @@ function actionOf(tool        , target        )         {
   return target === '' ? tool : `${tool} ${target}`
 }
 
+// An agent's context after a step: the sum the engine's own `context_tokens` uses
+function contextTokensOf(usage                                                                                                                )         {
+  return usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens + usage.output_tokens
+}
+
 
 // Depth first, siblings oldest first, under the main loop as the root. A row sits under its parent only when that is
 // a row and its parents never lead back to it; else under the root.
@@ -694,18 +726,30 @@ function toolSummary(tools                          )                           
 
 const stepMarkOf = (row          )                => (row.plan !== null && row.task !== null ? `${row.plan}:${row.task}` : null)
 
-return { promptLines, newRow, upsertSpawn, isLive, keepRows, refreshAgents, agentTime, statusGlyph, lanesOf, laneLabel, laneFit, reportLine, addLoopStep, LOOPS_NOTE, loopsLine, statusAt, actionOf, agentTree, toolSummary, stepMarkOf };
+return { promptLines, newRow, upsertSpawn, isLive, keepRows, refreshAgents, agentTime, statusGlyph, lanesOf, laneFit, reportLine, addLoopStep, LOOPS_NOTE, loopsLine, statusAt, actionOf, contextTokensOf, agentTree, toolSummary, stepMarkOf };
+})();
+// ---- hooks/cache/constants.ts
+__m['cache/constants.ts'] = (() => {
+                                                
+
+// The surfaces where Claude Code compacts an idle conversation itself: an interactive terminal session, VS Code's chat
+// panel and the desktop app's Code tab, when the session runs on the machine or over SSH (settings-reference, `idleCompaction`, read 2026-11-19). A cloud
+// session drawn in the desktop app counts too, as no API tells it apart: its warning then comes at 3 minutes, not 5
+const IDLE_COMPACT_SURFACES                             = new Set               (['terminal', 'vscode', 'desktop'])
+
+return { IDLE_COMPACT_SURFACES };
 })();
 // ---- hooks/cache/cache.ts
 __m['cache/cache.ts'] = (() => {
 // The prompt cache (F4): its tier by Claude Code's own rule, its warmth, reuse and rewrite cost, the line the band and
 // the Cache tab draw, the warning's window and whether Claude Code compacts an idle conversation itself.
 // The rule: https://code.claude.com/docs/en/prompt-caching.md; idle compaction: settings-reference, `idleCompaction`.
-                                             
+                                                            
 
 const { barText, toneOf, tokensText, usdText } = __m['core/format.ts'];
                                                                                         
                                                
+const { IDLE_COMPACT_SURFACES } = __m['cache/constants.ts'];
                                                   
 
 const TTL_MS                            = { '5m': 300_000, '1h': 3_600_000 }
@@ -809,10 +853,14 @@ function cacheView(cache       , billing         , now        , contextTokens   
   }
 }
 
-// Claude Code should compact the conversation itself at about 54 minutes idle: a surface where it does (the terminal,
-// VS Code's chat panel, the desktop app's Code tab), the 1h tier, idle compaction not turned off, and a context at its
-// threshold. A feature flag it fetches gates it too, which the mod
-// cannot see, so this delays the warning and never withholds it.
+// Whether the session draws where Claude Code compacts an idle conversation itself; a plain -p run draws nowhere
+function isIdleSurfaceOf(surfaces                          )          {
+  return surfaces.some(surface => IDLE_COMPACT_SURFACES.has(surface))
+}
+
+// Claude Code compacts an idle conversation itself where settings-reference's `idleCompaction` says it does: on a
+// surface `isIdleSurface` records, with the 1h tier, idle compaction not turned off and a context at its threshold. A
+// feature flag it fetches gates it too, which the mod cannot see, so this delays the warning and never withholds it.
 function selfCompacts(cache       , billing         , contextTokens               )          {
   return cache.config.isIdleSurface && tierOf(cache, billing).tier === '1h' && !cache.config.isIdleCompactOff && contextTokens !== null
     && contextTokens >= cache.config.idleMinTokens
@@ -862,7 +910,7 @@ function cacheLine(cacheState           )       {
   return line
 }
 
-return { TTL_MS, CLOSE_MS, IDLE_COMPACT_MS, SELF_CLOSE_MS, WARN_MIN_TOKENS, billingOf, pinOf, idleOf, tierOf, addRequest, takeSwitch, takeRate, afterCompact, cacheView, selfCompacts, closeMs, toastAt, needsTick, minutesLeftText, reuseTone, cacheLine };
+return { IDLE_COMPACT_MS, billingOf, pinOf, idleOf, tierOf, addRequest, takeSwitch, takeRate, afterCompact, cacheView, isIdleSurfaceOf, selfCompacts, toastAt, needsTick, minutesLeftText, reuseTone, cacheLine };
 })();
 // ---- hooks/core/forecast.ts
 __m['core/forecast.ts'] = (() => {
@@ -913,10 +961,10 @@ return { turnsLeft, paceForecast, spark, localDate };
 // ---- hooks/session/windows.ts
 __m['session/windows.ts'] = (() => {
 // What the band shows from the session's first second (the user, 2026-11-11): the 5h and 7d windows the last reading
-                                                
-                                                   
 // on this machine stored, until this session's own, and the project and branch read from git's own files, with no git
 // process.
+                                                
+                                                   
 
 // The stored windows still ahead of their reset, with the time they were read; null for a value of any other shape, or
 // with none left
@@ -1105,28 +1153,27 @@ function partsOf(breakdown                         , cwd        , at        , li
 
 // The section's label column: 'In context' fills the tab's 10 cells, so its rows take 12, as spec C1 draws them
 const PARTS_LABEL = 12
-const LABEL = PARTS_LABEL
 
 // The Usage tab's rows after Tokens; none before a breakdown
 function partsLines(parts       )         {
   if (parts.breakdownAt === null) return []
   const out         = []
   const used = parts.categories.map(category => `${category.name} ${tokensText(category.tokens)}`)
-  out.push([{ text: 'In context', width: LABEL }, { text: [`est. ${clockText(parts.breakdownAt)}`, ...used].join(' · ') }])
+  out.push([{ text: 'In context', width: PARTS_LABEL }, { text: [`est. ${clockText(parts.breakdownAt)}`, ...used].join(' · ') }])
   if (parts.plugins.length > 0) {
     const named = parts.plugins.map(plugin => {
       const what = [plugin.agents > 0 ? `${plugin.agents} agents` : null, plugin.skills > 0 ? `${plugin.skills} skills` : null]
         .filter((count)                  => count !== null)
       return `${plugin.name} ${tokensText(plugin.agentTokens + plugin.skillTokens)}: ${what.join(', ')}`
     })
-    out.push([{ text: 'Plugins', width: LABEL }, { text: named.join(' · ') }])
+    out.push([{ text: 'Plugins', width: PARTS_LABEL }, { text: named.join(' · ') }])
   }
   if (parts.memory.files > 0) {
     const memory = parts.memory
     const rest = memory.files - memory.top.length
     const shown = [`${memory.files} ${memory.files === 1 ? 'file' : 'files'} ${tokensText(memory.tokens)}`,
       ...memory.top.map(topFile => `${topFile.name} ${tokensText(topFile.tokens)}`), ...(rest > 0 ? [`+${rest}`] : [])]
-    out.push([{ text: 'Memory', width: LABEL }, { text: shown.join(' · ') }])
+    out.push([{ text: 'Memory', width: PARTS_LABEL }, { text: shown.join(' · ') }])
   }
   return out
 }
@@ -1367,9 +1414,10 @@ function scoreLines(scoresView            )         {
 function planLines(
   view                 , scoresView                   ,
   options                                                                                                                       ,
+  plansDir        ,
 )         {
   const out         = []
-  if (view === null) out.push([{ text: 'No plan file in .alfred-mods/plans/, and no task list this session.', tone: 'dim' }])
+  if (view === null) out.push([{ text: `No plan file in ${plansDir}/, and no task list this session.`, tone: 'dim' }])
   else {
     const head       = [{ text: 'Plan', bold: true, tone: 'plan' }, { text: ` · ${fitLine(view.title, 60)}`, bold: true }, { text: `   ${view.finished}/${view.total}` }]
     if (view.isFinished) head.push({ text: ` · done in ${minutesText(view.workedMs)}` })
@@ -1395,10 +1443,73 @@ function planLines(
 
 return { planLine, planRowParts, narrowPlan, planSection, scoreSeg, scoresLabel, planLines };
 })();
+// ---- hooks/kit/constants.ts
+__m['kit/constants.ts'] = (() => {
+// What the kit's status line is made of: the marker that opens it, the notes the hook adds, and the settings the mod
+// reads by name. The line is claude-kit's `.claude/kit/status-hook.mjs` output, measured 2026-11-19.
+const KIT_MARKER = 'kit status ('
+const KIT_HEAD_END = '):'
+const SAVED_PREFIX = 'saved:'
+const NOT_SAVED_PREFIX = 'not saved -'
+const KIT_HOOK_EVENT = 'UserPromptSubmit'
+const KIT_ON = 'on'
+// Ends each item and the note, so the note's text stops at the last one
+const KIT_ITEM_END = ';'
+
+// One item: the name, the value (no blank in it, a cut one may end `...`), then the source in parentheses up to the
+// first `);`, so parentheses inside a source stay in it and no source runs past a `;`
+const KIT_ITEM = /^([a-z_]+)=(\S*) \(([^;]*?)\);/
+const WHOLE_NUMBER = /^\d+$/
+const PASS_SCORE_MIN = 1
+const PASS_SCORE_MAX = 100
+
+// A line noted again inside this time, with nothing changed, writes nothing; after it the atom's `seenAt` moves on
+const KIT_SEEN_REFRESH_MS = 1000
+
+const KIT_NAMES = { autoRun: 'auto_run', scoring: 'scoring', passScore: 'pass_score', autoApprove: 'auto_approve' }         
+
+// Each model role with the setting that names its model
+const KIT_MODEL_ROLES = [
+  ['plan', 'plan_model'], ['audit', 'audit_model'], ['review', 'review_model'], ['implement', 'implement_model'], ['search', 'search_model'],
+]         
+
+// What the band and the Now tab call the kit, and how a setting reads there
+const KIT_SECTION_HEAD = 'CLAUDE-KIT'
+const KIT_BANNER_LABEL = 'kit'
+const KIT_SETTING_ROWS = [['auto-run', KIT_NAMES.autoRun], ['scoring', KIT_NAMES.scoring], ['auto-approve', KIT_NAMES.autoApprove]]         
+
+return { KIT_MARKER, KIT_HEAD_END, SAVED_PREFIX, NOT_SAVED_PREFIX, KIT_HOOK_EVENT, KIT_ON, KIT_ITEM_END, KIT_ITEM, WHOLE_NUMBER, PASS_SCORE_MIN, PASS_SCORE_MAX, KIT_SEEN_REFRESH_MS, KIT_NAMES, KIT_MODEL_ROLES, KIT_SECTION_HEAD, KIT_BANNER_LABEL, KIT_SETTING_ROWS };
+})();
+// ---- hooks/band/constants.ts
+__m['band/constants.ts'] = (() => {
+// The band's named values
+                                        
+const { KIT_BANNER_LABEL } = __m['kit/constants.ts'];
+
+// The labels' width, so the items of every row line up
+const ROW_LABEL = 9
+
+// The band's org mark: its label, the cap of a company name in cells and what shows for no known account
+const ORG_LABEL = 'org '
+
+const ORG_MAX_CELLS = 40
+
+const ORG_UNKNOWN = 'unknown'
+
+// The joiner between the band's items on a row, drawn dim
+const ROW_JOIN = ' │ '
+
+// A rate window's short name in the band and its toasts
+const WINDOW_LABEL                                   = { five_hour: '5h', seven_day: '7d' }
+
+// claude-kit's banner as the narrow band shortens it
+const KIT_SHORT        = [{ text: KIT_BANNER_LABEL, tone: 'dim' }]
+
+return { ROW_LABEL, ORG_LABEL, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN, WINDOW_LABEL, KIT_SHORT };
+})();
 // ---- hooks/band/gauges.ts
 __m['band/gauges.ts'] = (() => {
 // The band's gauges: ctx, the 5h and 7d windows with their resets and pace, and the session's times
-const { isLive } = __m['agents/agents.ts'];
 const { barText, clockText, toneOf, tokensText, usdText, whenText } = __m['core/format.ts'];
 const { paceForecast, turnsLeft } = __m['core/forecast.ts'];
 const { storedMark } = __m['session/windows.ts'];
@@ -1406,10 +1517,20 @@ const { storedMark } = __m['session/windows.ts'];
                                                          
                                             
                                               
+const { ROW_JOIN, WINDOW_LABEL } = __m['band/constants.ts'];
 
 const ORDER = ['five_hour', 'seven_day']
 
-const LABEL                         = { five_hour: '5h', seven_day: '7d' }
+// A window's short name, '5h' or '7d'; a kind with none keeps its own
+function windowLabel(kind        )         {
+  return WINDOW_LABEL[kind] ?? kind
+}
+
+// When a window resets, as a time; null while it reports none or a time that does not parse
+function resetAtOf(rateWindow            )                {
+  const reset = rateWindow.resetsAt === null ? NaN : Date.parse(rateWindow.resetsAt)
+  return Number.isNaN(reset) ? null : reset
+}
 
 const percentText = (percent        )         => `${Math.round(percent)}%`
 
@@ -1430,21 +1551,20 @@ function windowsInOrder(windows              )               {
 function fiveHourPace(input                                           )                                  {
   const fiveHour = input.usage.rateWindows.find(rateWindow => rateWindow.kind === 'five_hour')
   if (fiveHour === undefined) return null
-  const reset = fiveHour.resetsAt === null ? NaN : Date.parse(fiveHour.resetsAt)
-  return paceForecast('five_hour', input.pace.five_hour?.points ?? [], Number.isNaN(reset) ? null : reset, input.now)
+  return paceForecast('five_hour', input.pace.five_hour?.points ?? [], resetAtOf(fiveHour), input.now)
 }
 
 // ' (02.11 16:15)': when the window resets, or nothing while it reports none
 function resetSegs(rateWindow            )       {
-  const reset = rateWindow.resetsAt === null ? NaN : Date.parse(rateWindow.resetsAt)
-  return Number.isNaN(reset) ? [] : [{ text: ` (${whenText(reset)})`, tone: 'dim' }]
+  const reset = resetAtOf(rateWindow)
+  return reset === null ? [] : [{ text: ` (${whenText(reset)})`, tone: 'dim' }]
 }
 
 function gauges(input           )       {
   const usage = input.usage
   const out       = []
   const sep = ()       => {
-    if (out.length > 0) out.push({ text: ' │ ', tone: 'dim' })
+    if (out.length > 0) out.push({ text: ROW_JOIN, tone: 'dim' })
   }
   out.push(...contextSegs(usage, input.runway))
   if (usage.contextPercent !== null || (input.runway ?? null) !== null) {
@@ -1454,7 +1574,7 @@ function gauges(input           )       {
   const mark = storedMark(usage.rateWindowsAt)
   for (const rateWindow of windowsInOrder(usage.rateWindows)) {
     sep()
-    const label = LABEL[rateWindow.kind] ?? rateWindow.kind
+    const label = windowLabel(rateWindow.kind)
     if (rateWindow.kind === 'five_hour') {
       out.push({ text: `${label} `, tone: 'usage' }, ...barSegs(rateWindow.percentUsed), percentSeg(rateWindow.percentUsed, mark), ...resetSegs(rateWindow))
       const pace = fiveHourPace(input)
@@ -1485,7 +1605,7 @@ function narrowGauges(usage       , runway                           )       {
   out.push(...contextSegs(usage, runway))
   for (const rateWindow of windowsInOrder(usage.rateWindows)) {
     sep()
-    out.push({ text: `${LABEL[rateWindow.kind] ?? rateWindow.kind} `, tone: 'usage' }, ...barSegs(rateWindow.percentUsed), percentSeg(rateWindow.percentUsed, storedMark(usage.rateWindowsAt)), ...resetSegs(rateWindow))
+    out.push({ text: `${windowLabel(rateWindow.kind)} `, tone: 'usage' }, ...barSegs(rateWindow.percentUsed), percentSeg(rateWindow.percentUsed, storedMark(usage.rateWindowsAt)), ...resetSegs(rateWindow))
   }
   return out
 }
@@ -1505,13 +1625,14 @@ function times(input           , upTo = 2)       {
   return parts.length === 0 ? [] : [{ text: ` │ ${parts.join(' · ')}`, tone: 'dim' }]
 }
 
-return { percentText, percentSeg, barSegs, windowsInOrder, fiveHourPace, gauges, narrowGauges, timeParts, times };
+return { windowLabel, resetAtOf, percentText, percentSeg, barSegs, windowsInOrder, fiveHourPace, gauges, narrowGauges, timeParts, times };
 })();
 // ---- hooks/band/wrap.ts
 __m['band/wrap.ts'] = (() => {
 // Fitting a band row to the width: cells, wrapped rows and rows packed to the band's height
-const { widthOf } = __m['core/format.ts'];
+const { buttonCells, isPlainButton, widthOf } = __m['core/format.ts'];
                                               
+const { ROW_JOIN } = __m['band/constants.ts'];
 
 // A line's cells as the terminal draws it: its text, and each button `[ label ]`, or `1: label` when plain
 function cellsOf(line      )         {
@@ -1519,9 +1640,7 @@ function cellsOf(line      )         {
     if ('text' in seg && seg.width !== undefined) return cells + seg.width
     if (!('button' in seg)) return cells + widthOf([seg])
     const button = seg.button
-    const label = widthOf([{ text: button.label }])
-    return cells + (button.plain === true || /^\d$/.test(button.hotkey ?? '')
-      ? (button.hotkey === undefined ? 0 : button.hotkey.length + 2) + label : label + 4)
+    return cells + buttonCells(widthOf([{ text: button.label }]), button.hotkey, isPlainButton(button))
   }, 0)
 }
 
@@ -1561,7 +1680,7 @@ function packRows(items        , columns        )                {
   let row       = []
   for (const item of items) {
     if (cellsOf(item) > columns) return null
-    const joined       = row.length === 0 ? item : [...row, { text: ' │ ', tone: 'dim' }, ...item]
+    const joined       = row.length === 0 ? item : [...row, { text: ROW_JOIN, tone: 'dim' }, ...item]
     if (cellsOf(joined) <= columns) row = joined
     else {
       rows.push(row)
@@ -1582,6 +1701,7 @@ const { listedText, loadedTexts } = __m['context/parts.ts'];
                                                     
                                               
                                               
+const { ROW_JOIN, ROW_LABEL } = __m['band/constants.ts'];
 const { wrapRows } = __m['band/wrap.ts'];
 
 const isSkill = (key        )          => key.startsWith('Skill: ')
@@ -1628,9 +1748,8 @@ function toolRows(input           )         {
   const hasRules = drawn.always.length + drawn.byPath.length > 0
   const skills = skillSegs(input.session.loadedSkills, isResumed)
   if (input.skillListing !== undefined && input.skillListing !== null) skills.push({ text: listedText(input.skillListing), tone: 'dim' })
-  const label = (text        )      => ({ text: text.padEnd(ROW_LABEL), tone: 'dim' })
   const under      = { text: ' '.repeat(ROW_LABEL) }
-  const row = (name        , items        )         => wrapRows(label(name), under, items, input.columns, ROW_JOIN)
+  const row = (name        , items        )         => wrapRows(rowLabel(name), under, items, input.columns, ROW_JOIN)
   const one = (segs       )         => segs.map(seg => [seg])
   return [
     ...(used.length === 0 ? [] : row('tools:', one(used.map(([key, stat])      => ({ text: `${key} ×${stat.calls}` }))))),
@@ -1680,10 +1799,6 @@ function agentSegs(rows            , types                                    , 
   return [...items, ...since, [{ text: `${running} running`, tone: running > 0 ? 'warn' : 'dim' }]]
 }
 
-const ROW_LABEL = 9
-
-const ROW_JOIN = ' │ '
-
 const rowLabel = (text        )      => ({ text: text.padEnd(ROW_LABEL), tone: 'dim' })
 
 // The skills loaded in the main chat; after a resume or a branch, counted from it, since the ones loaded before are in
@@ -1695,7 +1810,7 @@ function skillSegs(skills                                    , isResumed        
   return [...loaded.map((text)      => ({ text, tone: 'skill' })), ...since]
 }
 
-return { toggleForms, toolRows, rulesDrawn, ruleSegs, agentSegs, ROW_LABEL, ROW_JOIN, rowLabel, skillSegs };
+return { toggleForms, toolRows, ruleSegs, agentSegs, rowLabel, skillSegs };
 })();
 // ---- hooks/band/project.ts
 __m['band/project.ts'] = (() => {
@@ -1704,9 +1819,9 @@ const { fitLine, widthOf } = __m['core/format.ts'];
 const { planRowParts, scoreSeg } = __m['plan/planlines.ts'];
                                         
                                               
-const { ROW_JOIN, ROW_LABEL, rowLabel, toggleForms } = __m['band/detail.ts'];
+const { ROW_JOIN, ROW_LABEL } = __m['band/constants.ts'];
+const { rowLabel, toggleForms } = __m['band/detail.ts'];
 
-// The labels' width, so the items of every row line up, and the band rows' joiner, as the owner's target draws them
 // A folder past `max` cells: its last parts that fit after '…/', or its last part cut
 function fitFolder(folder        , max        )         {
   if (widthOf([{ text: folder }]) <= max) return folder
@@ -1727,7 +1842,7 @@ const lastPart = (folder        )         => (folder.includes('/') ? `…/${fold
 function planRow(input           )         {
   if (input.mode !== 'full' || input.plan === null) return []
   const score       = input.score === null || input.isPlanScore === false ? [] : [{ text: ' · ' }, ...scoreSeg(input.score, input.scoreLevel ?? null)]
-  return [[{ text: 'plan:'.padEnd(ROW_LABEL), tone: 'dim' }, ...planRowParts(input.plan, input.columns - ROW_LABEL, score)]]
+  return [[rowLabel('plan:'), ...planRowParts(input.plan, input.columns - ROW_LABEL, score)]]
 }
 
 const dimSeg = (text        )      => ({ text, tone: 'dim' })
@@ -1781,7 +1896,7 @@ return { planRow, placeRow, usageRow };
 __m['band/info.ts'] = (() => {
 // The full band's info line: model, effort, speed, cache and times
 const { billingOf, cacheView, minutesLeftText } = __m['cache/cache.ts'];
-const { minutesText, modelParts, modelText, tokensText } = __m['core/format.ts'];
+const { minutesText, modelParts, modelText } = __m['core/format.ts'];
                                         
                                               
 const { timeParts } = __m['band/gauges.ts'];
@@ -1855,8 +1970,9 @@ const { durationText, elapsedText, fitLine, tokensText, usdText, widthOf } = __m
 const { narrowPlan, planLine, scoreSeg } = __m['plan/planlines.ts'];
                                                
                                         
-                                                  
+                                            
                                               
+const { ROW_JOIN } = __m['band/constants.ts'];
 const { percentText, times } = __m['band/gauges.ts'];
 
                                                             
@@ -1910,7 +2026,7 @@ function planTail(input           , isRowDrawn         )       {
   if (input.plan !== null && !hasRow) parts.push([{ text: 'PLAN', tone: 'plan' }, { text: ` ${input.plan.finished}/${input.plan.total}` }])
   if (input.score !== null && !(hasRow && input.isPlanScore !== false)) parts.push(scoreSeg(input.score, input.scoreLevel ?? null))
   if (parts.length === 0) return []
-  return [{ text: ' │ ', tone: 'dim' }, ...parts.flatMap((line, i) => (i === 0 ? line : [{ text: ' · ' }, ...line]))]
+  return [{ text: ROW_JOIN, tone: 'dim' }, ...parts.flatMap((line, i) => (i === 0 ? line : [{ text: ' · ' }, ...line]))]
 }
 
 // The turn, or the agents while only they run, or the plan line while a plan runs; then each live agent's action and
@@ -1993,16 +2109,39 @@ function withPlanTail(input           , line      , isRowDrawn         )       {
 
 return { underButton, withToday, withTimes, lastTurn, workingLine, spinnerSuffix, cacheWarning, handoffAsk, withPlanTail };
 })();
+// ---- hooks/account/constants.ts
+__m['account/constants.ts'] = (() => {
+// The account folder's named values
+
+// Claude Code's global config, in CLAUDE_CONFIG_DIR or the home folder
+const CONFIG_FILE_NAME = '.claude.json'
+
+// A turn's end reads the config again once this long has passed since the last read
+const READ_EVERY_MS = 300_000
+
+// What the band shows for a free, Pro or Max account, as the Claude mobile app does, and the organization types that
+// are one: Claude Code 2.1.329 maps claude_free, claude_pro and claude_max to the free, pro and max plans, and
+// claude_team and claude_enterprise to the team and enterprise plans (the owner, 2026-11-21)
+const PERSONAL = 'Personal'
+
+const PERSONAL_ORG_TYPES                    = ['claude_free', 'claude_pro', 'claude_max']
+
+// What REC strict draws in a company name's place
+const ORG_STRICT = '‹org›'
+
+return { CONFIG_FILE_NAME, READ_EVERY_MS, PERSONAL, PERSONAL_ORG_TYPES, ORG_STRICT };
+})();
 // ---- hooks/band/band.ts
 __m['band/band.ts'] = (() => {
 // The band above the prompt, from the session's values to lines of styled segments. Calm by default: colour
 // appears only when a threshold is crossed, something failed or a turn runs.
 const { isLive } = __m['agents/agents.ts'];
-const { widthOf } = __m['core/format.ts'];
-const { paceForecast } = __m['core/forecast.ts'];
+const { fitLine, widthOf } = __m['core/format.ts'];
+const { ORG_STRICT, PERSONAL } = __m['account/constants.ts'];
                                         
                                             
                                               
+const { KIT_SHORT, ORG_LABEL, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN } = __m['band/constants.ts'];
 const { fiveHourPace, gauges, narrowGauges, percentText } = __m['band/gauges.ts'];
 const { cellsOf } = __m['band/wrap.ts'];
 const { toolRows } = __m['band/detail.ts'];
@@ -2038,7 +2177,7 @@ function underRows(viewport                                          , chrome   
 
 const KEEP_ALL       = { infoUpTo: 2, isPlaceKept: true, toolRowsKept: Infinity, isUsageKept: true, isPlanKept: true }
 
-// A red '● REC' while REC is on, then Alfred Code's mode banner, lead line 1 in every state, never dropped for width:
+// A red '● REC' while REC is on, then the signed-in account's org, then Alfred Code's mode banner, lead line 1 in every state, never dropped for width:
 // the body's first line follows them while it fits what is left, else they take line 1 alone and the body keeps the
 // full width, so no gauge, reset or the cost drops for them
 function bandLines(input           )         {
@@ -2063,13 +2202,53 @@ function bandLines(input           )         {
   return bandRows(input, { infoUpTo: 0, isPlaceKept: false, toolRowsKept: 0, isUsageKept: false, isPlanKept: false })
 }
 
+const MARK_SEP      = { text: ROW_JOIN, tone: 'dim' }
+const joinMarks = (marks        )       => marks.flatMap((mark, i) => (i === 0 ? mark : [MARK_SEP, ...mark]))
+
+// Line 1's body as these marks leave it: the body's first line, fitted beside them, or null where it does not fit beside
+// them (the marks then take line 1 alone)
+function firstBeside(input           , isNarrow         , keep      , marks        )              {
+  const lead       = [...joinMarks(marks), MARK_SEP]
+  const [first] = bandBody({ ...input, columns: input.columns - widthOf(lead) }, isNarrow, keep)
+  return first !== undefined && widthOf(lead) + widthOf(first) <= input.columns ? first : null
+}
+
+const isSameLine = (left             , right             )          => left === null || right === null ? left === right : JSON.stringify(left) === JSON.stringify(right)
+
+// The signed-in account's mark, as the Claude mobile app names it: 'org Personal', 'org <company name>' cut to 40 cells, or
+// 'org unknown'. Under REC strict a company name draws '‹org›'; Personal and unknown stay. None without an account.
+function orgMark(input           )       {
+  const org = input.account?.org
+  if (org === undefined) return []
+  const isCompany = org !== null && org !== PERSONAL
+  const value = org === null ? ORG_UNKNOWN : isCompany && input.rec?.level === 'strict' ? ORG_STRICT : fitLine(org, ORG_MAX_CELLS)
+  return [{ text: ORG_LABEL, tone: 'dim' }, { text: value }]
+}
+
+// REC, the org, Alfred Code's banner, then claude-kit's. The kit's yields first: it keeps a form (full, then `kit`) only where the
+// marks stay within the band and the band's rows are the plain band's, line 1's body items included - the body's first
+// line shares line 1 with the marks exactly where it did without the kit's banner, and loses nothing to the narrower
+// width. Else it is left out, and REC and Alfred Code's banner stay as they are
+function marksOf(input           , isNarrow         , keep      )         {
+  const base         = [input.rec !== undefined && input.rec.level !== 'off' ? [REC_MARK] : [], orgMark(input), input.banner ?? []].filter(segs => segs.length > 0)
+  const full = input.kitBanner ?? []
+  if (full.length === 0) return base
+  // With no marks the plain band's line 1 is its body's first line, and where that is none the band draws nothing
+  const plain = base.length === 0 ? (bandBody(input, isNarrow, keep)[0] ?? null) : firstBeside(input, isNarrow, keep, base)
+  if (base.length === 0 && plain === null) return base
+  for (const kit of [full, KIT_SHORT]) {
+    const marks = [...base, kit]
+    if (widthOf(joinMarks(marks)) <= input.columns && isSameLine(firstBeside(input, isNarrow, keep, marks), plain)) return marks
+  }
+  return base
+}
+
 function bandRows(input           , keep      )         {
   const isNarrow = input.columns < 100
-  const marks         = [input.rec !== undefined && input.rec.level !== 'off' ? [REC_MARK] : [], input.banner ?? []].filter(segs => segs.length > 0)
+  const marks = marksOf(input, isNarrow, keep)
   if (marks.length === 0) return bandBody(input, isNarrow, keep)
-  const sep      = { text: ' │ ', tone: 'dim' }
-  const alone       = marks.flatMap((mark, i) => (i === 0 ? mark : [sep, ...mark]))
-  const lead       = [...alone, sep]
+  const alone = joinMarks(marks)
+  const lead       = [...alone, MARK_SEP]
   // Only line 1 shares its row with the marks: the lines under it are fitted to the band's whole width
   const [first] = bandBody({ ...input, columns: input.columns - widthOf(lead) }, isNarrow, keep)
   if (first === undefined) return [alone]
@@ -2082,7 +2261,7 @@ function bandBody(band           , isNarrow         , keep      )         {
   // Before the first reading the calm band waits; the full band draws once the model or a stored window is known
   const isFullKnown = band.mode === 'full' && (band.session.model !== null || usage.rateWindows.length > 0)
   if (band.turns.length === 0 && usage.contextPercent === null && !isFullKnown) return []
-  const invalid       = band.isPlanInvalid ? [{ text: ' │ ', tone: 'dim' }, { text: 'plan file invalid', tone: 'warn' }] : []
+  const invalid       = band.isPlanInvalid ? [{ text: ROW_JOIN, tone: 'dim' }, { text: 'plan file invalid', tone: 'warn' }] : []
   const gaugeLine = isNarrow ? narrowGauges(usage, band.runway) : withToday(band, gauges(band), invalid)
   const line2 = [...gaugeLine, ...invalid]
   // The info line, then the project, plan and usage rows, then the detail rows while `bandRows` opens them; the full
@@ -2124,13 +2303,43 @@ function bandBody(band           , isNarrow         , keep      )         {
 
 return { REC_MARK, statusText, underRows, bandLines };
 })();
+// ---- hooks/core/guards.ts
+__m['core/guards.ts'] = (() => {
+// The checks a value read from outside passes before it is used
+
+// A plain record: an object, not null and not an array
+const isRecord = (value         )                                   => typeof value === 'object' && value !== null && !Array.isArray(value)
+
+return { isRecord };
+})();
+// ---- hooks/tools/constants.ts
+__m['tools/constants.ts'] = (() => {
+// The tools folder's named values
+
+// The columns a row is drawn to when the event carries no viewport
+const DEFAULT_COLUMNS = 120
+
+// The tools that write a file: a call of one moves the project's place and may change a plan
+const EDIT_TOOLS                    = ['Edit', 'Write', 'NotebookEdit']
+
+// The status a row the mod draws for a call still running reads
+const RUNNING_STATUS = 'running…'
+
+// The status of a call that has not run yet: held at the permission dialog, or queued
+const WAITING_STATUS = 'waiting…'
+
+
+return { DEFAULT_COLUMNS, EDIT_TOOLS, RUNNING_STATUS, WAITING_STATUS };
+})();
 // ---- hooks/tools/compact.ts
 __m['tools/compact.ts'] = (() => {
 // F10's compact tool rows (brief 'Compact tool rows', Decisions 4 to 8): one line per call, runs of reads folded into
 // one, and the result block's preview emptied. Every line is drawn through drawLines, so REC masks it after compacting.
 const { reportLine } = __m['agents/agents.ts'];
 const { durationText, fitLine, tokensText, widthOf } = __m['core/format.ts'];
+const { isRecord } = __m['core/guards.ts'];
                                               
+const { RUNNING_STATUS, WAITING_STATUS } = __m['tools/constants.ts'];
                                                       
 
 
@@ -2148,7 +2357,6 @@ const DROPS_RESULT                    = ['Bash', 'Edit', 'Write', 'WebFetch', 'W
 // Steps a run of reads draws before `+k more`
 const READ_STEPS = 4
 
-const isRecord = (value         )                                   => typeof value === 'object' && value !== null && !Array.isArray(value)
 const str = (value         )         => (typeof value === 'string' ? value : '')
 const basename = (path        )         => path.split(/[\\/]/).filter(segment => segment !== '').pop() ?? path
 const lineCount = (text        )         => (text.trimEnd() === '' ? 0 : text.trimEnd().split('\n').length)
@@ -2219,13 +2427,15 @@ function status(call             )        {
     const reason = firstSentence((call.reason ?? '').replace(/^blocked:\s*/, ''))
     return [{ text: reason === '' ? '⊘ blocked' : /^blocked\b/.test(reason) ? `⊘ ${reason}` : `⊘ blocked: ${reason}`, tone: 'warn' }]
   }
+  if (call.isRunning === true) return [{ text: RUNNING_STATUS, tone: 'dim' }]
   if (call.isInterrupted) return [{ text: '✗ interrupted', tone: 'fail' }]
   if (call.isErrored) {
     const exit = /^Exit code (\d+)/.exec(errorText(call))
     return [{ text: exit === null ? '✗' : `✗ exit ${exit[1]}`, tone: 'fail' }]
   }
-  const lineCount = countOf(call)
-  return [...(lineCount === null || lineCount === 0 ? [] : [{ text: `${lineCount} ${lineCount === 1 ? 'line' : 'lines'} ` }]), { text: '✓', tone: 'ok' }]
+  if (call.isWaiting === true) return [{ text: WAITING_STATUS, tone: 'dim' }]
+  const count = countOf(call)
+  return [...(count === null || count === 0 ? [] : [{ text: `${count} ${count === 1 ? 'line' : 'lines'} ` }]), { text: '✓', tone: 'ok' }]
 }
 
 // Up to 3 indented lines under a failure: the last non-empty lines of stderr, else of the error text past its exit code
@@ -2239,14 +2449,12 @@ function errorLines(call             )         {
 const sizeOf = (bytes        )         =>
   bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`
 
-// A web call's steps, one `⎿` line each (the user, 2026-11-12: 'what source is agent fatching'): WebFetch what came
-// back, from where when it moved, and what it took from the page; WebSearch how many results and their sites. A failed
-// or stopped call has its error lines instead of what came back.
+// One step under a call: a dim `⎿` line, cut to `columns`
 const stepOf = (text        , columns        )       => [{ text: `  ⎿ ${fitLine(text, Math.max(1, columns - 4))}`, tone: 'dim' }]
 
-// Any other call's steps (the user, 2026-11-12: 'What agent ... what job is done; What skill; What and where writing;
-// What is asking and what is the responce; What doc mcp queryng; What monitoring'): what it was given, then what came
-// back once it has
+// A call's steps, one `⎿` line each (the user, 2026-11-12: 'What agent ... what job is done; What skill; What and where
+// writing; What is asking and what is the responce; What doc mcp queryng; What monitoring'): what it was given, then
+// what came back once it has
 function stepLines(call             , columns        , cwd                )         {
   const step = (text        )       => stepOf(text, columns)
   const input = isRecord(call.input) ? call.input : {}
@@ -2323,6 +2531,9 @@ function stepLines(call             , columns        , cwd                )     
     const watched = str(input.command).trim() || (isRecord(input.ws) ? str(input.ws.url) : '')
     return watched === '' ? [] : [step(`watches: ${watched}`)]
   }
+  // A web call (the user, 2026-11-12: 'what source is agent fatching'): WebFetch what came back, from where when it
+  // moved, and what it took from the page; WebSearch how many results and their sites. A failed or stopped call has its
+  // error lines instead of what came back.
   if (call.tool === 'WebFetch') {
     const lines         = []
     if (out !== null && typeof out.bytes === 'number') {
@@ -2385,8 +2596,8 @@ function readsLines(run               , columns        , cwd                    
   return [head, ...shown.map(i => stepOf(i, columns)), ...(more > 0 ? [stepOf(`+${more} more`, columns)] : [])]
 }
 
-// A repeat: the same tool, description and outcome, back to back
-// back to back, its steps the same too (two agents of one type with different jobs stay two rows)
+// A repeat: the same tool, description and outcome back to back, its steps the same too (two agents of one type with
+// different jobs stay two rows)
 const sameAs = (left             , right             )          =>
   left.tool === right.tool && describe(left) === describe(right) && left.outcome === right.outcome && left.isErrored === right.isErrored
   && left.isInterrupted === right.isInterrupted &&
@@ -2396,6 +2607,7 @@ const sameAs = (left             , right             )          =>
 // as `N times in a row`
 function groupLines(calls               , columns        , at             = {})         {
   const out         = []
+  // i and j stay under calls.length, so calls[i] and calls[j] each hold a call
   for (let i = 0; i < calls.length;) {
     const call = calls[i] 
     let j = i + 1
@@ -2413,12 +2625,39 @@ function groupLines(calls               , columns        , at             = {}) 
 
 return { DROPS_RESULT, callLine, groupLines };
 })();
+// ---- hooks/plan/constants.ts
+__m['plan/constants.ts'] = (() => {
+// The plan folder's named values: where a plan skill writes plans and scores, and where the mod reads them
+                                          
+
+// The values of the `plansFolder` setting in the order the reader falls back through them; `.alfred/` holds Alfred
+// Code's state, so the mod's files go one level down in it
+const PLANS_FOLDERS                         = ['.alfred-mods', 'default', '.alfred']
+
+// The root folder each value of `plansFolder` names; plans sit under `<root>/plans`, scores under `<root>/scores`
+const PLANS_ROOTS                                        = {
+  default: '.claude/session-inspector', '.alfred': '.alfred/alfred-mods', '.alfred-mods': '.alfred-mods'
+}
+
+// The value in force while the field is unset
+const UNSET_PLANS_FOLDER              = '.alfred-mods'
+
+const PLANS_SUBFOLDER = 'plans'
+const SCORES_SUBFOLDER = 'scores'
+
+// The largest plan or scores file the reader reads: `$.fs.read` refuses a file over 4 MiB
+const MAX_PLAN_BYTES = 4 * 1024 * 1024
+
+return { PLANS_FOLDERS, PLANS_ROOTS, UNSET_PLANS_FOLDER, PLANS_SUBFOLDER, SCORES_SUBFOLDER, MAX_PLAN_BYTES };
+})();
 // ---- hooks/plan/plan.ts
 __m['plan/plan.ts'] = (() => {
 // Plan and scores files: their parse, the plan view and the scores view. The contract is the README's 'Plan and score
-                                                                                                                                                                               
 // files', from the brief's 'Data contracts for the plan and scorer skills'. What a file requires makes it invalid when
 // missing; an optional field that does not fit is dropped.
+const { isRecord } = __m['core/guards.ts'];
+const { PLANS_FOLDERS, PLANS_ROOTS, PLANS_SUBFOLDER, SCORES_SUBFOLDER } = __m['plan/constants.ts'];
+                                                                                                                                                                                            
 
 const STATUSES                    = ['pending', 'in_progress', 'done', 'failed', 'blocked', 'skipped']
 const KINDS                    = ['created', 'step_added', 'step_changed', 'step_removed', 'integrated']
@@ -2429,7 +2668,6 @@ const FINDING_STATUSES                    = ['open', 'fixed', 'improved', 'wontf
 const NOTE_MAX = 200
 
                                   
-const isObj = (value         )               => typeof value === 'object' && value !== null && !Array.isArray(value)
 const str = (value         )                => (typeof value === 'string' ? value : null)
 const time = (value         )                => {
   const parsed = typeof value === 'string' ? Date.parse(value) : NaN
@@ -2441,14 +2679,14 @@ const num = (value         )                  => typeof value === 'number' && Nu
 function json(text        )             {
   try {
     const value          = JSON.parse(text.replace(/^﻿/, ''))
-    return isObj(value) ? value : null
+    return isRecord(value) ? value : null
   } catch {
     return null
   }
 }
 
 function stepOf(value         )                  {
-  if (!isObj(value)) return null
+  if (!isRecord(value)) return null
   const id = str(value.id)
   const title = str(value.title)
   if (id === null || id === '' || title === null || typeof value.status !== 'string' || !STATUSES.includes(value.status)) return null
@@ -2457,7 +2695,7 @@ function stepOf(value         )                  {
 }
 
 function changeOf(value         )                    {
-  if (!isObj(value) || typeof value.kind !== 'string' || !KINDS.includes(value.kind) || typeof value.source !== 'string' || !SOURCES.includes(value.source)) return null
+  if (!isRecord(value) || typeof value.kind !== 'string' || !KINDS.includes(value.kind) || typeof value.source !== 'string' || !SOURCES.includes(value.source)) return null
   const note = str(value.note)
   return {
     at: time(value.at), kind: value.kind                      , source: value.source                        ,
@@ -2476,7 +2714,7 @@ function parsePlan(text        )              {
 }
 
 function findingOf(value         )                 {
-  if (!isObj(value)) return null
+  if (!isRecord(value)) return null
   const text = str(value.text)
   if (text === null) return null
   return {
@@ -2488,16 +2726,16 @@ function findingOf(value         )                 {
 }
 
 function roundOf(value         )                    {
-  if (!isObj(value) || !num(value.round) || !Number.isInteger(value.round) || !num(value.total)) return null
+  if (!isRecord(value) || !num(value.round) || !Number.isInteger(value.round) || !num(value.total)) return null
   const criteria                         = {}
-  if (isObj(value.criteria)) for (const [name, score] of Object.entries(value.criteria)) if (num(score)) criteria[name] = score
+  if (isRecord(value.criteria)) for (const [name, score] of Object.entries(value.criteria)) if (num(score)) criteria[name] = score
   const findings = Array.isArray(value.findings) ? value.findings.map(findingOf).filter((finding)                     => finding !== null) : []
   return { round: value.round, at: time(value.at), total: value.total, criteria, findings }
 }
 
 function parseScores(text        )                {
   const value = json(text)
-  if (value === null || value.version !== 1 || !isObj(value.subject) || !num(value.scale) || value.scale <= 0 || !Array.isArray(value.rounds)) return null
+  if (value === null || value.version !== 1 || !isRecord(value.subject) || !num(value.scale) || value.scale <= 0 || !Array.isArray(value.rounds)) return null
   const { kind, ref } = value.subject
   if (typeof kind !== 'string' || !SUBJECTS.includes(kind) || typeof ref !== 'string') return null
   const rounds = value.rounds.map(roundOf)
@@ -2625,7 +2863,7 @@ const TASK_STATUSES                    = ['pending', 'in_progress', 'completed']
 // replaces the list, each item's id its index, and an item whose subject was there before keeps its time.
 function tasksAfter(items            , tool        , input                         , result         )                    {
   if (tool === 'TaskCreate') {
-    const task = isObj(result) && isObj(result.task) ? result.task : null
+    const task = isRecord(result) && isRecord(result.task) ? result.task : null
     const id = task === null ? null : str(task.id)
     const subject = str(task?.subject) ?? str(input.subject)
     return id === null || subject === null ? items : [...items, { id, subject, status: 'pending', workedMs: 0 }]
@@ -2639,7 +2877,7 @@ function tasksAfter(items            , tool        , input                      
   }
   if (tool === 'TodoWrite') {
     if (!Array.isArray(input.todos)) return items
-    return input.todos.filter(isObj).map((todo, i) => {
+    return input.todos.filter(isRecord).map((todo, i) => {
       const subject = str(todo.content) ?? ''
       const status = typeof todo.status === 'string' && TASK_STATUSES.includes(todo.status) ? (todo.status                      ) : 'pending'
       return { id: String(i), subject, status, workedMs: items.find(listed => listed.subject === subject)?.workedMs ?? 0 }
@@ -2688,11 +2926,26 @@ function newUserNotes(before              , after              )               {
   })
 }
 
-// The root each value of the plansFolder setting names, as hooks/plan/constants.ts has it: plans sit under
-// <root>/plans, scores under <root>/scores; with the field unset the root is .alfred-mods
-const PLANS_ROOTS = { default: '.claude/session-inspector', '.alfred': '.alfred/alfred-mods', '.alfred-mods': '.alfred-mods' }
+// The roots the reader reads, in order: the chosen one first, then the others in the fallback order
+function plansRoots(chosen             )           {
+  return [chosen, ...PLANS_FOLDERS.filter(folder => folder !== chosen)].map(folder => PLANS_ROOTS[folder])
+}
 
-return { parsePlan, parseScores, isFinishedStep, isPlanDone, isPlanRunning, shownPlan, creditedPlan, planView, scoresView, tasksAfter, taskView, taskStatusKey, stepStatusKey, FINISH_SHOWN_MS, newUserNotes, PLANS_ROOTS };
+// The folder the chosen value names for plans, the one a plan skill writes to
+const chosenPlansDir = (chosen             )         => `${PLANS_ROOTS[chosen]}/${PLANS_SUBFOLDER}`
+
+const plansDirs = (chosen             )           => plansRoots(chosen).map(root => `${root}/${PLANS_SUBFOLDER}`)
+
+const scoresDirs = (chosen             )           => plansRoots(chosen).map(root => `${root}/${SCORES_SUBFOLDER}`)
+
+// The files of one name across the folders' lists: a group per name, the greatest `mtimeMs` first, a tie in folder order
+function candidatesByName                                             (byFolder       )        {
+  const groups = new Map             ()
+  for (const file of byFolder.flat()) groups.set(file.name, [...(groups.get(file.name) ?? []), file])
+  return [...groups.values()].map(group => group.sort((first, second) => second.mtimeMs - first.mtimeMs))
+}
+
+return { time, json, parsePlan, parseScores, isFinishedStep, isPlanDone, isPlanRunning, shownPlan, creditedPlan, planView, scoresView, tasksAfter, taskView, taskStatusKey, stepStatusKey, FINISH_SHOWN_MS, newUserNotes, plansRoots, chosenPlansDir, plansDirs, scoresDirs, candidatesByName };
 })();
 return { bandLines: __m['band/band.ts'].bandLines, statusText: __m['band/band.ts'].statusText, underRows: __m['band/band.ts'].underRows, cellsOf: __m['band/wrap.ts'].cellsOf, groupLines: __m['tools/compact.ts'].groupLines, planView: __m['plan/plan.ts'].planView, newRow: __m['agents/agents.ts'].newRow };
 })();
@@ -2821,6 +3074,8 @@ const BandAdapter = (() => {
         ...(Object.keys(agentTypes).length > 0 ? { agentTypes } : {}),
       },
       turns, newFailures: num(d.failures), pace: {}, agents,
+      // The login record's reading: 'unknown' (or a blank) is no known org
+      account: { org: ['', 'unknown'].includes(String(d.org ?? 'Personal').trim()) ? null : String(d.org ?? 'Personal').trim() },
       cache: {
         tier: '1h', tierAt: null, tierBilling: null, config: { pin: null, isIdleCompactOff: false, idleMinTokens: 200_000, isIdleSurface: false },
         ratePerToken: null, rateModel: null, lastRequestAt: m.fresh ? null : now - Math.max(0, 60 - num(d.cacheMin)) * MIN,
@@ -2966,7 +3221,7 @@ const BAND_DATA0 = {
   model: 'Sonnet 5.5', effort: 'high', sessionTime: '9m', tokS: 119, cacheMin: 60,
   ctxUsed: 140, window: 400, trigger: 180, h5: 54, h5Reset: '11.11 20:10', d7: 49, d7Reset: '16.11 03:00',
   cost: 1.26, today: 18.62, turn: 2, turnTime: '5:37', turnTools: 41,
-  youAt: '17:15', claudeAt: '17:13', project: 'my-app', folder: '.claude', branch: 'develop', ahead: 1, behind: 2, added: 41, removed: 30, cc: '2.1.322',
+  org: 'Personal', youAt: '17:15', claudeAt: '17:13', project: 'my-app', folder: '.claude', branch: 'develop', ahead: 1, behind: 2, added: 41, removed: 30, cc: '2.1.322',
   compactAt: 490, scorerVal: 80, failures: 0, planTitle: 'Token refresh', planDone: 3, planTotal: 5, planStep: 'S4 Update interceptor',
   planScore: 85, planPrevScore: 72,
   listed: 57, ofSkills: 60,
@@ -3000,6 +3255,7 @@ const BAND_PRESETS = [
   ['An Alfred Code plan awaiting approval', 'Before you approve it, the plan row says awaiting approval in place of a step; its score shows once it was graded, amber here as 76 is under the scoring bar of 80.', { alfred: true, scorer: true, plan: true, planAwaiting: true }, d => ({ planTitle: 'Waste bin (plannings)', planDone: 0, planTotal: 4, planStep: '', planScore: 76, planPrevScore: 64, agents: noRun(d.agents) })],
   ['Context past 80%', 'Between turns the handoff ask takes the last row: 4, or a click, saves a handoff. It asks again every 5 points, up to 95.', {}, d => ({ ctxUsed: Math.ceil(Number(d.window) * 0.82), agents: noRun(d.agents) })],
   ['Handoff from 70%', 'The user file moves the first ask to 70%; it asks again every 5 points up to 95. "handoff": "auto" would save with no ask, "off" never.', {}, d => ({ ctxUsed: Math.ceil(Number(d.window) * 0.72), agents: noRun(d.agents) }), { user: { handoffAt: 70 } }],
+  ['A company account under REC strict', 'The account is a company, Acme Corp. Under /rec strict line 1 draws ● REC │ org ‹org›, hiding the name; Personal and unknown stay. Set the account in the Account field under Change the session by hand.', { running: true }, d => ({ org: 'Acme Corp' }), { user: { rec: 'strict' } }],
   ['Recording', 'A red ● REC leads line 1. The pinned line under the prompt leaves REC and ctx out while the band shows them.', { running: true }, null, { user: { rec: 'on' } }],
   ['REC from a project file', 'A committed .claude/settings.json says "on" over a user file saying "off": the order holds for REC as for every field. Mid-session REC never falls because a file went quiet - a typo drops the whole file - so it holds until that file says a lower level or the next claude run.', { running: true }, null, { user: { rec: 'off' }, project: { rec: 'on' } }],
   ['Band collapsed', 'Ctrl+X Ctrl+A hides the band above the input. The pinned line then carries REC, and ctx from 60%, since nothing else shows them.', { collapsed: true }, d => ({ ctxUsed: Math.ceil(Number(d.window) * 0.7), agents: noRun(d.agents) }), { user: { rec: 'on' } }],
@@ -3028,7 +3284,7 @@ const FIELDS = [
   ['ctxUsed','Context used, k',1],['window','Window, k',1],['trigger','Alfred Code trigger, k',1],
   ['h5','5h used, %',1],['h5Reset','5h resets'],['d7','7d used, %',1],['d7Reset','7d resets'],
   ['cost','Session cost, $',1],['today','Today, $',1],['turn','Turn number',1],['turnTime','Turn time'],['turnTools','Turn tool calls',1],
-  ['youAt','Your last prompt'],['claudeAt','Claude last reply'],['project','Project'],['folder','Folder Claude works in (blank: the root)'],
+  ['org','Account: Personal, a company name or unknown'],['youAt','Your last prompt'],['claudeAt','Claude last reply'],['project','Project'],['folder','Folder Claude works in (blank: the root)'],
   ['branch','Branch'],['ahead','Commits ahead of the upstream',1],['behind','Commits behind the upstream',1],
   ['added','Lines added, uncommitted',1],['removed','Lines removed, uncommitted',1],['cc','Claude Code version'],
   ['compactAt','Auto-compact at, k (0: unknown)',1],['scorerVal','Scoring bar',1],['failures','New tool failures',1],['planTitle','Plan title'],['planDone','Plan steps done',1],

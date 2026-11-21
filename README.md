@@ -137,7 +137,7 @@ organization's managed settings allow only its own mods
 | No `tools:`, `skills:`, `agents:` and `rules:` rows  | `"bandRows": false`    | -                     |
 | Each tool call's full command and output             | `"quiet": false`       | -                     |
 | Keys, emails and phones masked for a recording       | `"rec": "on"`          | `/rec on`             |
-| Also your user name, home paths and dollar amounts   | `"rec": "strict"`      | `/rec strict`         |
+| Also your name, home paths, amounts, a company name  | `"rec": "strict"`      | `/rec strict`         |
 | The recording over                                   | `"rec": "off"`         | `/rec off`            |
 | A handoff saved by itself before the context fills   | `"handoff": "auto"`    | `/auto-handoff auto`  |
 | No handoff                                           | `"handoff": "off"`     | `/auto-handoff off`   |
@@ -457,7 +457,7 @@ Paths read from the session's working folder; one outside it shows in full.
 
 `"off"` (the default) masks nothing. `"on"` masks keys, emails, phone numbers and your private words wherever the mod
 and Claude Code's message rows draw them, and leads the band with a red `● REC`; `"strict"` also masks your user
-name, home folder paths and dollar amounts. `/rec on|strict|off` sets it ([Recording mode](#recording-mode)).
+name, home folder paths, dollar amounts and a company name in the band. `/rec on|strict|off` sets it ([Recording mode](#recording-mode)).
 
 ```json
 { "alfred-mods": { "rec": "strict" } }
@@ -592,9 +592,11 @@ gives up its Show and Copy buttons. A narrow pane, down to 24 columns, keeps the
 tool's column to keep its counts, and the Timeline leaves out the prompt's time to keep how long each turn took and
 its tokens.
 
-By default the band has an info line under its gauges, and rows under that:
+By default the band has an info line under its gauges, and rows under that. Its first line starts with the account the
+session is signed in to, `org Personal`:
 
 ```text
+org Personal │ ctx ▰▰▰▱▱ 30% │ 5h ▰▱▱▱▱ 15% (19:00) │ 7d 40% (11:00)
 Sonnet 5.5 ◑ high │ 9m │ ≈119 tok/s avg │ cache warm ≈60m │ you 17:15 · Claude 17:13 │ CC 2.1.322
 project: my-app │ git:(develop) +12 −3 │ folder: .claude
 plan:    Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update interceptor
@@ -605,6 +607,17 @@ agents:  ◐ alfred-code:web-angular-verifier ×1 │ ✓ Explore ×2 │ ✓ ge
 rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ web-angular.md │ typescript.md │ 3 always-on · 2 by path
 ```
 
+- **`org`** leads the band's first line in every mode but `"off"`, before the gauges, so a calm or short band shows it
+  too: `org Personal` for a free, Pro or Max plan, the company's name for a Team or Enterprise one (cut to 40 cells), and
+  `org unknown` for a token login or when the config cannot be read, a file over 4 MiB included. It follows `● REC` and
+  comes before Alfred Code's mode banner, and like them it is never dropped for width: where the band's first line does
+  not fit beside it, the marks take that line alone. The account comes from the global config
+  (`$CLAUDE_CONFIG_DIR/.claude.json`, else `~/.claude.json`): the mod reads its `oauthAccount` organization type and
+  name and keeps the shown text alone, at session start, after a `/clear`, a resume or a branch, and at the end of a
+  turn when 5 minutes have passed since the last read. It is a quick check before you open a repository, not proof: the
+  name is the login record on disk, which you can edit and which can lag behind an account switch, and Claude Code does
+  not let a mod ask the server which account is active. The account's web page is the stronger source. Under
+  [REC](#recording-mode) `strict` a company name reads `‹org›`; `Personal` and `unknown` stay.
 - **The info line:** the model and effort, the session's time, the average output speed, the cache, the times of your
   last prompt and Claude's reply, and Claude Code's version. While a turn runs, the band's first line counts the turn's
   tool calls, and the gauges add today's cost. Today's cost is the mod's own count on this machine: sessions it did not
@@ -648,7 +661,8 @@ fullscreen under a tall draft, `project:` goes first, then the info line's secon
 (`rules:`, `agents:`, `skills:`, `tools:`), then `usage:`, then `plan:`, then the whole info line, so the line with its
 buttons stays in view. Once `plan:` goes, its count and score move to line 1 while something needs you
 (`PLAN 1/4 · score 85 ▲13`). The full band keeps its colours when idle too, not only while a turn runs; `"band": "calm"`
-goes back to the two lines, dim until something needs you.
+goes back to the two lines, dim until something needs you; the `org` mark on line 1 keeps its own colours there, as the
+red `● REC` does, so the account reads easily.
 
 `"bandPlace": "under"` draws the band under the input instead. Claude Code draws its own mode line (`⏵⏵ auto mode on`)
 as the first row under the prompt whatever a mod does, so with `"above"` it is the bottom row, under the band and the
@@ -741,10 +755,10 @@ and `/rec off` set it in your user file ([Settings](#settings), [Commands](#comm
 | Level    | Hides                                                                    |
 |----------|--------------------------------------------------------------------------|
 | `on`     | keys, emails, phone numbers and your private words                       |
-| `strict` | the same, plus your local user name, home folder paths and dollar amounts |
+| `strict` | the same, plus your local user name, home folder paths, dollar amounts and a company name in the band (`‹org›`) |
 
 - **It holds** across sessions and restarts while a settings file gives it. Mid-session it never goes down because a
-  file stopped giving it, a typo included ([REC holds](#rec-holds)). A red `● REC` leads the band while it is on.
+  file stopped giving it, a typo included ([REC holds](#rec-holds)). A red `● REC` leads the band while it is on, then `org <account>`.
 - **Where it masks:** the band, every pane tab, toasts, the spinner, the mod's own command output, Claude's messages,
   command output, tool rows (each call drawn as its own row while REC is on; a call still running reads
   `running…`, its live output, its timer, an agent's live steps and its ctrl+o detail hidden until it ends) and Claude's question dialogs. Masked
@@ -829,7 +843,7 @@ In a project where [Alfred Code](https://github.com/envoydev/alfred-code) publis
 through alfred-code 3.12.1, which the mod still reads), the mod reads that one file at the session's start, every 30 seconds and after `/clear`, and shows more:
 
 - **The mode banner:** `auto-run · auto-compact 490k · scoring 80 │` leads the band from the session's start while the
-  stack's auto-run, auto-compact or scoring is on, after `● REC` while recording. `490k` is where Claude Code compacts
+  stack's auto-run, auto-compact or scoring is on, after `● REC` while recording and after the `org` mark. `490k` is where Claude Code compacts
   for the session's model; `auto-compact` alone when the stack does not know it. Where the band's first line does not fit beside it, the banner takes that line alone.
 - **The runway:** while the stack offers a fresh session at a full context, the band's context gauge measures against
   the stack's trigger instead of the window, `ctx ▰▰▰▱▱ 62% of 150k`, and the turns forecast counts to it.

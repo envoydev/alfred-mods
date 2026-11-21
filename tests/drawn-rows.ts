@@ -42,9 +42,19 @@ function pieceOf(n: unknown): string {
   return spaces(p['marginLeft']) + body + spaces(p['marginRight'])
 }
 
+// The band's org mark where no account was read, which every session a test starts draws: 'org unknown', alone on a line
+// or leading one. `rows` leaves it out so the tests of other parts read the band they were written for; the org mark's
+// own tests (tests/band/band-org.test.ts) ask for it with `keepOrg`.
+const UNKNOWN_ORG = /^org unknown(?: │ |$)/
+
 // One string per drawn line. A tree of fitted lines (Boxes keyed `line-*`) gives one row per such Box, its pieces
 // joined; any other tree, one row per innermost Box (one holding no Box), its texts and button labels in order.
-export async function rows(ui: { drawn: () => Promise<RenderElement> }): Promise<string[]> {
+export async function rows(ui: { drawn: () => Promise<RenderElement> }, o: { keepOrg?: boolean } = {}): Promise<string[]> {
+  const all = await allRows(ui)
+  return o.keepOrg === true ? all : all.map(row => row.replace(UNKNOWN_ORG, '')).filter((row, i) => row !== '' || all[i] === '')
+}
+
+async function allRows(ui: { drawn: () => Promise<RenderElement> }): Promise<string[]> {
   const tree = await ui.drawn()
   const lines: El[] = []
   const find = (n: unknown): void => {

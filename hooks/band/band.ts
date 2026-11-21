@@ -1,11 +1,12 @@
 // The band above the prompt, from the session's values to lines of styled segments. Calm by default: colour
 // appears only when a threshold is crossed, something failed or a turn runs.
 import { isLive } from '../agents/agents'
-import { widthOf } from '../core/format'
+import { fitLine, widthOf } from '../core/format'
+import { ORG_STRICT, PERSONAL } from '../account/constants'
 import type { BandInput } from './types'
 import type { RecLevel } from '../rec/types'
 import type { Line, Seg } from '../core/types'
-import { KIT_SHORT, ROW_JOIN } from './constants'
+import { KIT_SHORT, ORG_LABEL, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN } from './constants'
 import { fiveHourPace, gauges, narrowGauges, percentText } from './gauges'
 import { cellsOf } from './wrap'
 import { toolRows } from './detail'
@@ -41,7 +42,7 @@ type Keep = { infoUpTo: number; isPlaceKept: boolean; toolRowsKept: number; isUs
 
 const KEEP_ALL: Keep = { infoUpTo: 2, isPlaceKept: true, toolRowsKept: Infinity, isUsageKept: true, isPlanKept: true }
 
-// A red '● REC' while REC is on, then Alfred Code's mode banner, lead line 1 in every state, never dropped for width:
+// A red '● REC' while REC is on, then the signed-in account's org, then Alfred Code's mode banner, lead line 1 in every state, never dropped for width:
 // the body's first line follows them while it fits what is left, else they take line 1 alone and the body keeps the
 // full width, so no gauge, reset or the cost drops for them
 export function bandLines(input: BandInput): Line[] {
@@ -79,12 +80,22 @@ function firstBeside(input: BandInput, isNarrow: boolean, keep: Keep, marks: Lin
 
 const isSameLine = (left: Line | null, right: Line | null): boolean => left === null || right === null ? left === right : JSON.stringify(left) === JSON.stringify(right)
 
-// REC, Alfred Code's banner, then claude-kit's. The kit's yields first: it keeps a form (full, then `kit`) only where the
+// The signed-in account's mark, as the Claude mobile app names it: 'org Personal', 'org <company name>' cut to 40 cells, or
+// 'org unknown'. Under REC strict a company name draws '‹org›'; Personal and unknown stay. None without an account.
+function orgMark(input: BandInput): Line {
+  const org = input.account?.org
+  if (org === undefined) return []
+  const isCompany = org !== null && org !== PERSONAL
+  const value = org === null ? ORG_UNKNOWN : isCompany && input.rec?.level === 'strict' ? ORG_STRICT : fitLine(org, ORG_MAX_CELLS)
+  return [{ text: ORG_LABEL, tone: 'dim' }, { text: value }]
+}
+
+// REC, the org, Alfred Code's banner, then claude-kit's. The kit's yields first: it keeps a form (full, then `kit`) only where the
 // marks stay within the band and the band's rows are the plain band's, line 1's body items included - the body's first
 // line shares line 1 with the marks exactly where it did without the kit's banner, and loses nothing to the narrower
-// width. Else it is left out, and REC and Alfred Code's banner stay as they are
+// width. Else it is left out, and REC, the org mark and Alfred Code's banner stay as they are
 function marksOf(input: BandInput, isNarrow: boolean, keep: Keep): Line[] {
-  const base: Line[] = [input.rec !== undefined && input.rec.level !== 'off' ? [REC_MARK] : [], input.banner ?? []].filter(segs => segs.length > 0)
+  const base: Line[] = [input.rec !== undefined && input.rec.level !== 'off' ? [REC_MARK] : [], orgMark(input), input.banner ?? []].filter(segs => segs.length > 0)
   const full = input.kitBanner ?? []
   if (full.length === 0) return base
   // With no marks the plain band's line 1 is its body's first line, and where that is none the band draws nothing
@@ -134,7 +145,9 @@ function bandBody(band: BandInput, isNarrow: boolean, keep: Keep): Line[] {
   const ask = handoffAsk(band)
   if (!isHot && band.newFailures === 0 && !band.isWorking && !agentsRun && warning === null && ask === null) {
     // Idle and healthy, the full band keeps its colours, as while it works (the user, 2026-11-12: 'colors by default ...
-    // not only when active work'); the calm band stays one dim line until something needs you
+    // not only when active work'); the calm band stays one dim line until something needs you. Its marks are no part of
+    // that line: line 1's org mark, like the red REC mark, keeps its own tones (a dim label, a plain value) so the
+    // account check reads easily (the owner, 2026-11-21)
     if (band.mode === 'full') return [[...gaugeLine, ...invalid], ...info]
     const calm = isNarrow ? gaugeLine : withTimes(band, gaugeLine)
     const dim = (line: Line): Line => line.map(seg => ('text' in seg ? { text: seg.text, tone: 'dim' as const } : seg))

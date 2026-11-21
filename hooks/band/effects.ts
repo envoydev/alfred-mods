@@ -5,6 +5,7 @@ import { atom, read, update } from 'claude-code'
 import type { Caught, EngineInterface } from 'claude-code'
 import type { BandInput, BandMode, BandSetting } from './types'
 import { readLive, readSession, readPace, readTick, readTotals, readTurns, readUsage } from '../session/effects'
+import { readAccount } from '../account/effects'
 import { readStack, readScoreLevel } from '../stack/effects'
 import { bandLines, statusText, underRows } from './band'
 import { mask } from '../rec/mask'
@@ -106,6 +107,7 @@ async function readBandInput(
     newFailures: (await readFailures($)).filter(failure => failure.isNew).length, pace: await readPace($), agents: await readAgents($),
     cache: await readCache($), plan: drawing.band, isPlanInvalid: drawing.invalid, score: drawing.score, isPlanScore: drawing.isPlanScore, scoreLevel: (await readScoreLevel($)) ?? (await readKitScoreLevel($)), rec: recSummary(await readRec($)),
     forecast: forecastTargetOf(handoff, usage, runway), handoffAskStep: handoff.isAskUp ? handoff.handledStep : null, runway, banner: bannerSegs(st), kitBanner: kitBannerSegs(await readKit($)),
+    account: { org: (await readAccount($)).org },
     mode: setting.mode, totals: await readTotals($), stats: await readStats($),
     isToolsOpen: setting.isToolsOpen === true, skillListing: parts.skills ?? null,
     rules: { always: parts.rules ?? [], byPath: session.pathRules ?? [], isTracked: !at.isLeftOut },

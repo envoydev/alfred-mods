@@ -49,6 +49,9 @@ export type BandInput = {
   // The band drawn under the input (spec 2026-11-11 band-under, U2 and U3): its action row after the gauges, and its
   // buttons pressed by a click (fullscreen) or drawn as the commands that do their jobs (the main screen)
   under?: { buttons: 'click' | 'text' }
+  // What line 1's org mark shows for the signed-in account: 'Personal', a company's name, or null while unknown. The mark
+  // draws 'org <text>' after REC and before Alfred Code's banner; absent, no mark
+  account?: { org: string | null }
 }
 
 export type RulesInput = { always: string[]; byPath: string[]; isTracked: boolean }

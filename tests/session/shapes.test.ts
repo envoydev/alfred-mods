@@ -26,7 +26,7 @@ test('state stored under the tags before the field renames is dropped once', { t
   engine(on)
   await inspect($, 'timeline')
   expect((await rows(await pane($, 'terminal'))).some(l => l.startsWith('7 '))).toBe(false)
-  const band = await rows(await $.ui.mount({ plugin: 'alfred-mods', surface: 'terminal', component: 'AbovePrompt', props: ABOVE }))
+  const band = await rows(await $.ui.mount({ plugin: 'alfred-mods', surface: 'terminal', component: 'AbovePrompt', props: ABOVE }), { keepOrg: true })
   expect(band.some(l => l.includes('75%'))).toBe(false)
   expect(band.length).toBeGreaterThan(0)
 })

@@ -221,6 +221,10 @@ export type PromptOrigin = 'engine' | 'hook' | 'plugin'
 export type PromptPart = { type: string; origin: PromptOrigin; event: string | null; chars: number; text: string; isLeftOut: boolean; at: number }
 export type PromptRecord = { startedAt: number | null; typedChars: number | null; parts: PromptPart[]; dropped: number }
 
+// What the band shows for the signed-in account, from the global config's oauthAccount: 'Personal' for a free, Pro or
+// Max type, else the organization's name; null when unknown (a token login, no config, a read that failed). Nothing else of that file is kept.
+export type Account = { org: string | null }
+
 declare module 'claude-code' {
   interface PluginState {
     'alfred-mods': {
@@ -232,6 +236,7 @@ declare module 'claude-code' {
       stack: Shaped<Stack>
       kit: Shaped<KitState>
       prompt: Shaped<PromptRecord>
+      account: Shaped<Account>
       // Blocks per hook script this session (spec C6), so the failure list's cap loses no count
       blockers: Shaped<Record<string, number>>
       parts: Shaped<Parts>
