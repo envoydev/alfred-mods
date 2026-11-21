@@ -308,7 +308,7 @@ for (const surface of SURFACES) {
     expect(lines[0]?.startsWith('ctx — │ 5h ▱▱▱▱▱ ≈15% (')).toBe(true)
     // The detail rows are open from the first draw (spec 2026-11-11, D1), but each waits for its first item (the user,
     // 2026-11-12), and no usage: with nothing counted
-    expect(lines.slice(1)).toEqual(['Sonnet 5.5 │ <1m │ CC 2.1.322', 'project: w │ git:(main) │ org unknown'])
+    expect(lines.slice(1)).toEqual(['Sonnet 5.5 │ <1m │ CC 2.1.322', 'project: w │ git:(main)'])
   })
 }
 

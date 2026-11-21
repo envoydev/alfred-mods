@@ -52,7 +52,7 @@ test('"band": "off" draws no band above, and "full" brings it back', async ($, o
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await above($, surface)
     // The engine stand-in's own empty line, and nothing of the band
-    expect(await rows(ui)).toEqual([''])
+    expect(await rows(ui, { keepOrg: true })).toEqual([''])
     await ui.unmount()
   }
   await setUser($, kit, { band: 'full' })
@@ -67,7 +67,7 @@ test('"band": "off" with "bandPlace": "under" draws the footer alone', async ($,
   await setUser($, kit, { band: 'off', bandPlace: 'under' })
   const low = await footer($)
   // The engine stand-in's line, its props as text, and nothing of the band
-  expect(await rows(low)).toEqual([JSON.stringify(HINT)])
+  expect(await rows(low, { keepOrg: true })).toEqual([JSON.stringify(HINT)])
   expect(JSON.stringify(await low.drawn())).toContain('? for shortcuts')
   await low.unmount()
 })

@@ -5,15 +5,12 @@ import { KIT_BANNER_LABEL } from '../kit/constants'
 // The labels' width, so the items of every row line up
 export const ROW_LABEL = 9
 
-// The project row's org segment: its label, the cap of the name in cells and what shows for no known org
+// The band's org mark: its label, the cap of a company name in cells and what shows for no known account
 export const ORG_LABEL = 'org '
 
 export const ORG_MAX_CELLS = 40
 
 export const ORG_UNKNOWN = 'unknown'
-
-// A project or branch name is cut down to this many cells before the project row gives up the other name's width
-export const NAME_FLOOR_CELLS = 8
 
 // The joiner between the band's items on a row, drawn dim
 export const ROW_JOIN = ' │ '

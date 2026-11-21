@@ -170,7 +170,7 @@ for (const surface of SURFACES) {
 
   test(`the banner draws unchanged under /rec strict (${surface})`, async ($, on) => {
     await now($, on, surface, { files: { [STATUS]: status() }, store: { 'settings:rec': 'strict' } })
-    expect((await rows(await band($, surface)))[0]?.startsWith('● REC │ auto-run · scoring 80 │ ctx ▰▰▰▱▱ 62% of 150k')).toBe(true)
+    expect((await rows(await band($, surface)))[0]?.startsWith('● REC │ org unknown │ auto-run · scoring 80 │ ctx ▰▰▰▱▱ 62% of 150k')).toBe(true)
   })
 }
 
