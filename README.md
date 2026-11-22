@@ -587,8 +587,8 @@ open session; a bare `/rec` or `/auto-handoff` reads the files again at once. A 
   handoff stands down ([Handoff](#handoff)), and the mod shows the stack's mode banner, the context runway measured
   against the stack's resume trigger, and an ALFRED CODE section whose `f` fills the stack's ready resume prompt
   ([With Alfred Code](#with-alfred-code)).
-- **With claude-kit:** where claude-kit's hook adds its `kit status (` line to your requests, the band's kit banner and
-  a CLAUDE-KIT section in the Now tab show the kit's modes ([With claude-kit](#with-claude-kit)).
+- **With claude-kit:** where the project has claude-kit's `.claude/kit/settings.json`, the band's kit banner and a
+  CLAUDE-KIT section in the Now tab show the kit's modes ([With claude-kit](#with-claude-kit)).
 - **The Prompt tab** (`/inspect prompt`, `m`): what the main loop's last turn carried for the model, besides what you
   typed ([The Prompt tab](#the-prompt-tab)).
 
@@ -884,9 +884,16 @@ plan folder it names.
 
 ## With claude-kit
 
-In a project where claude-kit is installed, its `UserPromptSubmit` hook adds
-a line starting `kit status (` to each request. The mod reads that line from the request, never a file of the kit's, and
-shows its values. The mod does not depend on claude-kit: without the line, none of this draws.
+In a project where claude-kit is installed, the mod reads the kit's `.claude/kit/settings.json` at the project root and
+shows its values. That file and the plan and score files below are the only things it reads of the kit. It reads
+the file at a session's start, after a `/clear` or a resume, on each request (the kit's hook writes it as the request
+starts) and at the end of each turn of the main conversation, and keeps the nine names it knows: `auto_run`, `scoring`
+and `auto_approve` (`"on"` or `"off"`), `pass_score` (a whole number from 1 to 100, a JSON number or a string of digits)
+and the five models `plan_model`, `audit_model`, `review_model`, `implement_model` and `search_model`
+(`"sonnet"`, `"opus"`, `"haiku"` or `"fable"`; a model may be absent). A name it does not know is ignored, and a bad
+value drops that name only: the mod shows the file's values as written, and a value the kit would not accept is left out.
+A file that is absent, is not a JSON object or is over 16 KiB gives no kit data. A read that fails for another reason
+keeps the values as they were. Neither shows a toast or an error. The mod does not depend on claude-kit: without the file, none of this draws.
 
 - **The kit banner:** `kit: auto-run · scoring 90 · auto-approve │` follows Alfred Code's banner on the band's first line,
   naming only the modes that are on (`scoring` carries the pass score). With none on, there is no banner. Where it
@@ -894,9 +901,8 @@ shows its values. The mod does not depend on claude-kit: without the line, none 
 - **The CLAUDE-KIT section** in the Now tab, after ALFRED CODE: a row each for auto-run, scoring and auto-approve with
   its value and the file it comes from (`auto-run on · from .claude/kit/settings.json`), where the scoring row also
   carries the pass score (`scoring on · pass 90 · from .claude/kit/settings.json`), one `models:` row for the five
-  models (`models: plan opus · audit opus · review opus · implement sonnet · search haiku`), the hook's `saved:` or
-  `not saved -` note when it gave one, and `seen <time> ago`. A turn that carries no line leaves the last one shown,
-  so the `seen` age tells how old the values are. A `/clear` keeps the values until the next line.
+  models (`models: plan opus · audit opus · review opus · implement sonnet · search haiku`). A name the file does not
+  set has no row. The values are as of the last read of the file, which is on each request and after each turn.
 - **The score's colour:** Alfred Code's scoring level where it gives one, else the kit's pass score while scoring is on,
   when that is a whole number from 1 to 100.
 - **Plans and scores:** the kit's plans and scores reach the mod through the files in
@@ -906,7 +912,7 @@ shows its values. The mod does not depend on claude-kit: without the line, none 
   `.alfred-mods/`, which the mod reads whatever the field says, and `/alfred-mods:update` moves them to the folder you
   chose.
 
-The mod never writes the kit status line. Only `/alfred-mods:update` moves plan and score files: it copies each one,
+The mod never writes the kit's settings file. Only `/alfred-mods:update` moves plan and score files: it copies each one,
 then removes the source. Add the plans folder you chose (`.alfred-mods/` unless you picked another) to a project's
 `.gitignore`, as the plan and score files the kit publishes there are not for the repository; `/alfred-mods:update`
 adds the line, except for `default`.

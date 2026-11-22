@@ -1,43 +1,57 @@
-// Reads claude-kit's status line. Pure: text in, values out.
-import type { KitStatus, KitValue } from './types'
+// Reads claude-kit's settings file. Pure: text in, values out.
+import { isRecord } from '../core/guards'
+import type { KitValues } from './types'
 import {
-  KIT_HEAD_END, KIT_ITEM, KIT_ITEM_END, KIT_MARKER, KIT_NAMES, KIT_ON, NOT_SAVED_PREFIX, PASS_SCORE_MAX, PASS_SCORE_MIN, SAVED_PREFIX, WHOLE_NUMBER,
+  KIT_FILE, KIT_FILE_MAX_CHARS, KIT_MODEL_NAMES, KIT_MODEL_ROLES, KIT_NAMES, KIT_OFF, KIT_ON, KIT_SWITCH_NAMES, PASS_SCORE_MAX, PASS_SCORE_MIN, WHOLE_NUMBER,
 } from './constants'
 
-// The line's items in order and its note, or null where `text` holds no kit line. The read stops at the first thing that
-// is neither an item nor the note, and keeps what came before it: a newer hook's new item never hides the older ones.
-export function parseKitStatus(text: string): KitStatus | null {
-  const marker = text.indexOf(KIT_MARKER)
-  if (marker === -1) return null
-  const headEnd = text.indexOf(KIT_HEAD_END, marker + KIT_MARKER.length)
-  if (headEnd === -1) return null
-  const entries: [string, KitValue][] = []
-  let saved: string | null = null
-  let rest = text.slice(headEnd + KIT_HEAD_END.length).trimStart()
-  while (rest !== '') {
-    if (rest.startsWith(SAVED_PREFIX) || rest.startsWith(NOT_SAVED_PREFIX)) {
-      const end = rest.lastIndexOf(KIT_ITEM_END)
-      saved = (end === -1 ? rest : rest.slice(0, end)).trim()
-      break
-    }
-    const item = KIT_ITEM.exec(rest)
-    if (item === null) break
-    entries.push([item[1]!, { value: item[2]!, source: item[3]! }])
-    rest = rest.slice(item[0].length).trimStart()
+// Where the file is: under the session's root. A trailing separator of the root goes; the rest of the path stays as the
+// host spells it.
+export const kitPathOf = (root: string): string => `${root.replace(/[\\/]+$/, '')}/${KIT_FILE}`
+
+// The pass score as the kit takes it: a whole number from 1 to 100, written as a JSON number or a string of digits
+function passScoreOf(value: unknown): number | null {
+  const score = typeof value === 'number' ? value : typeof value === 'string' && WHOLE_NUMBER.test(value) ? Number(value) : 0
+  return Number.isInteger(score) && score >= PASS_SCORE_MIN && score <= PASS_SCORE_MAX ? score : null
+}
+
+// Whether a name's value is one it takes
+function isGood(name: string, value: unknown): boolean {
+  if (KIT_SWITCH_NAMES.includes(name)) return value === KIT_ON || value === KIT_OFF
+  if (name === KIT_NAMES.passScore) return passScoreOf(value) !== null
+  return typeof value === 'string' && KIT_MODEL_NAMES.includes(value)
+}
+
+const KNOWN_NAMES: readonly string[] = [...KIT_SWITCH_NAMES, KIT_NAMES.passScore, ...KIT_MODEL_ROLES.map(([, name]) => name)]
+
+// The values of the names the mod knows, each only when its own value is good; a name it does not know is ignored. Null
+// where the text is no kit data: over the size cap, not JSON, or not one object. Only a known name is ever read, so a
+// name such as `__proto__` is never looked at.
+export function parseKitSettings(text: string): KitValues | null {
+  if (text.length > KIT_FILE_MAX_CHARS) return null
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return null
   }
-  // `fromEntries` makes own properties, so a name such as `__proto__` stays a name
-  return { values: Object.fromEntries(entries), saved }
+  if (!isRecord(parsed)) return null
+  const values: KitValues = {}
+  for (const name of KNOWN_NAMES) {
+    const value = Object.hasOwn(parsed, name) ? parsed[name] : undefined
+    if (!isGood(name, value)) continue
+    values[name] = name === KIT_NAMES.passScore ? (passScoreOf(value) as number) : (value as string)
+  }
+  return values
 }
 
-export function isKitOn(status: KitStatus, name: string): boolean {
-  return status.values[name]?.value === KIT_ON
+export function isKitOn(values: KitValues, name: string): boolean {
+  return values[name] === KIT_ON
 }
 
-// The pass score while scoring is on, and only as a whole number from 1 to 100
-export function kitPassScore(status: KitStatus): number | null {
-  if (!isKitOn(status, KIT_NAMES.scoring)) return null
-  const written = status.values[KIT_NAMES.passScore]?.value
-  if (written === undefined || !WHOLE_NUMBER.test(written)) return null
-  const score = Number(written)
-  return score >= PASS_SCORE_MIN && score <= PASS_SCORE_MAX ? score : null
+// The pass score while scoring is on
+export function kitPassScore(values: KitValues): number | null {
+  if (!isKitOn(values, KIT_NAMES.scoring)) return null
+  const score = values[KIT_NAMES.passScore]
+  return typeof score === 'number' ? score : null
 }

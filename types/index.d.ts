@@ -206,12 +206,11 @@ export type Parts = {
 }
 export type SkillListing = { listed: number; total: number; tokens: number }
 
-// claude-kit's status line as the mod reads it: each setting by name with the value and the source the line gives, in the
-// line's order, and the note the hook adds when it saved or refused a change (`saved:` or `not saved -`), else null
-export type KitValue = { value: string; source: string }
-export type KitStatus = { values: Record<string, KitValue>; saved: string | null }
-// `seenAt`, the clock time of the turn whose line this is
-export type KitState = { status: KitStatus | null; seenAt: number | null }
+// claude-kit's settings file (`.claude/kit/settings.json`) as the mod reads it: each name the mod knows whose value is
+// good, by the file's own name - a switch is 'on' or 'off', a model a model name, the pass score a whole number
+export type KitValues = Record<string, string | number>
+// `values`, null while there is no kit data: no file, one that cannot be read, or one that is no object
+export type KitState = { values: KitValues | null }
 
 // What a main turn's requests carried for the model: each part is one `prompt.attachment`, kept as the engine's answer
 // resolved it. `chars` is the full length, `text` at most MAX_PART_CHARS of it. `startedAt` is null before the

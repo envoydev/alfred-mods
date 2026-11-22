@@ -1,3 +1,3 @@
-// claude-kit's status line, as the mod reads it
-import type { KitState, KitStatus, KitValue } from '../../types'
-export type { KitState, KitStatus, KitValue }
+// claude-kit's settings file, as the mod reads it
+import type { KitState, KitValues } from '../../types'
+export type { KitState, KitValues }

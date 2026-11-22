@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { bandLines } from '../../hooks/band/band'
 import { widthOf } from '../../hooks/core/format'
-import { kitPassScore, parseKitStatus } from '../../hooks/kit/kit'
+import { kitPassScore } from '../../hooks/kit/kit'
 import { kitBannerSegs, kitLines } from '../../hooks/kit/kitlines'
 import { scoreSeg } from '../../hooks/plan/planlines'
 import type { BandInput } from '../../hooks/band/types'
@@ -10,11 +10,11 @@ import type { Line, Seg } from '../../hooks/core/types'
 import type { Usage } from '../../hooks/session/types'
 import type { KitState } from '../../hooks/kit/types'
 import type { ScoresView } from '../../hooks/plan/types'
-import { LINE, LINE_NOT_SAVED, LINE_SAVED } from './lines'
+import { KIT_VALUES } from './settings'
 
 const NOW = Date.parse('2026-11-19T14:00:00Z')
-const kitOf = (line: string, seenAt: number | null = NOW - 3 * 60_000): KitState => ({ status: parseKitStatus(line), seenAt })
-const NO_KIT: KitState = { status: null, seenAt: null }
+const kitOf = (values: Record<string, string | number> = KIT_VALUES): KitState => ({ values })
+const NO_KIT: KitState = { values: null }
 
 const text = (line: readonly Seg[]): string => line.map(seg => ('text' in seg ? seg.text : 'button' in seg ? `[ ${seg.button.label} ]` : '')).join('')
 const texts = (lines: Line[]): string[] => lines.map(text)
@@ -60,35 +60,36 @@ function input(o: Partial<BandInput> = {}): BandInput {
 }
 
 test("the kit banner reads each mode that is on, with auto-run in 'warn' as Alfred Code's banner has it", () => {
-  const segs = kitBannerSegs(kitOf(LINE))
+  const segs = kitBannerSegs(kitOf())
   expect(text(segs)).toBe('kit: auto-run · scoring 90 · auto-approve')
   expect(segs.find(seg => 'text' in seg && seg.text === 'auto-run')).toMatchObject({ tone: 'warn' })
 })
 
 test('with only scoring on, the kit banner is the scoring and its level', () => {
-  const only = parseKitStatus(LINE_NOT_SAVED)
-  expect(text(kitBannerSegs({ status: only, seenAt: NOW }))).toBe('kit: scoring 90')
+  expect(text(kitBannerSegs(kitOf({ scoring: 'on', pass_score: 90, auto_run: 'off' })))).toBe('kit: scoring 90')
+  expect(text(kitBannerSegs(kitOf({ scoring: 'on' })))).toBe('kit: scoring')
 })
 
-test('with every mode off, or no kit line, the kit banner is empty', () => {
-  const off = parseKitStatus(LINE_NOT_SAVED.replace('scoring=on', 'scoring=off'))
-  expect(kitBannerSegs({ status: off, seenAt: NOW })).toEqual([])
+test('with every mode off, or no kit data, the kit banner is empty', () => {
+  expect(kitBannerSegs(kitOf({ scoring: 'off', auto_run: 'off', auto_approve: 'off', pass_score: 90, plan_model: 'opus' }))).toEqual([])
+  expect(kitBannerSegs(kitOf({}))).toEqual([])
   expect(kitBannerSegs(NO_KIT)).toEqual([])
 })
 
-test('no kit line draws nothing', () => {
-  expect(kitLines(NO_KIT, NOW, 120)).toEqual([])
+test('no kit data draws nothing', () => {
+  expect(kitLines(NO_KIT, 120)).toEqual([])
+  expect(kitLines(kitOf({}), 120)).toEqual([])
   expect(kitBannerSegs(NO_KIT)).toEqual([])
 })
 
 test('the band leads line 1 with REC, Alfred Code\'s banner, then the kit banner', () => {
-  const lines = bandLines(input({ rec: REC, banner: ALFRED_BANNER, kitBanner: kitBannerSegs(kitOf(LINE)) }))
+  const lines = bandLines(input({ rec: REC, banner: ALFRED_BANNER, kitBanner: kitBannerSegs(kitOf()) }))
   expect(text(lines[0] ?? []).startsWith('● REC │ auto-run · auto-compact 490k · scoring 80 │ kit: auto-run · scoring 90 · auto-approve │ ')).toBe(true)
 })
 
 test('at 60 columns the kit banner shortens to kit or goes, and no gauge, reset or cost drops for it', () => {
   const marks = { rec: REC, banner: ALFRED_BANNER }
-  const kitBanner = kitBannerSegs(kitOf(LINE))
+  const kitBanner = kitBannerSegs(kitOf())
   for (const columns of [60, 54, 50]) {
     for (const maxRows of [undefined, 2]) {
       const base = { columns, usage: NARROW_USAGE, ...(maxRows === undefined ? {} : { maxRows }), ...marks }
@@ -113,30 +114,28 @@ test('at 60 columns the kit banner shortens to kit or goes, and no gauge, reset 
   expect(text(twoRows[1] ?? [])).toContain('ctx')
 })
 
-test('the section carries each setting with its source, the models and the age of the line', () => {
-  const lines = kitLines(kitOf(LINE), NOW, 120)
+test('the section carries each switch with its file, the pass score on the scoring row and the models, and no age or note', () => {
+  const lines = kitLines(kitOf(), 120)
   expect(lines[0]).toEqual([{ text: 'CLAUDE-KIT', bold: true }])
   expect(texts(lines.slice(1))).toEqual([
     'auto-run on · from .claude/kit/settings.json',
-    'scoring on · pass 90 · from default',
+    'scoring on · pass 90 · from .claude/kit/settings.json',
     'auto-approve on · from .claude/kit/settings.json',
     'models: plan opus · audit opus · review opus · implement sonnet · search haiku',
-    'seen 3m ago',
   ])
 })
 
-test('a saved note and a not-saved note each take a row', () => {
-  const saved = texts(kitLines(kitOf(LINE_SAVED), NOW, 120))
-  expect(saved).toContain('saved: scoring=off in .claude/kit/settings.json')
-  expect(saved).toContain('scoring off · from .claude/kit/settings.json')
-  const refused = texts(kitLines(kitOf(LINE_NOT_SAVED), NOW, 120))
-  expect(refused.some(row => row.startsWith('not saved - saving changes the file of the repo'))).toBe(true)
+test('a name the file does not set has no row, a model may be absent, and the pass score shows only while scoring is on', () => {
+  expect(texts(kitLines(kitOf({ scoring: 'off', pass_score: 90, plan_model: 'opus', search_model: 'haiku' }), 120).slice(1))).toEqual([
+    'scoring off · from .claude/kit/settings.json', 'models: plan opus · search haiku',
+  ])
+  expect(texts(kitLines(kitOf({ auto_run: 'off' }), 120).slice(1))).toEqual(['auto-run off · from .claude/kit/settings.json'])
 })
 
 // The kit banner never adds a row or moves a gauge: the rows under line 1 and the row count are the plain band's.
 // Where the plain band's marks share line 1 with the body, so do the kit's (the body's first line stays on line 1)
 test('a kit banner that fits the width but would push the body off line 1 is shortened or left out', () => {
-  const kitBanner = kitBannerSegs(kitOf(LINE))
+  const kitBanner = kitBannerSegs(kitOf())
   const cases: { columns: number; mode: 'full' | 'calm'; marks: Partial<BandInput>; maxRows?: number }[] = [
     { columns: 140, mode: 'full', marks: { rec: REC, banner: ALFRED_BANNER } },
     { columns: 140, mode: 'full', marks: { rec: REC, banner: ALFRED_BANNER }, maxRows: 2 },
@@ -175,8 +174,7 @@ const view = (total: number): ScoresView => ({
 })
 
 test("the score takes the kit's pass level: ok at or over it, warn under it", () => {
-  const status = parseKitStatus(LINE)
-  const level = status === null ? null : kitPassScore(status)
+  const level = kitPassScore(KIT_VALUES)
   expect(level).toBe(90)
   expect(scoreSeg(view(91), level)[0]).toMatchObject({ text: 'score 91', tone: 'ok' })
   expect(scoreSeg(view(85), level)[0]).toMatchObject({ text: 'score 85', tone: 'warn' })

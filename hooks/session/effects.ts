@@ -17,6 +17,7 @@ import { WINDOW_LABEL } from '../band/constants'
 import { resetAtOf } from '../band/gauges'
 import { trackAgentStep, finishLoop, readAgents, readLoops, updateAgentRow } from '../agents/effects'
 import { refreshAccount } from '../account/effects'
+import { refreshKit } from '../kit/effects'
 import { addStepMark, closeLoopSlices, openLoopSlice, schedulePlanReload } from '../plan/effects'
 import type { Pending, HookInput, HookNext } from '../core/types'
 import { addCacheRequest, armCacheToast, readCacheConfig } from '../cache/effects'
@@ -447,9 +448,10 @@ export async function trackTurnEnd($: EngineInterface, e: HookInput<'turn.comple
     await readCacheConfig($)
     await armCacheToast($, pending)
     schedulePlanReload($, pending)
-    // Off the hook: the config read waits for the clock's next turn
+    // Off the hook: the config and kit reads wait for the clock's next turn
     $.clock.after(0, () => {
       refreshAccount($, false).catch(() => undefined)
+      refreshKit($).catch(() => undefined)
     })
   }
   return done

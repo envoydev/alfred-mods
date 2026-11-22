@@ -175,7 +175,7 @@ export async function drawInspectPane($: EngineInterface, e: MatchedInput<'ui.re
     now, columns: e.props.bodyColumns, isWorking: counts.turnId !== null, live: counts, usage,
     session, turns: await readTurns($), newFailures: rows.filter(failure => failure.isNew).length,
     pace: await readPace($), failures: rows, stats: await readStats($), totals: await readTotals($), view: shown,
-    agents: await readAgents($), cache: await readCache($), plan: drawing.band, isPlanInvalid: drawing.invalid, score: drawing.score, isPlanScore: drawing.isPlanScore, scoreLevel: (await readScoreLevel($)) ?? (kit.status === null ? null : kitPassScore(kit.status)), blockers: await readBlockers($), parts: await readParts($),
+    agents: await readAgents($), cache: await readCache($), plan: drawing.band, isPlanInvalid: drawing.invalid, score: drawing.score, isPlanScore: drawing.isPlanScore, scoreLevel: (await readScoreLevel($)) ?? (kit.values === null ? null : kitPassScore(kit.values)), blockers: await readBlockers($), parts: await readParts($),
     loops: await readLoops($),
     rec: recSummary(await readRec($)), forecast: forecastTargetOf(handoff, usage, runway),
     handoff: handoffViewOf(handoff, usage, counts.turnId !== null, runway),

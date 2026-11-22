@@ -8,9 +8,8 @@ import type { RenderSurface } from 'claude-code'
 import { bandLines } from '../../hooks/band/band'
 import { widthOf } from '../../hooks/core/format'
 import { kitBannerSegs } from '../../hooks/kit/kitlines'
-import { parseKitStatus } from '../../hooks/kit/kit'
 import { START, engine, rows, stubAll } from '../kit'
-import { LINE } from '../kit/lines'
+import { KIT_VALUES } from '../kit/settings'
 import type { BandInput } from '../../hooks/band/types'
 import type { Cache } from '../../hooks/cache/types'
 import type { Line, Seg } from '../../hooks/core/types'
@@ -125,12 +124,12 @@ test("the order is REC, the org, then Alfred Code's banner", () => {
 })
 
 test('the kit banner follows the others while the marks and the body fit', () => {
-  const kitBanner = kitBannerSegs({ status: parseKitStatus(LINE), seenAt: NOW - 60_000 })
+  const kitBanner = kitBannerSegs({ values: KIT_VALUES })
   expect(first({ rec: REC, banner: BANNER, kitBanner })).toContain('scoring 80 │ kit: ')
 })
 
 test('the kit banner still yields first: it shortens to kit or goes, and the org stays', () => {
-  const kitBanner = kitBannerSegs({ status: parseKitStatus(LINE), seenAt: NOW - 60_000 })
+  const kitBanner = kitBannerSegs({ values: KIT_VALUES })
   for (const columns of [60, 54, 50]) {
     const base: Partial<BandInput> = { columns, rec: REC }
     const plain = bandLines(input(base))

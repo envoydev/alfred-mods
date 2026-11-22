@@ -31,7 +31,8 @@ async function start($: Engine, on: On, o: Parameters<typeof stubAll>[1] = {}, b
 // The paths a run asked about, in order: one under a root (`/w`, `/moved`) as the mod built it with the drive Windows adds
 // dropped, and the relative path, which the kit resolves against the mod's own folder, as `RELATIVE`
 const RELATIVE = 'relative'
-const seen = (exists: string[]): string[] => exists.map(p => p.replace(/^[A-Za-z]:/, '')).map(p => (/^\/(w|moved)\//.test(p) ? p : RELATIVE))
+// The kit's own settings file is checked when its read fails: not a path of the stack's status file
+const seen = (exists: string[]): string[] => exists.filter(p => !p.endsWith('.claude/kit/settings.json')).map(p => p.replace(/^[A-Za-z]:/, '')).map(p => (/^\/(w|moved)\//.test(p) ? p : RELATIVE))
 // How many reads asked for the relative file: the read order's last candidate, so a read that finds nothing asks it once
 const asked = (exists: string[], path: string): number => exists.filter(p => p.endsWith(`/${path}`) && seen([p])[0] === RELATIVE).length
 
