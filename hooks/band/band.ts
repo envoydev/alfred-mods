@@ -12,7 +12,7 @@ import { cellsOf } from './wrap'
 import { toolRows } from './detail'
 import { placeRow, planRow, usageRow } from './project'
 import { infoRows } from './info'
-import { cacheWarning, handoffAsk, lastTurn, underButton, withPlanTail, withTimes, withToday, workingLine } from './working'
+import { cacheWarning, handoffAsk, lastTurn, skipAsk, underButton, withPlanTail, withTimes, withToday, workingLine } from './working'
 
 export const REC_MARK: Seg = { text: '● REC', tone: 'fail', bold: true }
 
@@ -143,7 +143,8 @@ function bandBody(band: BandInput, isNarrow: boolean, keep: Keep): Line[] {
   const agentsRun = band.agents.some(agent => isLive(agent.status))
   const warning = cacheWarning(band, true)
   const ask = handoffAsk(band)
-  if (!isHot && band.newFailures === 0 && !band.isWorking && !agentsRun && warning === null && ask === null) {
+  const skip = skipAsk(band)
+  if (!isHot && band.newFailures === 0 && !band.isWorking && !agentsRun && warning === null && ask === null && skip === null) {
     // Idle and healthy, the full band keeps its colours, as while it works (the user, 2026-11-12: 'colors by default ...
     // not only when active work'); the calm band stays one dim line until something needs you. Its marks are no part of
     // that line: line 1's org mark, like the red REC mark, keeps its own tones (a dim label, a plain value) so the
@@ -157,7 +158,7 @@ function bandBody(band: BandInput, isNarrow: boolean, keep: Keep): Line[] {
   const failed: Line = band.newFailures > 0
     ? [{ text: `✗ ${band.newFailures} new `, tone: 'fail' }, underButton(band, { key: 'inspect', label: 'Inspect', hotkey: '1' }, '/inspect')]
     : []
-  const items = [warning, ask, failed].filter((item): item is Line => item !== null && item.length > 0)
+  const items = [warning, ask, skip, failed].filter((item): item is Line => item !== null && item.length > 0)
   const joined: Line = items.flatMap((item, i) => (i === 0 ? item : [{ text: '    ' }, ...item]))
   // Under the input the action row comes first, nearest the input as above it is the last (the user, 2026-11-12, over
   // band-under U2's place after the gauges), so a cut at the screen's edge takes the detail rows first; its commands are

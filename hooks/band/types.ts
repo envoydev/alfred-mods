@@ -27,6 +27,8 @@ export type BandInput = {
   forecast?: { at: number; label: string }
   // The step F8's ask is up for, or null
   handoffAskStep?: number | null
+  // The skip ask (spec 2026-11-23, D3) is up: a managed plugin skipped the mod's hooks and the option is off
+  isSkipAskUp?: boolean
   // Alfred Code's runway, which the ctx item measures against while it applies, and the mode banner that leads line 1
   runway?: Runway | null
   banner?: Seg[]

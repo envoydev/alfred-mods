@@ -32,6 +32,8 @@ import { mask } from '../rec/mask'
 import { runwayOf } from '../stack/stack'
 import { readKit } from '../kit/effects'
 import { kitPassScore } from '../kit/kit'
+import { leaveOutSkipped, neverAskSkip } from '../skip/effects'
+import { SKIP_USAGE, SKIP_WORDS } from '../skip/constants'
 
 const INITIAL_VIEW: View = { tab: 'now', expandedIds: [], pinnedPlan: null }
 const viewAtom = atom({ plugin: 'alfred-mods', key: 'view' } as const, INITIAL_VIEW, { shape: 'view-4' })
@@ -82,6 +84,13 @@ async function runBandCommand($: EngineInterface, word: string): Promise<string>
   await loadSettings($)
   const resolved = resolvedSettings()
   return `Band: ${resolved?.values.band ?? DEFAULTS.band} - from ${sourceLabel(resolved?.from.band ?? 'default', '/band')}. ${BAND_HELP}`
+}
+
+// '/inspect skip leave|never': the skip ask's two buttons as commands, for the main screen where nothing takes a click
+async function runSkipCommand($: EngineInterface, word: string): Promise<string> {
+  if (word === SKIP_WORDS.leave) return leaveOutSkipped($)
+  if (word === SKIP_WORDS.never) return neverAskSkip($)
+  return SKIP_USAGE
 }
 
 // '/inspect show [n]' and '/inspect copy [n]': the failure whose row starts with n, the newest when n is left out
@@ -143,6 +152,7 @@ export async function runInspectCommand($: EngineInterface, e: MatchedInput<'com
   if (word === 'show' || word === 'copy') return { text: mask(await runFailureCommand($, word, words[1])) }
   if (word === 'report') return { text: mask(await runReportCommand($, words[1])) }
   if (word === 'fill') return { text: await fillStackPrompt($) }
+  if (word === 'skip') return { text: mask(await runSkipCommand($, (words[1] ?? '').toLowerCase())) }
   const tab = TAB_NAMES.find(name => name === (word === '' ? 'now' : word))
   if (tab === undefined) return { text: INSPECT_HELP }
   if (tab === 'plan') {

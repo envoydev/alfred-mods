@@ -22,6 +22,7 @@ import { staleKeys } from '../plan/steptime'
 import { resetPrompt } from '../prompt/effects'
 import { refreshKit } from '../kit/effects'
 import { readTranscriptIfDue, resetTranscript } from '../transcript/effects'
+import { watchSkipNotices } from '../skip/effects'
 
 // The conversation the mod last started, by session id, and the start-over running. A /clear, a resume or a branch goes
 // on under a new id: classic.SessionStart starts it over, and where a managed plugin keeps that hook from the mod, the
@@ -185,11 +186,13 @@ export async function followSessionStart($: EngineInterface, e: HookInput<'class
   return result
 }
 
-export async function startSession($: EngineInterface, e: HookInput<'session.start'>, next: HookNext<'session.start'>, calls: Map<string, ToolCall>, pending: Pending) {
+export async function startSession($: EngineInterface, e: HookInput<'session.start'>, next: HookNext<'session.start'>, calls: Map<string, ToolCall>, pending: Pending, isLeftOut: boolean) {
   const started = await next(e)
   await $.command.register({ name: 'inspect', description: 'Session metrics, agents, tool failures, cache, the timeline, the plan and the last prompt in a pane', argumentHint: '[now|usage|agents|tools|cache|timeline|plan [name]|prompt|close|show [n]|copy [n]|report [n]|fill|band off|calm|full]' })
   await $.command.register({ name: 'rec', description: 'Recording mode: set "rec" in ~/.claude/settings.json, show the level, test it, or edit your private words', argumentHint: '[on|strict|off|test|words [close]]' })
   await $.command.register({ name: 'auto-handoff', description: 'Save a handoff now, set the handoff mode or first ask in ~/.claude/settings.json, or show them', argumentHint: '[ask|auto|off|at <percent>|now|compact|later]' })
+  // A skip notice the transcript reader finds raises the ask, unless the hooks are left out already
+  watchSkipNotices($, isLeftOut)
   await readRecHome($)
   await loadSettings($, true)
   await refreshAccount($, true)

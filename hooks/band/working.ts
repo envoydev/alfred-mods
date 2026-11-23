@@ -9,6 +9,7 @@ import type { Live } from '../session/types'
 import type { Line, Seg } from '../core/types'
 import { ROW_JOIN } from './constants'
 import { percentText, times } from './gauges'
+import { ASK_BUTTONS, ASK_TEXT } from '../skip/constants'
 
 type ButtonSeg = Extract<Seg, { button: unknown }>['button']
 
@@ -134,6 +135,18 @@ export function cacheWarning(input: BandInput, hasHotkey: boolean): Line | null 
 export function handoffAsk(input: BandInput): Line | null {
   if (input.handoffAskStep === undefined || input.handoffAskStep === null) return null
   return [{ text: `⚠ ctx past ${input.handoffAskStep}% `, tone: 'warn' }, underButton(input, { key: 'handoff', label: 'Handoff', hotkey: '4', tone: 'handoff' }, '/auto-handoff now')]
+}
+
+// D3's ask beside it: the managed plugin skipped the mod's hooks; its two buttons take hotkeys 5 and 6
+export function skipAsk(input: BandInput): Line | null {
+  if (input.isSkipAskUp !== true) return null
+  const { leave, never } = ASK_BUTTONS
+  return [
+    { text: ASK_TEXT, tone: 'warn' },
+    underButton(input, { key: leave.key, label: leave.label, hotkey: leave.hotkey, tone: 'warn' }, leave.command),
+    { text: ' ' },
+    underButton(input, { key: never.key, label: never.label, hotkey: never.hotkey, tone: 'warn' }, never.command),
+  ]
 }
 
 // The idle line 1 with ' │ PLAN 3/5 · score 81 ▲13' while it fits

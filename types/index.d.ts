@@ -235,6 +235,10 @@ export type Account = { org: string | null }
 // The file's path is asked of the engine at each run and never kept: it holds the home folder.
 export type TranscriptReader = { sessionId: string | null; offset: number; isInLongLine: boolean }
 
+// The skip ask (spec 2026-11-23, D3): `isSkipped` once the transcript showed a skip notice for this plugin, `isAskUp`
+// while the band asks whether to leave the skipped hooks out
+export type SkipAsk = { isSkipped: boolean; isAskUp: boolean }
+
 declare module 'claude-code' {
   interface PluginState {
     'alfred-mods': {
@@ -252,6 +256,7 @@ declare module 'claude-code' {
       parts: Shaped<Parts>
       loops: Shaped<Loop[]>
       transcript: Shaped<TranscriptReader>
+      skip: Shaped<SkipAsk>
     }
   }
 }

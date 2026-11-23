@@ -1,7 +1,8 @@
 import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { SPAWN, START, SWITCH, engine, stubAll } from '../kit'
+import { SPAWN, START, SWITCH, emptyState, engine, stubAll } from '../kit'
+import type { PromptRecord } from '../../hooks/prompt/types'
 
 // The rules file Claude Code reports loaded, as tests/band/band-rows.test.ts raises it
 const LOAD = { file_path: '/w/.claude/rules/web.md', memory_type: 'Project', load_reason: 'path_glob_match', globs: ['src/**/*.ts'], trigger_file_path: '/w/src/app.ts' } as never
@@ -40,3 +41,15 @@ for (const [name, raise, answer] of CASES) {
     expect(await raise($)).toEqual(answer)
   })
 }
+
+// The notices named `prompt.attachment`, so it joins the hooks the option leaves out: no part reaches the record
+test('with leave_out_skipped_hooks, no prompt.attachment hook is registered', { options: { leave_out_skipped_hooks: true } }, async ($, on) => {
+  const { clock } = stubAll(on)
+  const state = emptyState(on, ['prompt'])
+  engine(on)
+  await $.session.start(START)
+  await $.turn.start({ text: 'hello', turnId: 't1' })
+  await $.prompt.attachment({ type: 'date', text: 'Today is a day', origin: { kind: 'engine' } })
+  await clock.advance(250)
+  expect((state.get('prompt') as PromptRecord).parts).toEqual([])
+})
