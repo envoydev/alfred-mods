@@ -24,6 +24,16 @@ test('a user rule keys by type and name, never its folder', () => {
   expect(ruleEntry('/Users/jane/.claude/rules/voice.md', 'User', '/work/app'))
     .toEqual({ key: 'User:voice.md', label: 'voice' })
 })
+test('a user rule in an ancestor of the root still keys by type and name', () => {
+  expect(ruleEntry('/Users/jane/.claude/rules/voice.md', 'User', '/Users/jane/work/app'))
+    .toEqual({ key: 'User:voice.md', label: 'voice' })
+})
+test('two spellings of a windows path give one key, the label keeping the source case', () => {
+  const upper = ruleEntry('C:\\work\\app\\Web\\.claude\\rules\\x.md', 'Project', 'c:/work/app')
+  const lower = ruleEntry('C:\\work\\app\\web\\.claude\\rules\\x.md', 'Project', 'c:/work/app')
+  expect(upper?.key).toBe(lower?.key)
+  expect(upper).toEqual({ key: 'web/.claude/rules/x.md', label: 'Web:x' })
+})
 test('windows path keys without case', () => {
   expect(ruleEntry('C:\\work\\app\\web\\.claude\\rules\\x.md', 'Project', 'c:/work/app'))
     .toEqual({ key: 'web/.claude/rules/x.md', label: 'web:x' })

@@ -25,20 +25,21 @@ function placed(path: string, root: string) {
   return { file, base, fold, isRootless: base === '' || DRIVE_ROOT.test(base) }
 }
 
-// The key and label of a file known to be a rule; `isLinked` for one a link under the root reaches, which reads as the root's own
+// The key and label of a file known to be a rule; a key is folded to lower case on a drive path, a User rule above the
+// root keys by type and name, never by a `..` path. `isLinked` for one a link under the root reaches, which reads as the root's own
 function entryOf(path: string, type: string, root: string, isLinked: boolean): RuleEntry {
   const { file, base, fold, isRootless } = placed(path, root)
   const name = baseName(file).replace(MD_SUFFIX, '')
-  const typed: RuleEntry = { key: `${type}:${baseName(file)}`, label: name }
+  const typed: RuleEntry = { key: `${type}:${fold(baseName(file))}`, label: name }
   if (isRootless) return typed
   const cut = file.indexOf(RULES_DIR)
   const owner = cut < 0 ? null : file.slice(0, cut)
   const isOwnerBelow = owner !== null && fold(owner).startsWith(`${fold(base)}/`)
   const label = isLinked || type === 'User' || !isOwnerBelow ? name : `${owner.slice(base.length + 1)}:${name}`
-  if (fold(file).startsWith(`${fold(base)}/`)) return { key: file.slice(base.length + 1), label }
-  if (owner !== null && (fold(base) === fold(owner) || fold(base).startsWith(`${fold(owner)}/`))) {
+  if (fold(file).startsWith(`${fold(base)}/`)) return { key: fold(file.slice(base.length + 1)), label }
+  if (type !== 'User' && owner !== null && (fold(base) === fold(owner) || fold(base).startsWith(`${fold(owner)}/`))) {
     const climbs = base.slice(owner.length).split('/').filter(part => part !== '').length
-    return { key: `${'../'.repeat(climbs)}${file.slice(owner.length + 1)}`, label }
+    return { key: fold(`${'../'.repeat(climbs)}${file.slice(owner.length + 1)}`), label }
   }
   return { key: typed.key, label }
 }

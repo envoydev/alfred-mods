@@ -5,6 +5,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, SessionContextBreakdown } from 'claude-code'
 import type { Parts } from './types'
 import { NO_PARTS, partsOf } from './parts'
+import { TRAILING_SLASHES } from './constants'
 import { assumedRuleEntry, ruleEntry, ruleName, slashed } from './rules'
 import { baseName } from '../place/place'
 import type { HookInput, HookNext } from '../core/types'
@@ -52,11 +53,11 @@ async function findLinkedRules($: EngineInterface, breakdown: SessionContextBrea
       const path = `${dir}/${entry.name}`
       if (entry.isLink) {
         const real = (await $.fs.stat(path, { resolve: true }).catch(() => undefined))?.realPath
-        if (real !== undefined) ends.push(slashed(real).replace(/\/+$/, ''))
+        if (real !== undefined) ends.push(slashed(real).replace(TRAILING_SLASHES, ''))
       } else if (entry.kind === 'dir' && depth < 3) await walk(path, depth + 1)
     }
   }
-  await walk(`${slashed(root).replace(/\/+$/, '')}/.claude/rules`, 0)
+  await walk(`${slashed(root).replace(TRAILING_SLASHES, '')}/.claude/rules`, 0)
   linkMemory.ends = ends
   const found = new Set<string>()
   if (ends.length === 0) return found
