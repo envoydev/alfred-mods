@@ -20,3 +20,6 @@ export const WINDOW_LABEL: Readonly<Record<string, string>> = { five_hour: '5h',
 
 // claude-kit's banner as the narrow band shortens it
 export const KIT_SHORT: Seg[] = [{ text: KIT_BANNER_LABEL, tone: 'dim' }]
+
+// What ends the rules row's counts where the transcript reader cannot count by path
+export const TRANSCRIPT_NOTE = { unread: 'transcript unread', 'not-found': 'transcript not found' } as const

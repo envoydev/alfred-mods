@@ -230,6 +230,11 @@ export type PromptRecord = { startedAt: number | null; typedChars: number | null
 // Max type, else the organization's name; null when unknown (a token login, no config, a read that failed). Nothing else of that file is kept.
 export type Account = { org: string | null }
 
+// Where the transcript reader stands in the main conversation's transcript file: the session id it reads for, the byte
+// offset of the next line start, and whether it is inside a line past one chunk, which it drops to the next newline.
+// The file's path is asked of the engine at each run and never kept: it holds the home folder.
+export type TranscriptReader = { sessionId: string | null; offset: number; isInLongLine: boolean }
+
 declare module 'claude-code' {
   interface PluginState {
     'alfred-mods': {
@@ -246,6 +251,7 @@ declare module 'claude-code' {
       blockers: Shaped<Record<string, number>>
       parts: Shaped<Parts>
       loops: Shaped<Loop[]>
+      transcript: Shaped<TranscriptReader>
     }
   }
 }

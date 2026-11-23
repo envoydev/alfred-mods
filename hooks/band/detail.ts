@@ -6,7 +6,7 @@ import type { RuleEntry } from '../context/types'
 import type { BandInput, RulesInput } from './types'
 import type { ToolStat } from '../tools/types'
 import type { Line, Seg } from '../core/types'
-import { ROW_JOIN, ROW_LABEL } from './constants'
+import { ROW_JOIN, ROW_LABEL, TRANSCRIPT_NOTE } from './constants'
 import { wrapRows } from './wrap'
 
 const isSkill = (key: string): boolean => key.startsWith('Skill: ')
@@ -78,9 +78,10 @@ function rulesDrawn(rules: RulesInput): { always: RuleEntry[]; byPath: RuleEntry
 export function ruleSegs(rules: RulesInput, isResumed: boolean): Line[] {
   const { always, byPath } = rulesDrawn(rules)
   if (rules.isTracked && always.length + byPath.length === 0) return [[{ text: 'none loaded', tone: 'dim' }]]
-  const summary = rules.isTracked
+  const counts = rules.isTracked
     ? `${always.length} always-on · ${byPath.length} by path${isResumed ? ' since resume' : ''}`
     : `${always.length} always-on · by path not tracked`
+  const summary = rules.note === undefined ? counts : `${counts} · ${TRANSCRIPT_NOTE[rules.note]}`
   return [
     ...always.map((rule): Line => [{ text: rule.label }]), ...byPath.map((rule): Line => [{ text: rule.label, tone: 'handoff' }]),
     [{ text: summary, tone: 'dim' }],

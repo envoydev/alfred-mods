@@ -21,6 +21,7 @@ import type { Pending, HookInput, HookNext } from '../core/types'
 import { staleKeys } from '../plan/steptime'
 import { resetPrompt } from '../prompt/effects'
 import { refreshKit } from '../kit/effects'
+import { readTranscriptIfDue, resetTranscript } from '../transcript/effects'
 
 // The conversation the mod last started, by session id, and the start-over running. A /clear, a resume or a branch goes
 // on under a new id: classic.SessionStart starts it over, and where a managed plugin keeps that hook from the mod, the
@@ -72,6 +73,8 @@ async function runTick($: EngineInterface): Promise<void> {
   if (isBusy || isWarm || isNewMinute) await bumpTick($)
   // A failure the pane marked seen, a /clear or a stack file read leaves the line as it was until here
   await syncStatusLine($)
+  // The rules the transcript names, read every 30 s and once the turn count moves; it never rejects
+  await readTranscriptIfDue($, now)
 }
 
 async function resetState($: EngineInterface): Promise<void> {
@@ -100,6 +103,8 @@ async function resetState($: EngineInterface): Promise<void> {
   await resetLoops($)
   await resetPrompt($)
   forgetBreakdown()
+  // Last, so a run that began before the start-over ends with no write and the next one reads the new conversation from 0
+  await resetTranscript($)
 }
 
 // A /clear, a resume or a branch starts the session over under a new id: Claude Code resets $.state itself, and the

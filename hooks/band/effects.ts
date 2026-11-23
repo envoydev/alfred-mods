@@ -29,6 +29,7 @@ import { bandFailed } from '../core/failsafe'
 import { isNoColor } from '../core/effects'
 import { spinnerSuffix } from './working'
 import { printable } from '../core/format'
+import { transcriptState } from '../transcript/effects'
 
 // Calm until session start reads the setting, which turns it full when nothing is stored: a test that never starts
 // a session draws the band it was written for
@@ -101,6 +102,7 @@ async function readBandInput(
   const runway = runwayOf(st, usage, session.model)
   const setting = await readBandSetting($)
   const parts = await readParts($)
+  const transcript = transcriptState()
   return {
     now, columns: at.columns, ...(at.maxRows === undefined ? {} : { maxRows: at.maxRows }), isWorking: at.isWorking,
     live: await readLive($), usage, session, turns: await readTurns($),
@@ -110,7 +112,10 @@ async function readBandInput(
     account: { org: (await readAccount($)).org },
     mode: setting.mode, totals: await readTotals($), stats: await readStats($),
     isToolsOpen: setting.isToolsOpen === true, skillListing: parts.skills ?? null,
-    rules: { always: parts.rules ?? [], byPath: session.pathRuleKeys ?? [], isTracked: !at.isLeftOut },
+    rules: {
+      always: parts.rules ?? [], byPath: session.pathRuleKeys ?? [], isTracked: transcript.isKnown || !at.isLeftOut,
+      ...(transcript.note === null ? {} : { note: transcript.note }),
+    },
     ...(at.under === undefined ? {} : { under: at.under }),
   }
 }

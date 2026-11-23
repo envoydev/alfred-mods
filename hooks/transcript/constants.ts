@@ -4,6 +4,8 @@ export const CHUNK_BYTES = 1_048_576
 export const RUN_BYTES = 16 * 1_048_576
 export const RUN_MS = 250
 export const FIRST_TAIL_BYTES = 8 * 1_048_576
+// A run starts at least this often, and sooner when the session's turn count moved
+export const READ_EVERY_MS = 30_000
 
 // An attachment type that names a rule file Claude Code loaded on demand
 export const NESTED_MEMORY = 'nested_memory'
@@ -32,3 +34,6 @@ export const HIGH_SURROGATE_MIN = 0xd800
 export const HIGH_SURROGATE_MAX = 0xdbff
 export const LOW_SURROGATE_MIN = 0xdc00
 export const LOW_SURROGATE_MAX = 0xdfff
+
+// Where Claude Code keeps its files, below the home folder, when CLAUDE_CONFIG_DIR is not set
+export const CONFIG_FOLDER = '.claude'

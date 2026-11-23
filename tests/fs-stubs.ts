@@ -84,12 +84,23 @@ export function stubFiles(on: On, o: Options): { files: Files; isRefused: (full:
     const realPath = found[0].startsWith('/') ? found[0] : slashed(spelled(e.path))
     return { value: { kind: 'file' as const, size: sizeOf(found[1]), mtimeMs: found[1].mtimeMs, isLink: false, ...(isResolved ? { realPath } : {}) } }
   })
-  // A read rejects over 4 MiB, as Claude Code's does (types, `$.fs.read`)
-  on('fs.read', (_, e) => {
+  // A read rejects over 4 MiB, as Claude Code's does (types, `$.fs.read`). `offset` and `length` are bytes of the text's
+  // UTF-8, the cut text decoding with U+FFFD at a split character; `as: 'bytes'` answers `{ base64 }` of that range.
+  on('fs.read', async (_, e) => {
     const found = Object.entries(files.current).find(([path]) => at(canon(e.path), path))
     if (found !== undefined) files.reads.push(found[0])
     if (found === undefined) return { deny: `ENOENT: no such file, ${e.path}` }
-    return (found[1].size ?? 0) > 4 * 1024 * 1024 ? { deny: `EFBIG: over 4 MiB, ${e.path}` } : { value: found[1].text }
+    if (o.holdRead !== undefined && found[0].endsWith(o.holdRead.path)) await o.holdRead.until
+    const isRange = e.offset !== undefined || e.length !== undefined
+    if (!isRange && e.as !== 'bytes') return (found[1].size ?? 0) > 4 * 1024 * 1024 ? { deny: `EFBIG: over 4 MiB, ${e.path}` } : { value: found[1].text }
+    const encoded = new TextEncoder().encode(found[1].text)
+    const start = e.offset ?? 0
+    const range = encoded.slice(start, e.length === undefined ? undefined : start + e.length)
+    if (range.length > 4 * 1024 * 1024) return { deny: `EFBIG: over 4 MiB, ${e.path}` }
+    if (e.as !== 'bytes') return { value: new TextDecoder().decode(range) }
+    let binary = ''
+    for (let index = 0; index < range.length; index += 8192) binary += String.fromCharCode(...range.subarray(index, index + 8192))
+    return { value: { base64: btoa(binary) } }
   })
   // Each path asked, so a test counts the reads of a missing file
   on('fs.exists', (_, e) => {
