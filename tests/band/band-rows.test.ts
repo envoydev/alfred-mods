@@ -116,7 +116,7 @@ test('an empty session draws no detail row; each row comes with its first item',
   const rowsOf = (o: Partial<BandInput>) => texts(bandLines(input({ isToolsOpen: true, ...o }))).filter(l => /^(tools|skills|agents|rules):/.test(l))
   expect(rowsOf({ stats: {}, skillListing: { listed: 60, total: 60, tokens: 3200 }, session: { ...input().session, isResumed: true } })).toEqual([])
   expect(rowsOf({ stats: {}, session: { ...input().session, loadedSkills: { 'solve-task': 1 } } })).toEqual(['skills:  solve-task ×1'])
-  expect(rowsOf({ stats: {}, rules: { always: ['a.md'], byPath: [], isTracked: true } })).toEqual(['rules:   a.md │ 1 always-on · 0 by path'])
+  expect(rowsOf({ stats: {}, rules: { always: [rule('a')], byPath: [], isTracked: true } })).toEqual(['rules:   a │ 1 always-on · 0 by path'])
   expect(rowsOf({ stats: {}, session: { ...input().session, agentTypes: { Explore: 1 } } })).toEqual(['agents:  ✓ Explore ×1 │ 0 running'])
   expect(rowsOf({ stats: { Bash: { calls: 2, failures: 0 } as never } })).toEqual(['tools:   Bash ×2'])
   // Untracked by path, with no always-on rule: nothing appeared
@@ -169,20 +169,31 @@ test('a /clear empties the dispatches; a resume starts them over as unseen', asy
   expect(metaOf(state).isResumed).toBe(true)
 })
 
-const TARGET_RULES = { always: ['alfred-interaction.md', 'alfred-git.md', 'alfred-preferences.md'], byPath: ['web-angular.md', 'typescript.md'], isTracked: true }
+const rule = (label: string, key = `.claude/rules/${label}.md`) => ({ key, label })
+const TARGET_RULES = {
+  always: [rule('alfred-interaction'), rule('alfred-git'), rule('alfred-preferences')], byPath: [rule('web-angular'), rule('typescript')], isTracked: true,
+}
 const rulesRow = (b: BandInput): string | undefined => texts(toolRows(b)).find(l => l.startsWith('rules:'))
 
 test('the rules row: always-on, then by path in violet, then the counts', () => {
   expect(rulesRow(input({ isToolsOpen: true, rules: TARGET_RULES })))
-    .toBe('rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ web-angular.md │ typescript.md │ 3 always-on · 2 by path')
+    .toBe('rules:   alfred-interaction │ alfred-git │ alfred-preferences │ web-angular │ typescript │ 3 always-on · 2 by path')
   const items = ruleSegs(TARGET_RULES, false)
-  expect(items[0]).toEqual([{ text: 'alfred-interaction.md' }])
-  expect(items[3]).toEqual([{ text: 'web-angular.md', tone: 'handoff' }])
+  expect(items[0]).toEqual([{ text: 'alfred-interaction' }])
+  expect(items[3]).toEqual([{ text: 'web-angular', tone: 'handoff' }])
   expect(items[5]).toEqual([{ text: '3 always-on · 2 by path', tone: 'dim' }])
 })
 
+test('two rules of one base name at two levels list by label and count as two', () => {
+  const rules = { always: [rule('alfred-awareness'), rule('alfred-awareness', 'web/.claude/rules/alfred-awareness.md')], byPath: [], isTracked: true }
+  expect(texts(ruleSegs(rules, false))).toEqual(['alfred-awareness', 'alfred-awareness', '2 always-on · 0 by path'])
+  const labelled = { always: [rule('alfred-awareness'), { key: 'web/.claude/rules/alfred-awareness.md', label: 'web:alfred-awareness' }], byPath: [], isTracked: true }
+  expect(texts(ruleSegs(labelled, false))).toEqual(['alfred-awareness', 'web:alfred-awareness', '2 always-on · 0 by path'])
+  expect(texts(toggleForms(input({ rules: labelled })))[0]).toContain('2 rules')
+})
+
 test('a name loaded both always-on and by path is drawn and counted once', () => {
-  expect(texts(ruleSegs({ always: ['a.md'], byPath: ['a.md', 'b.md'], isTracked: true }, false))).toEqual(['a.md', 'b.md', '1 always-on · 1 by path'])
+  expect(texts(ruleSegs({ always: [rule('a')], byPath: [rule('a'), rule('b')], isTracked: true }, false))).toEqual(['a', 'b', '1 always-on · 1 by path'])
 })
 
 test('no rule known draws no rules row, also from a state kept before the rules row', () => {
@@ -191,8 +202,8 @@ test('no rule known draws no rules row, also from a state kept before the rules 
 })
 
 test('after a resume the by-path count reads since resume; untracked, by path not tracked', () => {
-  expect(texts(ruleSegs({ always: ['a.md'], byPath: ['b.md'], isTracked: true }, true))).toEqual(['a.md', 'b.md', '1 always-on · 1 by path since resume'])
-  expect(texts(ruleSegs({ always: ['a.md'], byPath: [], isTracked: false }, false))).toEqual(['a.md', '1 always-on · by path not tracked'])
+  expect(texts(ruleSegs({ always: [rule('a')], byPath: [rule('b')], isTracked: true }, true))).toEqual(['a', 'b', '1 always-on · 1 by path since resume'])
+  expect(texts(ruleSegs({ always: [rule('a')], byPath: [], isTracked: false }, false))).toEqual(['a', '1 always-on · by path not tracked'])
   expect(texts(ruleSegs({ always: [], byPath: [], isTracked: false }, false))).toEqual(['0 always-on · by path not tracked'])
 })
 
@@ -210,7 +221,7 @@ test('a by-path load on the main thread is listed once, in load order', async ($
   await $.classic.InstructionsLoaded(load('/w/.claude/rules/web.md', 'path_glob_match'))
   await $.classic.InstructionsLoaded(load('/w/sub/.claude/rules/nested.md', 'nested_traversal'))
   await $.classic.InstructionsLoaded(load('/w/.claude/rules/web.md', 'path_glob_match'))
-  expect(metaOf(state).pathRules).toEqual(['web.md', 'nested.md'])
+  expect(metaOf(state).pathRuleKeys).toEqual([rule('web'), { key: 'sub/.claude/rules/nested.md', label: 'sub:nested' }])
 })
 
 // A rule reached through a link loads under the path the link lands on, outside any rules folder (live, 2026-11-11);
@@ -222,7 +233,7 @@ test("a by-path rule reached through a link is listed by its target's name", asy
   await $.session.start(START)
   await $.classic.InstructionsLoaded(load('/shared/rules/scoped.md', 'path_glob_match'))
   await $.classic.InstructionsLoaded(load('/shared/notes/CLAUDE.md', 'nested_traversal'))
-  expect(metaOf(state).pathRules).toEqual(['scoped.md'])
+  expect(metaOf(state).pathRuleKeys).toEqual([{ key: 'Project:scoped.md', label: 'scoped' }])
 })
 
 test("a subagent's load, a start-up or compaction reload, an include and a non-rule file are not listed", async ($, on) => {
@@ -235,7 +246,7 @@ test("a subagent's load, a start-up or compaction reload, an include and a non-r
   await $.classic.InstructionsLoaded(load('/w/.claude/rules/c.md', 'compact'))
   await $.classic.InstructionsLoaded(load('/w/.claude/rules/d.md', 'include'))
   await $.classic.InstructionsLoaded(load('/w/src/CLAUDE.md', 'nested_traversal'))
-  expect((state.get('session') as Session | undefined)?.pathRules).toBeUndefined()
+  expect((state.get('session') as Session | undefined)?.pathRuleKeys).toBeUndefined()
 })
 
 test('a compaction keeps the by-path rules; a /clear empties them; a resume starts them over', async ($, on) => {
@@ -245,12 +256,12 @@ test('a compaction keeps the by-path rules; a /clear empties them; a resume star
   await $.session.start(START)
   await $.classic.InstructionsLoaded(load('/w/.claude/rules/web.md', 'path_glob_match'))
   await $.session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'q', toolUses: [] }] as never })
-  expect(metaOf(state).pathRules).toEqual(['web.md'])
+  expect(metaOf(state).pathRuleKeys).toEqual([rule('web')])
   await $.classic.SessionStart({ source: 'clear' })
-  expect(metaOf(state).pathRules).toBeUndefined()
+  expect(metaOf(state).pathRuleKeys).toBeUndefined()
   await $.classic.InstructionsLoaded(load('/w/.claude/rules/web.md', 'path_glob_match'))
   await $.classic.SessionStart({ source: 'resume' })
-  expect(metaOf(state).pathRules).toBeUndefined()
+  expect(metaOf(state).pathRuleKeys).toBeUndefined()
   expect(metaOf(state).isResumed).toBe(true)
 })
 
@@ -273,7 +284,7 @@ test('the band draws the rules row from the parts and the loads', async ($, on) 
   await clock.advance(1)
   await $.classic.InstructionsLoaded(load('/w/.claude/rules/web.md', 'path_glob_match'))
   const ui = await $.ui.mount({ plugin: 'alfred-mods', surface: 'terminal', component: 'AbovePrompt', props: BAND })
-  expect(await rows(ui)).toContain('rules:   always.md │ web.md │ 1 always-on · 1 by path')
+  expect(await rows(ui)).toContain('rules:   always │ web │ 1 always-on · 1 by path')
   await ui.unmount()
 })
 
@@ -305,13 +316,13 @@ test('compactions count last, only once the session compacted, and drop first', 
 test('(k ◐) only while agents run; singular forms', () => {
   const one = input({
     isToolsOpen: true, stats: { Bash: stat(1) }, agents: [agent('a1', 'Explore', 'completed')],
-    rules: { always: ['a.md'], byPath: [], isTracked: true }, session: { ...input().session, loadedSkills: { x: 1 }, agentTypes: { Explore: 1 } },
+    rules: { always: [rule('a')], byPath: [], isTracked: true }, session: { ...input().session, loadedSkills: { x: 1 }, agentTypes: { Explore: 1 } },
   })
   expect(labels(one)[0]).toBe('1 tool · 1 skill · 1 agent · 1 rule')
 })
 
 test('a part at 0 is left out; with none, no counts, open or closed', () => {
-  const rulesOnly = input({ isToolsOpen: true, stats: {}, rules: { always: ['a.md', 'b.md'], byPath: [], isTracked: true } })
+  const rulesOnly = input({ isToolsOpen: true, stats: {}, rules: { always: [rule('a'), rule('b')], byPath: [], isTracked: true } })
   expect(labels(rulesOnly)).toEqual(['2 rules'])
   expect(labels(input({ isToolsOpen: true, stats: {} }))).toEqual([])
   expect(labels(input({ stats: {} }))).toEqual([])
@@ -320,7 +331,7 @@ test('a part at 0 is left out; with none, no counts, open or closed', () => {
 // Spec 2026-11-11, D7, and settings-values S6: short of rows, the second info row goes first, then the open rows from
 // the last; the four rows draw at 24, 48 and 100 columns under usage:
 const open = (o: Partial<BandInput> = {}) => input({
-  isToolsOpen: true, agents: TARGET_AGENTS, rules: { always: ['a.md', 'b.md', 'c.md'], byPath: ['d.md', 'e.md'], isTracked: true },
+  isToolsOpen: true, agents: TARGET_AGENTS, rules: { always: [rule('a'), rule('b'), rule('c')], byPath: [rule('d'), rule('e')], isTracked: true },
   session: { ...input().session, agentTypes: TARGET_TYPES, loadedSkills: { 'superpowers:brainstorming': 1, 'solve-task': 2 } }, ...o,
 })
 const ROW = /^(tools|skills|agents|rules):/
@@ -637,7 +648,7 @@ test("the full band's rows in the user's order", () => {
     'tools:   Bash ×32 │ AskUserQuestion ×4 │ Read ×4 │ Write ×4 │ Grep ×1',
     'skills:  superpowers:brainstorming ×1 │ solve-task ×2 │ 57 of 60 listed',
     'agents:  ◐ alfred-code:web-angular-verifier ×1 │ ✓ Explore ×2 │ ✓ general-purpose ×1 │ 1 running',
-    'rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ web-angular.md │ typescript.md │ 3 always-on · 2 by path',
+    'rules:   alfred-interaction │ alfred-git │ alfred-preferences │ web-angular │ typescript │ 3 always-on · 2 by path',
   ])
 })
 

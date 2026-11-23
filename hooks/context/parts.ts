@@ -4,14 +4,11 @@
 import type { SessionContextBreakdown } from 'claude-code'
 
 import { clockText, tokensText } from '../core/format'
-import { baseName } from '../place/place'
 import type { Parts, SkillListing } from './types'
+import { assumedRuleEntry, isDrive, ruleEntry, slashed } from './rules'
 import type { Line } from '../core/types'
 
 export const NO_PARTS: Parts = { breakdownAt: null, categories: [], plugins: [], memory: { files: 0, tokens: 0, top: [] } }
-
-export const slashed = (filePath: string): string => filePath.replace(/\\/g, '/')
-const isDrive = (filePath: string): boolean => /^[A-Za-z]:\//.test(filePath)
 
 // `.claude/CLAUDE.md` for a file under the project, else `User CLAUDE.md`; a Windows path compares without case. A
 // session at a root or a drive root has no project to name from, and the auto memory's folder under
@@ -29,18 +26,13 @@ export function memoryName(path: string, type: string, cwd: string): string {
   return `${type} ${file.split('/').pop() ?? ''}`
 }
 
-// A rule file's base name, else null: a `rules` folder directly inside a `.claude` folder, or a User file under any
-// `rules` folder (a CLAUDE_CONFIG_DIR not named .claude); `\` read as `/`. Only the name is kept, never its folder.
-export function ruleName(path: string, type: string): string | null {
-  const file = slashed(path)
-  const isRule = /\/\.claude\/rules\//.test(file) || (type === 'User' && /\/rules\//.test(file))
-  return isRule ? baseName(file) : null
-}
-
 // The breakdown as the atom keeps it: `used` categories in Claude Code's order; agents by the plugin before the `:` of
-// their type and skills by their plugin, most tokens first; the memory files' count, tokens and three largest. A host
-// may leave a list out, so each is read as empty when absent.
-export function partsOf(breakdown: SessionContextBreakdown, cwd: string, at: number, linked: ReadonlySet<string> = new Set()): Parts {
+// their type and skills by their plugin, most tokens first; the memory files' count, tokens and three largest; the rule
+// files by key (spec 2026-11-23, D1), each once, against the project `root`. A host may leave a list out, so each is
+// read as empty when absent.
+export function partsOf(
+  breakdown: SessionContextBreakdown, cwd: string, at: number, linked: ReadonlySet<string> = new Set(), root: string = cwd, linkEnds: readonly string[] = [],
+): Parts {
   const plugins = new Map<string, { name: string; agents: number; agentTokens: number; skills: number; skillTokens: number }>()
   const of = (name: string) => {
     const known = plugins.get(name)
@@ -63,8 +55,10 @@ export function partsOf(breakdown: SessionContextBreakdown, cwd: string, at: num
     pluginPart.skillTokens += skill.tokens
   }
   const files = (breakdown.memoryFiles ?? []).map(memoryFile => ({ name: memoryName(memoryFile.path, memoryFile.type, cwd), tokens: memoryFile.tokens }))
-  const rules = [...new Set((breakdown.memoryFiles ?? []).flatMap(memoryFile =>
-    ruleName(memoryFile.path, memoryFile.type) ?? (linked.has(memoryFile.path) ? baseName(memoryFile.path) : [])))]
+  const rules = [...new Map((breakdown.memoryFiles ?? []).flatMap(memoryFile => {
+    const entry = ruleEntry(memoryFile.path, memoryFile.type, root, linkEnds) ?? (linked.has(memoryFile.path) ? assumedRuleEntry(memoryFile.path, memoryFile.type, root) : null)
+    return entry === null ? [] : [[entry.key, entry] as const]
+  })).values()]
   const listing = breakdown.skills === undefined
     ? {}
     : { skills: { listed: breakdown.skills.includedSkills, total: breakdown.skills.totalSkills, tokens: breakdown.skills.tokens } }

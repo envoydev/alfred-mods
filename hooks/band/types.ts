@@ -3,7 +3,7 @@ import type { AgentRow } from '../agents/types'
 import type { PlanView, ScoresView } from '../plan/types'
 import type { Live, Session, Pace, Totals, Turn, Usage } from '../session/types'
 import type { Cache } from '../cache/types'
-import type { SkillListing } from '../context/types'
+import type { RuleEntry, SkillListing } from '../context/types'
 import type { Runway } from '../stack/types'
 import type { ToolStat } from '../tools/types'
 import type { RecLevel } from '../rec/types'
@@ -54,4 +54,4 @@ export type BandInput = {
   account?: { org: string | null }
 }
 
-export type RulesInput = { always: string[]; byPath: string[]; isTracked: boolean }
+export type RulesInput = { always: RuleEntry[]; byPath: RuleEntry[]; isTracked: boolean; note?: 'unread' | 'not-found' }

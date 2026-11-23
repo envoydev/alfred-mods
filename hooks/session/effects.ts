@@ -5,6 +5,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, SessionUsage } from 'claude-code'
 import type { Live, Session, Pace, RunningCall, Totals, Turn, Usage, RateWindow } from './types'
 import type { Place } from '../place/types'
+import type { RuleEntry } from '../context/types'
 import { withPlace } from '../place/place'
 import { baseWrites, dayUsd, recordWrites } from './cost'
 import type { TimeEntries } from '../plan/types'
@@ -83,7 +84,7 @@ const INITIAL_SESSION: Session = {
   model: null, effort: null, compactions: 0, lastCompactAt: null, lastPromptAt: null, lastReplyAt: null, turnCount: 0,
   waitingPrompts: [], mainToolCalls: 0,
 }
-const sessionAtom = atom({ plugin: 'alfred-mods', key: 'session' } as const, INITIAL_SESSION, { shape: 'session-1' })
+const sessionAtom = atom({ plugin: 'alfred-mods', key: 'session' } as const, INITIAL_SESSION, { shape: 'session-2' })
 export function readSession($: EngineInterface) {
   return read($, sessionAtom)
 }
@@ -156,9 +157,13 @@ export async function showPlaceCounts($: EngineInterface, changes: { added: numb
   })
 }
 
-// A rule the main context loaded by path, listed once
-export async function addPathRule($: EngineInterface, name: string): Promise<void> {
-  await updateSession($, session => (session.pathRules?.includes(name) === true ? session : { ...session, pathRules: [...(session.pathRules ?? []), name] }))
+// The rules the main context loaded by path, each key listed once, in order
+export async function addPathRules($: EngineInterface, entries: readonly RuleEntry[]): Promise<void> {
+  await updateSession($, session => {
+    const known = session.pathRuleKeys ?? []
+    const added = entries.filter((entry, index) => !known.some(rule => rule.key === entry.key) && entries.findIndex(other => other.key === entry.key) === index)
+    return added.length === 0 ? session : { ...session, pathRuleKeys: [...known, ...added] }
+  })
 }
 
 // A main-loop compaction that stands, counted

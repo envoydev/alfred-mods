@@ -110,7 +110,7 @@ async function readBandInput(
     account: { org: (await readAccount($)).org },
     mode: setting.mode, totals: await readTotals($), stats: await readStats($),
     isToolsOpen: setting.isToolsOpen === true, skillListing: parts.skills ?? null,
-    rules: { always: parts.rules ?? [], byPath: session.pathRules ?? [], isTracked: !at.isLeftOut },
+    rules: { always: parts.rules ?? [], byPath: session.pathRuleKeys ?? [], isTracked: !at.isLeftOut },
     ...(at.under === undefined ? {} : { under: at.under }),
   }
 }

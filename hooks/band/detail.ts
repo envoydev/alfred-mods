@@ -2,6 +2,7 @@
 import { isLive } from '../agents/agents'
 import { listedText, loadedTexts } from '../context/parts'
 import type { AgentRow } from '../agents/types'
+import type { RuleEntry } from '../context/types'
 import type { BandInput, RulesInput } from './types'
 import type { ToolStat } from '../tools/types'
 import type { Line, Seg } from '../core/types'
@@ -65,10 +66,11 @@ export function toolRows(input: BandInput): Line[] {
 
 const NO_RULES: RulesInput = { always: [], byPath: [], isTracked: true }
 
-// The rules drawn, each name once, an always-on name winning: the always-on ones, then the by-path ones not among them
-function rulesDrawn(rules: RulesInput): { always: string[]; byPath: string[] } {
-  const always = [...new Set(rules.always)]
-  return { always, byPath: [...new Set(rules.byPath)].filter(name => !always.includes(name)) }
+// The rules drawn, each key once, an always-on key winning: the always-on ones, then the by-path ones not among them
+function rulesDrawn(rules: RulesInput): { always: RuleEntry[]; byPath: RuleEntry[] } {
+  const once = (entries: RuleEntry[]): RuleEntry[] => [...new Map(entries.map(entry => [entry.key, entry])).values()]
+  const always = once(rules.always)
+  return { always, byPath: once(rules.byPath).filter(entry => !always.some(rule => rule.key === entry.key)) }
 }
 
 // The rules row's items (spec 2026-11-11, D4): the always-on rules plain, the by-path ones violet, then how many of
@@ -80,7 +82,7 @@ export function ruleSegs(rules: RulesInput, isResumed: boolean): Line[] {
     ? `${always.length} always-on · ${byPath.length} by path${isResumed ? ' since resume' : ''}`
     : `${always.length} always-on · by path not tracked`
   return [
-    ...always.map((text): Line => [{ text }]), ...byPath.map((text): Line => [{ text, tone: 'handoff' }]),
+    ...always.map((rule): Line => [{ text: rule.label }]), ...byPath.map((rule): Line => [{ text: rule.label, tone: 'handoff' }]),
     [{ text: summary, tone: 'dim' }],
   ]
 }

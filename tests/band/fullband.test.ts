@@ -233,7 +233,7 @@ test('the rows wrap whole names under their label, each row in the width', () =>
 })
 
 const FOUR: Partial<BandInput> = {
-  rules: { always: ['a.md'], byPath: [], isTracked: true }, session: { ...input().session, loadedSkills: { 'solve-task': 1 }, agentTypes: { Explore: 1 } },
+  rules: { always: [{ key: '.claude/rules/a.md', label: 'a' }], byPath: [], isTracked: true }, session: { ...input().session, loadedSkills: { 'solve-task': 1 }, agentTypes: { Explore: 1 } },
 }
 
 test('short of rows, the open rows give way first, then usage:, then the info line, and the buttons stay in view', () => {

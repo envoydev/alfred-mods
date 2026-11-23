@@ -4,7 +4,8 @@ import type { RenderSurface, SessionContextBreakdown, SessionUsage } from 'claud
 
 import { PRESENTATION, START, engine, rows, stubAll, watchState } from '../kit'
 import { clockText } from '../../hooks/core/format'
-import { memoryName, partsOf, ruleName } from '../../hooks/context/parts'
+import { memoryName, partsOf } from '../../hooks/context/parts'
+import { ruleName } from '../../hooks/context/rules'
 import type { Parts } from '../../hooks/context/types'
 import type { Handoff } from '../../hooks/handoff/types'
 
@@ -209,6 +210,7 @@ test('ruleName: a rule under .claude/rules, or a User file under any rules folde
   expect(ruleName('/w/.claude/CLAUDE.md', 'Project')).toBeNull()
 })
 
+const ALWAYS_RULE = { key: '.claude/rules/always.md', label: 'always' }
 const RULE_FILES = [
   { path: '/home/u/.claude/rules/user-pref.md', type: 'User', tokens: 40 },
   { path: '/w/CLAUDE.md', type: 'Project', tokens: 900 },
@@ -216,13 +218,13 @@ const RULE_FILES = [
   { path: '/w/sub/.claude/rules/always.md', type: 'Project', tokens: 60 },
 ]
 
-test("the parts keep the breakdown's rule files in its order, each name once, other memory files left out", async ($, on) => {
+test("the parts keep the breakdown's rule files in its order, each key once, other memory files left out", async ($, on) => {
   stubAll(on, { usage: reading(breakdown({ memoryFiles: RULE_FILES })) })
   const state = watchState(on)
   engine(on)
   await $.session.start(START)
   await measure($)
-  expect((state.get('parts') as Parts).rules).toEqual(['user-pref.md', 'always.md'])
+  expect((state.get('parts') as Parts).rules).toEqual([{ key: 'User:user-pref.md', label: 'user-pref' }, ALWAYS_RULE, { key: 'sub/.claude/rules/always.md', label: 'sub:always' }])
 })
 
 test('the breakdown is read at start off the start hook, so the rules are known within a tick', async ($, on) => {
@@ -233,7 +235,7 @@ test('the breakdown is read at start off the start hook, so the rules are known 
   const atStart = kit.usage.breakdowns
   await kit.clock.advance(1)
   expect(kit.usage.breakdowns).toBe(atStart + 1)
-  expect((state.get('parts') as Parts).rules).toEqual(['always.md'])
+  expect((state.get('parts') as Parts).rules).toEqual([ALWAYS_RULE])
 })
 
 // The breakdown names a rule reached through a link by where the link lands, never the link (live, 2026-11-11): a link
@@ -256,7 +258,9 @@ test("a rule reached through a link under .claude/rules is kept by its target's 
   engine(on)
   await $.session.start(START)
   await measure($)
-  expect((state.get('parts') as Parts).rules).toEqual(['team.md', 'house.md', 'nested.md', 'always.md'])
+  expect((state.get('parts') as Parts).rules).toEqual([
+    { key: 'Project:team.md', label: 'team' }, { key: 'Project:house.md', label: 'house' }, { key: 'Project:nested.md', label: 'nested' }, ALWAYS_RULE,
+  ])
 })
 
 test('with every memory file a CLAUDE.md, a rule by its folder or the auto memory, no folder is listed', async ($, on) => {
@@ -269,6 +273,17 @@ test('with every memory file a CLAUDE.md, a rule by its folder or the auto memor
   engine(on)
   await $.session.start(START)
   await measure($)
-  expect((state.get('parts') as Parts).rules).toEqual(['user-pref.md', 'always.md'])
+  expect((state.get('parts') as Parts).rules).toEqual([{ key: 'User:user-pref.md', label: 'user-pref' }, ALWAYS_RULE, { key: 'sub/.claude/rules/always.md', label: 'sub:always' }])
   expect(kit.files.lists.filter(d => d.endsWith('/.claude/rules'))).toEqual([])
+})
+
+test('the breakdown\'s two same-named rule files, one in a child folder, are two entries labelled by level', () => {
+  const parts = partsOf(breakdown({ memoryFiles: [
+    { path: '/work/app/.claude/rules/alfred-awareness.md', type: 'Project', tokens: 10 },
+    { path: '/work/app/web/.claude/rules/alfred-awareness.md', type: 'Project', tokens: 10 },
+  ] }), '/work/app', 0)
+  expect(parts.rules).toEqual([
+    { key: '.claude/rules/alfred-awareness.md', label: 'alfred-awareness' },
+    { key: 'web/.claude/rules/alfred-awareness.md', label: 'web:alfred-awareness' },
+  ])
 })
