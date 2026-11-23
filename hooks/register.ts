@@ -87,10 +87,6 @@ export const register: Register = (on, options) => {
     // plugin's notices named it (spec 2026-11-23, D3), so it is left out with the others: the Prompt tab then lists no
     // attachments.
     on('prompt.attachment', ($, e, next) => recordAttachment($, e, next)).catch(($, e, next) => next(e))
-
-    // A server about to join the session: loading from the event, failed on a refusal answer, which goes on untouched
-    // (spec 2026-11-23, D5). Left out with the others, the band's MCP item comes from the tool list alone.
-    on('mcp.connect', ($, e, next) => trackMcpConnect($, e, next)).catch(($, e, next) => next(e))
   }
 
   on('session.start', ($, e, next) => startSession($, e, next, calls, pending, isLeftOut)).catch(($, e, next) => next(e))
@@ -121,6 +117,10 @@ export const register: Register = (on, options) => {
 
     // Claude Code may still ask to confirm the switch, so the cache stays warm; a switch a hook stops reports nothing
     on('classic.PreModelSwitch', ($, e, next) => trackModelSwitchAsk($, e, next, pending)).catch(($, e, next) => next(e))
+
+    // A server about to join the session: loading from the event, failed on a refusal answer, which goes on untouched
+    // (spec 2026-11-23, D5). Left out with the others, the band's MCP item comes from the tool list alone.
+    on('mcp.connect', ($, e, next) => trackMcpConnect($, e, next)).catch(($, e, next) => next(e))
   }
 
   // '/inspect [tab]': opens the pane, never on its own. '/inspect plan <name>' pins that plan; 'plan' alone clears it.

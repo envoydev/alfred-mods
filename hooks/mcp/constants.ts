@@ -24,3 +24,6 @@ export const ITEM_JOIN = ' · '
 
 // The reason kept for a connect a hook beneath denied, which carries none of its own
 export const DENIED_REASON = 'denied'
+
+// `next.origin.plugin` of the engine's own raise: another plugin's `$.mcp.connect` carries its own name
+export const ENGINE_ORIGIN = 'engine'

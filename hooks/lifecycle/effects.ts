@@ -23,7 +23,7 @@ import { resetPrompt } from '../prompt/effects'
 import { refreshKit } from '../kit/effects'
 import { readTranscriptIfDue, resetTranscript } from '../transcript/effects'
 import { watchSkipNotices } from '../skip/effects'
-import { pollMcpIfDue, seedMcp } from '../mcp/effects'
+import { keepMcp, pollMcpIfDue, seedMcp } from '../mcp/effects'
 
 // The conversation the mod last started, by session id, and the start-over running. A /clear, a resume or a branch goes
 // on under a new id: classic.SessionStart starts it over, and where a managed plugin keeps that hook from the mod, the
@@ -135,6 +135,8 @@ function startOver($: EngineInterface, source: string | null, calls: Map<string,
     // before
     forgetHandoffSteps()
     await resetState($)
+    // The servers stay connected across it and no mcp.connect comes again
+    await keepMcp($)
     await loadSettings($)
     await refreshAccount($, true)
     // The engine's own reset of $.state emptied the kit's values: the file is read again (Claude Code resets $.state before

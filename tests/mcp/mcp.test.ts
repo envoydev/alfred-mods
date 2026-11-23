@@ -1,25 +1,32 @@
 // The MCP state (spec 2026-11-23, D5): the mcp.connect hook marks a server loading, a refusal marks it failed, the tools
-// the engine lists settle it connected, and 60 s with none settle it too
+// the engine lists settle it connected, and 60 s with none settle a loading one too.
+// The kit's `$` carries no `mcp` noun, and a stand-in plugin cannot take the engine's name, so no test raises the
+// engine's own mcp.connect: what that hook does with an answer is tested through its pure steps (markLoading,
+// refusalOf, markFailed), and the servers it leaves loading are seeded as the state an earlier run stored.
 import { expect, test } from 'claude-code/testing'
 import type { Engine, Plugin } from 'claude-code/testing'
 import type { McpConnectResult, On } from 'claude-code'
 
-import { PRESENTATION, START, engine, stubAll, watchState } from '../kit'
+import { PRESENTATION, START, emptyState, engine, stubAll } from '../kit'
 import { stubTools } from '../transcript-stubs'
-import { mcpItem, settle, shortName, toolServers } from '../../hooks/mcp/mcp'
-import { POLL_MS, SETTLE_MS } from '../../hooks/mcp/constants'
+import { isEngineRaise, markFailed, markLoading, mcpItem, refusalOf, settle, shortName, toolServers } from '../../hooks/mcp/mcp'
+import { EARLY_MS, POLL_MS, SETTLE_MS } from '../../hooks/mcp/constants'
 import type { McpServer } from '../../hooks/mcp/types'
 
 const NOW = Date.parse('2026-10-28T14:00:00Z')
 const PASSED: McpConnectResult = { isConnected: true, server: 'plugin:p:files' }
 const REFUSED: McpConnectResult = { isConnected: false, reason: 'auth', message: 'm' }
+const SHAPE = 'mcp-1'
+// Long enough for a poll in the idle cadence's first minutes
+const IDLE_WAIT = POLL_MS * 8
 
 const text = (servers: McpServer[]): string => mcpItem(servers).map(seg => ('text' in seg ? seg.text : '')).join('')
+const loading = (name: string, since = NOW): McpServer => ({ name, state: 'loading', since })
+const connected = (name: string, since = NOW): McpServer => ({ name, state: 'connected', since })
 
-type Beneath = { answer: McpConnectResult | { deny: string } }
-
-// The kit's `$` raises no mcp.connect, so a stand-in plugin raises it as a plugin does, through `$.mcp.connect`, on the
-// command '/dial <server>', which answers the result as JSON. The mod's hook sits between the stand-in and the engine.
+// Another plugin raises mcp.connect as a plugin does, through `$.mcp.connect`, on the command '/dial <server>', which
+// answers the result as JSON. The mod's hook sits between the stand-in and the engine, and sees the stand-in's name as
+// the origin, not the engine's.
 const DIAL: Plugin = {
   name: 'dial-stand-in',
   tier: 'builtin',
@@ -33,38 +40,48 @@ const dial = async ($: Engine, server: string): Promise<McpConnectResult> => {
   return JSON.parse(run.text ?? 'null') as McpConnectResult
 }
 
-// A session whose engine answers mcp.connect with `beneath.answer`; `servers` reads the mod's last written state
-async function begin($: Engine, on: On, o: { tools?: string[] } = {}) {
+// A session whose atom `mcp` holds `stored` before it starts, as a run that stored it left it: `servers` reads the mod's
+// last written list; `tools` is the tool list, changed mid-test
+async function begin($: Engine, on: On, o: { tools?: string[]; stored?: McpServer[] } = {}) {
   const kit = stubAll(on, { root: '/work/app', cwd: '/work/app', now: NOW })
   const tools = stubTools(on, o.tools ?? [])
-  const state = watchState(on)
-  const beneath: Beneath = { answer: PASSED }
-  on('mcp.connect', () => ('deny' in beneath.answer ? beneath.answer : { value: beneath.answer }))
+  const state = emptyState(on, ['mcp'], o.stored === undefined ? {} : { mcp: { shape: SHAPE, value: o.stored } })
+  const beneath: { answer: McpConnectResult } = { answer: PASSED }
+  on('mcp.connect', () => ({ value: beneath.answer }))
   engine(on)
   await $.session.start(START)
-  const servers = (): McpServer[] => (state.get('mcp') as McpServer[] | undefined) ?? []
-  return { kit, tools, beneath, servers }
+  const servers = (): McpServer[] => (state.get('mcp') as McpServer[] | undefined) ?? o.stored ?? []
+  return { kit, tools, state, beneath, servers }
 }
 
-test('an event marks loading and a passing answer keeps it', OPTIONS, async ($, on) => {
-  const { servers } = await begin($, on)
-  await dial($, 'plugin:p:files')
-  expect(servers().map(s => [s.name, s.state])).toEqual([['plugin:p:files', 'loading']])
-  expect(servers()[0]?.since).toBe(NOW)
-  expect(text(servers())).toBe('mcp ◐ 0/1')
-})
-
-test('a refusal marks failed', OPTIONS, async ($, on) => {
+test('a raise from another plugin is not counted, and its answer passes on untouched', OPTIONS, async ($, on) => {
   const { beneath, servers } = await begin($, on)
+  expect(await dial($, 'files')).toEqual(PASSED)
   beneath.answer = REFUSED
-  await dial($, 'plugin:p:files')
-  expect(servers()).toMatchObject([{ name: 'plugin:p:files', state: 'failed', reason: 'auth' }])
-  expect(text(servers())).toBe('mcp ✗ 1 · ✓ 0')
+  expect(await dial($, 'files')).toEqual(REFUSED)
+  expect(servers()).toEqual([])
 })
 
-test('tools showing settle connected', OPTIONS, async ($, on) => {
-  const { kit, tools, servers } = await begin($, on)
-  await dial($, 'plugin:p:files')
+test('only the engine\'s own raise counts', () => {
+  expect(isEngineRaise({ plugin: 'engine' })).toBe(true)
+  expect(isEngineRaise({ plugin: 'other' })).toBe(false)
+})
+
+test('a loading server is shown as loading', () => {
+  expect(text([loading('plugin:p:files')])).toBe('mcp ◐ 0/1')
+})
+
+test('a refusal marks failed with its reason, any other answer leaves it loading', () => {
+  expect(refusalOf({ value: REFUSED })).toBe('auth')
+  expect(refusalOf({ value: PASSED })).toBeNull()
+  expect(refusalOf({ deny: 'policy' })).toBe('denied')
+  const failed = markFailed(markLoading([], 'plugin:p:files', NOW), 'plugin:p:files', 'auth')
+  expect(failed).toEqual([{ name: 'plugin:p:files', state: 'failed', reason: 'auth', since: NOW }])
+  expect(text(failed)).toBe('mcp ✗ 1 · ✓ 0')
+})
+
+test('tools showing settle connected', async ($, on) => {
+  const { kit, tools, servers } = await begin($, on, { stored: [loading('plugin:p:files')] })
   tools.names = ['Bash', 'mcp__files__read']
   await kit.clock.advance(POLL_MS + 1000)
   await kit.clock.settle()
@@ -72,9 +89,8 @@ test('tools showing settle connected', OPTIONS, async ($, on) => {
   expect(text(servers())).toBe('mcp ✓ 1')
 })
 
-test('60 s with no tools settles connected', OPTIONS, async ($, on) => {
-  const { kit, servers } = await begin($, on)
-  await dial($, 'plugin:p:files')
+test('60 s with no tools settles a loading server connected', async ($, on) => {
+  const { kit, servers } = await begin($, on, { stored: [loading('plugin:p:files')] })
   await kit.clock.advance(SETTLE_MS - 10_000)
   await kit.clock.settle()
   expect(servers().map(s => s.state)).toEqual(['loading'])
@@ -84,10 +100,9 @@ test('60 s with no tools settles connected', OPTIONS, async ($, on) => {
   expect(text(servers())).toBe('mcp ✓ 1')
 })
 
-test('a tool list that refuses leaves the server loading until it settles by time', OPTIONS, async ($, on) => {
-  const { kit, tools, servers } = await begin($, on)
+test('a tool list that refuses leaves the server loading until it settles by time', async ($, on) => {
+  const { kit, tools, servers } = await begin($, on, { stored: [loading('plugin:p:files')] })
   tools.refuse = true
-  await dial($, 'plugin:p:files')
   await kit.clock.advance(POLL_MS * 2)
   await kit.clock.settle()
   expect(servers().map(s => s.state)).toEqual(['loading'])
@@ -96,61 +111,45 @@ test('a tool list that refuses leaves the server loading until it settles by tim
   expect(servers().map(s => s.state)).toEqual(['connected'])
 })
 
-test('the answer passes on untouched', OPTIONS, async ($, on) => {
-  const { beneath } = await begin($, on)
-  const refusal = { ...REFUSED }
-  beneath.answer = refusal
-  expect(await dial($, 'plugin:p:files')).toEqual(refusal)
-  beneath.answer = PASSED
-  expect(await dial($, 'plugin:p:files')).toEqual(PASSED)
+test('a failed server recovers once its tools show, and time alone never settles it', async ($, on) => {
+  const failed: McpServer = { name: 'plugin:p:files', state: 'failed', reason: 'auth', since: NOW }
+  const { kit, tools, servers } = await begin($, on, { stored: [failed] })
+  await kit.clock.advance(SETTLE_MS * 2)
+  await kit.clock.settle()
+  expect(servers()).toEqual([failed])
+  tools.names = ['mcp__files__read']
+  await kit.clock.advance(IDLE_WAIT)
+  await kit.clock.settle()
+  expect(servers()).toEqual([{ name: 'plugin:p:files', state: 'connected', since: NOW }])
 })
 
-test('with every state read and write refused, the answer beneath still comes back', OPTIONS, async ($, on) => {
-  const refuse = { isOn: false }
-  on('state.get', (_, e, next) => (refuse.isOn ? { deny: 'test: state read refused' } : next(e)))
-  on('state.set', (_, e, next) => (refuse.isOn ? { deny: 'test: state write refused' } : next(e)))
-  stubAll(on, { root: '/work/app', cwd: '/work/app', now: NOW })
-  stubTools(on)
-  on('mcp.connect', () => ({ value: REFUSED }))
-  engine(on)
-  await $.session.start(START)
-  refuse.isOn = true
-  expect(await dial($, 'plugin:p:files')).toEqual(REFUSED)
-})
-
-test('a hook beneath that denies the connect marks the server failed', OPTIONS, async ($, on) => {
-  const { beneath, servers } = await begin($, on)
-  beneath.answer = { deny: 'policy' }
-  await dial($, 'plugin:p:files').catch(() => undefined)
-  expect(servers().map(s => [s.state, s.reason])).toEqual([['failed', 'denied']])
-})
-
-test('the seed marks connected', OPTIONS, async ($, on) => {
+test('the seed marks connected', async ($, on) => {
   const { servers } = await begin($, on, { tools: ['Read', 'mcp__github__x'] })
   expect(servers().map(s => [s.name, s.state])).toEqual([['github', 'connected']])
   expect(text(servers())).toBe('mcp ✓ 1')
 })
 
-test('same short name from two plugins counts twice', OPTIONS, async ($, on) => {
-  const { servers } = await begin($, on)
-  await dial($, 'plugin:a:files')
-  await dial($, 'plugin:b:files')
-  expect(servers()).toHaveLength(2)
-  expect(text(servers())).toBe('mcp ◐ 0/2')
+test('same short name from two plugins counts twice', () => {
+  const servers = markLoading(markLoading([], 'plugin:a:files', NOW), 'plugin:b:files', NOW)
+  expect(servers).toHaveLength(2)
+  expect(text(servers)).toBe('mcp ◐ 0/2')
 })
 
-test('a server name is never drawn', OPTIONS, async ($, on) => {
-  const { beneath, servers } = await begin($, on)
-  beneath.answer = REFUSED
-  await dial($, 'plugin:p:files')
-  await dial($, 'files')
-  expect(text(servers())).not.toContain('files')
-  expect(text(servers())).not.toContain('plugin')
+test('an event replaces the connected entry the tool list seeded under its short name', () => {
+  const servers = markLoading([connected('files'), connected('github')], 'plugin:p:files', NOW + 5)
+  expect(servers).toEqual([loading('plugin:p:files', NOW + 5), connected('github')])
+  expect(markLoading([connected('files')], 'files', NOW + 5)).toEqual([loading('files', NOW + 5)])
+  expect(markLoading([loading('files')], 'plugin:p:files', NOW + 5)).toHaveLength(2)
 })
 
-test('a tool server that no event named counts as connected beside the loading one', OPTIONS, async ($, on) => {
-  const { kit, tools, servers } = await begin($, on)
-  await dial($, 'plugin:p:files')
+test('a server name is never drawn', () => {
+  const servers: McpServer[] = [{ name: 'plugin:p:files', state: 'failed', reason: 'auth', since: 0 }, connected('files')]
+  expect(text(servers)).not.toContain('files')
+  expect(text(servers)).not.toContain('plugin')
+})
+
+test('a tool server that no event named counts as connected beside the loading one', async ($, on) => {
+  const { kit, tools, servers } = await begin($, on, { stored: [loading('plugin:p:files')] })
   tools.names = ['mcp__github__x']
   await kit.clock.advance(POLL_MS + 1000)
   await kit.clock.settle()
@@ -158,31 +157,43 @@ test('a tool server that no event named counts as connected beside the loading o
   expect(text(servers())).toBe('mcp ◐ 1/2')
 })
 
-test('a polled list is read every 5 s while a server loads', OPTIONS, async ($, on) => {
-  const { kit, tools } = await begin($, on)
-  await dial($, 'plugin:p:files')
-  const before = tools.calls
-  await kit.clock.advance(POLL_MS * 3)
+// A loading server whose event is in the future never settles by time, so the cadence past EARLY_MS is the loading one
+test('past the first 2 minutes the tool list is read every 5 s while a server loads, every 30 s otherwise', async ($, on) => {
+  const hot = await begin($, on, { stored: [loading('plugin:p:files', NOW + 3_600_000)] })
+  await hot.kit.clock.advance(EARLY_MS + POLL_MS)
+  await hot.kit.clock.settle()
+  const hotBefore = hot.tools.calls
+  await hot.kit.clock.advance(20_000)
+  await hot.kit.clock.settle()
+  expect(hot.tools.calls - hotBefore).toBeGreaterThanOrEqual(3)
+  expect(hot.tools.calls - hotBefore).toBeLessThanOrEqual(5)
+})
+
+test('past the first 2 minutes a list with no loading server is read every 30 s', async ($, on) => {
+  const { kit, tools } = await begin($, on, { stored: [connected('plugin:p:files')], tools: ['mcp__files__x'] })
+  await kit.clock.advance(EARLY_MS + POLL_MS)
   await kit.clock.settle()
-  expect(tools.calls - before).toBeGreaterThanOrEqual(2)
+  const before = tools.calls
+  await kit.clock.advance(60_000)
+  await kit.clock.settle()
+  expect(tools.calls - before).toBeGreaterThanOrEqual(1)
+  expect(tools.calls - before).toBeLessThanOrEqual(3)
+})
+
+test('a /clear empties the atom and the start-over writes the servers back', async ($, on) => {
+  const stored = [connected('plugin:p:files'), loading('github', NOW + 3_600_000)]
+  const { kit, state } = await begin($, on, { stored })
+  state.empty()
+  expect(state.get('mcp')).toBeUndefined()
+  await $.classic.SessionStart({ source: 'clear' } as never)
+  await kit.clock.settle()
+  expect(state.get('mcp')).toEqual(stored)
 })
 
 test('with the option on the hook is not registered and the seed serves', { plugins: [DIAL], options: { leave_out_skipped_hooks: true } }, async ($, on) => {
-  const kit = stubAll(on, { root: '/work/app', cwd: '/work/app', now: NOW })
-  stubTools(on, ['mcp__github__x'])
-  const state = watchState(on)
-  let raised = 0
-  on('mcp.connect', () => {
-    raised++
-    return { value: PASSED }
-  })
-  engine(on)
-  await $.session.start(START)
-  await dial($, 'plugin:p:files')
-  await kit.clock.settle()
-  const servers = (state.get('mcp') as McpServer[]).map(s => [s.name, s.state])
-  expect(servers).toEqual([['github', 'connected']])
-  expect(raised).toBe(1)
+  const { state } = await begin($, on, { tools: ['mcp__github__x'] })
+  expect(await dial($, 'plugin:p:files')).toEqual(PASSED)
+  expect((state.get('mcp') as McpServer[]).map(s => [s.name, s.state])).toEqual([['github', 'connected']])
 })
 
 test('shortName takes the last colon part and reads other characters as underscores', () => {
@@ -200,13 +211,13 @@ test('toolServers takes the part between mcp__ and the next __, only where mcp i
 })
 
 test('settle matches both spellings of a plugin server and adds a stranger as connected', () => {
-  const loading = (name: string): McpServer => ({ name, state: 'loading', since: 1000 })
-  const full = settle([loading('plugin:p:files')], ['plugin_p_files'], 2000)
+  const full = settle([loading('plugin:p:files', 1000)], ['plugin_p_files'], 2000)
   expect(full.map(s => s.state)).toEqual(['connected'])
-  const short = settle([loading('plugin:p:files')], ['files', 'github'], 2000)
+  const short = settle([loading('plugin:p:files', 1000)], ['files', 'github'], 2000)
   expect(short.map(s => [s.name, s.state])).toEqual([['plugin:p:files', 'connected'], ['github', 'connected']])
   const failed: McpServer = { name: 'x', state: 'failed', reason: 'auth', since: 1000 }
-  expect(settle([failed], ['x'], SETTLE_MS * 2)).toEqual([failed])
+  expect(settle([failed], [], SETTLE_MS * 2)).toEqual([failed])
+  expect(settle([failed], ['x'], 2000)).toEqual([{ name: 'x', state: 'connected', since: 1000 }])
 })
 
 test('mcpItem is none for an empty list, and a loading server wins over a failed one', () => {

@@ -1,7 +1,7 @@
 // The MCP state's logic (spec 2026-11-23, D5): which server a tool belongs to, how a loading server settles and the band's
 // item. Pure: effects.ts reads the tool list and keeps the atom.
 import type { Seg } from '../core/types'
-import { DENIED_REASON, GLYPH, ITEM_JOIN, ITEM_LABEL, NAME_UNSAFE, PLUGIN_SEPARATOR, SETTLE_MS, TOOL_PREFIX, TOOL_SEPARATOR } from './constants'
+import { DENIED_REASON, ENGINE_ORIGIN, GLYPH, ITEM_JOIN, ITEM_LABEL, NAME_UNSAFE, PLUGIN_SEPARATOR, SETTLE_MS, TOOL_PREFIX, TOOL_SEPARATOR } from './constants'
 import type { ConnectAnswer, ListedTool, McpServer } from './types'
 
 const spelled = (name: string): string => name.replace(NAME_UNSAFE, '_')
@@ -27,20 +27,24 @@ export function toolServers(tools: readonly ListedTool[]): string[] {
 // A server's name matches a tool server by its last `:`-part or by the whole name, either spelled as a tool's name is
 const isShownBy = (server: McpServer, toolServer: string): boolean => toolServer === shortName(server.name) || toolServer === spelled(server.name)
 
-// The servers after a read of the tool list at `now`: a loading one whose tools show, or that has loaded for SETTLE_MS,
-// is connected; a failed one stays so; a tool server no server names is added as connected
+// The servers after a read of the tool list at `now`: a loading or failed one whose tools show is connected, a loading
+// one that has loaded for SETTLE_MS too; a failed one with no tools stays so; a tool server no server names is added as
+// connected
 export function settle(servers: readonly McpServer[], fromTools: readonly string[], now: number): McpServer[] {
   const named = new Set<string>()
   const settled = servers.map((server): McpServer => {
     const shown = fromTools.filter(toolServer => isShownBy(server, toolServer))
     for (const toolServer of shown) named.add(toolServer)
-    if (server.state !== 'loading') return server
-    const isSettled = shown.length > 0 || now - server.since >= SETTLE_MS
+    if (server.state === 'connected') return server
+    const isSettled = shown.length > 0 || (server.state === 'loading' && now - server.since >= SETTLE_MS)
     return isSettled ? { name: server.name, state: 'connected', since: server.since } : server
   })
   const added = fromTools.filter(toolServer => !named.has(toolServer)).map((toolServer): McpServer => ({ name: toolServer, state: 'connected', since: now }))
   return [...settled, ...added]
 }
+
+// Only the engine's own raise is counted: another plugin's `$.mcp.connect` spells a server as its manifest key
+export const isEngineRaise = (origin: { readonly plugin: string }): boolean => origin.plugin === ENGINE_ORIGIN
 
 // The reason a connect answer refuses, or null for any other answer: a refusal from the engine (`{ value }` with
 // `isConnected` false) or a hook beneath that denied the connect
@@ -49,10 +53,14 @@ export function refusalOf(answer: ConnectAnswer): string | null {
   return answer.value.isConnected ? null : answer.value.reason
 }
 
-// The list with `name` loading since `now`, in the place the name already held or last
+// The list with `name` loading since `now`, in the place the name already held or last. A connected entry the tool list
+// seeded under the name's short name is the same server: the event replaces it.
 export function markLoading(servers: readonly McpServer[], name: string, now: number): McpServer[] {
   const loading: McpServer = { name, state: 'loading', since: now }
-  return servers.some(server => server.name === name) ? servers.map(server => (server.name === name ? loading : server)) : [...servers, loading]
+  const exact = servers.findIndex(server => server.name === name)
+  const place = exact >= 0 ? exact : servers.findIndex(server => server.state === 'connected' && isShownBy(loading, server.name))
+  if (place < 0) return [...servers, loading]
+  return servers.map((server, index) => (index === place ? loading : server))
 }
 
 export function markFailed(servers: readonly McpServer[], name: string, reason: string): McpServer[] {

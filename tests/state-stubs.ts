@@ -54,13 +54,22 @@ export function seedState(on: On, seeds: Record<string, unknown>): void {
 
 // watchState and more: once `empty()` is called, a read of each key of `keys` answers as nothing stored (the StateRead's
 // value undefined, so the atom reads its initial value, as after the engine's own reset) until the mod next writes that
-// key, and `get` forgets the last value written, so it answers undefined until then too. The test kit takes one
-// `state.set` and one `state.get` hook, so a test that needs both uses this alone.
-export function emptyState(on: On, keys: string[]): { empty(): void; get(key: string): unknown; writes: string[] } {
+// key, and `get` forgets the last value written, so it answers undefined until then too. `seeds` give a key the value an
+// earlier version stored, read until the mod first writes it (a loading server, which only an engine raise makes).
+// The test kit takes one `state.set` and one `state.get` hook, so a test that needs both uses this alone.
+export function emptyState(
+  on: On, keys: string[], seeds: Record<string, { shape: string; value: unknown }> = {},
+): { empty(): void; get(key: string): unknown; writes: string[] } {
   const emptied = new Set<string>()
-  const watched = recordWrites(on, key => void emptied.delete(key))
+  const written = new Set<string>()
+  const watched = recordWrites(on, key => {
+    emptied.delete(key)
+    written.add(key)
+  })
   on('state.get', async (_, e, next) => {
     const stored = await next(e)
+    const seed = seeds[e.key]
+    if (seed !== undefined && stored.value !== undefined && !written.has(e.key) && !emptied.has(e.key)) return { value: { ...stored.value, value: seed } }
     return !emptied.has(e.key) || stored.value === undefined ? stored : { value: { ...stored.value, value: undefined } }
   })
   return {
