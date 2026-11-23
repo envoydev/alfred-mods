@@ -6,7 +6,7 @@ import { oneLine, printable } from '../core/format'
 // neither reaches the mod). Each answers with what it did, masked while REC is on.
 export const INSPECT_HELP = 'Usage: /inspect [now|usage|agents|tools|cache|timeline|plan [name]|prompt] opens a tab, /inspect close closes the pane. ' +
   '/inspect show [n] and copy [n] act on tool failure n (1 the newest), report [n] on agent report n (1 the top), ' +
-  "fill fills Alfred Code's resume prompt, band off|calm|full sets \"band\" in ~/.claude/settings.json."
+  "fill fills Alfred Code's resume prompt, skip leave|never answers the ask about hooks a managed plugin skips, band off|calm|full sets \"band\" in ~/.claude/settings.json."
 
 export const BAND_HELP = '/inspect band off, calm or full sets "band" in ~/.claude/settings.json.'
 

@@ -4,7 +4,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On, RenderElement } from 'claude-code'
 
-import { PRESENTATION, START, engine, engineSites, rows, stubAll } from '../kit'
+import { PRESENTATION, START, engine, engineSites, rows, stubAll, watchState } from '../kit'
 import { stubTranscript } from '../transcript-stubs'
 import { stubConfigSet } from '../skip-stubs'
 
@@ -31,7 +31,7 @@ const above = ($: Engine) => $.ui.mount({ plugin: 'alfred-mods', surface: 'termi
 const footer = ($: Engine) => $.ui.mount({ plugin: 'alfred-mods', surface: 'terminal', component: 'PromptHint', props: HINT, viewport: MAIN })
 const askRows = async (ui: { drawn: () => Promise<RenderElement> }): Promise<string[]> => (await rows(ui)).filter(row => row.includes(ASK))
 
-type Setup = { text?: string; deny?: string; store?: Record<string, unknown>; isUnder?: boolean }
+type Setup = { text?: string; deny?: string; throws?: string; store?: Record<string, unknown>; isUnder?: boolean }
 
 // A session on `/work/app` whose transcript holds `text`; the first tick reads it
 async function begin($: Engine, on: On, o: Setup = {}) {
@@ -40,7 +40,7 @@ async function begin($: Engine, on: On, o: Setup = {}) {
     files: { [PATH]: file(o.text ?? notice) }, store: { ...(o.isUnder === true ? { 'settings:band-place': 'under' } : {}), ...o.store },
   })
   stubTranscript(on, {})
-  const config = stubConfigSet(on, o.deny === undefined ? {} : { deny: o.deny })
+  const config = stubConfigSet(on, { ...(o.deny === undefined ? {} : { deny: o.deny }), ...(o.throws === undefined ? {} : { throws: o.throws }) })
   if (o.isUnder === true) engineSites(on)
   engine(on)
   await $.session.start(START)
@@ -85,6 +85,38 @@ test('a deny toasts its reason and the config row', async ($, on) => {
   expect(kit.toasts).toHaveLength(1)
   expect(kit.toasts[0]).toContain('locked')
   expect(kit.toasts[0]).toContain(ROW_TITLE)
+})
+
+test('a config.set that rejects toasts once, names the config row and leaves the ask up', async ($, on) => {
+  const { kit, config } = await begin($, on, { throws: 'no config here' })
+  await (await above($)).press({ key: 'skip-leave' })
+  await kit.clock.settle()
+  expect(config.calls).toHaveLength(1)
+  expect(kit.toasts).toHaveLength(1)
+  expect(kit.toasts[0]).toContain('Could not leave out the skipped hooks')
+  expect(kit.toasts[0]).toContain(ROW_TITLE)
+  expect(await askRows(await above($))).toHaveLength(1)
+})
+
+test('a second session.start leaves one listener, so one notice writes the ask once', async ($, on) => {
+  const kit = stubAll(on, {
+    root: '/work/app', cwd: '/work/app', env: { CLAUDE_CONFIG_DIR: CONFIG }, now: NOW, band: 'full', files: { [PATH]: file(notice) },
+  })
+  stubTranscript(on, {})
+  stubConfigSet(on)
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+  await $.session.start(START)
+  await kit.clock.advance(1000)
+  await kit.clock.settle()
+  expect(state.writes.filter(write => write.includes('"shape":"skip-1"') && write.includes('"isAskUp":true'))).toHaveLength(1)
+})
+
+test('/inspect with a word it does not know lists the skip subcommand in its help', async ($, on) => {
+  await begin($, on)
+  const help = (await $.command.run({ command: 'inspect', args: 'nosuch', origin: { kind: 'composer' }, presentation: PRESENTATION })).text ?? ''
+  expect(help).toContain('skip leave|never')
 })
 
 test("Don't ask again stores skip-ask and the ask stays away", async ($, on) => {

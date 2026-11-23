@@ -39,9 +39,15 @@ export function watchSkipNotices($: EngineInterface, isLeftOut: boolean): void {
 // 'Leave out': the option is written through `/config`, which reloads the mod without the hooks; a refusal toasts its
 // reason and the row, and the ask stays up
 export async function leaveOutSkipped($: EngineInterface): Promise<string> {
-  const result = await $.config.set({ key: OPTION_KEY, value: true })
-  if (result.deny !== undefined) {
-    const text = `Could not leave out the skipped hooks: ${result.deny}. Set '${OPTION_TITLE}' in /config.`
+  let reason: string | undefined
+  try {
+    reason = (await $.config.set({ key: OPTION_KEY, value: true })).deny
+  } catch (err) {
+    // A build without `$.config` throws where the call is made, and a press runs unawaited: the person is told here
+    reason = err instanceof Error ? err.message : String(err)
+  }
+  if (reason !== undefined) {
+    const text = `Could not leave out the skipped hooks: ${reason}. Set '${OPTION_TITLE}' in /config.`
     toast($, text)
     return text
   }

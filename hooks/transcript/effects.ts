@@ -34,9 +34,10 @@ export function transcriptState(): TranscriptState {
   return { isKnown: readerMemory.isKnown, note: readerMemory.note }
 }
 
-// A listener hears each run that finds a skip notice for this plugin in the transcript (spec D3)
+// The listener hears each run that finds a skip notice for this plugin in the transcript (spec D3). One at a time: a
+// session.start that fires again (an enable, a respawn) replaces it, so no listener holds an older `$`.
 export function onSkipNotice(listener: () => void): void {
-  readerMemory.listeners.push(listener)
+  readerMemory.listeners = [listener]
 }
 
 // A start-over: the reader begins again, and a run in flight ends with no write
