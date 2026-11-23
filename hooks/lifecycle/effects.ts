@@ -23,6 +23,7 @@ import { resetPrompt } from '../prompt/effects'
 import { refreshKit } from '../kit/effects'
 import { readTranscriptIfDue, resetTranscript } from '../transcript/effects'
 import { watchSkipNotices } from '../skip/effects'
+import { pollMcpIfDue, seedMcp } from '../mcp/effects'
 
 // The conversation the mod last started, by session id, and the start-over running. A /clear, a resume or a branch goes
 // on under a new id: classic.SessionStart starts it over, and where a managed plugin keeps that hook from the mod, the
@@ -30,7 +31,7 @@ import { watchSkipNotices } from '../skip/effects'
 const conversationMemory = { id: null as string | null, starting: null as Promise<void> | null }
 
 // The clock's minute the last tick saw: the full band's info line shows the session's time, which moves while idle
-const tickMemory = { minute: -1 }
+const tickMemory = { minute: -1, startedAt: 0 }
 
 // What the band shows before the first reply: the model, Claude Code's version, the place, the stored windows and the
 // context's parts. Each read stands alone: a refusal leaves its value as it was.
@@ -76,6 +77,8 @@ async function runTick($: EngineInterface): Promise<void> {
   await syncStatusLine($)
   // The rules the transcript names, read every 30 s and once the turn count moves; it never rejects
   await readTranscriptIfDue($, now)
+  // The tool list's servers (spec 2026-11-23, D5): every 5 s while one loads and for the first 2 minutes, else every 30 s
+  await pollMcpIfDue($, now, tickMemory.startedAt)
 }
 
 async function resetState($: EngineInterface): Promise<void> {
@@ -196,6 +199,9 @@ export async function startSession($: EngineInterface, e: HookInput<'session.sta
   await readRecHome($)
   await loadSettings($, true)
   await refreshAccount($, true)
+  // The servers that joined before the mcp.connect hook, or with the hook left out
+  tickMemory.startedAt = await $.clock.now()
+  await seedMcp($, tickMemory.startedAt).catch(() => undefined)
   await refreshKit($)
   await rememberStartRoot($)
   await readStatusFile($)

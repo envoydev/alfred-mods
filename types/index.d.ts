@@ -239,6 +239,11 @@ export type TranscriptReader = { sessionId: string | null; offset: number; isInL
 // while the band asks whether to leave the skipped hooks out
 export type SkipAsk = { isSkipped: boolean; isAskUp: boolean }
 
+// One MCP server the session joined (spec 2026-11-23, D5): `name` as the engine's mcp.connect event spelled it, or the
+// part of a tool's name between `mcp__` and the next `__` for one only the tool list showed; `reason` is a refusal's word,
+// set while `failed`; `since` is when the event came or the tool list first showed it. The name is never drawn.
+export type McpServer = { name: string; state: 'loading' | 'connected' | 'failed'; reason?: string; since: number }
+
 declare module 'claude-code' {
   interface PluginState {
     'alfred-mods': {
@@ -257,6 +262,7 @@ declare module 'claude-code' {
       loops: Shaped<Loop[]>
       transcript: Shaped<TranscriptReader>
       skip: Shaped<SkipAsk>
+      mcp: Shaped<McpServer[]>
     }
   }
 }

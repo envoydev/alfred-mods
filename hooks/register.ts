@@ -26,6 +26,7 @@ import type { Pending } from './core/types'
 import { reloadSettingsSoon } from './settings/effects'
 import { followSessionStart, startSession } from './lifecycle/effects'
 import { recordAttachment } from './prompt/effects'
+import { trackMcpConnect } from './mcp/effects'
 
 export const register: Register = (on, options) => {
   // The person's word that a managed plugin sends these events on past the mod: Claude Code then tells the model, once
@@ -86,6 +87,10 @@ export const register: Register = (on, options) => {
     // plugin's notices named it (spec 2026-11-23, D3), so it is left out with the others: the Prompt tab then lists no
     // attachments.
     on('prompt.attachment', ($, e, next) => recordAttachment($, e, next)).catch(($, e, next) => next(e))
+
+    // A server about to join the session: loading from the event, failed on a refusal answer, which goes on untouched
+    // (spec 2026-11-23, D5). Left out with the others, the band's MCP item comes from the tool list alone.
+    on('mcp.connect', ($, e, next) => trackMcpConnect($, e, next)).catch(($, e, next) => next(e))
   }
 
   on('session.start', ($, e, next) => startSession($, e, next, calls, pending, isLeftOut)).catch(($, e, next) => next(e))

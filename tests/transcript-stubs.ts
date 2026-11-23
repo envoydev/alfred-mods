@@ -10,3 +10,17 @@ export function stubTranscript(on: On, o: TranscriptOptions = {}): void {
     return { value: { transcriptPath: o.transcriptPath ?? '' } as never }
   })
 }
+
+// The kit's stub of `$.tool.list()`, which the MCP state reads for the servers whose tools show: `names` is what the list
+// holds now, a test changes it mid-test; a name starting `mcp__` is an MCP server's tool; `refuse` makes the call fail
+export type ToolsStub = { names: string[]; calls: number; refuse: boolean }
+
+export function stubTools(on: On, names: string[] = []): ToolsStub {
+  const tools: ToolsStub = { names, calls: 0, refuse: false }
+  on('tool.list', () => {
+    tools.calls++
+    if (tools.refuse) return { deny: 'test: tool list refused' }
+    return { value: tools.names.map(name => ({ name, description: '', mcp: name.startsWith('mcp__') })) }
+  })
+  return tools
+}
