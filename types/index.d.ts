@@ -227,8 +227,10 @@ export type PromptPart = { type: string; origin: PromptOrigin; event: string | n
 export type PromptRecord = { startedAt: number | null; typedChars: number | null; parts: PromptPart[]; dropped: number }
 
 // What the band shows for the signed-in account, from the global config's oauthAccount: 'Personal' for a free, Pro or
-// Max type, else the organization's name; null when unknown (a token login, no config, a read that failed). Nothing else of that file is kept.
-export type Account = { org: string | null }
+// Max type, else the organization's name; null when unknown (a token login, no config, a read that failed). `kind` is the
+// plan from `organizationType`: Team, Enterprise or Personal, null for any other or none. Nothing else of that file is kept.
+export type AccountKind = 'Team' | 'Enterprise' | 'Personal'
+export type Account = { org: string | null; kind: AccountKind | null }
 
 // Where the transcript reader stands in the main conversation's transcript file: the session id it reads for, the byte
 // offset of the next line start, and whether it is inside a line past one chunk, which it drops to the next newline.

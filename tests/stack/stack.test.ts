@@ -238,15 +238,15 @@ test('bannerSegs', () => {
   expect(bannerSegs({ ...STACK, state: 'ignored', reason: 'another session' })).toEqual([])
 })
 
-test('the banner leads line 1, after REC when it is on, calm and working, at 90 and 120 columns', () => {
+test('the banner has line 2, after REC on line 1 when it is on, calm and working, at 90 and 120 columns', () => {
   const banner = bannerSegs(STACK)
   for (const columns of [90, 120]) {
     for (const isWorking of [false, true]) {
       const live = isWorking ? { ...BASE.live, turnId: 't1', startedAt: 0 } : BASE.live
       const plain = bandLines({ ...BASE, columns, isWorking, live, banner })
-      expect(text(plain[0]!).startsWith('auto-run · scoring 80 │ ')).toBe(true)
+      expect(text(plain[0]!)).toBe('auto-run · scoring 80')
       const withRec = bandLines({ ...BASE, columns, isWorking, live, banner, rec: { level: 'on', words: 0 } })
-      expect(text(withRec[0]!).startsWith('● REC │ auto-run · scoring 80 │ ')).toBe(true)
+      expect(withRec.slice(0, 2).map(text)).toEqual(['● REC', 'auto-run · scoring 80'])
     }
   }
 })
@@ -254,23 +254,24 @@ test('the banner leads line 1, after REC when it is on, calm and working, at 90 
 test('with no reading yet, the banner alone', () => {
   const none = { ...BASE, usage: { ...USAGE, contextTokens: null, contextPercent: null }, banner: bannerSegs(STACK) }
   expect(bandLines(none).map(text)).toEqual(['auto-run · scoring 80'])
-  expect(bandLines({ ...none, rec: { level: 'on', words: 0 } }).map(text)).toEqual(['● REC │ auto-run · scoring 80'])
+  expect(bandLines({ ...none, rec: { level: 'on', words: 0 } }).map(text)).toEqual(['● REC', 'auto-run · scoring 80'])
   expect(bandLines({ ...none, banner: [] })).toEqual([])
 })
 
-test('REC and the banner at 60 columns keep both marks', () => {
+test('REC and the banner at 60 columns keep both lines', () => {
   const lines = bandLines({ ...BASE, columns: 60, banner: bannerSegs(STACK), rec: { level: 'on', words: 0 }, runway: RUNWAY, newFailures: 2 })
-  expect(text(lines[0]!).startsWith('● REC │ auto-run · scoring 80 │ ')).toBe(true)
+  expect(lines.slice(0, 2).map(text)).toEqual(['● REC', 'auto-run · scoring 80'])
 })
 
-test('the marks take line 1 alone when the calm line does not fit beside them, and every gauge, reset and the cost stay', () => {
+test('REC and the banner take lines of their own, and every gauge, reset and the cost stay whole', () => {
   const windows = [{ kind: 'five_hour', percentUsed: 45, resetsAt: '2026-10-28T17:00:00Z' }, { kind: 'seven_day', percentUsed: 20, resetsAt: '2026-10-31T09:00:00Z' }]
   const usage = { ...USAGE, rateWindows: windows, costUsd: 1.23 }
   for (const columns of [90, 100]) {
     const lines = bandLines({ ...BASE, columns, usage, banner: bannerSegs(STACK), rec: { level: 'on', words: 0 }, runway: RUNWAY })
-    expect(text(lines[0]!)).toBe('● REC │ auto-run · scoring 80')
-    expect(text(lines[1]!)).toMatch(/^ctx ▰▰▰▱▱ 62% of 150k.* 5h .*\(\d\d\.\d\d \d\d:\d\d\).* 7d .*\(\d\d\.\d\d \d\d:\d\d\)/)
-    if (columns >= 100) expect(text(lines[1]!)).toContain('$1.23')
+    expect(text(lines[0]!)).toBe('● REC')
+    expect(text(lines[1]!)).toBe('auto-run · scoring 80')
+    expect(text(lines[2]!)).toMatch(/^ctx ▰▰▰▱▱ 62% of 150k.* 5h .*\(\d\d\.\d\d \d\d:\d\d\).* 7d .*\(\d\d\.\d\d \d\d:\d\d\)/)
+    if (columns >= 100) expect(text(lines[2]!)).toContain('$1.23')
     for (const l of lines) expect(widthOf(l)).toBeLessThanOrEqual(columns)
   }
 })

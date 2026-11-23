@@ -214,12 +214,12 @@ for (const surface of SURFACES) {
     await start($, on, { files: { [STATUS]: status() }, usage: reading(93_000) })
     for (const columns of [120, 90]) {
       const lines = await rows(await band($, surface, columns))
-      expect(lines[0]!.startsWith('auto-run · scoring 80 │ ')).toBe(true)
-      expect(lines.join('\n')).toContain('ctx ▰▰▰▱▱ 62% of 150k')
+      expect(lines[0]).toBe('auto-run · scoring 80')
+      expect(lines[1]!.startsWith('ctx ▰▰▰▱▱ 62% of 150k')).toBe(true)
     }
   })
 
-  test(`with 5h and 7d windows at 90 columns the banner takes line 1 alone and every row fits (${surface})`, async ($, on) => {
+  test(`with 5h and 7d windows at 90 columns the banner takes its line alone and every row fits (${surface})`, async ($, on) => {
     const windowed: SessionUsage = {
       ...reading(93_000),
       rateLimits: [{ kind: 'five_hour', percentUsed: 45, resetsAt: '2026-10-28T17:00:00Z' }, { kind: 'seven_day', percentUsed: 20, resetsAt: '2026-10-31T09:00:00Z' }],

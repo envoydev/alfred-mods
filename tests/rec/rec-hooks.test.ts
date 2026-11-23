@@ -163,7 +163,7 @@ for (const surface of SURFACES) {
     engine(on)
     await $.session.start(START)
     // No reading yet: the marks alone
-    expect(await band($, surface)).toEqual(['● REC │ org unknown'])
+    expect(await band($, surface)).toEqual(['● REC │ org | unknown'])
     await $.session.measure({ context: SUBSCRIPTION.context, rateLimits: SUBSCRIPTION.rateLimits, changed: ['context'] })
     for (const more of [{}, { bodyColumns: 80 }, { isWorking: true }, { isWorking: true, bodyColumns: 80 }]) {
       const lines = await band($, surface, more)

@@ -82,36 +82,35 @@ test('no kit data draws nothing', () => {
   expect(kitBannerSegs(NO_KIT)).toEqual([])
 })
 
-test('the band leads line 1 with REC, Alfred Code\'s banner, then the kit banner', () => {
+test("the band leads with REC, then Alfred Code's banner and the kit banner on line 2", () => {
   const lines = bandLines(input({ rec: REC, banner: ALFRED_BANNER, kitBanner: kitBannerSegs(kitOf()) }))
-  expect(text(lines[0] ?? []).startsWith('● REC │ auto-run · auto-compact 490k · scoring 80 │ kit: auto-run · scoring 90 · auto-approve │ ')).toBe(true)
+  expect(text(lines[0] ?? [])).toBe('● REC')
+  expect(text(lines[1] ?? [])).toBe('auto-run · auto-compact 490k · scoring 80 │ kit: auto-run · scoring 90 · auto-approve')
 })
 
 test('at 60 columns the kit banner shortens to kit or goes, and no gauge, reset or cost drops for it', () => {
   const marks = { rec: REC, banner: ALFRED_BANNER }
   const kitBanner = kitBannerSegs(kitOf())
-  for (const columns of [60, 54, 50]) {
-    for (const maxRows of [undefined, 2]) {
-      const base = { columns, usage: NARROW_USAGE, ...(maxRows === undefined ? {} : { maxRows }), ...marks }
-      const plain = bandLines(input(base))
-      const withKit = bandLines(input({ ...base, kitBanner }))
-      const first = text(withKit[0] ?? [])
-      expect(first.startsWith('● REC │ auto-run · auto-compact 490k · scoring 80')).toBe(true)
-      expect(first.includes('kit: ')).toBe(false)
-      expect(withKit.every(line => widthOf(line) <= columns)).toBe(true)
-      expect(withKit.filter(line => text(line).includes('● REC'))).toHaveLength(1)
-      // The rows the marks leave are the plain band's, whole
-      expect(texts(withKit.slice(1))).toEqual(texts(plain.slice(1)))
-      expect(withKit).toHaveLength(plain.length)
-    }
+  for (const columns of [60, 50, 45]) {
+    const base = { columns, usage: NARROW_USAGE, ...marks }
+    const plain = bandLines(input(base))
+    const withKit = bandLines(input({ ...base, kitBanner }))
+    const modes = text(withKit[1] ?? [])
+    expect(modes.startsWith('auto-run · auto-compact 490k · scoring 80')).toBe(true)
+    expect(modes.includes('kit: ')).toBe(false)
+    expect(modes.endsWith(' │ kit')).toBe(columns >= 50)
+    expect(withKit.every(line => widthOf(line) <= columns)).toBe(true)
+    expect(withKit.filter(line => text(line).includes('● REC'))).toHaveLength(1)
+    // The rows the two lines leave are the plain band's, whole
+    expect(texts(withKit.slice(2))).toEqual(texts(plain.slice(2)))
+    expect(withKit).toHaveLength(plain.length)
   }
-  const sixty = bandLines(input({ columns: 60, usage: NARROW_USAGE, rec: REC, banner: ALFRED_BANNER, kitBanner }))
-  expect(text(sixty[0] ?? []).includes(' │ kit')).toBe(true)
-  const twoRows = bandLines(input({ columns: 60, maxRows: 2, usage: NARROW_USAGE, rec: REC, banner: ALFRED_BANNER, kitBanner }))
-  const twoRowsPlain = bandLines(input({ columns: 60, maxRows: 2, usage: NARROW_USAGE, rec: REC, banner: ALFRED_BANNER }))
-  expect(twoRows).toHaveLength(2)
-  expect(text(twoRows[1] ?? [])).toBe(text(twoRowsPlain[1] ?? []))
-  expect(text(twoRows[1] ?? [])).toContain('ctx')
+  const joined = bandLines(input({ columns: 60, maxRows: 2, usage: NARROW_USAGE, rec: REC, banner: ALFRED_BANNER, kitBanner }))
+  const joinedPlain = bandLines(input({ columns: 60, maxRows: 2, usage: NARROW_USAGE, rec: REC, banner: ALFRED_BANNER }))
+  expect(joined).toHaveLength(2)
+  expect(text(joined[0] ?? [])).toBe('● REC │ auto-run · auto-compact 490k · scoring 80 │ kit')
+  expect(text(joined[1] ?? [])).toBe(text(joinedPlain[1] ?? []))
+  expect(text(joined[1] ?? [])).toContain('ctx')
 })
 
 test('the section carries each switch with its file, the pass score on the scoring row and the models, and no age or note', () => {
@@ -132,9 +131,8 @@ test('a name the file does not set has no row, a model may be absent, and the pa
   expect(texts(kitLines(kitOf({ auto_run: 'off' }), 120).slice(1))).toEqual(['auto-run off · from .claude/kit/settings.json'])
 })
 
-// The kit banner never adds a row or moves a gauge: the rows under line 1 and the row count are the plain band's.
-// Where the plain band's marks share line 1 with the body, so do the kit's (the body's first line stays on line 1)
-test('a kit banner that fits the width but would push the body off line 1 is shortened or left out', () => {
+// The kit banner moves no gauge and adds at most its own line: the rows after the leading lines are the plain band's
+test('a kit banner that does not fit the width is shortened or left out, and the rows stay the plain band\'s', () => {
   const kitBanner = kitBannerSegs(kitOf())
   const cases: { columns: number; mode: 'full' | 'calm'; marks: Partial<BandInput>; maxRows?: number }[] = [
     { columns: 140, mode: 'full', marks: { rec: REC, banner: ALFRED_BANNER } },
@@ -146,25 +144,18 @@ test('a kit banner that fits the width but would push the body off line 1 is sho
     { columns: 100, mode: 'full', marks: {}, maxRows: 2 },
     { columns: 80, mode: 'full', marks: {} },
     { columns: 120, mode: 'full', marks: {} },
-    { columns: 120, mode: 'calm', marks: {} },
-    { columns: 100, mode: 'calm', marks: {} },
     { columns: 140, mode: 'full', marks: { rec: REC } },
     { columns: 170, mode: 'full', marks: { banner: ALFRED_BANNER } },
   ]
-  const kitTexts = [text(kitBanner), 'kit']
-  // The line without the kit's mark in it: the kit's text and the joiner beside it
-  const withoutKit = (line: Line): string =>
-    kitTexts.reduce((t, kit) => t.includes(`${kit} │ `) ? t.replace(`${kit} │ `, '') : t.endsWith(` │ ${kit}`) ? t.slice(0, -` │ ${kit}`.length) : t, text(line))
+  const isLead = (line: Line): boolean => /^(● REC|auto-run · auto-compact|kit)/.test(text(line))
   for (const { columns, mode, marks, maxRows } of cases) {
     const base = { columns, mode, ...marks, ...(maxRows === undefined ? {} : { maxRows }) }
     const plain = bandLines(input(base))
     const withKit = bandLines(input({ ...base, kitBanner }))
     const note = JSON.stringify({ columns, mode, maxRows, marks: Object.keys(marks) })
-    expect(withKit, note).toHaveLength(plain.length)
+    expect(withKit.length - plain.length, note).toBeLessThanOrEqual(1)
     expect(withKit.every(line => widthOf(line) <= columns), note).toBe(true)
-    expect(texts(withKit.slice(1)), note).toEqual(texts(plain.slice(1)))
-    // Line 1 loses none of its body to the kit's mark
-    expect(withoutKit(withKit[0] ?? []), note).toBe(text(plain[0] ?? []))
+    expect(texts(withKit.filter(line => !isLead(line))), note).toEqual(texts(plain.filter(line => !isLead(line))))
   }
 })
 

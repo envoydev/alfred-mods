@@ -3,18 +3,18 @@
 // tag when its fields change.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
-import { configPathOf, orgOf } from './account'
+import { configPathOf, kindOf, orgOf } from './account'
 import { READ_EVERY_MS } from './constants'
 import type { Account } from './types'
 
 // Unknown until the first read
-const INITIAL_ACCOUNT: Account = { org: null }
-const accountAtom = atom({ plugin: 'alfred-mods', key: 'account' } as const, INITIAL_ACCOUNT, { shape: 'account-1' })
+const INITIAL_ACCOUNT: Account = { org: null, kind: null }
+const accountAtom = atom({ plugin: 'alfred-mods', key: 'account' } as const, INITIAL_ACCOUNT, { shape: 'account-2' })
 
 // When the config was last read, from the clock; null before the first read
 const accountMemory = { lastReadAt: null as number | null }
 
-// The text the band shows for the account: null while unknown
+// The text the band shows for the account and its plan kind: null while unknown
 export function readAccount($: EngineInterface) {
   return read($, accountAtom)
 }
@@ -39,5 +39,6 @@ export async function refreshAccount($: EngineInterface, isForced: boolean): Pro
   accountMemory.lastReadAt = now
   const text = await configText($)
   const org = text === null ? null : orgOf(text)
-  await update($, accountAtom, account => (account.org === org ? account : { org })).catch(() => undefined)
+  const kind = text === null ? null : kindOf(text)
+  await update($, accountAtom, account => (account.org === org && account.kind === kind ? account : { org, kind })).catch(() => undefined)
 }

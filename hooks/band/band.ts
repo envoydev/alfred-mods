@@ -1,12 +1,11 @@
 // The band above the prompt, from the session's values to lines of styled segments. Calm by default: colour
 // appears only when a threshold is crossed, something failed or a turn runs.
 import { isLive } from '../agents/agents'
-import { fitLine, widthOf } from '../core/format'
-import { ORG_STRICT, PERSONAL } from '../account/constants'
-import type { BandInput } from './types'
+import type { BandInput, ModesKeep } from './types'
 import type { RecLevel } from '../rec/types'
 import type { Line, Seg } from '../core/types'
-import { KIT_SHORT, ORG_LABEL, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN } from './constants'
+import { ROW_JOIN } from './constants'
+import { leadLines } from './lines'
 import { fiveHourPace, gauges, narrowGauges, percentText } from './gauges'
 import { cellsOf } from './wrap'
 import { toolRows } from './detail'
@@ -14,7 +13,7 @@ import { placeRow, planRow, usageRow } from './project'
 import { infoRows } from './info'
 import { cacheWarning, handoffAsk, lastTurn, skipAsk, underButton, withPlanTail, withTimes, withToday, workingLine } from './working'
 
-export const REC_MARK: Seg = { text: '● REC', tone: 'fail', bold: true }
+export { REC_MARK } from './lines'
 
 // The status line under the prompt (spec D2), which stays while the band is collapsed: what needs the person, short
 // and in the band's order - REC, the context once the band turns hot at 60, the new failures - or null for none. While
@@ -36,96 +35,52 @@ export function underRows(viewport: { rows: number; isFullscreen?: boolean }, ch
   return Math.max(2, Math.floor(viewport.rows / 2) - 6 - (chrome.hasStatusLine ? 2 : 0) - (chrome.isPinned ? 1 : 0))
 }
 
-// What the full band keeps under its info line: the rows the info line may take (none for 0), the project row, the open
-// detail rows (how many lines of them), the usage row and the plan row
-type Keep = { infoUpTo: number; isPlaceKept: boolean; toolRowsKept: number; isUsageKept: boolean; isPlanKept: boolean }
+// What the full band keeps under its identity line: the modes line, the rows the info line may take (none for 0), the
+// project row, the open detail rows (how many lines of them), the usage row and the plan row
+type Keep = { modes: ModesKeep; infoUpTo: number; isPlaceKept: boolean; toolRowsKept: number; isUsageKept: boolean; isPlanKept: boolean }
 
-const KEEP_ALL: Keep = { infoUpTo: 2, isPlaceKept: true, toolRowsKept: Infinity, isUsageKept: true, isPlanKept: true }
+const KEEP_ALL: Keep = { modes: 'own', infoUpTo: 2, isPlaceKept: true, toolRowsKept: Infinity, isUsageKept: true, isPlanKept: true }
 
-// A red '● REC' while REC is on, then the signed-in account's org, then Alfred Code's mode banner, lead line 1 in every state, never dropped for width:
-// the body's first line follows them while it fits what is left, else they take line 1 alone and the body keeps the
-// full width, so no gauge, reset or the cost drops for them
+// Line 1 is the identity ('● REC' while REC is on, then the signed-in account) and line 2 the modes (Alfred Code's banner,
+// claude-kit's, the MCP item); each is left out when it holds nothing, and the body - the gauges and the rows under them -
+// takes the band's whole width after them (spec 2026-11-23, D4). The identity is never dropped for rows or width.
 export function bandLines(input: BandInput): Line[] {
   // "band": "off" draws none, above or under, and the pinned line counts it as out of view
   if (input.mode === 'off') return []
   const max = input.maxRows
   if (max === undefined) return bandRows(input, KEEP_ALL)
-  // Short of rows, the project row gives way first, then the info line's second row, then the open detail rows from
-  // the last, then the usage row, then the plan row, then the info line: the line under them holds the buttons, and a
-  // digit arms only those in view
-  for (const keep of [KEEP_ALL, { ...KEEP_ALL, isPlaceKept: false }, { ...KEEP_ALL, isPlaceKept: false, infoUpTo: 1 }]) {
+  // Short of rows, the project row gives way first, then line 2 loses its own row (it joins the identity on one line where
+  // the two fit, else it goes), then the info line's second row, then the open detail rows from the last, then the usage
+  // row, then the plan row, then the info line: the line under them holds the buttons, and a digit arms only those in view
+  const noPlace: Keep = { ...KEEP_ALL, isPlaceKept: false }
+  for (const keep of [KEEP_ALL, noPlace, { ...noPlace, modes: 'joined' }, { ...noPlace, modes: 'joined', infoUpTo: 1 }] satisfies Keep[]) {
     const lines = bandRows(input, keep)
     if (lines.length <= max) return lines
   }
-  const core: Keep = { infoUpTo: 1, isPlaceKept: false, toolRowsKept: 0, isUsageKept: true, isPlanKept: true }
+  const core: Keep = { modes: 'joined', infoUpTo: 1, isPlaceKept: false, toolRowsKept: 0, isUsageKept: true, isPlanKept: true }
   const coreLines = bandRows(input, core)
   if (coreLines.length <= max) return bandRows(input, { ...core, toolRowsKept: max - coreLines.length })
   for (const keep of [{ ...core, isUsageKept: false }, { ...core, isUsageKept: false, isPlanKept: false }]) {
     const lines = bandRows(input, keep)
     if (lines.length <= max) return lines
   }
-  return bandRows(input, { infoUpTo: 0, isPlaceKept: false, toolRowsKept: 0, isUsageKept: false, isPlanKept: false })
+  return bandRows(input, { modes: 'joined', infoUpTo: 0, isPlaceKept: false, toolRowsKept: 0, isUsageKept: false, isPlanKept: false })
 }
 
-const MARK_SEP: Seg = { text: ROW_JOIN, tone: 'dim' }
-const joinMarks = (marks: Line[]): Line => marks.flatMap((mark, i) => (i === 0 ? mark : [MARK_SEP, ...mark]))
-
-// Line 1's body as these marks leave it: the body's first line, fitted beside them, or null where it does not fit beside
-// them (the marks then take line 1 alone)
-function firstBeside(input: BandInput, isNarrow: boolean, keep: Keep, marks: Line[]): Line | null {
-  const lead: Line = [...joinMarks(marks), MARK_SEP]
-  const [first] = bandBody({ ...input, columns: input.columns - widthOf(lead) }, isNarrow, keep)
-  return first !== undefined && widthOf(lead) + widthOf(first) <= input.columns ? first : null
-}
-
-const isSameLine = (left: Line | null, right: Line | null): boolean => left === null || right === null ? left === right : JSON.stringify(left) === JSON.stringify(right)
-
-// The signed-in account's mark, as the Claude mobile app names it: 'org Personal', 'org <company name>' cut to 40 cells, or
-// 'org unknown'. Under REC strict a company name draws '‹org›'; Personal and unknown stay. None without an account.
-function orgMark(input: BandInput): Line {
-  const org = input.account?.org
-  if (org === undefined) return []
-  const isCompany = org !== null && org !== PERSONAL
-  const value = org === null ? ORG_UNKNOWN : isCompany && input.rec?.level === 'strict' ? ORG_STRICT : fitLine(org, ORG_MAX_CELLS)
-  return [{ text: ORG_LABEL, tone: 'dim' }, { text: value }]
-}
-
-// REC, the org, Alfred Code's banner, then claude-kit's. The kit's yields first: it keeps a form (full, then `kit`) only where the
-// marks stay within the band and the band's rows are the plain band's, line 1's body items included - the body's first
-// line shares line 1 with the marks exactly where it did without the kit's banner, and loses nothing to the narrower
-// width. Else it is left out, and REC, the org mark and Alfred Code's banner stay as they are
-function marksOf(input: BandInput, isNarrow: boolean, keep: Keep): Line[] {
-  const base: Line[] = [input.rec !== undefined && input.rec.level !== 'off' ? [REC_MARK] : [], orgMark(input), input.banner ?? []].filter(segs => segs.length > 0)
-  const full = input.kitBanner ?? []
-  if (full.length === 0) return base
-  // With no marks the plain band's line 1 is its body's first line, and where that is none the band draws nothing
-  const plain = base.length === 0 ? (bandBody(input, isNarrow, keep)[0] ?? null) : firstBeside(input, isNarrow, keep, base)
-  if (base.length === 0 && plain === null) return base
-  for (const kit of [full, KIT_SHORT]) {
-    const marks = [...base, kit]
-    if (widthOf(joinMarks(marks)) <= input.columns && isSameLine(firstBeside(input, isNarrow, keep, marks), plain)) return marks
-  }
-  return base
-}
-
+// What the band is, in order: the action row where it sits under the input, the identity and modes lines, then the body
 function bandRows(input: BandInput, keep: Keep): Line[] {
-  const isNarrow = input.columns < 100
-  const marks = marksOf(input, isNarrow, keep)
-  if (marks.length === 0) return bandBody(input, isNarrow, keep)
-  const alone = joinMarks(marks)
-  const lead: Line = [...alone, MARK_SEP]
-  // Only line 1 shares its row with the marks: the lines under it are fitted to the band's whole width
-  const [first] = bandBody({ ...input, columns: input.columns - widthOf(lead) }, isNarrow, keep)
-  if (first === undefined) return [alone]
-  const body = bandBody(input, isNarrow, keep)
-  return widthOf(lead) + widthOf(first) <= input.columns ? [[...lead, ...first], ...body.slice(1)] : [alone, ...body]
+  const body = bandBody(input, input.columns < 100, keep)
+  return [...body.before, ...leadLines(input, keep.modes), ...body.rows]
 }
 
-function bandBody(band: BandInput, isNarrow: boolean, keep: Keep): Line[] {
+// The body's rows, and the ones that come before the leading lines: under the input the action row, nearest the input
+type Body = { before: Line[]; rows: Line[] }
+
+function bandBody(band: BandInput, isNarrow: boolean, keep: Keep): Body {
   const usage = band.usage
   // Before the first reading the calm band waits; the full band draws once the model or a stored window is known
   const isFullKnown = band.mode === 'full' && (band.session.model !== null || usage.rateWindows.length > 0)
-  if (band.turns.length === 0 && usage.contextPercent === null && !isFullKnown) return []
+  if (band.turns.length === 0 && usage.contextPercent === null && !isFullKnown) return { before: [], rows: [] }
   const invalid: Line = band.isPlanInvalid ? [{ text: ROW_JOIN, tone: 'dim' }, { text: 'plan file invalid', tone: 'warn' }] : []
   const gaugeLine = isNarrow ? narrowGauges(usage, band.runway) : withToday(band, gauges(band), invalid)
   const line2 = [...gaugeLine, ...invalid]
@@ -146,15 +101,15 @@ function bandBody(band: BandInput, isNarrow: boolean, keep: Keep): Line[] {
   const skip = skipAsk(band)
   if (!isHot && band.newFailures === 0 && !band.isWorking && !agentsRun && warning === null && ask === null && skip === null) {
     // Idle and healthy, the full band keeps its colours, as while it works (the user, 2026-11-12: 'colors by default ...
-    // not only when active work'); the calm band stays one dim line until something needs you. Its marks are no part of
-    // that line: line 1's org mark, like the red REC mark, keeps its own tones (a dim label, a plain value) so the
-    // account check reads easily (the owner, 2026-11-21)
-    if (band.mode === 'full') return [[...gaugeLine, ...invalid], ...info]
+    // not only when active work'); the calm band stays one dim line until something needs you. The identity and modes
+    // lines are no part of that line: the account mark, like the red REC mark, keeps its own tones so the account check
+    // reads easily (the owner, 2026-11-21)
+    if (band.mode === 'full') return { before: [], rows: [[...gaugeLine, ...invalid], ...info] }
     const calm = isNarrow ? gaugeLine : withTimes(band, gaugeLine)
     const dim = (line: Line): Line => line.map(seg => ('text' in seg ? { text: seg.text, tone: 'dim' as const } : seg))
-    return [[...dim(calm), ...invalid], ...info.map(dim)]
+    return { before: [], rows: [[...dim(calm), ...invalid], ...info.map(dim)] }
   }
-  if (band.isWorking) return [workingLine(band, isNarrow), line2, ...info]
+  if (band.isWorking) return { before: [], rows: [workingLine(band, isNarrow), line2, ...info] }
   const failed: Line = band.newFailures > 0
     ? [{ text: `✗ ${band.newFailures} new `, tone: 'fail' }, underButton(band, { key: 'inspect', label: 'Inspect', hotkey: '1' }, '/inspect')]
     : []
@@ -165,6 +120,6 @@ function bandBody(band: BandInput, isNarrow: boolean, keep: Keep): Line[] {
   // longer than the digits above, so the items take a row each when one row cannot hold them
   const action: Line[] = items.length === 0 ? [] : band.under !== undefined && cellsOf(joined) > band.columns ? items : [joined]
   const first = agentsRun ? workingLine(band, isNarrow) : withPlanTail(band, lastTurn(band, isNarrow), head.length > 0 && keep.isPlanKept)
-  const out = band.under === undefined ? [first, line2, ...info, ...action] : [...action, first, line2, ...info]
-  return out.filter(segs => segs.length > 0)
+  const nonEmpty = (rows: Line[]): Line[] => rows.filter(segs => segs.length > 0)
+  return band.under === undefined ? { before: [], rows: nonEmpty([first, line2, ...info, ...action]) } : { before: action, rows: nonEmpty([first, line2, ...info]) }
 }

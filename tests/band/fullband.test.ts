@@ -141,13 +141,14 @@ test('calm mode draws what no mode draws', () => {
   expect((texts(bandLines({ ...working, mode: 'calm' }))[0] ?? '').includes(' tools')).toBe(false)
 })
 
-test("REC's mark and the banner narrow line 1 only: the lines under it keep the band's width", () => {
+test("REC's mark and the banner take lines of their own: the lines under them keep the band's width", () => {
   const marks = { rec: { level: 'on' as const, words: 0 }, banner: [{ text: 'auto-run · scorer high', tone: 'dim' as const }] }
   for (const o of [{ newFailures: 1 }, {}]) {
     const plain = bandLines(input({ columns: 128, ...o }))
     const marked = bandLines(input({ columns: 128, ...o, ...marks }))
-    expect(text(marked[0] ?? []).startsWith('● REC │ auto-run · scorer high │ ')).toBe(true)
-    expect(texts(marked.slice(1))).toEqual(texts(plain.slice(1)))
+    expect(text(marked[0] ?? [])).toBe('● REC')
+    expect(text(marked[1] ?? [])).toBe('auto-run · scorer high')
+    expect(texts(marked.slice(2))).toEqual(texts(plain))
     expect(texts(marked).includes(FULL)).toBe(true)
   }
 })

@@ -29,6 +29,8 @@ import { bandFailed } from '../core/failsafe'
 import { isNoColor } from '../core/effects'
 import { spinnerSuffix } from './working'
 import { printable } from '../core/format'
+import { mcpItem } from '../mcp/mcp'
+import { readMcp } from '../mcp/effects'
 import { transcriptState } from '../transcript/effects'
 import { leaveOutSkipped, neverAskSkip, readSkipAsk } from '../skip/effects'
 import { ASK_BUTTONS } from '../skip/constants'
@@ -104,6 +106,7 @@ async function readBandInput(
   const runway = runwayOf(st, usage, session.model)
   const setting = await readBandSetting($)
   const parts = await readParts($)
+  const account = await readAccount($)
   const transcript = transcriptState()
   return {
     now, columns: at.columns, ...(at.maxRows === undefined ? {} : { maxRows: at.maxRows }), isWorking: at.isWorking,
@@ -111,7 +114,7 @@ async function readBandInput(
     newFailures: (await readFailures($)).filter(failure => failure.isNew).length, pace: await readPace($), agents: await readAgents($),
     cache: await readCache($), plan: drawing.band, isPlanInvalid: drawing.invalid, score: drawing.score, isPlanScore: drawing.isPlanScore, scoreLevel: (await readScoreLevel($)) ?? (await readKitScoreLevel($)), rec: recSummary(await readRec($)),
     forecast: forecastTargetOf(handoff, usage, runway), handoffAskStep: handoff.isAskUp ? handoff.handledStep : null, isSkipAskUp: (await readSkipAsk($)).isAskUp, runway, banner: bannerSegs(st), kitBanner: kitBannerSegs(await readKit($)),
-    account: { org: (await readAccount($)).org },
+    account: { org: account.org, kind: account.kind }, mcp: mcpItem(await readMcp($)),
     mode: setting.mode, totals: await readTotals($), stats: await readStats($),
     isToolsOpen: setting.isToolsOpen === true, skillListing: parts.skills ?? null,
     rules: {

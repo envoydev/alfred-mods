@@ -42,7 +42,7 @@ test('a Pro or Max account keeps Personal in the atom, never its organization na
   const text = JSON.stringify({ oauthAccount: { organizationType: 'claude_pro', organizationName: `${EMAIL}'s Organization`, emailAddress: EMAIL } })
   const { state, org } = await start($, on, { env: { CLAUDE_CONFIG_DIR: '/cfg' }, files: { [CONFIG]: { text, mtimeMs: 0 } } })
   expect(org()).toBe('Personal')
-  expect(state.get('account')).toEqual({ org: 'Personal' })
+  expect(state.get('account')).toEqual({ org: 'Personal', kind: 'Personal' })
   expect(JSON.stringify(state.writes)).not.toContain(EMAIL)
 })
 
@@ -108,9 +108,15 @@ test('a config the read refuses for its size leaves the org unknown', async ($, 
   expect(toasts).toEqual([])
 })
 
+test('a Team account keeps its kind beside the name in the atom', async ($, on) => {
+  const text = JSON.stringify({ oauthAccount: { organizationType: 'claude_team', organizationName: 'Acme Inc', emailAddress: EMAIL } })
+  const { state } = await start($, on, { env: { CLAUDE_CONFIG_DIR: '/cfg' }, files: { [CONFIG]: { text, mtimeMs: 0 } } })
+  expect(state.get('account')).toEqual({ org: 'Acme Inc', kind: 'Team' })
+})
+
 test('the atom holds the org name and nothing else of the config', async ($, on) => {
   const { state, store, toasts, org } = await start($, on, { env: { CLAUDE_CONFIG_DIR: '/cfg' }, files: { [CONFIG]: configOf('Acme Inc') } })
-  expect(state.get('account')).toEqual({ org: 'Acme Inc' })
+  expect(state.get('account')).toEqual({ org: 'Acme Inc', kind: null })
   expect(org()).toBe('Acme Inc')
   const everything = JSON.stringify([state.writes, store.keys().map(key => store.get(key)), toasts])
   for (const secret of [EMAIL, ...UUIDS, 'Pat', 'numStartups']) expect(everything).not.toContain(secret)

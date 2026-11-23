@@ -5,8 +5,11 @@ import { KIT_BANNER_LABEL } from '../kit/constants'
 // The labels' width, so the items of every row line up
 export const ROW_LABEL = 9
 
-// The band's org mark: its label, the cap of a company name in cells and what shows for no known account
-export const ORG_LABEL = 'org '
+// The band's org mark: its label, the bar before the kind, the cap of a company name in cells and what shows for no known
+// account
+export const ORG_LABEL = 'org'
+
+export const ORG_JOIN = ' | '
 
 export const ORG_MAX_CELLS = 40
 

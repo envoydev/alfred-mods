@@ -139,9 +139,12 @@ test('fullscreen at 20 rows draws at most 4 band rows, dropping the open rows fr
   await measure($, 40)
   await busy($)
   const low = await footer($, 'terminal', { columns: 130, rows: 20, isFullscreen: true })
-  const drawn = await rows(low)
+  const drawn = await rows(low, { keepOrg: true })
+  // The account line takes one of the four rows, so the open rows are the ones that go
   expect(drawn).toHaveLength(4)
-  expect(drawn.some(r => r.startsWith('tools:'))).toBe(true)
+  expect(drawn[0]).toBe('org | unknown')
+  expect(drawn.some(r => r.startsWith('usage:'))).toBe(true)
+  expect(drawn.some(r => r.startsWith('tools:'))).toBe(false)
   expect(drawn.some(r => r.startsWith('rules:'))).toBe(false)
   await low.unmount()
 })
@@ -155,7 +158,7 @@ test('fullscreen at 24 rows draws 6 band rows, 4 with a status line set', async 
   await measure($, 40)
   await busy($)
   const low = await footer($, 'terminal', { columns: 130, rows: 24, isFullscreen: true })
-  expect(await rows(low)).toHaveLength(6)
+  expect(await rows(low, { keepOrg: true })).toHaveLength(6)
   await low.unmount()
 })
 
@@ -167,7 +170,7 @@ test('a status line set leaves the band two rows fewer in fullscreen', async ($,
   await measure($, 40)
   await busy($)
   const low = await footer($, 'terminal', { columns: 130, rows: 24, isFullscreen: true })
-  expect(await rows(low)).toHaveLength(4)
+  expect(await rows(low, { keepOrg: true })).toHaveLength(4)
   await low.unmount()
 })
 
