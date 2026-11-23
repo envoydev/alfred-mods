@@ -8,6 +8,7 @@ import { ruleSegs } from '../../hooks/band/detail'
 import type { Session } from '../../hooks/session/types'
 import type { Line } from '../../hooks/core/types'
 import { START, engine, rows, stubAll, until, watchState } from '../kit'
+import { notifyAll } from '../../hooks/transcript/notify'
 import { stubTranscript } from '../transcript-stubs'
 import type { TranscriptOptions } from '../transcript-stubs'
 
@@ -25,14 +26,14 @@ const unrelated = (text: string): string => `${JSON.stringify({ type: 'user', me
 
 type Setup = {
   files?: Record<string, ReturnType<typeof file>>; root?: string; transcript?: TranscriptOptions; usage?: SessionUsage
-  holdRead?: { path: string; until: Promise<void> }
+  holdRead?: { path: string; until: Promise<void> }; env?: Record<string, string>; refuseStat?: string[]
 }
 
 // A session on `/work/app` whose transcript, by default, is the derived path under the config folder
 async function begin($: Engine, on: On, o: Setup = {}) {
   const kit = stubAll(on, {
-    ...(o.holdRead === undefined ? {} : { holdRead: o.holdRead }),
-    root: o.root ?? '/work/app', cwd: o.root ?? '/work/app', env: { CLAUDE_CONFIG_DIR: CONFIG }, now: NOW, band: 'full',
+    ...(o.holdRead === undefined ? {} : { holdRead: o.holdRead }), ...(o.refuseStat === undefined ? {} : { refuseStat: o.refuseStat }),
+    root: o.root ?? '/work/app', cwd: o.root ?? '/work/app', env: o.env ?? { CLAUDE_CONFIG_DIR: CONFIG }, now: NOW, band: 'full',
     files: o.files ?? { [PATH]: file(memory(ruleAt('/work/app', 'a'))) }, ...(o.usage === undefined ? {} : { usage: o.usage }),
   })
   stubTranscript(on, o.transcript ?? {})
@@ -101,7 +102,8 @@ test('a line past 1 MiB does not stall', async ($, on) => {
 })
 
 test('a chunk edge inside a multibyte character keeps the offset on a line start', async ($, on) => {
-  const wide = `${'é'.repeat(MIB / 2)}x\n`
+  // One ASCII byte first, so byte 1 MiB falls inside an é and the first chunk ends on a cut character
+  const wide = `a${'é'.repeat(MIB / 2)}\n`
   const { kit, state } = await begin($, on, { files: { [PATH]: file(wide + memory(ruleAt('/work/app', 'a'))) } })
   await kit.clock.advance(1000)
   expect(keysOf(state)).toEqual(['.claude/rules/a.md'])
@@ -229,3 +231,67 @@ test('the counts line says why the transcript is not read', () => {
   expect(text(ruleSegs({ always: [entry], byPath: [], isTracked: true, note: 'not-found' }, false)).at(-1)).toBe('1 always-on · 0 by path · transcript not found')
   expect(text(ruleSegs({ always: [entry], byPath: [], isTracked: true }, false)).at(-1)).toBe('1 always-on · 0 by path')
 })
+
+const FILLER = unrelated('x'.repeat(MIB - 100))
+
+test('a given path whose file is not there yet notes nothing, and the file is read once it lands', OPTION, async ($, on) => {
+  const { kit } = await begin($, on, { transcript: { transcriptPath: PATH }, files: {}, usage: ALWAYS_RULE })
+  await kit.clock.advance(1000)
+  await kit.clock.settle()
+  expect(await rulesRow($)).toBe('rules:   always │ 1 always-on · 0 by path')
+  kit.files.current[PATH] = file(memory(ruleAt('/work/app', 'a')))
+  await kit.clock.advance(30_000)
+  await kit.clock.settle()
+  expect(await rulesRow($)).toBe('rules:   always │ a │ 1 always-on · 1 by path')
+})
+
+test('a stat refused on a file that is there notes unread', OPTION, async ($, on) => {
+  const { kit } = await begin($, on, { transcript: { transcriptPath: PATH }, usage: ALWAYS_RULE, refuseStat: [PATH] })
+  await kit.clock.advance(1000)
+  await kit.clock.settle()
+  expect(await rulesRow($)).toBe('rules:   always │ 1 always-on · by path not tracked · transcript unread')
+})
+
+test('a clear forgets that the old conversation was read, so a new one with no file notes not found', OPTION, async ($, on) => {
+  const { kit } = await begin($, on, { usage: ALWAYS_RULE })
+  await kit.clock.advance(1000)
+  await kit.clock.settle()
+  expect(await rulesRow($)).toBe('rules:   always │ a │ 1 always-on · 1 by path')
+  kit.session.id = 's2'
+  kit.session.turns = 1
+  await $.classic.SessionStart({ source: 'clear' } as never)
+  await kit.clock.advance(1000)
+  await kit.clock.settle()
+  expect(await rulesRow($)).toBe('rules:   always │ 1 always-on · by path not tracked · transcript not found')
+})
+
+test('a file rewritten smaller than the offset but past 8 MiB starts over at 0', async ($, on) => {
+  const { kit, state } = await begin($, on, { files: { [PATH]: file(FILLER.repeat(9)) } })
+  await kit.clock.advance(1000)
+  await kit.clock.settle()
+  expect(keysOf(state)).toEqual([])
+  kit.files.current[PATH] = file(memory(ruleAt('/work/app', 'z')) + FILLER.repeat(8) + unrelated('y'.repeat(1000)))
+  await kit.clock.advance(30_000)
+  await kit.clock.settle()
+  expect(keysOf(state)).toEqual(['.claude/rules/z.md'])
+})
+
+// The module copy a test imports is not the plugin's, so a listener is tried on the function the reader calls
+test('a listener that throws neither stops the next listener nor reaches the caller', () => {
+  const heard: string[] = []
+  expect(() => notifyAll([() => { heard.push('first'); throw new Error('test: listener failed') }, () => void heard.push('second')])).not.toThrow()
+  expect(heard).toEqual(['first', 'second'])
+})
+
+// Claude Code's home folder is USERPROFILE on Windows, HOME elsewhere; an empty value is unset
+for (const [name, env] of [
+  ['USERPROFILE before HOME', { USERPROFILE: '/home', HOME: '/elsewhere' }],
+  ['HOME where USERPROFILE is empty', { USERPROFILE: '', HOME: '/home' }],
+] as const) {
+  test(`the derived path takes ${name}`, async ($, on) => {
+    const { kit, state } = await begin($, on, { transcript: { sessionInfoThrows: true }, env })
+    await kit.clock.advance(1000)
+    await kit.clock.settle()
+    expect(keysOf(state)).toEqual(['.claude/rules/a.md'])
+  })
+}

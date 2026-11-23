@@ -5,6 +5,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 import type { TranscriptNote, TranscriptReader, TranscriptState } from './types'
 import { CHUNK_BYTES, CONFIG_FOLDER, FIRST_TAIL_BYTES, READ_EVERY_MS, RUN_BYTES, RUN_MS } from './constants'
+import { notifyAll } from './notify'
 import { derivedTranscriptPath, firstNewlineByte, scanChunk } from './lines'
 import { ruleEntry } from '../context/rules'
 import type { RuleEntry } from '../context/types'
@@ -43,6 +44,10 @@ export async function resetTranscript($: EngineInterface): Promise<void> {
   readerMemory.generation++
   readerMemory.lastRunAt = null
   readerMemory.lastTurnCount = null
+  // What the old conversation's file showed says nothing of the new one's
+  readerMemory.wasRead = false
+  readerMemory.isKnown = false
+  readerMemory.note = null
   await updateReader($, () => INITIAL_READER)
 }
 
@@ -61,7 +66,9 @@ async function pathOf($: EngineInterface, root: string, sessionId: string): Prom
     // A build without the call: the path is derived
   }
   const configDir = (await $.env.get('CLAUDE_CONFIG_DIR').catch(() => undefined)) ?? ''
-  const home = (await $.env.get('HOME').catch(() => undefined)) ?? (await $.env.get('USERPROFILE').catch(() => undefined)) ?? ''
+  // Claude Code's home folder is os.homedir(): USERPROFILE on Windows, HOME elsewhere; an empty value is unset
+  const profile = (await $.env.get('USERPROFILE').catch(() => undefined)) ?? ''
+  const home = profile === '' ? ((await $.env.get('HOME').catch(() => undefined)) ?? '') : profile
   const folder = configDir !== '' ? configDir : home === '' ? '' : `${home}/${CONFIG_FOLDER}`
   return folder === '' ? null : { path: derivedTranscriptPath(folder, root, sessionId), isDerived: true }
 }
@@ -80,19 +87,33 @@ async function readRun($: EngineInterface): Promise<void> {
   const isCurrent = async (): Promise<boolean> => generation === readerMemory.generation && sessionId === (await $.session.id())
   const root = await rootOf($)
   const found = await pathOf($, root, sessionId)
-  const isGone = (): void => {
+  // No file where it should be: not found until a file was read, unread after; a refused read is unread either way
+  const markMissing = (): void => {
     readerMemory.isKnown = false
-    readerMemory.note = found?.isDerived === true && !readerMemory.wasRead ? 'not-found' : 'unread'
+    readerMemory.note = readerMemory.wasRead ? 'unread' : 'not-found'
   }
-  if (found === null || (found.isDerived && !(await $.fs.exists(found.path)))) return isGone()
+  const markUnread = (): void => {
+    readerMemory.isKnown = false
+    readerMemory.note = 'unread'
+  }
+  if (found === null) return markMissing()
+  if (!(await $.fs.exists(found.path))) {
+    // A path the engine gave names a file it writes with the first message: not yet there is no failure
+    if (found.isDerived || readerMemory.wasRead) return markMissing()
+    readerMemory.isKnown = true
+    readerMemory.note = null
+    return
+  }
   let size: number
   try {
     size = (await $.fs.stat(found.path)).size
   } catch {
-    return isGone()
+    return markUnread()
   }
   const saved = await readReader($)
-  let { offset, isInLongLine } = saved.sessionId === sessionId && saved.offset <= size ? saved : startOf(size)
+  // A new session starts at its file's first byte, or its tail; a file smaller than the offset was rewritten: from 0
+  const isSame = saved.sessionId === sessionId
+  let { offset, isInLongLine } = isSame ? (saved.offset <= size ? saved : { offset: 0, isInLongLine: false }) : startOf(size)
   const startedAt = await $.clock.now()
   let bytesRead = 0
   try {
@@ -121,10 +142,10 @@ async function readRun($: EngineInterface): Promise<void> {
       if (!(await isCurrent())) return
       if (entries.length > 0) await addPathRules($, entries)
       await updateReader($, () => ({ sessionId, offset, isInLongLine }))
-      if (isSkipNoticed) for (const listener of readerMemory.listeners) listener()
+      if (isSkipNoticed) notifyAll(readerMemory.listeners)
     }
   } catch {
-    return isGone()
+    return markUnread()
   }
   if (!(await isCurrent())) return
   await updateReader($, () => ({ sessionId, offset, isInLongLine }))
