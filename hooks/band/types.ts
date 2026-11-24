@@ -7,7 +7,7 @@ import type { RuleEntry, SkillListing } from '../context/types'
 import type { Runway } from '../stack/types'
 import type { ToolStat } from '../tools/types'
 import type { RecLevel } from '../rec/types'
-import type { Seg } from '../core/types'
+import type { Line, Seg } from '../core/types'
 import type { AccountKind, BandMode, BandSetting } from '../../types'
 export type { BandMode, BandSetting }
 
@@ -53,7 +53,12 @@ export type BandInput = {
   account?: { org: string | null; kind?: AccountKind | null }
   // The MCP item (spec 2026-11-23, D5), on the info line after the cache (the user, 2026-11-24); absent or empty, none
   mcp?: Seg[]
+  // The modes line under the identity (the user, 2026-11-24): Alfred Code's and claude-kit's modes on; absent or empty, none
+  modes?: Line
 }
+
+// Where the modes line goes: a line of its own under the identity, or after it on line 1 where the two fit (short of rows)
+export type ModesKeep = 'own' | 'joined'
 
 // `isSinceResume` false where the transcript counts the by-path rules from before a resume; absent, as true
 export type RulesInput = { always: RuleEntry[]; byPath: RuleEntry[]; isTracked: boolean; note?: 'unread' | 'not-found'; isSinceResume?: boolean }

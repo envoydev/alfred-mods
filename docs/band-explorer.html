@@ -193,7 +193,7 @@ table.steps { min-width: 720px; }
   <section class="tabpanel" role="tabpanel" id="panel-box" aria-labelledby="tab-box">
     <section class="panel" aria-label="The band">
       <div><h2>The band - the session at a glance</h2>
-        <p class="muted">The band sits right above the box you type in. It shows where the session stands without a command: how full the context is, your limits, the cost, and what Claude is using. When something needs you, it adds a row that says what, and which key to press. Line 1 is the account you are signed in to and Claude Code's version: <code>Acme | Team | CC 2.1.331</code> for a company's plan, <code>org | Personal</code> for a free, Pro or Max plan, <code>org | unknown</code> for a token login. It is a quick check, not proof. Then the turn while one runs, the info line, the gauges and the rows under them. Pick a situation to see it react.</p></div>
+        <p class="muted">The band sits right above the box you type in. It shows where the session stands without a command: how full the context is, your limits, the cost, and what Claude is using. When something needs you, it adds a row that says what, and which key to press. Line 1 is the account you are signed in to and Claude Code's version: <code>Acme | Team | CC 2.1.331</code> for a company's plan, <code>org | Personal</code> for a free, Pro or Max plan, <code>org | unknown</code> for a token login. It is a quick check, not proof. Line 2 is the modes on, from Alfred Code and claude-kit: <code>auto-run · auto-compact 400k · scoring 90 3</code>. Then the turn while one runs, the info line, the gauges and the rows under them. Pick a situation to see it react.</p></div>
       <div class="live-tools">
         <label for="preset">Situation <select id="preset"></select></label>
         <label class="width" for="cols">Terminal width <output id="colsOut"></output><input type="range" id="cols" min="24" max="270" step="1"></label>
@@ -364,7 +364,7 @@ table.steps { min-width: 720px; }
 </div>
 
 <script>
-// alfred-mods band code, bundled from hooks/ (core/constants.ts, core/format.ts, agents/agents.ts, cache/constants.ts, cache/cache.ts, core/forecast.ts, session/windows.ts, place/place.ts, context/constants.ts, context/rules.ts, context/parts.ts, plan/planlines.ts, kit/constants.ts, band/constants.ts, band/gauges.ts, band/wrap.ts, band/detail.ts, band/project.ts, band/info.ts, skip/constants.ts, band/working.ts, account/constants.ts, band/lines.ts, band/band.ts, mcp/constants.ts, mcp/mcp.ts, core/guards.ts, kit/kit.ts, kit/kitlines.ts, handoff/handoff.ts, stack/constants.ts, stack/stack.ts, tools/constants.ts, tools/compact.ts, plan/constants.ts, plan/plan.ts)
+// alfred-mods band code, bundled from hooks/ (core/constants.ts, core/format.ts, agents/agents.ts, cache/constants.ts, cache/cache.ts, core/forecast.ts, session/windows.ts, place/place.ts, context/constants.ts, context/rules.ts, context/parts.ts, plan/planlines.ts, kit/constants.ts, band/constants.ts, band/gauges.ts, band/wrap.ts, band/detail.ts, band/project.ts, band/info.ts, skip/constants.ts, band/working.ts, account/constants.ts, band/lines.ts, band/band.ts, mcp/constants.ts, mcp/mcp.ts, core/guards.ts, kit/kit.ts, kit/kitlines.ts, band/modes.ts, handoff/handoff.ts, stack/constants.ts, stack/stack.ts, tools/constants.ts, tools/compact.ts, plan/constants.ts, plan/plan.ts)
 const BandCore = (() => {
 const __m = {};
 // ---- hooks/core/constants.ts
@@ -1569,7 +1569,11 @@ const KIT_MODEL_ROLES = [
 const KIT_SECTION_HEAD = 'CLAUDE-KIT'
 const KIT_SETTING_ROWS = [['auto-run', KIT_NAMES.autoRun], ['scoring', KIT_NAMES.scoring], ['auto-approve', KIT_NAMES.autoApprove]]         
 
-return { KIT_FILE, KIT_FILE_MAX_CHARS, KIT_HOOK_EVENT, WHOLE_NUMBER, KIT_ON, KIT_OFF, PASS_SCORE_MIN, PASS_SCORE_MAX, KIT_NAMES, KIT_SWITCH_NAMES, KIT_MODEL_NAMES, KIT_MODEL_ROLES, KIT_SECTION_HEAD, KIT_SETTING_ROWS };
+// The rounds claude-kit's grading loop runs, which its settings file does not carry: round 0 grades, rounds 1-3 revise
+// (claude-kit's refining-plans skill, 'The loop')
+const KIT_SCORING_ROUNDS = 3
+
+return { KIT_FILE, KIT_FILE_MAX_CHARS, KIT_HOOK_EVENT, WHOLE_NUMBER, KIT_ON, KIT_OFF, PASS_SCORE_MIN, PASS_SCORE_MAX, KIT_NAMES, KIT_SWITCH_NAMES, KIT_MODEL_NAMES, KIT_MODEL_ROLES, KIT_SECTION_HEAD, KIT_SETTING_ROWS, KIT_SCORING_ROUNDS };
 })();
 // ---- hooks/band/constants.ts
 __m['band/constants.ts'] = (() => {
@@ -1602,7 +1606,12 @@ const TIMES_JOIN = ' · '
 // What ends the rules row's counts where the transcript reader cannot count by path
 const TRANSCRIPT_NOTE = { unread: 'transcript unread', 'not-found': 'transcript not found' }         
 
-return { ROW_LABEL, ORG_LABEL, ORG_JOIN, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN, WINDOW_LABEL, CC_LABEL, TIMES_JOIN, TRANSCRIPT_NOTE };
+// The modes line under the identity (the user, 2026-11-24: 'auto-run · auto-compact 400k · scoring 90 3'): each mode's
+// word, and the join between them
+const MODE_WORDS = { autoRun: 'auto-run', autoCompact: 'auto-compact', scoring: 'scoring' }         
+const MODES_JOIN = ' · '
+
+return { ROW_LABEL, ORG_LABEL, ORG_JOIN, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN, WINDOW_LABEL, CC_LABEL, TIMES_JOIN, TRANSCRIPT_NOTE, MODE_WORDS, MODES_JOIN };
 })();
 // ---- hooks/band/gauges.ts
 __m['band/gauges.ts'] = (() => {
@@ -2285,13 +2294,13 @@ return { CONFIG_FILE_NAME, READ_EVERY_MS, PERSONAL, PERSONAL_ORG_TYPES, TEAM_TYP
 })();
 // ---- hooks/band/lines.ts
 __m['band/lines.ts'] = (() => {
-// The band's leading line (spec 2026-11-23, D4, as the user arranged it on 2026-11-24): `● REC`, the signed-in account and
-// Claude Code's version. Pure: values in, lines out.
+// The band's leading lines (spec 2026-11-23, D4, as the user arranged them on 2026-11-24): `● REC`, the signed-in account
+// and Claude Code's version, then the modes on. Pure: values in, lines out.
 const { fitLine, widthOf } = __m['core/format.ts'];
 const { ORG_STRICT, PERSONAL } = __m['account/constants.ts'];
                                               
 const { CC_LABEL, ORG_JOIN, ORG_LABEL, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN } = __m['band/constants.ts'];
-                                        
+                                                   
 
 const REC_MARK      = { text: '● REC', tone: 'fail', bold: true }
 
@@ -2323,10 +2332,14 @@ function identityLine(input           )       {
   return widthOf(full) <= input.columns ? full : joinItems([rec, org])
 }
 
-// The lines that lead the band: the identity line, when it holds something
-function leadLines(input           )         {
+// The lines that lead the band, each only when it holds something: the identity, then the modes on a line of their own
+// ('own'), or after the identity on line 1 where the two fit the width, else the identity alone ('joined')
+function leadLines(input           , modesKeep           )         {
   const identity = identityLine(input)
-  return identity.length > 0 ? [identity] : []
+  const modes = input.modes ?? []
+  if (modesKeep === 'own') return [identity, modes].filter(line => line.length > 0)
+  const joined = joinItems([identity, modes])
+  return joined.length === 0 ? [] : [widthOf(joined) <= input.columns ? joined : identity].filter(line => line.length > 0)
 }
 
 return { REC_MARK, identityLine, leadLines };
@@ -2336,7 +2349,7 @@ __m['band/band.ts'] = (() => {
 // The band above the prompt, from the session's values to lines of styled segments. Calm by default: colour
 // appears only when a threshold is crossed, something failed or a turn runs.
 const { isLive } = __m['agents/agents.ts'];
-                                        
+                                                   
                                             
                                               
 const { ROW_JOIN } = __m['band/constants.ts'];
@@ -2372,40 +2385,41 @@ function underRows(viewport                                          , chrome   
 
 // What the full band keeps under its identity line: the modes line, the rows the info line may take (none for 0), the
 // project row, the open detail rows (how many lines of them), the usage row and the plan row
-                                                                                                                       
+                                                                                                                                         
 
-const KEEP_ALL       = { infoUpTo: 2, isPlaceKept: true, toolRowsKept: Infinity, isUsageKept: true, isPlanKept: true }
+const KEEP_ALL       = { modes: 'own', infoUpTo: 2, isPlaceKept: true, toolRowsKept: Infinity, isUsageKept: true, isPlanKept: true }
 
 // Line 1 is the identity ('● REC' while REC is on, the signed-in account and Claude Code's version), left out when it holds
-// nothing; then the body: the turn line, the info line, the gauges and the rows under them (the user's order, 2026-11-24).
+// nothing, and line 2 the modes on (Alfred Code's and claude-kit's); then the body: the turn line, the info line, the gauges and the rows under them (the user's order, 2026-11-24).
 // The identity is never dropped for rows or width.
 function bandLines(input           )         {
   // "band": "off" draws none, above or under, and the pinned line counts it as out of view
   if (input.mode === 'off') return []
   const max = input.maxRows
   if (max === undefined) return bandRows(input, KEEP_ALL)
-  // Short of rows, the project row gives way first, then the info line's second row, then the open detail rows from the
-  // last, then the usage row, then the plan row, then the info line: the line under them holds the buttons, and a digit
-  // arms only those in view
+  // Short of rows, the project row gives way first, then the modes join line 1, then the info line's second row, then the
+  // open detail rows from the last, then the usage row, then the plan row, then the info line: the line under them holds
+  // the buttons, and a digit arms only those in view
   const noPlace       = { ...KEEP_ALL, isPlaceKept: false }
-  for (const keep of [KEEP_ALL, noPlace, { ...noPlace, infoUpTo: 1 }]                 ) {
+  const joined       = { ...noPlace, modes: 'joined' }
+  for (const keep of [KEEP_ALL, noPlace, joined, { ...joined, infoUpTo: 1 }]                 ) {
     const lines = bandRows(input, keep)
     if (lines.length <= max) return lines
   }
-  const core       = { infoUpTo: 1, isPlaceKept: false, toolRowsKept: 0, isUsageKept: true, isPlanKept: true }
+  const core       = { modes: 'joined', infoUpTo: 1, isPlaceKept: false, toolRowsKept: 0, isUsageKept: true, isPlanKept: true }
   const coreLines = bandRows(input, core)
   if (coreLines.length <= max) return bandRows(input, { ...core, toolRowsKept: max - coreLines.length })
   for (const keep of [{ ...core, isUsageKept: false }, { ...core, isUsageKept: false, isPlanKept: false }]) {
     const lines = bandRows(input, keep)
     if (lines.length <= max) return lines
   }
-  return bandRows(input, { infoUpTo: 0, isPlaceKept: false, toolRowsKept: 0, isUsageKept: false, isPlanKept: false })
+  return bandRows(input, { modes: 'joined', infoUpTo: 0, isPlaceKept: false, toolRowsKept: 0, isUsageKept: false, isPlanKept: false })
 }
 
-// What the band is, in order: the action row where it sits under the input, the identity line, then the body
+// What the band is, in order: the action row where it sits under the input, the identity and modes lines, then the body
 function bandRows(input           , keep      )         {
   const body = bandBody(input, input.columns < 100, keep)
-  return [...body.before, ...leadLines(input), ...body.rows]
+  return [...body.before, ...leadLines(input, keep.modes), ...body.rows]
 }
 
 // The body's rows, and the ones that come before the leading lines: under the input the action row, nearest the input
@@ -2724,6 +2738,52 @@ function kitLines(kit          , columns        )         {
 }
 
 return { kitLines };
+})();
+// ---- hooks/band/modes.ts
+__m['band/modes.ts'] = (() => {
+// The band's modes line (the user, 2026-11-24): 'auto-run · auto-compact 400k · scoring 90 3', from what the session uses
+// now - Alfred Code's status file and claude-kit's settings file. Pure: values in, lines out.
+const { tokensText, widthOf } = __m['core/format.ts'];
+                                              
+const { isKitOn, kitPassScore } = __m['kit/kit.ts'];
+const { KIT_NAMES, KIT_SCORING_ROUNDS } = __m['kit/constants.ts'];
+                                            
+                                           
+const { MODE_WORDS, MODES_JOIN } = __m['band/constants.ts'];
+
+// Each mode on, in its order. auto-run shows while either source runs it; auto-compact is Alfred Code's alone, with
+// Claude Code's compaction point where the status file names it; scoring takes Alfred Code's level and rounds while
+// its scoring is on, else claude-kit's pass score and the rounds its loop runs.
+function modeItems(stack              , kit                 )        {
+  const used = stack !== null && stack.state === 'used' ? stack : null
+  const values = kit?.values ?? null
+  const items        = []
+  if (used?.autoRun === true || (values !== null && isKitOn(values, KIT_NAMES.autoRun))) items.push({ text: MODE_WORDS.autoRun, tone: 'warn' })
+  if (used?.autoCompact?.on === true) {
+    const at = used.autoCompact.at
+    items.push({ text: at === null ? MODE_WORDS.autoCompact : `${MODE_WORDS.autoCompact} ${tokensText(at)}` })
+  }
+  if (used?.scorer?.on === true) items.push({ text: `${MODE_WORDS.scoring} ${used.scorer.level} ${used.scorer.rounds}` })
+  else if (values !== null && isKitOn(values, KIT_NAMES.scoring)) {
+    const pass = kitPassScore(values)
+    items.push({ text: pass === null ? MODE_WORDS.scoring : `${MODE_WORDS.scoring} ${pass} ${KIT_SCORING_ROUNDS}` })
+  }
+  return items
+}
+
+// The modes on, joined, within the band's width: the last mode goes first where the line would pass it. Empty with
+// none on.
+function modesLine(stack              , kit                 , columns        )       {
+  const items = modeItems(stack, kit)
+  const join = (count        )       => items.slice(0, count).flatMap((item, i) => (i === 0 ? [item] : [{ text: MODES_JOIN, tone: 'dim'          }, item]))
+  for (let count = items.length; count > 0; count--) {
+    const line = join(count)
+    if (widthOf(line) <= columns) return line
+  }
+  return []
+}
+
+return { modesLine };
 })();
 // ---- hooks/handoff/handoff.ts
 __m['handoff/handoff.ts'] = (() => {
@@ -3826,7 +3886,7 @@ function candidatesByName                                             (byFolder 
 
 return { time, json, parsePlan, parseScores, isFinishedStep, isPlanDone, isPlanRunning, shownPlan, creditedPlan, planView, scoresView, tasksAfter, taskView, taskStatusKey, stepStatusKey, FINISH_SHOWN_MS, newUserNotes, plansRoots, chosenPlansDir, plansDirs, scoresDirs, candidatesByName };
 })();
-return { bandLines: __m['band/band.ts'].bandLines, statusText: __m['band/band.ts'].statusText, underRows: __m['band/band.ts'].underRows, cellsOf: __m['band/wrap.ts'].cellsOf, groupLines: __m['tools/compact.ts'].groupLines, mcpItem: __m['mcp/mcp.ts'].mcpItem, kitLines: __m['kit/kitlines.ts'].kitLines, stackLines: __m['stack/stack.ts'].stackLines, planView: __m['plan/plan.ts'].planView, newRow: __m['agents/agents.ts'].newRow };
+return { bandLines: __m['band/band.ts'].bandLines, statusText: __m['band/band.ts'].statusText, underRows: __m['band/band.ts'].underRows, cellsOf: __m['band/wrap.ts'].cellsOf, groupLines: __m['tools/compact.ts'].groupLines, mcpItem: __m['mcp/mcp.ts'].mcpItem, kitLines: __m['kit/kitlines.ts'].kitLines, modesLine: __m['band/modes.ts'].modesLine, stackLines: __m['stack/stack.ts'].stackLines, planView: __m['plan/plan.ts'].planView, newRow: __m['agents/agents.ts'].newRow };
 })();
 
 // The explorer's numbers and switches as the band's input, the way hooks/band/effects.ts' readBandInput builds it, and the
@@ -3954,6 +4014,11 @@ const BandAdapter = (() => {
       },
       turns, newFailures: num(d.failures), pace: {}, agents,
       // The login record's reading: 'unknown' (or a blank) is no known org
+      modes: BandCore.modesLine(
+        m.alfred ? { state: 'used', reason: null, fullContext: m.runway ? 'fresh-session' : 'compact', model: null, window: null, resumeAt: null, hasNoOffer: false,
+          autoRun: !!m.autoRun, scorer: { on: !!m.scorer, level: num(d.scorerVal), rounds: Math.max(1, num(d.scorerRounds)) },
+          autoCompact: { on: !!m.autoCompact, at: num(d.compactAt) > 0 ? num(d.compactAt) * 1000 : null }, hasPrompt: false, plan: null, updatedAt: null, readAt: null, ignoredFields: [] } : null,
+        m.kit ? { values: { auto_run: m.kitAutoRun ? 'on' : 'off', scoring: m.kitScoring ? 'on' : 'off', pass_score: num(d.kitPass) || 90 } } : null, g.columns),
       account: { org: ['', 'unknown'].includes(String(d.org ?? 'Personal').trim()) ? null : String(d.org ?? 'Personal').trim(),
         kind: ['Team', 'Enterprise', 'Personal'].includes(String(d.orgKind || '').trim()) ? String(d.orgKind).trim() : null },
       mcp,
@@ -4104,7 +4169,7 @@ const BAND_DATA0 = {
   cost: 64.58, today: 232.38, turn: 47, turnTime: '5:01', turnTools: 19, compactions: 0,
   org: 'Acme', orgKind: 'Team', youAt: '11:03', claudeAt: '11:03', project: 'alfred-mods', folder: 'tests/mcp', branch: 'develop', ahead: 0, behind: 0, added: 107, removed: 0, cc: '2.1.330',
   mcpOk: 10, mcpFailed: 1, mcpLoading: 0,
-  compactAt: 490, scorerVal: 90, failures: 8, planTitle: 'Token refresh', planDone: 3, planTotal: 5, planStep: 'S4 Update interceptor',
+  compactAt: 400, scorerVal: 90, scorerRounds: 3, kitPass: 90, failures: 8, planTitle: 'Token refresh', planDone: 3, planTotal: 5, planStep: 'S4 Update interceptor',
   planScore: 85, planPrevScore: 72,
   listed: 57, ofSkills: 60,
   tools: 'Bash 512\nRead 241\nEdit 158\nGrep 72\nWrite 48\nAgent 31\nTaskUpdate 15',
@@ -4115,7 +4180,7 @@ const BAND_DATA0 = {
 // The session's situation: what is happening, not what the settings say
 const BAND_MODES0 = {
   running: true, fullscreen: false, statusLine: false, alfred: true, autoRun: true, autoCompact: true, scorer: true, runway: false,
-  upstream: true, plan: false, planAwaiting: false, grading: false, withheld: false, fresh: false, collapsed: false, cols: 150, rows: 12, termRows: 40
+  kit: true, kitAutoRun: true, kitScoring: true, upstream: true, plan: false, planAwaiting: false, grading: false, withheld: false, fresh: false, collapsed: false, cols: 150, rows: 12, termRows: 40
 }
 const BAND_BASE = {
   running: false, fullscreen: false, statusLine: false, alfred: false, autoRun: false, autoCompact: false, scorer: false, runway: false,
@@ -4133,7 +4198,8 @@ const BAND_PRESETS = [
   ['Detail rows closed', 'Set in this project\'s local file. The usage: row keeps the counts - not a button, no arrow, no t: the rows under it open and close only by the value.', { running: true }, null, { local: { bandRows: false } }],
   ['A local file over the user\'s', 'The user file puts the band under the input with its rows closed in every project; this project\'s local file opens the rows again. Each other field falls through to the user file, then the default.', { running: true, fullscreen: true }, null, { user: { bandPlace: 'under', bandRows: false }, local: { bandRows: true } }],
   ['A bad value falls through', 'The local file says "compact", which "band" does not take, so the user file\'s "calm" applies, and the mod says so once in a toast that never quotes the bad value.', { running: true }, null, { user: { band: 'calm' }, local: { band: 'compact' } }],
-  ['With Alfred Code: auto-run, auto-compact, scoring and the runway', "The band draws no mode banner: the /inspect pane's Now tab lists Alfred Code's modes (auto-run on · auto-compact on (at 490k) · scoring on (level 90, 3 rounds)) and claude-kit's switches - see The /inspect pane below. In the band, scoring colours the plan's score: green at or above the bar, amber under it, so 85 is amber against 90. With the runway, ctx is measured against Alfred Code's trigger, not the window.", { running: true, alfred: true, autoRun: true, autoCompact: true, scorer: true, runway: true, plan: true }],
+  ['With Alfred Code: auto-run, auto-compact, scoring and the runway', "Line 2 reads the modes from Alfred Code's status file: auto-run, auto-compact with where Claude Code compacts for the session's model, and scoring with its level and rounds. Scoring also colours the plan's score: green at or above the bar, amber under it, so 85 is amber against 90. With the runway, ctx is measured against Alfred Code's trigger, not the window. The /inspect Now tab's ALFRED CODE section has the details.", { running: true, alfred: true, autoRun: true, autoCompact: true, scorer: true, runway: true, plan: true }],
+  ['With claude-kit only', "Line 2 reads claude-kit's .claude/kit/settings.json: auto-run, and scoring with its pass score and the 3 rounds its grading loop runs. The kit's file says nothing of auto-compact, so that mode shows only with Alfred Code. Auto-approve and the models are in the /inspect Now tab's CLAUDE-KIT section.", { running: true, kit: true, kitAutoRun: true, kitScoring: true }],
   ['A plan in progress', 'The plan row sits under the project row, above usage: - the title, the steps done, the step in progress and the plan\'s score with its change from the round before.', { running: true, plan: true }],
   ['An Alfred Code plan and its score', "Alfred Code's status file names the plan's folder; the plan row reads its status.json and ends with the score from its scoring.json: the kept round's total, ▲ against the round before, green at or above the scoring bar and amber under it. While grading still runs, the newest total shows, marked grading; a plan Alfred Code withheld shows it marked withheld.", { running: true, alfred: true, scorer: true, plan: true }, () => ({ planTitle: 'Waste bin (plannings)', planDone: 1, planTotal: 4, planStep: '3 Restore deleted plan books', planScore: 85, planPrevScore: 72 })],
   ['An Alfred Code plan awaiting approval', 'Before you approve it, the plan row says awaiting approval in place of a step; its score shows once it was graded, amber here as 76 is under the scoring bar of 80.', { alfred: true, scorer: true, plan: true, planAwaiting: true }, d => ({ planTitle: 'Waste bin (plannings)', planDone: 0, planTotal: 4, planStep: '', planScore: 76, planPrevScore: 64, agents: noRun(d.agents) })],
@@ -4172,13 +4238,13 @@ const FIELDS = [
   ['org','Account: Personal, a company name or unknown'],['orgKind','Plan kind: Team, Enterprise or Personal (blank: unknown)'],['youAt','Your last prompt'],['claudeAt','Claude last reply'],['project','Project'],['folder','Folder Claude works in (blank: the root)'],
   ['branch','Branch'],['ahead','Commits ahead of the upstream',1],['behind','Commits behind the upstream',1],
   ['added','Lines added, uncommitted',1],['removed','Lines removed, uncommitted',1],['cc','Claude Code version'],['mcpOk','MCP servers connected',1],['mcpFailed','MCP servers failed',1],['mcpLoading','MCP servers loading',1],
-  ['compactAt','Auto-compact at, k (0: unknown)',1],['scorerVal','Scoring bar',1],['failures','New tool failures',1],['planTitle','Plan title'],['planDone','Plan steps done',1],
+  ['compactAt','Auto-compact at, k (0: unknown)',1],['scorerVal','Scoring bar',1],['scorerRounds','Scoring rounds (Alfred Code)',1],['kitPass','claude-kit pass score',1],['failures','New tool failures',1],['planTitle','Plan title'],['planDone','Plan steps done',1],
   ['planTotal','Plan steps',1],['planStep','Step in progress'],['planScore','Plan score (0: not graded)',1],['planPrevScore','Score of the round before (0: none)',1],['listed','Skills listed',1],['ofSkills','of session skills',1]
 ];
 // What the session is doing; the mod's own switches are settings (BandSettings)
 const SWITCHES = [
   ['running','A turn is running'],['fullscreen','Fullscreen (CLAUDE_CODE_NO_FLICKER=1)'],
-  ['alfred','Alfred Code is installed'],['autoRun','auto-run on'],['autoCompact','auto-compact on'],['scorer','scoring on'],['runway','Runway: fresh session at the trigger'],
+  ['alfred','Alfred Code is installed'],['autoRun','auto-run on'],['autoCompact','auto-compact on'],['scorer','scoring on'],['kit','claude-kit is set up'],['kitAutoRun','claude-kit auto-run on'],['kitScoring','claude-kit scoring on'],['runway','Runway: fresh session at the trigger'],
   ['upstream','The branch has an upstream (pushed with -u)'],['plan','A plan file exists'],['planAwaiting','The plan awaits approval (Alfred Code)'],['grading','Grading still runs (Alfred Code)'],['withheld','Alfred Code withheld the plan'],['fresh','First second of the session'],['collapsed','Band collapsed (Ctrl+X Ctrl+A, above only)']
 ];
 // The four sources the page edits, each the "alfred-mods" fields it sets
@@ -4189,12 +4255,12 @@ const eff = (m, c) => Object.assign({}, m, BandSettings.asModes(BandSettings.res
 
 const store = { get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
-let data = Object.assign({}, DATA0, store.get('band7-data') || {});
+let data = Object.assign({}, DATA0, store.get('band8-data') || {});
 // The sample session without any situation's own numbers: each situation starts from it, so one's failures or full
 // context never leak into the next
-let base = Object.assign({}, DATA0, store.get('band7-base') || store.get('band7-data') || {});
-let modes = Object.assign({}, MODES0, store.get('band7-modes') || {});
-let cfg = cfgOf(store.get('band7-cfg') || BAND_CFG0);
+let base = Object.assign({}, DATA0, store.get('band8-base') || store.get('band8-data') || {});
+let modes = Object.assign({}, MODES0, store.get('band8-modes') || {});
+let cfg = cfgOf(store.get('band8-cfg') || BAND_CFG0);
 // The situation picked near the message box, an index into BAND_PRESETS; -1 once anything is changed by hand
 let presetIx = -1;
 // The page's tab in view, and the /inspect pane's
@@ -4480,7 +4546,7 @@ function fill() {
   $('cols').value = modes.cols; $('rows').value = modes.rows; $('termRows').value = modes.termRows; fillSettings();
   $('paneW').value = paneW; $('paneData').value = paneRaw;
 }
-function save() { store.set('band7-data', data); store.set('band7-base', base); store.set('band7-modes', modes); store.set('band7-cfg', cfg); store.set('band7-preset', presetIx); store.set('pane2-raw', paneRaw); store.set('pane-w', paneW); }
+function save() { store.set('band8-data', data); store.set('band8-base', base); store.set('band8-modes', modes); store.set('band8-cfg', cfg); store.set('band8-preset', presetIx); store.set('pane2-raw', paneRaw); store.set('pane-w', paneW); }
 
 // ---------- gallery ----------
 // A card's settings files, one line each, as the person would write them
@@ -4526,7 +4592,7 @@ const isBoxPreset = p => !(p[4] && p[4].user && p[4].user.quiet === false);
 function buildPresets() {
   $('preset').innerHTML = '<option value="-1">Your own mix</option>'
     + BAND_PRESETS.map((p, i) => isBoxPreset(p) ? `<option value="${i}">${esc(p[0])}</option>` : '').join('');
-  const kept = store.get('band7-preset');
+  const kept = store.get('band8-preset');
   presetIx = Number.isInteger(kept) && kept >= 0 && kept < BAND_PRESETS.length ? kept : -1;
   $('preset').addEventListener('change', () => {
     const i = +$('preset').value;
@@ -4640,7 +4706,10 @@ function buildMap() {
 const BAND_PARTS = [
   ['The identity line', 'line 1, always', { running: true }, d => ({ agents: noRun(d.agents) }), { user: { rec: 'on' } }, (t, i) => i === 0,
     'A red ● REC while Recording mode masks the screen, the account you are signed in to with its plan kind, and Claude Code\'s version.',
-    'It leads the band in every mode but off and is never dropped for rows; the version goes where the line would pass the width. The account comes from the login record on disk. The band draws no mode banner: Alfred Code\'s and claude-kit\'s modes are in /inspect\'s Now tab.'],
+    'It leads the band in every mode but off and is never dropped for rows; the version goes where the line would pass the width. The account comes from the login record on disk. The modes on follow it on line 2.'],
+  ['The modes line', 'line 2, while a mode is on', { running: true, alfred: true, autoRun: true, autoCompact: true, scorer: true }, null, null, t => /^auto-run|^auto-compact|^scoring/.test(t),
+    'The modes the session runs under: auto-run, auto-compact with where Claude Code compacts, and scoring with its level and rounds.',
+    "From Alfred Code's status file and claude-kit's .claude/kit/settings.json: auto-run shows while either turns it on, auto-compact is Alfred Code's alone, and scoring takes Alfred Code's level and rounds, else the kit's pass score and its loop's 3 rounds. Short of rows it joins line 1, and short of width it drops from the end."],
   ['The turn', 'while Claude works', { running: true }, withRun, null, t => /Turn \d/.test(t),
     'The turn Claude is on, how long it has run and its tool calls so far, then the agent at work and what it does now.',
     'Counted from the session\'s own events as they happen. Once Claude has answered, the line stays only while something needs you, as ✓ with the turn\'s total.'],

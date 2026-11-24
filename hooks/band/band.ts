@@ -1,7 +1,7 @@
 // The band above the prompt, from the session's values to lines of styled segments. Calm by default: colour
 // appears only when a threshold is crossed, something failed or a turn runs.
 import { isLive } from '../agents/agents'
-import type { BandInput } from './types'
+import type { BandInput, ModesKeep } from './types'
 import type { RecLevel } from '../rec/types'
 import type { Line, Seg } from '../core/types'
 import { ROW_JOIN } from './constants'
@@ -37,40 +37,41 @@ export function underRows(viewport: { rows: number; isFullscreen?: boolean }, ch
 
 // What the full band keeps under its identity line: the modes line, the rows the info line may take (none for 0), the
 // project row, the open detail rows (how many lines of them), the usage row and the plan row
-type Keep = { infoUpTo: number; isPlaceKept: boolean; toolRowsKept: number; isUsageKept: boolean; isPlanKept: boolean }
+type Keep = { modes: ModesKeep; infoUpTo: number; isPlaceKept: boolean; toolRowsKept: number; isUsageKept: boolean; isPlanKept: boolean }
 
-const KEEP_ALL: Keep = { infoUpTo: 2, isPlaceKept: true, toolRowsKept: Infinity, isUsageKept: true, isPlanKept: true }
+const KEEP_ALL: Keep = { modes: 'own', infoUpTo: 2, isPlaceKept: true, toolRowsKept: Infinity, isUsageKept: true, isPlanKept: true }
 
 // Line 1 is the identity ('● REC' while REC is on, the signed-in account and Claude Code's version), left out when it holds
-// nothing; then the body: the turn line, the info line, the gauges and the rows under them (the user's order, 2026-11-24).
+// nothing, and line 2 the modes on (Alfred Code's and claude-kit's); then the body: the turn line, the info line, the gauges and the rows under them (the user's order, 2026-11-24).
 // The identity is never dropped for rows or width.
 export function bandLines(input: BandInput): Line[] {
   // "band": "off" draws none, above or under, and the pinned line counts it as out of view
   if (input.mode === 'off') return []
   const max = input.maxRows
   if (max === undefined) return bandRows(input, KEEP_ALL)
-  // Short of rows, the project row gives way first, then the info line's second row, then the open detail rows from the
-  // last, then the usage row, then the plan row, then the info line: the line under them holds the buttons, and a digit
-  // arms only those in view
+  // Short of rows, the project row gives way first, then the modes join line 1, then the info line's second row, then the
+  // open detail rows from the last, then the usage row, then the plan row, then the info line: the line under them holds
+  // the buttons, and a digit arms only those in view
   const noPlace: Keep = { ...KEEP_ALL, isPlaceKept: false }
-  for (const keep of [KEEP_ALL, noPlace, { ...noPlace, infoUpTo: 1 }] satisfies Keep[]) {
+  const joined: Keep = { ...noPlace, modes: 'joined' }
+  for (const keep of [KEEP_ALL, noPlace, joined, { ...joined, infoUpTo: 1 }] satisfies Keep[]) {
     const lines = bandRows(input, keep)
     if (lines.length <= max) return lines
   }
-  const core: Keep = { infoUpTo: 1, isPlaceKept: false, toolRowsKept: 0, isUsageKept: true, isPlanKept: true }
+  const core: Keep = { modes: 'joined', infoUpTo: 1, isPlaceKept: false, toolRowsKept: 0, isUsageKept: true, isPlanKept: true }
   const coreLines = bandRows(input, core)
   if (coreLines.length <= max) return bandRows(input, { ...core, toolRowsKept: max - coreLines.length })
   for (const keep of [{ ...core, isUsageKept: false }, { ...core, isUsageKept: false, isPlanKept: false }]) {
     const lines = bandRows(input, keep)
     if (lines.length <= max) return lines
   }
-  return bandRows(input, { infoUpTo: 0, isPlaceKept: false, toolRowsKept: 0, isUsageKept: false, isPlanKept: false })
+  return bandRows(input, { modes: 'joined', infoUpTo: 0, isPlaceKept: false, toolRowsKept: 0, isUsageKept: false, isPlanKept: false })
 }
 
-// What the band is, in order: the action row where it sits under the input, the identity line, then the body
+// What the band is, in order: the action row where it sits under the input, the identity and modes lines, then the body
 function bandRows(input: BandInput, keep: Keep): Line[] {
   const body = bandBody(input, input.columns < 100, keep)
-  return [...body.before, ...leadLines(input), ...body.rows]
+  return [...body.before, ...leadLines(input, keep.modes), ...body.rows]
 }
 
 // The body's rows, and the ones that come before the leading lines: under the input the action row, nearest the input
