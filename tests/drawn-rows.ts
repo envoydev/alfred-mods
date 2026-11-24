@@ -43,9 +43,9 @@ function pieceOf(n: unknown): string {
 }
 
 // The band's org mark where no account was read, which every session a test starts draws: 'org | unknown', alone on its
-// line. `rows` leaves it out so the tests of other parts read the band they were written for; the org mark's
-// own tests (tests/band/band-org.test.ts) ask for it with `keepOrg`.
-const UNKNOWN_ORG = /^org \| unknown$/
+// line, with Claude Code's version after it where the session reads one. `rows` leaves it out so the tests of other parts
+// read the band they were written for; the org mark's own tests (tests/band/band-org.test.ts) ask for it with `keepOrg`.
+const UNKNOWN_ORG = /^org \| unknown( \| CC \S+)?$/
 
 // One string per drawn line. A tree of fitted lines (Boxes keyed `line-*`) gives one row per such Box, its pieces
 // joined; any other tree, one row per innermost Box (one holding no Box), its texts and button labels in order.

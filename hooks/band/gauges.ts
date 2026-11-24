@@ -99,13 +99,17 @@ export function narrowGauges(usage: Usage, runway: Runway | null | undefined): L
   return out
 }
 
-// 'you 14:02', 'Claude 14:05': the person's last prompt and Claude's last reply, the first `upTo` of them; with
+// 'you 14:02' and 'Claude 14:05': the person's last prompt and Claude's last reply, each null while unknown; with
 // `isLive`, the prompt is a running turn's while one runs
-export function timeParts(input: BandInput, upTo = 2, isLive = false): string[] {
+export function timesOf(input: BandInput, isLive = false): { you: string | null; claude: string | null } {
   const you = (isLive ? input.live.promptAt : null) ?? input.turns[input.turns.length - 1]?.promptAt ?? input.session.lastPromptAt
-  return [you === null ? null : `you ${clockText(you)}`, input.session.lastReplyAt === null ? null : `Claude ${clockText(input.session.lastReplyAt)}`]
-    .filter((part): part is string => part !== null)
-    .slice(0, upTo)
+  return { you: you === null ? null : `you ${clockText(you)}`, claude: input.session.lastReplyAt === null ? null : `Claude ${clockText(input.session.lastReplyAt)}` }
+}
+
+// The prompt's and the reply's times, the first `upTo` of them that are known
+export function timeParts(input: BandInput, upTo = 2, isLive = false): string[] {
+  const { you, claude } = timesOf(input, isLive)
+  return [you, claude].filter((part): part is string => part !== null).slice(0, upTo)
 }
 
 // ' │ you 14:02 · Claude 14:05'

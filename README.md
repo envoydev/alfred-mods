@@ -589,11 +589,11 @@ open session; a bare `/rec` or `/auto-handoff` reads the files again at once. A 
   calls with their reasons, running subagents, cache expiry, plan progress, a handoff prompt of its own, an on-screen
   mask for recordings (`"rec"`) and compact tool rows (`"quiet"`), in one band and an `/inspect` pane.
 - **With Alfred Code:** where the stack publishes its status file, the stack handles a full context and the mod's
-  handoff stands down ([Handoff](#handoff)), and the mod shows the stack's mode banner, the context runway measured
-  against the stack's resume trigger, and an ALFRED CODE section whose `f` fills the stack's ready resume prompt
+  handoff stands down ([Handoff](#handoff)), and the mod shows the context runway measured against the stack's resume
+  trigger, and an ALFRED CODE section whose `f` fills the stack's ready resume prompt
   ([With Alfred Code](#with-alfred-code)).
-- **With claude-kit:** where the project has claude-kit's `.claude/kit/settings.json`, the band's kit banner and a
-  CLAUDE-KIT section in the Now tab show the kit's modes ([With claude-kit](#with-claude-kit)).
+- **With claude-kit:** where the project has claude-kit's `.claude/kit/settings.json`, a CLAUDE-KIT section in the Now
+  tab shows the kit's modes ([With claude-kit](#with-claude-kit)).
 - **The Prompt tab** (`/inspect prompt`, `m`): what the main loop's last turn carried for the model, besides what you
   typed ([The Prompt tab](#the-prompt-tab)).
 
@@ -608,15 +608,16 @@ gives up its Show and Copy buttons. A narrow pane, down to 24 columns, keeps the
 tool's column to keep its counts, and the Timeline leaves out the prompt's time to keep how long each turn took and
 its tokens.
 
-By default the band is up to two lines of marks, then the gauges, an info line under them, and rows under that. Line 1
-is the identity: `● REC` while recording mode is on, then the account the session is signed in to. Line 2 is the modes:
-Alfred Code's banner, claude-kit's banner, then the MCP item. A line with nothing on it is not drawn.
+By default the band is the identity line, the turn while one runs, an info line, the gauges, and rows under them.
+Line 1 is the identity: `● REC` while recording mode is on, the account the session is signed in to, and Claude Code's
+version. A line with nothing on it is not drawn. The band draws no mode banner: Alfred Code's modes are in the Now
+tab's ALFRED CODE section and claude-kit's in its CLAUDE-KIT section.
 
 ```text
-org | Personal
-auto-run · auto-compact 490k · scoring 80 │ kit: auto-run · scoring 90 │ mcp ✓ 3
+Acme | Team | CC 2.1.331
+⟳ Turn 47 · 5:01 · 19 tools
+Sonnet 5.5 ◑ high │ cache warm ≈60m │ mcp ✗ 1 · ✓ 10 │ ≈119 tok/s avg │ Claude 17:13 · you 17:15 │ 9m
 ctx ▰▰▰▱▱ 30% │ 5h ▰▱▱▱▱ 15% (19:00) │ 7d 40% (11:00)
-Sonnet 5.5 ◑ high │ 9m │ ≈119 tok/s avg │ cache warm ≈60m │ you 17:15 · Claude 17:13 │ CC 2.1.322
 project: my-app │ git:(develop) +12 −3 │ folder: .claude
 plan:    Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update interceptor
 usage:   [ 45 tools · 2 skills · 4 agents (1 ◐) · 4 rules ]
@@ -636,11 +637,9 @@ rules:   alfred-interaction │ alfred-git │ web:typescript │ 3 always-on ·
   open a repository, not proof: the name is the login record on disk, which you can edit and which can lag behind an
   account switch, and Claude Code does not let a mod ask the server which account is active. The account's web page is
   the stronger source. Under [REC](#recording-mode) `strict` a company name reads `‹org›`; `Personal` and `unknown`
-  stay.
-- **Line 2, the modes:** Alfred Code's mode banner, then claude-kit's, then the MCP item, joined by ` │ `. Where the
-  line does not fit, claude-kit's banner shortens to `kit`, then goes; Alfred Code's banner and the MCP item stay, and
-  the banner is cut when it and the MCP item together overflow.
-- **The MCP item** counts the session's MCP servers and never draws a name. `mcp ◐ <connected>/<total>` shows while any
+  stay. Claude Code's version follows the account, `| CC 2.1.331`, and goes where the line would pass the band's
+  width.
+- **The MCP item**, on the info line after the cache, counts the session's MCP servers and never draws a name. `mcp ◐ <connected>/<total>` shows while any
   server loads, `mcp ✓ <n>` once all are connected, and `mcp ✗ <failed> · ✓ <connected>` when one failed (one waiting
   on a login counts as failed). Claude Code's own `mcp.connect` answers before the server starts, so for each server
   still loading the mod asks Claude Code once for its state (`$.mcp.connect`, which never starts a server the session
@@ -648,9 +647,11 @@ rules:   alfred-interaction │ alfred-git │ web:typescript │ 3 always-on ·
   about a server whose connect the hooks beneath the mod's have answered unrefused, so never one another plugin holds
   back. A server also reads connected when its tools show in the session's tool list. Where the question is refused or
   fails, a server whose tools never show, as with tool search, reads connected after 60 seconds. With `leave_out_skipped_hooks` on, only the
-  tool list feeds the item: it reads `mcp ✓ <n>`, has no loading or failed state, and asks nothing.
-- **The info line:** the model and effort, the session's time, the average output speed, the cache, the times of your
-  last prompt and Claude's reply, and Claude Code's version. While a turn runs, the gauge line counts the turn's
+  tool list feeds the item: it reads `mcp ✓ <n>`, has no loading or failed state, and asks nothing. Claude Code adds
+  connectors of its own, such as `claude-artifacts`, which count like any server: one that fails reads `✗` though
+  `claude mcp list` does not list it.
+- **The info line:** the model and effort, the cache, the MCP item, the average output speed, the times of Claude's
+  last reply and your last prompt, and the session's time. While a turn runs, the turn line above it counts the turn's
   tool calls, and the gauges add today's cost. Today's cost is the mod's own count on this machine: sessions it did not
   run in are not in it, so it can read lower than a status line's that counts every session.
 - **`project:`** the folder the session started in, then `git:(<branch>)`, the branch of the repository holding the
@@ -703,15 +704,14 @@ is unseen. It stays where the transcript is past 8 MiB (the first read starts at
 `transcript unread` shows (the read failed), and while a long first read is still short of the end.
 
 When the width runs out, the info line wraps onto a second row between items, and items drop whole only when two rows
-cannot hold them (the version first, then the times); `project:` shortens its folder to the last part, then leaves it
+cannot hold them (Claude's reply time first, then your prompt's, then the speed and the cache); `project:` shortens its folder to the last part, then leaves it
 out, and `usage:` drops the rules, then the agents, then the skills. When the band has fewer rows than it needs, as in
-fullscreen under a tall draft, `project:` goes first, then line 2 joins line 1 on one line where the two
-fit (where they do not, line 2 goes), then the info line's second row, then the open rows from the last
+fullscreen under a tall draft, `project:` goes first, then the info line's second row, then the open rows from the last
 (`rules:`, `agents:`, `skills:`, `tools:`), then `usage:`, then `plan:`, then the whole info line, so the line with its
 buttons stays in view. Once `plan:` goes, its count and score move to the gauge line while something needs you
 (`PLAN 1/4 · score 85 ▲13`). The full band keeps its colours when idle too, not only while a turn runs; `"band": "calm"`
-goes back to the two lines, dim until something needs you; lines 1 and 2 lead the calm band too, and the account on
-line 1 keeps its own colours there, as the red `● REC` does, so it reads easily.
+goes back to the two lines, dim until something needs you; line 1 leads the calm band too, and the account on it keeps
+its own colours there, as the red `● REC` does, so it reads easily.
 
 `"bandPlace": "under"` draws the band under the input instead. Claude Code draws its own mode line (`⏵⏵ auto mode on`)
 as the first row under the prompt whatever a mod does, so with `"above"` it is the bottom row, under the band and the
@@ -900,10 +900,6 @@ In a project where [Alfred Code](https://github.com/envoydev/alfred-code) publis
 `.alfred/state/sessions/status/<session id>.json` for the session (`.claude/session-inspector/status/<session id>.json`
 through alfred-code 3.12.1, which the mod still reads), the mod reads that one file at the session's start, every 30 seconds and after `/clear`, and shows more:
 
-- **The mode banner:** `auto-run · auto-compact 490k · scoring 80` leads line 2 of the band from the session's start
-  while the stack's auto-run, auto-compact or scoring is on. `490k` is where Claude Code compacts
-  for the session's model; `auto-compact` alone when the stack does not know it. Alfred Code's banner stays when
-  claude-kit's shortens or goes.
 - **The runway:** while the stack offers a fresh session at a full context, the band's context gauge measures against
   the stack's trigger instead of the window, `ctx ▰▰▰▱▱ 62% of 150k`, and the turns forecast counts to it.
 - **The ALFRED CODE section** in `/inspect`'s Now tab: what the stack does at a full context, its auto-run, auto-compact and scoring,
@@ -943,9 +939,6 @@ value drops that name only: the mod shows the file's values as written, and a va
 A file that is absent, is not a JSON object or is over 16 KiB gives no kit data. A read that fails for another reason
 keeps the values as they were. Neither shows a toast or an error. The mod does not depend on claude-kit: without the file, none of this draws.
 
-- **The kit banner:** `kit: auto-run · scoring 90 · auto-approve` follows Alfred Code's banner on line 2 of the band,
-  naming only the modes that are on (`scoring` carries the pass score). With none on, there is no banner. Where it
-  would cut Alfred Code's banner or the MCP item, it shortens to `kit`, and where even that would, it drops out.
 - **The CLAUDE-KIT section** in the Now tab, after ALFRED CODE: a row each for auto-run, scoring and auto-approve with
   its value and the file it comes from (`auto-run on · from .claude/kit/settings.json`), where the scoring row also
   carries the pass score (`scoring on · pass 90 · from .claude/kit/settings.json`), one `models:` row for the five

@@ -97,18 +97,6 @@ export function runwayOf(stack: Stack, usage: Usage, sessionModel: string | null
 // A compaction point in whole thousands, `490k`
 const thousands = (at: number): string => `${Math.round(at / 1000)}k`
 
-// The mode banner (spec 'The mode banner'): `auto-run` in warn, `auto-compact <at>` and `scoring <level>`, only while
-// a mode is on (the owner, 2026-11-12: '"auto-run | auto-compact 490k | scorer 80"'; the scorer named scoring as
-// alfred-code 3.11.0 names it, the user, 2026-11-12). The status file's field keeps its schema 1 name, `scorer`
-export function bannerSegs(stack: Stack): Seg[] {
-  if (stack.state !== 'used') return []
-  const parts: Seg[][] = []
-  if (stack.autoRun === true) parts.push([{ text: 'auto-run', tone: 'warn' }])
-  if (stack.autoCompact?.on === true) parts.push([{ text: stack.autoCompact.at === null ? 'auto-compact' : `auto-compact ${thousands(stack.autoCompact.at)}` }])
-  if (stack.scorer?.on === true) parts.push([{ text: `scoring ${stack.scorer.level}` }])
-  return parts.flatMap((segs, i) => (i === 0 ? segs : [{ text: ' · ', tone: 'dim' as const }, ...segs]))
-}
-
 const HEAD: Line = [{ text: 'ALFRED CODE', bold: true, tone: 'handoff' }]
 const FILL: Seg = { button: { key: 'stack-fill', label: 'fill prompt', hotkey: 'f', tone: 'handoff', plain: true } }
 // 'resume: ' before the prompt's line, two spaces and 'f: fill prompt' after it

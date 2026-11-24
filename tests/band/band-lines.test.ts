@@ -1,33 +1,75 @@
-// The band's three lines (spec 2026-11-23, D4): identity (REC and the account), modes (the banners and the MCP item), then
-// the gauges and the rows under them at the band's whole width
+// The band's lines in the user's order (spec 2026-11-23, D4; rearranged by the user, 2026-11-24): the identity (REC, the
+// account and Claude Code's version), the turn line, the info line (model, cache, MCP, speed, times, session time), then
+// the gauges and the rows under them
 import { expect, test } from 'claude-code/testing'
 
 import { bandLines } from '../../hooks/band/band'
+import { infoLine } from '../../hooks/band/info'
 import { widthOf } from '../../hooks/core/format'
-import { setRec } from '../../hooks/rec/mask'
-import { kitBannerSegs } from '../../hooks/kit/kitlines'
 import { mcpItem } from '../../hooks/mcp/mcp'
-import { KIT_VALUES } from '../kit/settings'
-import { BANNER, NOW, REC, STRICT, input, text, texts } from './band-input'
+import { NOW, REC, STRICT, input, text, texts } from './band-input'
 import type { BandInput } from '../../hooks/band/types'
 import type { McpServer } from '../../hooks/mcp/types'
 
 const TEAM = { org: 'Acme', kind: 'Team' as const }
+const VERSION = '2.1.331'
 const servers = (count: number): McpServer[] => Array.from({ length: count }, (_, i) => ({ name: `s${i}`, state: 'connected' as const, since: 0 }))
 const MCP = mcpItem(servers(3))
-const MODES = 'auto-run · auto-compact 490k · scoring 80'
-const kitBanner = kitBannerSegs({ values: KIT_VALUES })
+const withVersion = (o: Partial<BandInput> = {}): BandInput => {
+  const base = input(o)
+  return { ...base, session: { ...base.session, version: VERSION } }
+}
 const bare = (o: Partial<BandInput> = {}): BandInput => {
   const out = input(o)
   delete out.account
   return out
 }
+const live = { turnId: 't2', startedAt: NOW - 5000, toolCalls: 1, toolFailures: 0, runningCalls: [], promptAt: NOW - 5000 }
 
-test('the user sample draws three lines', () => {
-  const lines = texts(bandLines(input({ account: TEAM, banner: BANNER, columns: 200 })))
-  expect(lines[0]).toBe('Acme | Team')
-  expect(lines[1]).toBe(MODES)
+test('the user sample: the identity with the version, the info line, then the gauges', () => {
+  const lines = texts(bandLines(withVersion({ account: TEAM, mcp: MCP })))
+  expect(lines[0]).toBe(`Acme | Team | CC ${VERSION}`)
+  expect(lines[1]?.startsWith('Sonnet 5.5 ◑ medium │ ')).toBe(true)
+  expect(lines[1]).toContain(' │ mcp ✓ 3 │ ')
   expect(lines[2]?.startsWith('ctx ')).toBe(true)
+  expect(lines[3]?.startsWith('project:')).toBe(true)
+})
+
+test("the version follows the account mark as its kind does, dim, and reads alone without an account", () => {
+  expect(bandLines(withVersion({ account: TEAM }))[0]).toEqual([
+    { text: 'Acme' }, { text: ' | ', tone: 'dim' }, { text: 'Team', tone: 'dim' }, { text: ' | ', tone: 'dim' }, { text: `CC ${VERSION}`, tone: 'dim' },
+  ])
+  const none = bare()
+  expect(texts(bandLines({ ...none, session: { ...none.session, version: VERSION } }))[0]).toBe(`CC ${VERSION}`)
+  expect(texts(bandLines(withVersion({ rec: REC, account: TEAM })))[0]).toBe(`● REC │ Acme | Team | CC ${VERSION}`)
+})
+
+test('where the identity with the version passes the width, the version goes and the account stays whole', () => {
+  const lines = bandLines(withVersion({ rec: REC, account: TEAM, columns: 30 }))
+  expect(text(lines[0] ?? [])).toBe('● REC │ Acme | Team')
+  expect(text(bandLines(withVersion({ account: TEAM, columns: 40 }))[0] ?? [])).toBe(`Acme | Team | CC ${VERSION}`)
+})
+
+test('the info line reads model, cache, MCP, speed, Claude and you, then the session time; no version on it', () => {
+  const cache = { ...input().cache, lastRequestAt: NOW - 60_000, sessionCounts: { read: 1000, write: 0, input: 10 } }
+  const totals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, stepOutput: 9200, stepMs: 100_000 }
+  const o = withVersion({ account: TEAM, mcp: MCP, cache, totals })
+  const line = text(infoLine(o))
+  const order = ['Sonnet 5.5', 'cache ', 'mcp ✓ 3', '≈92 tok/s avg', 'Claude ', 'you ', '│ 59m']
+  const at = order.map(part => line.lastIndexOf(part))
+  expect(at.every(i => i >= 0)).toBe(true)
+  expect([...at].sort((a, b) => a - b)).toEqual(at)
+  expect(line).toMatch(/Claude \d\d:\d\d · you \d\d:\d\d │ 59m$/)
+  expect(line).not.toContain('CC ')
+})
+
+test('short of width the info line keeps the prompt time before it drops the times', () => {
+  const o = withVersion({ account: TEAM, mcp: MCP })
+  const full = text(infoLine(o))
+  const narrower = text(infoLine({ ...o, columns: widthOf(infoLine(o)) - 1 }))
+  expect(full).toContain('Claude ')
+  expect(narrower).not.toContain('Claude ')
+  expect(narrower).toMatch(/ │ you \d\d:\d\d │ 59m$/)
 })
 
 test('a company name is plain and the bar and the kind are dim', () => {
@@ -63,157 +105,68 @@ test('REC strict hides a company name', () => {
   expect(texts(bandLines(input({ rec: REC, account: TEAM })))[0]).toBe('● REC │ Acme | Team')
 })
 
-test('the MCP item follows the banners on line 2', () => {
-  const lines = texts(bandLines(input({ account: TEAM, banner: BANNER, mcp: MCP })))
-  expect(lines[1]).toBe(`${MODES} │ mcp ✓ 3`)
-  expect(texts(bandLines(input({ account: TEAM, mcp: MCP })))[1]).toBe('mcp ✓ 3')
+test('the band draws no modes line', () => {
+  const lines = texts(bandLines(withVersion({ account: TEAM, mcp: MCP })))
+  expect(lines.some(line => line.includes('auto-run') || line.includes('scoring') || line.startsWith('kit'))).toBe(false)
+  expect(lines.filter(line => line.includes('mcp ✓ 3'))).toHaveLength(1)
 })
 
-test("the kit banner follows Alfred Code's, before the MCP item", () => {
-  const line = texts(bandLines(input({ account: TEAM, banner: BANNER, kitBanner, mcp: MCP })))[1] ?? ''
-  expect(line.startsWith(`${MODES} │ kit: `)).toBe(true)
-  expect(line.endsWith(' │ mcp ✓ 3')).toBe(true)
-})
-
-test('empty lines are dropped', () => {
-  const lines = texts(bandLines(bare()))
-  expect(lines[0]?.startsWith('ctx ')).toBe(true)
-  expect(lines).toEqual(texts(bandLines(bare({ banner: [], kitBanner: [], mcp: [] }))))
-  expect(texts(bandLines(input({ account: TEAM })))[1]?.startsWith('ctx ')).toBe(true)
-  expect(texts(bandLines(bare({ banner: BANNER })))[0]).toBe(MODES)
+test('an empty identity is dropped', () => {
+  expect(texts(bandLines(bare()))[0]?.startsWith('Sonnet 5.5')).toBe(true)
   expect(texts(bandLines(bare({ rec: REC })))[0]).toBe('● REC')
 })
 
-test('the calm band and a working band lead with the same lines', () => {
-  const live = { turnId: 't2', startedAt: NOW - 5000, toolCalls: 1, toolFailures: 0, runningCalls: [], promptAt: NOW - 5000 }
+test('the calm band and a working band lead with the identity line', () => {
   for (const o of [{ mode: 'calm' as const }, { isWorking: true, live }]) {
-    const lines = texts(bandLines(input({ ...o, account: TEAM, banner: BANNER, mcp: MCP })))
-    expect(lines.slice(0, 2)).toEqual(['Acme | Team', `${MODES} │ mcp ✓ 3`])
-    expect(lines.length).toBeGreaterThan(2)
+    const lines = texts(bandLines(withVersion({ ...o, account: TEAM, mcp: MCP })))
+    expect(lines[0]).toBe(`Acme | Team | CC ${VERSION}`)
+    expect(lines.length).toBeGreaterThan(1)
   }
 })
 
-test('before any reading the identity and modes lines draw alone, "off" draws nothing', () => {
-  const none = { turns: [], usage: { ...input().usage, contextPercent: null, rateWindows: [] }, session: { ...input().session, model: null } }
-  expect(texts(bandLines(input({ ...none, account: TEAM, banner: BANNER })))).toEqual(['Acme | Team', MODES])
-  expect(bandLines(input({ mode: 'off', account: TEAM, banner: BANNER }))).toEqual([])
+test('before any reading the identity draws alone, "off" draws nothing', () => {
+  const none = { turns: [], usage: { ...input().usage, contextPercent: null, rateWindows: [] } }
+  const base = withVersion({ ...none, account: TEAM })
+  expect(texts(bandLines({ ...base, session: { ...base.session, model: null } }))).toEqual([`Acme | Team | CC ${VERSION}`])
+  expect(bandLines(withVersion({ mode: 'off', account: TEAM }))).toEqual([])
 })
 
-test('narrow line 2 drops the kit banner first', () => {
-  const base: Partial<BandInput> = { account: TEAM, banner: BANNER, mcp: MCP }
-  const withKit = (columns: number): string[] => texts(bandLines(input({ ...base, kitBanner, columns })))
-  expect(withKit(60)[1]).toBe(`${MODES} │ kit │ mcp ✓ 3`)
-  expect(withKit(54)[1]).toBe(`${MODES} │ mcp ✓ 3`)
-  expect(withKit(60).slice(2)).toEqual(texts(bandLines(input({ ...base, columns: 60 }))).slice(2))
-  for (const columns of [60, 54, 50]) expect(bandLines(input({ ...base, kitBanner, columns })).every(line => widthOf(line) <= columns)).toBe(true)
-})
+const FULL: Partial<BandInput> = { account: TEAM, mcp: MCP }
+const countRows = (o: Partial<BandInput>): number => bandLines(withVersion(o)).length
 
-test('a banner that alone overflows is cut, and the MCP item stays', () => {
-  const lines = bandLines(input({ account: TEAM, banner: BANNER, kitBanner, mcp: MCP, columns: 30 }))
-  expect(widthOf(lines[1] ?? [])).toBeLessThanOrEqual(30)
-  expect(text(lines[1] ?? [])).toMatch(/^auto-run.*… │ mcp ✓ 3$/)
-})
-
-test('the identity line is never cut by the modes', () => {
-  expect(texts(bandLines(input({ account: TEAM, banner: BANNER, columns: 36, rec: REC })))[0]).toBe('● REC │ Acme | Team')
-})
-
-const FULL: Partial<BandInput> = { account: TEAM, banner: BANNER, mcp: MCP }
-const countRows = (o: Partial<BandInput>): number => bandLines(input(o)).length
-
-test('short of rows line 2 gives way after the project row', () => {
+test('short of rows the project row gives way first, then the info line keeps one row', () => {
   const all = countRows(FULL)
-  const noPlace = texts(bandLines(input({ ...FULL, maxRows: all - 1 })))
+  const noPlace = texts(bandLines(withVersion({ ...FULL, maxRows: all - 1 })))
   expect(noPlace.some(line => line.startsWith('project:'))).toBe(false)
-  expect(noPlace.slice(0, 2)).toEqual(['Acme | Team', `${MODES} │ mcp ✓ 3`])
+  expect(noPlace[0]).toBe(`Acme | Team | CC ${VERSION}`)
   expect(noPlace.some(line => line.startsWith('ctx '))).toBe(true)
-})
-
-test('then line 1 joins line 2 where it fits, before the info line gives its second row', () => {
-  const all = countRows(FULL)
-  const joined = texts(bandLines(input({ ...FULL, maxRows: all - 2 })))
-  expect(joined[0]).toBe(`Acme | Team │ ${MODES} │ mcp ✓ 3`)
-  expect(joined).toHaveLength(all - 2)
-  const info = texts(bandLines(input({ ...FULL, maxRows: all - 3 })))
-  expect(info).toHaveLength(all - 3)
-  expect(info[0]).toBe(`Acme | Team │ ${MODES} │ mcp ✓ 3`)
-})
-
-test('where the two do not fit one line, line 2 goes and the identity stays', () => {
-  const o: Partial<BandInput> = { ...FULL, columns: 50 }
-  const all = countRows(o)
-  const lines = texts(bandLines(input({ ...o, maxRows: all - 2 })))
-  expect(lines[0]).toBe('Acme | Team')
-  expect(lines.join('\n')).not.toContain('auto-run ·')
+  expect(noPlace.some(line => line.includes('mcp ✓ 3'))).toBe(true)
 })
 
 test('the identity line stays however few rows are left', () => {
-  expect(texts(bandLines(input({ ...FULL, maxRows: 1 })))[0]).toContain('Acme | Team')
+  expect(texts(bandLines(withVersion({ ...FULL, maxRows: 1 })))[0]).toContain('Acme | Team')
 })
 
 test('under the input the action row stays first', () => {
-  const lines = texts(bandLines(input({ ...FULL, under: { buttons: 'text' }, newFailures: 1 })))
+  const lines = texts(bandLines(withVersion({ ...FULL, under: { buttons: 'text' }, newFailures: 1 })))
   expect(lines[0]).toContain('✗ 1 new')
-  expect(lines[1]).toBe('Acme | Team')
-  expect(lines[2]).toBe(`${MODES} │ mcp ✓ 3`)
-  expect(lines.slice(3).some(line => line.startsWith('ctx '))).toBe(true)
+  expect(lines[1]).toBe(`Acme | Team | CC ${VERSION}`)
+  expect(lines.slice(2).some(line => line.startsWith('ctx '))).toBe(true)
   expect(lines.filter(line => line.includes('✗ 1 new'))).toHaveLength(1)
 })
 
 test('above the input the action row stays last, after the rows under the gauges', () => {
-  const lines = texts(bandLines(input({ ...FULL, newFailures: 1 })))
-  expect(lines[0]).toBe('Acme | Team')
+  const lines = texts(bandLines(withVersion({ ...FULL, newFailures: 1 })))
+  expect(lines[0]).toBe(`Acme | Team | CC ${VERSION}`)
   expect(lines[lines.length - 1]).toContain('✗ 1 new')
 })
 
-test('a band with a turn running holds the lines too, and draws the turn on its own row', () => {
-  const live = { turnId: 't2', startedAt: NOW - 5000, toolCalls: 1, toolFailures: 0, runningCalls: [], promptAt: NOW - 5000 }
-  const lines = texts(bandLines(input({ ...FULL, isWorking: true, live })))
-  expect(lines.slice(0, 2)).toEqual(['Acme | Team', `${MODES} │ mcp ✓ 3`])
-  expect(lines[2]).toMatch(/^⟳ Turn 2 · 0:05/)
-  const idle = texts(bandLines(input({ ...FULL, live })))
+test('a band with a turn running: the identity, the turn, the info line, then the gauges', () => {
+  const lines = texts(bandLines(withVersion({ ...FULL, isWorking: true, live })))
+  expect(lines[0]).toBe(`Acme | Team | CC ${VERSION}`)
+  expect(lines[1]).toMatch(/^⟳ Turn 2 · 0:05/)
+  expect(lines[2]).toContain('mcp ✓ 3')
+  expect(lines[3]?.startsWith('ctx ')).toBe(true)
+  const idle = texts(bandLines(withVersion({ ...FULL, live })))
   expect(idle.some(line => line.startsWith('⟳'))).toBe(false)
-})
-// A cut line ends with an ellipsis, measured and cut on the text as drawn: REC masks an email to '‹email›', so a cell
-// count taken on the raw text would cut in the wrong place, and the raw text must never reach the drawn line
-test('a banner cut with REC off ends with an ellipsis within the width', () => {
-  const lines = bandLines(input({ account: TEAM, banner: [{ text: 'contact bob@example.com now please' }], columns: 20 }))
-  expect(text(lines[1] ?? [])).toBe('contact bob@example…')
-})
-
-test('a banner cut with REC on is cut on the masked text and shows no part of the email', () => {
-  setRec('on', [], null)
-  try {
-    const line = bandLines(input({ account: TEAM, banner: [{ text: 'contact bob@example.com now please' }], columns: 20 }))[1] ?? []
-    expect(widthOf(line)).toBeLessThanOrEqual(20)
-    expect(text(line)).toBe('contact ‹email› now…')
-  } finally {
-    setRec('off', [], null)
-  }
-})
-
-test('a cut on a segment edge still ends with an ellipsis, REC on or off', () => {
-  const banner = [{ text: 'aaaaaaaa' }, { text: 'bbbb', tone: 'dim' as const }]
-  for (const level of ['off', 'on'] as const) {
-    setRec(level, [], null)
-    try {
-      const line = bandLines(input({ account: TEAM, banner, columns: 8 }))[1] ?? []
-      expect(text(line), level).toBe('aaaaaaa…')
-      expect(widthOf(line), level).toBe(8)
-    } finally {
-      setRec('off', [], null)
-    }
-  }
-})
-
-test('a segment with no width never follows the cut ellipsis, so the line stays within the width', () => {
-  const mcp = [{ text: 'aaaaaaaa' }, { text: '' }, { text: 'bbbb' }, { text: '' }]
-  const line = bandLines(input({ account: TEAM, mcp, columns: 8 }))[1] ?? []
-  expect(text(line)).toBe('aaaaaaa…')
-  expect(widthOf(line)).toBe(8)
-  expect(line.at(-1)).toEqual({ text: 'aaaaaaa…' })
-})
-
-test('a line that fits is not cut and gets no ellipsis', () => {
-  expect(text(bandLines(input({ account: TEAM, banner: [{ text: 'aaaaaaaa' }], columns: 8 }))[1] ?? [])).toBe('aaaaaaaa')
 })

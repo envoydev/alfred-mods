@@ -4,7 +4,7 @@ import { bandLines } from '../../hooks/band/band'
 import { widthOf } from '../../hooks/core/format'
 import { handoffLines } from '../../hooks/handoff/handoff'
 import { STACK_TOASTS } from '../../hooks/stack/constants'
-import { bannerSegs, fillReady, fillToast, modelsAgree, parseStack, runwayOf } from '../../hooks/stack/stack'
+import { fillReady, fillToast, modelsAgree, parseStack, runwayOf } from '../../hooks/stack/stack'
 import { usageLines } from '../../hooks/inspect/tabs'
 import type { BandInput } from '../../hooks/band/types'
 import type { Line } from '../../hooks/core/types'
@@ -127,7 +127,7 @@ test("Phase 4's reasons come through", () => {
   expect(parseStack(file(), 's2')).toEqual({ state: 'ignored', reason: 'another session' })
 })
 
-// Task 4: the runway and the banner
+// Task 4: the runway
 const STACK: Stack = {
   state: 'used', reason: null, fullContext: 'fresh-session', model: 'claude-opus-5-5', window: 1000000, resumeAt: 150000, hasNoOffer: false,
   autoRun: true, scorer: { on: true, level: 80, rounds: 3 }, autoCompact: null, plan: null, hasPrompt: true, updatedAt: null, readAt: 0, ignoredFields: [],
@@ -227,51 +227,14 @@ test('the stood-down HANDOFF row reads the runway', () => {
   expect(text(handoffLines(VIEW, 100)[1]!)).toBe('ctx 31% of 300k · handoff by Alfred Code')
 })
 
-test('bannerSegs', () => {
-  expect(text(bannerSegs(STACK))).toBe('auto-run · scoring 80')
-  expect(bannerSegs(STACK)[0]).toEqual({ text: 'auto-run', tone: 'warn' })
-  expect(text(bannerSegs({ ...STACK, scorer: { on: false, level: 80, rounds: 3 } }))).toBe('auto-run')
-  expect(text(bannerSegs({ ...STACK, autoRun: false }))).toBe('scoring 80')
-  expect(text(bannerSegs({ ...STACK, autoRun: null }))).toBe('scoring 80')
-  expect(bannerSegs({ ...STACK, autoRun: false, scorer: null })).toEqual([])
-  expect(bannerSegs({ ...STACK, autoRun: null, scorer: { on: false, level: 80, rounds: 3 } })).toEqual([])
-  expect(bannerSegs({ ...STACK, state: 'ignored', reason: 'another session' })).toEqual([])
-})
-
-test('the banner has line 2, after REC on line 1 when it is on, calm and working, at 90 and 120 columns', () => {
-  const banner = bannerSegs(STACK)
-  for (const columns of [90, 120]) {
-    for (const isWorking of [false, true]) {
-      const live = isWorking ? { ...BASE.live, turnId: 't1', startedAt: 0 } : BASE.live
-      const plain = bandLines({ ...BASE, columns, isWorking, live, banner })
-      expect(text(plain[0]!)).toBe('auto-run · scoring 80')
-      const withRec = bandLines({ ...BASE, columns, isWorking, live, banner, rec: { level: 'on', words: 0 } })
-      expect(withRec.slice(0, 2).map(text)).toEqual(['● REC', 'auto-run · scoring 80'])
-    }
-  }
-})
-
-test('with no reading yet, the banner alone', () => {
-  const none = { ...BASE, usage: { ...USAGE, contextTokens: null, contextPercent: null }, banner: bannerSegs(STACK) }
-  expect(bandLines(none).map(text)).toEqual(['auto-run · scoring 80'])
-  expect(bandLines({ ...none, rec: { level: 'on', words: 0 } }).map(text)).toEqual(['● REC', 'auto-run · scoring 80'])
-  expect(bandLines({ ...none, banner: [] })).toEqual([])
-})
-
-test('REC and the banner at 60 columns keep both lines', () => {
-  const lines = bandLines({ ...BASE, columns: 60, banner: bannerSegs(STACK), rec: { level: 'on', words: 0 }, runway: RUNWAY, newFailures: 2 })
-  expect(lines.slice(0, 2).map(text)).toEqual(['● REC', 'auto-run · scoring 80'])
-})
-
-test('REC and the banner take lines of their own, and every gauge, reset and the cost stay whole', () => {
+test("REC takes a line of its own, and with the runway every gauge, reset and the cost stay whole", () => {
   const windows = [{ kind: 'five_hour', percentUsed: 45, resetsAt: '2026-10-28T17:00:00Z' }, { kind: 'seven_day', percentUsed: 20, resetsAt: '2026-10-31T09:00:00Z' }]
   const usage = { ...USAGE, rateWindows: windows, costUsd: 1.23 }
   for (const columns of [90, 100]) {
-    const lines = bandLines({ ...BASE, columns, usage, banner: bannerSegs(STACK), rec: { level: 'on', words: 0 }, runway: RUNWAY })
+    const lines = bandLines({ ...BASE, columns, usage, rec: { level: 'on', words: 0 }, runway: RUNWAY })
     expect(text(lines[0]!)).toBe('● REC')
-    expect(text(lines[1]!)).toBe('auto-run · scoring 80')
-    expect(text(lines[2]!)).toMatch(/^ctx ▰▰▰▱▱ 62% of 150k.* 5h .*\(\d\d\.\d\d \d\d:\d\d\).* 7d .*\(\d\d\.\d\d \d\d:\d\d\)/)
-    if (columns >= 100) expect(text(lines[2]!)).toContain('$1.23')
+    expect(text(lines[1]!)).toMatch(/^ctx ▰▰▰▱▱ 62% of 150k.* 5h .*\(\d\d\.\d\d \d\d:\d\d\).* 7d .*\(\d\d\.\d\d \d\d:\d\d\)/)
+    if (columns >= 100) expect(text(lines[1]!)).toContain('$1.23')
     for (const l of lines) expect(widthOf(l)).toBeLessThanOrEqual(columns)
   }
 })
@@ -315,18 +278,6 @@ test('autoCompact reads on and at, or null; a bad form is unknown and listed', (
   for (const bad of [{ on: 'yes', at: 490000 }, { on: true, at: 0 }, { on: true, at: 1.5 }, { on: true, at: '490000' }, { on: true }, [], 'on', true]) {
     expect(at(bad)).toMatchObject({ autoCompact: null, ignoredFields: ['autoCompact'], fullContext: 'fresh-session', autoRun: true })
   }
-})
-
-test('the banner orders auto-run, auto-compact and the scorer; auto-compact shows while on, in thousands', () => {
-  const on = (at: number | null): Stack => ({ ...STACK, autoCompact: { on: true, at } })
-  expect(text(bannerSegs(on(490_000)))).toBe('auto-run · auto-compact 490k · scoring 80')
-  expect(text(bannerSegs(on(null)))).toBe('auto-run · auto-compact · scoring 80')
-  expect(text(bannerSegs(on(491_600)))).toBe('auto-run · auto-compact 492k · scoring 80')
-  expect(text(bannerSegs({ ...STACK, autoCompact: { on: false, at: 490_000 } }))).toBe('auto-run · scoring 80')
-  expect(text(bannerSegs({ ...STACK, autoCompact: null }))).toBe('auto-run · scoring 80')
-  expect(text(bannerSegs({ ...on(490_000), autoRun: false, scorer: null }))).toBe('auto-compact 490k')
-  // The existing tones: auto-run warn, the rest the text's own, the joiner dim
-  expect(bannerSegs(on(490_000)).map(s => ('text' in s ? s.tone : undefined))).toEqual(['warn', 'dim', undefined, 'dim', undefined])
 })
 
 // The plan folder the session works on (alfred-code's plan folder contract, schema 1, add-only, the user's ruling of

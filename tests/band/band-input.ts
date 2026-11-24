@@ -14,7 +14,6 @@ export const USAGE: Usage = {
   rateWindows: [{ kind: 'five_hour', percentUsed: 15, resetsAt: '2026-10-28T17:00:00Z' }],
 }
 export const PLACE = { project: 'Example', folder: 'Frontend/src/app', branch: 'develop', sync: { ahead: 1, behind: 2 }, changes: { added: 12, removed: 3 } }
-export const BANNER: Seg[] = [{ text: 'auto-run · auto-compact 490k · scoring 80' }]
 export const REC = { level: 'on' as const, words: 0 }
 export const STRICT = { level: 'strict' as const, words: 0 }
 export const IDLE = { turnId: null, startedAt: null, toolCalls: 0, toolFailures: 0, runningCalls: [], promptAt: null }

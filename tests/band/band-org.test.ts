@@ -7,10 +7,8 @@ import type { RenderSurface } from 'claude-code'
 
 import { bandLines } from '../../hooks/band/band'
 import { widthOf } from '../../hooks/core/format'
-import { kitBannerSegs } from '../../hooks/kit/kitlines'
 import { START, engine, rows, stubAll } from '../kit'
-import { KIT_VALUES } from '../kit/settings'
-import { BANNER, NOW, NO_READING, REC, STRICT, input, text, texts } from './band-input'
+import { NOW, NO_READING, REC, STRICT, input, text, texts } from './band-input'
 import type { BandInput } from '../../hooks/band/types'
 
 const first = (o: Partial<BandInput>): string => text(bandLines(input(o))[0] ?? [])
@@ -19,7 +17,8 @@ const TEAM = { org: 'Acme Inc', kind: 'Team' as const }
 test('the full band leads with the account on its own line', () => {
   const lines = bandLines(input())
   expect(text(lines[0] ?? [])).toBe('org | Personal')
-  expect(text(lines[1] ?? []).startsWith('ctx ')).toBe(true)
+  expect(text(lines[1] ?? []).startsWith('Sonnet 5.5')).toBe(true)
+  expect(text(lines[2] ?? []).startsWith('ctx ')).toBe(true)
 })
 
 test('the calm band leads with it too', () => {
@@ -54,7 +53,7 @@ test('with no account in the input the band is the body alone', () => {
   const bare = input()
   delete bare.account
   expect(texts(bandLines(bare)).join('\n')).not.toContain('org')
-  expect(text(bandLines(bare)[0] ?? []).startsWith('ctx ')).toBe(true)
+  expect(text(bandLines(bare)[0] ?? []).startsWith('Sonnet 5.5')).toBe(true)
 })
 
 test('a company name, Personal and unknown draw by their kind', () => {
@@ -83,37 +82,16 @@ test('REC strict draws a company name as ‹org›, and leaves Personal and unkn
   expect(first({ rec: STRICT, account: { org: null } })).toBe('● REC │ org | unknown')
 })
 
-test("the order is REC and the account on line 1, then Alfred Code's banner on line 2", () => {
-  const lines = texts(bandLines(input({ rec: REC, banner: BANNER })))
-  expect(lines[0]).toBe('● REC │ org | Personal')
-  expect(lines[1]).toBe('auto-run · auto-compact 490k · scoring 80')
+test('the order is REC, then the account, on line 1', () => {
+  expect(texts(bandLines(input({ rec: REC })))[0]).toBe('● REC │ org | Personal')
 })
 
-test('the kit banner follows the others while line 2 fits', () => {
-  const kitBanner = kitBannerSegs({ values: KIT_VALUES })
-  expect(texts(bandLines(input({ rec: REC, banner: BANNER, kitBanner })))[1]).toContain('scoring 80 │ kit: ')
-})
-
-test('the kit banner yields first: it shortens to kit or goes, and the account stays', () => {
-  const kitBanner = kitBannerSegs({ values: KIT_VALUES })
-  for (const columns of [60, 54, 50]) {
-    const base: Partial<BandInput> = { columns, rec: REC, banner: BANNER }
-    const plain = bandLines(input(base))
-    const withKit = bandLines(input({ ...base, kitBanner }))
-    expect(text(withKit[0] ?? [])).toBe('● REC │ org | Personal')
-    expect(text(withKit[1] ?? [])).not.toContain('kit: ')
-    expect(withKit.every(line => widthOf(line) <= columns)).toBe(true)
-    expect(texts(withKit.slice(2))).toEqual(texts(plain.slice(2)))
-  }
-})
-
-test('narrow, the identity and modes lines keep their rows and the body keeps the whole width', () => {
-  const lines = bandLines(input({ columns: 36, rec: REC, banner: BANNER }))
+test('narrow, the identity line keeps its row and the body keeps the whole width', () => {
+  const lines = bandLines(input({ columns: 36, rec: REC }))
   expect(text(lines[0] ?? [])).toBe('● REC │ org | Personal')
-  expect(text(lines[1] ?? []).startsWith('auto-run')).toBe(true)
   const plain = input({ columns: 36 })
   delete plain.account
-  expect(texts(lines.slice(2))).toEqual(texts(bandLines(plain)))
+  expect(texts(lines.slice(1))).toEqual(texts(bandLines(plain)))
 })
 
 test('the project row no longer carries the org', () => {
@@ -136,14 +114,14 @@ for (const surface of SURFACES) {
   test(`on the ${surface}, a session reads the account from the config and the band's first line draws it`, async ($, on) => {
     await started($, on, { env: { CLAUDE_CONFIG_DIR: '/cfg' }, files: { ...accountFile({ organizationType: 'claude_team', organizationName: 'Acme Inc' }), ...HEAD } })
     const lines = await rows(await mount($, surface), { keepOrg: true })
-    expect(lines[0]).toBe('Acme Inc | Team')
+    expect(lines[0]).toBe('Acme Inc | Team | CC 2.1.322')
     expect(lines.find(line => line.startsWith('project:'))).toBe('project: w │ git:(develop)')
   })
 }
 
 test('the session draws the org unknown when no config is found', async ($, on) => {
   await started($, on, { env: { CLAUDE_CONFIG_DIR: '/cfg' } })
-  expect((await rows(await mount($, 'terminal'), { keepOrg: true }))[0]).toBe('org | unknown')
+  expect((await rows(await mount($, 'terminal'), { keepOrg: true }))[0]).toBe('org | unknown | CC 2.1.322')
 })
 
 test('a Pro or Max account is drawn as Personal, never its organization name', async ($, on) => {

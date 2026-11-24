@@ -11,10 +11,6 @@ import type { Seg } from '../core/types'
 import type { AccountKind, BandMode, BandSetting } from '../../types'
 export type { BandMode, BandSetting }
 
-// How the leading lines keep their modes line when rows run short: on its own line, joined after the identity where the two
-// fit, or left out
-export type ModesKeep = 'own' | 'joined' | 'off'
-
 // `plan`: the shown plan or task list while it runs, or for 10 minutes after it finished; `isPlanInvalid`: the shown
 // plan's file failed its last read; `score`: the shown plan's scores, else the newest scores file's; `rec`: REC's level
 // and how many private words it hides
@@ -33,11 +29,8 @@ export type BandInput = {
   handoffAskStep?: number | null
   // The skip ask (spec 2026-11-23, D3) is up: a managed plugin skipped the mod's hooks and the option is off
   isSkipAskUp?: boolean
-  // Alfred Code's runway, which the ctx item measures against while it applies, and the mode banner that leads line 2
+  // Alfred Code's runway, which the ctx item measures against while it applies
   runway?: Runway | null
-  banner?: Seg[]
-  // claude-kit's banner, after Alfred Code's on line 2: it shortens to `kit`, then goes, before any other item gives way
-  kitBanner?: Seg[]
   // The "band" setting: `full` adds the info line, the turn's tool count and today's cost; absent or `calm`, today's two
   // lines. `totals` and `stats` feed the info line's output speed and tool calls.
   mode?: BandMode
@@ -58,7 +51,7 @@ export type BandInput = {
   // What line 1's account mark shows for the signed-in account: 'Personal', a company's name, or null while unknown, and its
   // plan kind. The mark draws '<name> | <kind>', 'org | Personal' or 'org | unknown' after REC; absent, no mark
   account?: { org: string | null; kind?: AccountKind | null }
-  // The MCP item (spec 2026-11-23, D5), after the banners on line 2; absent or empty, none
+  // The MCP item (spec 2026-11-23, D5), on the info line after the cache (the user, 2026-11-24); absent or empty, none
   mcp?: Seg[]
 }
 
