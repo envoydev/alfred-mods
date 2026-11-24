@@ -140,6 +140,7 @@ test('a kit banner that does not fit the width is shortened or left out, and the
     { columns: 140, mode: 'full', marks: { rec: REC, banner: ALFRED_BANNER }, maxRows: 3 },
     { columns: 140, mode: 'calm', marks: { rec: REC, banner: ALFRED_BANNER } },
     { columns: 130, mode: 'calm', marks: { banner: ALFRED_BANNER } },
+    { columns: 120, mode: 'calm', marks: {} },
     { columns: 100, mode: 'calm', marks: {} },
     { columns: 100, mode: 'full', marks: {}, maxRows: 2 },
     { columns: 80, mode: 'full', marks: {} },
@@ -153,7 +154,7 @@ test('a kit banner that does not fit the width is shortened or left out, and the
     const plain = bandLines(input(base))
     const withKit = bandLines(input({ ...base, kitBanner }))
     const note = JSON.stringify({ columns, mode, maxRows, marks: Object.keys(marks) })
-    expect(withKit.length - plain.length, note).toBeLessThanOrEqual(1)
+    expect([0, 1], note).toContain(withKit.length - plain.length)
     expect(withKit.every(line => widthOf(line) <= columns), note).toBe(true)
     expect(texts(withKit.filter(line => !isLead(line))), note).toEqual(texts(plain.filter(line => !isLead(line))))
   }

@@ -7,8 +7,6 @@ import { clockText, whenText } from '../../hooks/core/format'
 import { setRec } from '../../hooks/rec/mask'
 import { SPAWN, START, engine, held, rows, spawns, stubAll } from '../kit'
 
-// What 'org unknown │ ' takes of line 1: no test here reads an account
-
 const SURFACES = ['terminal', 'desktop'] as const
 // Three hours before the 5h window resets, three days before the 7d one: each reset as the band words it
 const NOW = Date.parse('2026-10-28T14:00:00Z')

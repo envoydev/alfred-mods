@@ -4,10 +4,11 @@ import { expect, test } from 'claude-code/testing'
 
 import { bandLines } from '../../hooks/band/band'
 import { widthOf } from '../../hooks/core/format'
+import { setRec } from '../../hooks/rec/mask'
 import { kitBannerSegs } from '../../hooks/kit/kitlines'
 import { mcpItem } from '../../hooks/mcp/mcp'
 import { KIT_VALUES } from '../kit/settings'
-import { BANNER, IDLE, NOW, REC, STRICT, input, text, texts } from './band-input'
+import { BANNER, NOW, REC, STRICT, input, text, texts } from './band-input'
 import type { BandInput } from '../../hooks/band/types'
 import type { McpServer } from '../../hooks/mcp/types'
 
@@ -38,6 +39,12 @@ test('a personal account reads org | Personal', () => {
   const line = bandLines(input({ account: { org: 'Personal', kind: 'Personal' } }))[0] ?? []
   expect(text(line)).toBe('org | Personal')
   expect(line).toEqual([{ text: 'org', tone: 'dim' }, { text: ' | ', tone: 'dim' }, { text: 'Personal', tone: 'dim' }])
+})
+
+test('a company named Personal on a Team plan draws its name and its kind', () => {
+  expect(texts(bandLines(input({ account: { org: 'Personal', kind: 'Team' } })))[0]).toBe('Personal | Team')
+  expect(texts(bandLines(input({ account: { org: 'Personal', kind: null } })))[0]).toBe('org | Personal')
+  expect(texts(bandLines(input({ account: { org: 'Acme', kind: 'Personal' } })))[0]).toBe('org | Personal')
 })
 
 test('an unknown account reads org | unknown', () => {
@@ -160,5 +167,44 @@ test('above the input the action row stays last, after the rows under the gauges
 })
 
 test('the idle band with a turn running holds the lines too', () => {
-  expect(bandLines(input({ ...FULL, live: IDLE })).length).toBeGreaterThan(3)
+  const live = { turnId: 't2', startedAt: NOW - 5000, toolCalls: 1, toolFailures: 0, runningCalls: [], promptAt: NOW - 5000 }
+  const lines = texts(bandLines(input({ ...FULL, live })))
+  expect(lines.slice(0, 2)).toEqual(['Acme | Team', `${MODES} │ mcp ✓ 3`])
+  expect(lines.length).toBeGreaterThan(3)
+})
+
+// A cut line ends with an ellipsis, measured and cut on the text as drawn: REC masks an email to '‹email›', so a cell
+// count taken on the raw text would cut in the wrong place, and the raw text must never reach the drawn line
+test('a banner cut with REC off ends with an ellipsis within the width', () => {
+  const lines = bandLines(input({ account: TEAM, banner: [{ text: 'contact bob@example.com now please' }], columns: 20 }))
+  expect(text(lines[1] ?? [])).toBe('contact bob@example…')
+})
+
+test('a banner cut with REC on is cut on the masked text and shows no part of the email', () => {
+  setRec('on', [], null)
+  try {
+    const line = bandLines(input({ account: TEAM, banner: [{ text: 'contact bob@example.com now please' }], columns: 20 }))[1] ?? []
+    expect(widthOf(line)).toBeLessThanOrEqual(20)
+    expect(text(line)).toBe('contact ‹email› now…')
+  } finally {
+    setRec('off', [], null)
+  }
+})
+
+test('a cut on a segment edge still ends with an ellipsis, REC on or off', () => {
+  const banner = [{ text: 'aaaaaaaa' }, { text: 'bbbb', tone: 'dim' as const }]
+  for (const level of ['off', 'on'] as const) {
+    setRec(level, [], null)
+    try {
+      const line = bandLines(input({ account: TEAM, banner, columns: 8 }))[1] ?? []
+      expect(text(line), level).toBe('aaaaaaa…')
+      expect(widthOf(line), level).toBe(8)
+    } finally {
+      setRec('off', [], null)
+    }
+  }
+})
+
+test('a line that fits is not cut and gets no ellipsis', () => {
+  expect(text(bandLines(input({ account: TEAM, banner: [{ text: 'aaaaaaaa' }], columns: 8 }))[1] ?? [])).toBe('aaaaaaaa')
 })

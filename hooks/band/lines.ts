@@ -1,6 +1,6 @@
 // The band's two leading lines (spec 2026-11-23, D4): identity - `● REC` and the signed-in account - and modes - Alfred
 // Code's banner, claude-kit's and the MCP item. Pure: values in, lines out.
-import { cutMasked, fitLine, widthOf } from '../core/format'
+import { cutMasked, fitLine, maskedText, widthOf } from '../core/format'
 import { ORG_STRICT, PERSONAL } from '../account/constants'
 import type { Line, Seg } from '../core/types'
 import { KIT_SHORT, ORG_JOIN, ORG_LABEL, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN } from './constants'
@@ -11,17 +11,30 @@ export const REC_MARK: Seg = { text: '● REC', tone: 'fail', bold: true }
 const MARK_SEP: Seg = { text: ROW_JOIN, tone: 'dim' }
 const joinItems = (items: Line[]): Line => items.filter(item => item.length > 0).flatMap((item, i) => (i === 0 ? item : [MARK_SEP, ...item]))
 
-// A line cut to `max` cells with an ellipsis at the cut; a segment past it keeps its tone, and the ones after it go
+// A line cut to `max` cells and ending with an ellipsis, as drawn: measured and cut on the masked text, so a secret shows
+// no prefix. A segment past the cut keeps its tone and the ones after it go; a cut on a segment's edge puts the
+// ellipsis in place of the last cell.
 function cutLine(line: Line, max: number): Line {
+  if (widthOf(line) <= max) return line
   const out: Line = []
   let left = max
+  let isCut = false
   for (const seg of line) {
-    if (left <= 0) break
     const width = widthOf([seg])
-    out.push('text' in seg && width > left ? { ...seg, text: cutMasked(seg.text, left) } : seg)
-    left -= width
+    if (width <= left) {
+      out.push(seg)
+      left -= width
+      continue
+    }
+    if ('text' in seg && left > 0) {
+      out.push({ ...seg, text: cutMasked(maskedText(seg.text), left) })
+      isCut = true
+    }
+    break
   }
-  return out
+  const last = out.at(-1)
+  if (isCut || last === undefined || !('text' in last)) return out
+  return [...out.slice(0, -1), { ...last, text: `${maskedText(last.text).slice(0, -1)}…` }]
 }
 
 // The signed-in account's mark, as the Claude mobile app names it: '<company name> | Team' (or Enterprise), 'org | Personal'
@@ -32,7 +45,7 @@ function orgMark(input: BandInput): Line {
   if (account === undefined) return []
   const dim = (text: string): Seg => ({ text, tone: 'dim' })
   if (account.org === null) return [dim(ORG_LABEL), dim(ORG_JOIN), dim(ORG_UNKNOWN)]
-  if (account.org === PERSONAL || account.kind === PERSONAL) return [dim(ORG_LABEL), dim(ORG_JOIN), dim(PERSONAL)]
+  if (account.kind === PERSONAL || ((account.kind === undefined || account.kind === null) && account.org === PERSONAL)) return [dim(ORG_LABEL), dim(ORG_JOIN), dim(PERSONAL)]
   const name = input.rec?.level === 'strict' ? ORG_STRICT : fitLine(account.org, ORG_MAX_CELLS)
   return account.kind === undefined || account.kind === null ? [{ text: name }] : [{ text: name }, dim(ORG_JOIN), dim(account.kind)]
 }

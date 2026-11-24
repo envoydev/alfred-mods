@@ -110,9 +110,14 @@ export function cutMasked(line: string, max: number): string {
   return `${line.slice(0, at).trimEnd()}…`
 }
 
+// A text as it is drawn: REC's masker applied, the text itself while REC is off
+export function maskedText(text: string): string {
+  return masker(text)
+}
+
 // A line's width in columns: its texts' lengths as drawn, masked, as buttons, code and charts stand beside it
 export function widthOf(line: readonly object[]): number {
-  return line.reduce<number>((width, s) => width + ('text' in s && typeof s.text === 'string' ? masker(s.text).length : 0), 0)
+  return line.reduce<number>((width, s) => width + ('text' in s && typeof s.text === 'string' ? maskedText(s.text).length : 0), 0)
 }
 
 // Whether a button draws plain, '<hotkey>: <label>': asked to, or on a digit, which also answers from the empty prompt
