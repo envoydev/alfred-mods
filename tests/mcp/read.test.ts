@@ -13,11 +13,13 @@ import { NOW, begin, connected, loading, seeded, text } from '../mcp-session'
 const FAILED: McpConnectResult = { isConnected: false, reason: 'failed', message: 'The MCP server did not connect.' }
 const UP: McpConnectResult = { isConnected: true, server: 'plugin:p:files' }
 const POLL = POLL_MS + 1000
+// A test that drives minutes of 1 s ticks: the Windows runner is several times slower on them
+const LONG = { timeoutMs: 30_000 }
 const NONE = new Map<string, number>()
 // A loading server whose raise passed the hooks beneath unrefused: the only kind the mod reads
 const passed = (name: string, since = NOW): McpServer => ({ ...loading(name, since), isPassed: true })
 
-test('a loading server whose state read answers failed shows failed, not connected after 60 s', async ($, on) => {
+test('a loading server whose state read answers failed shows failed, not connected after 60 s', LONG, async ($, on) => {
   const { kit, servers } = await begin($, on, { stored: [passed('plugin:p:files')], read: FAILED })
   await kit.clock.advance(POLL)
   await kit.clock.settle()
@@ -35,7 +37,7 @@ test('a loading server whose state read answers connected shows connected with n
   expect(text(servers())).toBe('mcp ✓ 1')
 })
 
-test('a state read with no answer yet keeps the server loading past 60 s, is not asked again, and marks it on its answer', async ($, on) => {
+test('a state read with no answer yet keeps the server loading past 60 s, is not asked again, and marks it on its answer', LONG, async ($, on) => {
   const { kit, beneath, servers } = await begin($, on, { stored: [passed('plugin:p:files')], read: UP, lateMs: SETTLE_MS * 3 })
   await kit.clock.advance(SETTLE_MS * 2)
   await kit.clock.settle()
@@ -55,7 +57,7 @@ test('a seeded, connected or failed server is never read', async ($, on) => {
   expect(beneath.reads).toBe(0)
 })
 
-test('a read the engine refuses leaves the server loading, to settle by tools or by 60 s', async ($, on) => {
+test('a read the engine refuses leaves the server loading, to settle by tools or by 60 s', LONG, async ($, on) => {
   const { kit, beneath, servers } = await begin($, on, { stored: [passed('plugin:p:files')], read: 'refused' })
   await kit.clock.advance(POLL)
   await kit.clock.settle()
@@ -99,7 +101,7 @@ test('a loading server whose raise the hooks beneath have not answered is never 
   expect(servers()).toEqual([loading('plugin:p:files')])
 })
 
-test('with leave_out_skipped_hooks on, no state is read, and a passed server left loading settles by time', { options: { leave_out_skipped_hooks: true } }, async ($, on) => {
+test('with leave_out_skipped_hooks on, no state is read, and a passed server left loading settles by time', { ...LONG, options: { leave_out_skipped_hooks: true } }, async ($, on) => {
   const { kit, beneath, servers } = await begin($, on, { stored: [passed('plugin:p:files')], read: UP })
   await kit.clock.advance(POLL * 3)
   await kit.clock.settle()
