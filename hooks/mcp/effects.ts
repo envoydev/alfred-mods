@@ -5,15 +5,22 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 import type { HookInput, HookNext } from '../core/types'
 import { EARLY_MS, INITIAL_SERVERS, IDLE_POLL_MS, POLL_MS } from './constants'
-import { isEngineRaise, isSameServers, markFailed, markLoading, refusalOf, settle, toolServers } from './mcp'
+import { isEngineRaise, isSameServers, markFailed, markLoading, markRead, readOutcome, refusalOf, serversToRead, settle, toolServers } from './mcp'
 import type { McpServer } from './types'
 
 const mcpAtom = atom({ plugin: 'alfred-mods', key: 'mcp' } as const, INITIAL_SERVERS as McpServer[], { shape: 'mcp-2' })
 
 // When the tool list was last read, from the clock, whether a read runs now (a read never overlaps another), and the
 // last list the atom held: Claude Code empties $.state at a /clear, a resume or a branch, and the servers stay connected
-// across them with no mcp.connect coming again, so the start-over puts the list back
-const mcpMemory = { lastReadAt: null as number | null, isReading: false, last: [] as McpServer[] }
+// across them with no mcp.connect coming again, so the start-over puts the list back. `reading` names the servers a
+// state read waits on, `unreadable` those whose read was refused, until their next event.
+const mcpMemory = {
+  lastReadAt: null as number | null,
+  isReading: false,
+  last: [] as McpServer[],
+  reading: new Set<string>(),
+  unreadable: new Set<string>(),
+}
 
 export function readMcp($: EngineInterface): Promise<McpServer[]> {
   return read($, mcpAtom)
@@ -42,11 +49,13 @@ export async function keepMcp($: EngineInterface): Promise<void> {
 }
 
 // The engine's raise for a server about to join: it is loading from now, and a refusal answer marks it failed. Any other
-// answer leaves it loading, as the dial only follows; the tool list or the time settles it. The answer goes on untouched.
+// answer leaves it loading, as the dial only follows; its state read, the tool list or the time settles it. The answer
+// goes on untouched.
 // Another plugin's `$.mcp.connect` goes through as it came: it spells a server as its manifest key, which no tool matches.
 export async function trackMcpConnect($: EngineInterface, e: HookInput<'mcp.connect'>, next: HookNext<'mcp.connect'>) {
   if (!isEngineRaise(next.origin)) return next(e)
   const now = await $.clock.now()
+  mcpMemory.unreadable.delete(e.server)
   await updateMcp($, servers => markLoading(servers, e.server, now))
   const answer = await next(e)
   const refusal = refusalOf(answer)
@@ -58,7 +67,32 @@ export async function trackMcpConnect($: EngineInterface, e: HookInput<'mcp.conn
 async function refreshMcp($: EngineInterface, now: number): Promise<void> {
   mcpMemory.lastReadAt = now
   const names = await $.tool.list().then(toolServers, () => [])
-  await updateMcp($, servers => settle(servers, names, now))
+  await updateMcp($, servers => settle(servers, names, now, mcpMemory.unreadable))
+  readServerStates($, baseOf(await read($, mcpAtom)))
+}
+
+// The state of each loading server an event made, read with `$.mcp.connect`, which never dials a server the session
+// lists: it answers the server's state once its dial settles (the user's ruling, 2026-11-24: the one call past
+// observing, as the engine's raise answers connected before the dial). Only a server whose raise passed the mod's hook
+// unrefused is read, so none a hook holds. A read can wait as long as the dial, so it is not awaited: it marks the server
+// when it answers, and runs once per server at a time.
+function readServerStates($: EngineInterface, servers: readonly McpServer[]): void {
+  for (const server of serversToRead(servers, mcpMemory.reading, mcpMemory.unreadable)) {
+    mcpMemory.reading.add(server.name)
+    // Never rejects: readServerState catches every failure
+    void readServerState($, server).finally(() => mcpMemory.reading.delete(server.name))
+  }
+}
+
+// One read: its outcome marks the server, a refused read leaves it to the tool list and SETTLE_MS
+async function readServerState($: EngineInterface, server: McpServer): Promise<void> {
+  try {
+    const outcome = readOutcome(await $.mcp.connect(server.name))
+    if (outcome === null) mcpMemory.unreadable.add(server.name)
+    else await updateMcp($, servers => markRead(servers, server.name, server.since, outcome))
+  } catch {
+    mcpMemory.unreadable.add(server.name)
+  }
 }
 
 // The session start's read: servers that joined before the hook was in place show too

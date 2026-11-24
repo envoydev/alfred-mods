@@ -1,8 +1,9 @@
 // The MCP state's logic (spec 2026-11-23, D5): which server a tool belongs to, how a loading server settles and the band's
 // item. Pure: effects.ts reads the tool list and keeps the atom.
 import type { Seg } from '../core/types'
-import { DENIED_REASON, ENGINE_ORIGIN, GLYPH, ITEM_JOIN, ITEM_LABEL, NAME_UNSAFE, PLUGIN_SEPARATOR, SETTLE_MS, TOOL_PREFIX, TOOL_SEPARATOR } from './constants'
-import type { ConnectAnswer, ListedTool, McpServer } from './types'
+import type { McpConnectResult } from 'claude-code'
+import { DENIED_REASON, ENGINE_ORIGIN, GLYPH, ITEM_JOIN, ITEM_LABEL, NAME_UNSAFE, PLUGIN_SEPARATOR, SERVER_STATE_REASONS, SETTLE_MS, TOOL_PREFIX, TOOL_SEPARATOR } from './constants'
+import type { ConnectAnswer, ListedTool, McpServer, ReadOutcome } from './types'
 
 const spelled = (name: string): string => name.replace(NAME_UNSAFE, '_')
 
@@ -28,15 +29,15 @@ export function toolServers(tools: readonly ListedTool[]): string[] {
 const isShownBy = (server: McpServer, toolServer: string): boolean => toolServer === shortName(server.name) || toolServer === spelled(server.name)
 
 // The servers after a read of the tool list at `now`: a loading or failed one whose tools show is connected, a loading
-// one that has loaded for SETTLE_MS too; a failed one with no tools stays so; a tool server no server names is added as
-// connected
-export function settle(servers: readonly McpServer[], fromTools: readonly string[], now: number): McpServer[] {
+// one in `unreadable` (its state read refused) that has loaded for SETTLE_MS too; a failed one with no tools stays so; a
+// tool server no server names is added as connected
+export function settle(servers: readonly McpServer[], fromTools: readonly string[], now: number, unreadable: ReadonlySet<string>): McpServer[] {
   const named = new Set<string>()
   const settled = servers.map((server): McpServer => {
     const shown = fromTools.filter(toolServer => isShownBy(server, toolServer))
     for (const toolServer of shown) named.add(toolServer)
     if (server.state === 'connected') return server
-    const isSettled = shown.length > 0 || (server.state === 'loading' && now - server.since >= SETTLE_MS)
+    const isSettled = shown.length > 0 || (server.state === 'loading' && unreadable.has(server.name) && now - server.since >= SETTLE_MS)
     return isSettled ? { name: server.name, state: 'connected', since: server.since, ...(server.isSeeded === true ? { isSeeded: true } : {}) } : server
   })
   const added = fromTools.filter(toolServer => !named.has(toolServer)).map((toolServer): McpServer => ({ name: toolServer, state: 'connected', since: now, isSeeded: true }))
@@ -84,4 +85,25 @@ export function mcpItem(servers: readonly McpServer[]): Seg[] {
   const failed = count('failed')
   if (failed > 0) return [{ text: `${ITEM_LABEL} ${GLYPH.failed} ${failed}${ITEM_JOIN}${GLYPH.connected} ${connected}`, tone: 'fail' }]
   return [{ text: `${ITEM_LABEL} ${GLYPH.connected} ${servers.length}`, tone: 'dim' }]
+}
+
+// The servers whose state is read: loading ones an event made (a seeded one is connected already), none a read runs for
+// or was refused for
+export function serversToRead(servers: readonly McpServer[], reading: ReadonlySet<string>, unreadable: ReadonlySet<string>): McpServer[] {
+  return servers.filter(server => server.state === 'loading' && server.isSeeded !== true && !reading.has(server.name) && !unreadable.has(server.name))
+}
+
+// What a state read tells: connected, failed with a reason of the server's own, or null for a refusal of the read itself
+export function readOutcome(result: McpConnectResult): ReadOutcome | null {
+  if (result.isConnected) return { state: 'connected' }
+  return SERVER_STATE_REASONS.has(result.reason) ? { state: 'failed', reason: result.reason } : null
+}
+
+// The servers after a state read of `name` begun while it loaded since `since`: a server a later event marked loading
+// again, or one already settled, is left as it is
+export function markRead(servers: readonly McpServer[], name: string, since: number, outcome: ReadOutcome): McpServer[] {
+  return servers.map((server): McpServer => {
+    if (server.name !== name || server.state !== 'loading' || server.since !== since) return server
+    return outcome.state === 'connected' ? { name, state: 'connected', since } : { name, state: 'failed', reason: outcome.reason, since }
+  })
 }

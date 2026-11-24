@@ -642,10 +642,13 @@ rules:   alfred-interaction │ alfred-git │ web:typescript │ 3 always-on ·
   the banner is cut when it and the MCP item together overflow.
 - **The MCP item** counts the session's MCP servers and never draws a name. `mcp ◐ <connected>/<total>` shows while any
   server loads, `mcp ✓ <n>` once all are connected, and `mcp ✗ <failed> · ✓ <connected>` when one failed (one waiting
-  on a login counts as failed). A server reads connected when its tools show in the session's tool list. A server whose
-  tools never show, as with tool search, reads connected after 60 seconds, so a working server never reads red; the
-  cost is that a server that dials and never serves reads connected too. With `leave_out_skipped_hooks` on, only the
-  tool list feeds the item: it reads `mcp ✓ <n>` and has no loading or failed state.
+  on a login counts as failed). Claude Code's own `mcp.connect` answers before the server starts, so for each server
+  still loading the mod asks Claude Code once for its state (`$.mcp.connect`, which never starts a server the session
+  already lists): the answer, when the server is up or has failed, settles it. It asks only about a server whose
+  connect passed the mod's hook unrefused, so never one another plugin holds back. A server also reads connected when
+  its tools show in the session's tool list. Where Claude Code refuses that question (an older build), a server whose
+  tools never show, as with tool search, reads connected after 60 seconds. With `leave_out_skipped_hooks` on, only the
+  tool list feeds the item: it reads `mcp ✓ <n>`, has no loading or failed state, and asks nothing.
 - **The info line:** the model and effort, the session's time, the average output speed, the cache, the times of your
   last prompt and Claude's reply, and Claude Code's version. While a turn runs, the gauge line counts the turn's
   tool calls, and the gauges add today's cost. Today's cost is the mod's own count on this machine: sessions it did not

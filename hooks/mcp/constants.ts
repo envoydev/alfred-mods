@@ -1,8 +1,13 @@
 // The MCP state's named values (spec 2026-11-23, D5)
 
-// A server still loading this long after its event, with no tools seen, reads connected: with tool search its tools may
-// never show in the tool list, and a false red on a working server is worse than a late green
+// A server still loading this long after its event, with no tools seen and its state read refused (a build or a hook that
+// answers no read), reads connected: with tool search its tools may never show in the tool list, and a false red on a
+// working server is worse than a late green
 export const SETTLE_MS = 60_000
+
+// The reasons a state read answers that tell the server's own state; any other is a refusal of the read itself, which
+// tells nothing of the server
+export const SERVER_STATE_REASONS: ReadonlySet<string> = new Set(['failed', 'auth', 'disabled'])
 // The tool list is read this often while a server loads and for EARLY_MS after the session starts, else every IDLE_POLL_MS
 export const POLL_MS = 5_000
 export const EARLY_MS = 120_000

@@ -1,62 +1,23 @@
 // The MCP state (spec 2026-11-23, D5): the mcp.connect hook marks a server loading, a refusal marks it failed, the tools
-// the engine lists settle it connected, and 60 s with none settle a loading one too.
+// the engine lists settle it connected, and 60 s with none settle a loading one whose state read was refused. The read
+// itself is tests/mcp/read.test.ts; here it is refused, as on a build with no read.
 // The kit's `$` carries no `mcp` noun, and a stand-in plugin cannot take the engine's name, so no session test raises the
 // engine's own mcp.connect: its hook, trackMcpConnect, is called directly with a `next` that carries the engine as
 // origin and a `$` of the test's own (its state and clock), and the servers it leaves loading are seeded as the state
 // an earlier run stored in the session tests.
 import { expect, test } from 'claude-code/testing'
-import type { Engine, Plugin } from 'claude-code/testing'
-import type { EngineInterface, McpConnectResult, On } from 'claude-code'
+import type { EngineInterface, McpConnectResult } from 'claude-code'
 
-import { PRESENTATION, START, emptyState, engine, stubAll } from '../kit'
 import { register } from '../../hooks/register'
 import { trackMcpConnect } from '../../hooks/mcp/effects'
-import { stubTools } from '../transcript-stubs'
 import { isEngineRaise, markFailed, markLoading, mcpItem, refusalOf, settle, shortName, toolServers } from '../../hooks/mcp/mcp'
 import { EARLY_MS, POLL_MS, SETTLE_MS } from '../../hooks/mcp/constants'
 import type { McpServer } from '../../hooks/mcp/types'
+import { NOW, OPTIONS, PASSED, REFUSED, SHAPE, begin, connected, dial, loading, seeded, text } from '../mcp-session'
 
-const NOW = Date.parse('2026-10-28T14:00:00Z')
-const PASSED: McpConnectResult = { isConnected: true, server: 'plugin:p:files' }
-const REFUSED: McpConnectResult = { isConnected: false, reason: 'auth', message: 'm' }
-const SHAPE = 'mcp-2'
 // Long enough for a poll in the idle cadence's first minutes
 const IDLE_WAIT = POLL_MS * 8
-
-const text = (servers: McpServer[]): string => mcpItem(servers).map(seg => ('text' in seg ? seg.text : '')).join('')
-const loading = (name: string, since = NOW): McpServer => ({ name, state: 'loading', since })
-const connected = (name: string, since = NOW): McpServer => ({ name, state: 'connected', since })
-const seeded = (name: string, since = NOW): McpServer => ({ name, state: 'connected', since, isSeeded: true })
-
-// Another plugin raises mcp.connect as a plugin does, through `$.mcp.connect`, on the command '/dial <server>', which
-// answers the result as JSON. The mod's hook sits between the stand-in and the engine, and sees the stand-in's name as
-// the origin, not the engine's.
-const DIAL: Plugin = {
-  name: 'dial-stand-in',
-  tier: 'builtin',
-  register(on) {
-    on('command.run', { command: 'dial' }, async ($, e) => ({ text: JSON.stringify(await $.mcp.connect(e.args)) }))
-  },
-}
-const OPTIONS = { plugins: [DIAL] }
-const dial = async ($: Engine, server: string): Promise<McpConnectResult> => {
-  const run = await $.command.run({ command: 'dial', args: server, origin: { kind: 'composer' }, presentation: PRESENTATION })
-  return JSON.parse(run.text ?? 'null') as McpConnectResult
-}
-
-// A session whose atom `mcp` holds `stored` before it starts, as a run that stored it left it: `servers` reads the mod's
-// last written list; `tools` is the tool list, changed mid-test
-async function begin($: Engine, on: On, o: { tools?: string[]; stored?: McpServer[] } = {}) {
-  const kit = stubAll(on, { root: '/work/app', cwd: '/work/app', now: NOW })
-  const tools = stubTools(on, o.tools ?? [])
-  const state = emptyState(on, ['mcp'], o.stored === undefined ? {} : { mcp: { shape: SHAPE, value: o.stored } })
-  const beneath: { answer: McpConnectResult } = { answer: PASSED }
-  on('mcp.connect', () => ({ value: beneath.answer }))
-  engine(on)
-  await $.session.start(START)
-  const servers = (): McpServer[] => (state.get('mcp') as McpServer[] | undefined) ?? o.stored ?? []
-  return { kit, tools, state, beneath, servers }
-}
+const NONE = new Set<string>()
 
 // A `$` of the test's own: the atom's state and the clock, every other call answering nothing. `stored` is the atom's
 // value before the call (undefined reads as a state a /clear emptied).
@@ -160,7 +121,7 @@ test('tools showing settle connected', async ($, on) => {
   expect(text(servers())).toBe('mcp ✓ 1')
 })
 
-test('60 s with no tools settles a loading server connected', async ($, on) => {
+test('60 s with no tools settles a loading server whose state read is refused connected', async ($, on) => {
   const { kit, servers } = await begin($, on, { stored: [loading('plugin:p:files')] })
   await kit.clock.advance(SETTLE_MS - 10_000)
   await kit.clock.settle()
@@ -171,7 +132,7 @@ test('60 s with no tools settles a loading server connected', async ($, on) => {
   expect(text(servers())).toBe('mcp ✓ 1')
 })
 
-test('a tool list that refuses leaves the server loading until it settles by time', async ($, on) => {
+test('a tool list that refuses leaves the server loading until it settles by time, its state read refused too', async ($, on) => {
   const { kit, tools, servers } = await begin($, on, { stored: [loading('plugin:p:files')] })
   tools.refuse = true
   await kit.clock.advance(POLL_MS * 2)
@@ -222,8 +183,8 @@ test('two events whose names share a short name are two servers, in either order
 })
 
 test('the tool list marks the servers it adds as seeded, and a settled seed stays seeded', () => {
-  expect(settle([], ['files'], NOW)).toEqual([seeded('files')])
-  expect(settle([{ ...seeded('files'), state: 'failed' }], ['files'], NOW)).toEqual([seeded('files')])
+  expect(settle([], ['files'], NOW, NONE)).toEqual([seeded('files')])
+  expect(settle([{ ...seeded('files'), state: 'failed' }], ['files'], NOW, NONE)).toEqual([seeded('files')])
 })
 
 test('a server name is never drawn', () => {
@@ -306,13 +267,13 @@ test('toolServers takes the part between mcp__ and the next __, only where mcp i
 })
 
 test('settle matches both spellings of a plugin server and adds a stranger as connected', () => {
-  const full = settle([loading('plugin:p:files', 1000)], ['plugin_p_files'], 2000)
+  const full = settle([loading('plugin:p:files', 1000)], ['plugin_p_files'], 2000, NONE)
   expect(full.map(s => s.state)).toEqual(['connected'])
-  const short = settle([loading('plugin:p:files', 1000)], ['files', 'github'], 2000)
+  const short = settle([loading('plugin:p:files', 1000)], ['files', 'github'], 2000, NONE)
   expect(short.map(s => [s.name, s.state])).toEqual([['plugin:p:files', 'connected'], ['github', 'connected']])
   const failed: McpServer = { name: 'x', state: 'failed', reason: 'auth', since: 1000 }
-  expect(settle([failed], [], SETTLE_MS * 2)).toEqual([failed])
-  expect(settle([failed], ['x'], 2000)).toEqual([{ name: 'x', state: 'connected', since: 1000 }])
+  expect(settle([failed], [], SETTLE_MS * 2, NONE)).toEqual([failed])
+  expect(settle([failed], ['x'], 2000, NONE)).toEqual([{ name: 'x', state: 'connected', since: 1000 }])
 })
 
 test('mcpItem is none for an empty list, and a loading server wins over a failed one', () => {

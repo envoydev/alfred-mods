@@ -6,5 +6,8 @@ export type { McpServer }
 // What `$.tool.list()` answers, as far as the MCP state reads it
 export type ListedTool = { name: string; mcp: boolean }
 
+// What a state read tells of a server
+export type ReadOutcome = { state: 'connected' } | { state: 'failed'; reason: string }
+
 // What an mcp.connect hook's `next(e)` answers: the engine's result, or a hook's refusal
 export type ConnectAnswer = { value?: McpConnectResult; deny?: string }
