@@ -1,13 +1,16 @@
 // The MCP state (spec 2026-11-23, D5): the mcp.connect hook marks a server loading, a refusal marks it failed, the tools
 // the engine lists settle it connected, and 60 s with none settle a loading one too.
-// The kit's `$` carries no `mcp` noun, and a stand-in plugin cannot take the engine's name, so no test raises the
-// engine's own mcp.connect: what that hook does with an answer is tested through its pure steps (markLoading,
-// refusalOf, markFailed), and the servers it leaves loading are seeded as the state an earlier run stored.
+// The kit's `$` carries no `mcp` noun, and a stand-in plugin cannot take the engine's name, so no session test raises the
+// engine's own mcp.connect: its hook, trackMcpConnect, is called directly with a `next` that carries the engine as
+// origin and a `$` of the test's own (its state and clock), and the servers it leaves loading are seeded as the state
+// an earlier run stored in the session tests.
 import { expect, test } from 'claude-code/testing'
 import type { Engine, Plugin } from 'claude-code/testing'
-import type { McpConnectResult, On } from 'claude-code'
+import type { EngineInterface, McpConnectResult, On } from 'claude-code'
 
 import { PRESENTATION, START, emptyState, engine, stubAll } from '../kit'
+import { register } from '../../hooks/register'
+import { trackMcpConnect } from '../../hooks/mcp/effects'
 import { stubTools } from '../transcript-stubs'
 import { isEngineRaise, markFailed, markLoading, mcpItem, refusalOf, settle, shortName, toolServers } from '../../hooks/mcp/mcp'
 import { EARLY_MS, POLL_MS, SETTLE_MS } from '../../hooks/mcp/constants'
@@ -53,6 +56,73 @@ async function begin($: Engine, on: On, o: { tools?: string[]; stored?: McpServe
   const servers = (): McpServer[] => (state.get('mcp') as McpServer[] | undefined) ?? o.stored ?? []
   return { kit, tools, state, beneath, servers }
 }
+
+// A `$` of the test's own: the atom's state and the clock, every other call answering nothing. `stored` is the atom's
+// value before the call (undefined reads as a state a /clear emptied).
+function stateEngine(stored: McpServer[] | undefined) {
+  let kept: unknown = stored === undefined ? undefined : { shape: SHAPE, value: stored }
+  let version = 0
+  const fake = {
+    state: {
+      get: async () => ({ value: kept, version }),
+      set: async (_ref: unknown, next: unknown) => {
+        kept = next
+        return { isSet: true, version: ++version }
+      },
+    },
+    clock: { now: async () => NOW },
+  }
+  return { $: fake as unknown as EngineInterface, servers: (): McpServer[] => (kept as { value: McpServer[] } | undefined)?.value ?? [] }
+}
+type EngineNext = Parameters<typeof trackMcpConnect>[2]
+const raisedBy = (origin: { plugin: string; tier: string }, answer: { value?: McpConnectResult; deny?: string }): EngineNext =>
+  Object.assign(async () => answer, { origin }) as never
+const ENGINE = { plugin: 'engine', tier: 'core' }
+const connect = (server: string) => ({ server }) as never
+
+test('the engine\'s own raise marks the server loading and returns the answer untouched', async () => {
+  const { $, servers } = stateEngine([])
+  const answer = { value: PASSED }
+  expect(await trackMcpConnect($, connect('unit-pass'), raisedBy(ENGINE, answer))).toBe(answer)
+  expect(servers().find(s => s.name === 'unit-pass')).toEqual(loading('unit-pass'))
+})
+
+test('the engine\'s raise a refusal answers marks the server failed with its reason, the answer untouched', async () => {
+  const { $, servers } = stateEngine([])
+  const answer = { value: REFUSED }
+  expect(await trackMcpConnect($, connect('unit-refused'), raisedBy(ENGINE, answer))).toBe(answer)
+  expect(servers().find(s => s.name === 'unit-refused')).toEqual({ name: 'unit-refused', state: 'failed', reason: 'auth', since: NOW })
+})
+
+test('the engine\'s raise a hook beneath denied marks the server failed as denied, the answer untouched', async () => {
+  const { $, servers } = stateEngine([])
+  const answer = { deny: 'policy' }
+  expect(await trackMcpConnect($, connect('unit-denied'), raisedBy(ENGINE, answer))).toBe(answer)
+  expect(servers().find(s => s.name === 'unit-denied')).toEqual({ name: 'unit-denied', state: 'failed', reason: 'denied', since: NOW })
+})
+
+test('a raise from another plugin writes nothing, and its answer passes on untouched', async () => {
+  const { $, servers } = stateEngine([])
+  const answer = { value: REFUSED }
+  expect(await trackMcpConnect($, connect('unit-other'), raisedBy({ plugin: 'other', tier: 'builtin' }, answer))).toBe(answer)
+  expect(servers().find(s => s.name === 'unit-other')).toBeUndefined()
+})
+
+// A `register` call with a recording `on`: the events the module wires, in order
+function wiredEvents(options: Record<string, unknown>): string[] {
+  const events: string[] = []
+  const on = (event: string) => {
+    events.push(event)
+    return { catch: () => undefined }
+  }
+  register(on as never, options as never)
+  return events
+}
+
+test('the mcp.connect hook is wired by default and left out with leave_out_skipped_hooks', () => {
+  expect(wiredEvents({})).toContain('mcp.connect')
+  expect(wiredEvents({ leave_out_skipped_hooks: true })).not.toContain('mcp.connect')
+})
 
 test('a raise from another plugin is not counted, and its answer passes on untouched', OPTIONS, async ($, on) => {
   const { beneath, servers } = await begin($, on)
@@ -190,10 +260,21 @@ test('a /clear empties the atom and the start-over writes the servers back', asy
   expect(state.get('mcp')).toEqual(stored)
 })
 
-test('with the option on the hook is not registered and the seed serves', { plugins: [DIAL], options: { leave_out_skipped_hooks: true } }, async ($, on) => {
+test('with the option on the seed still serves', { options: { leave_out_skipped_hooks: true } }, async ($, on) => {
   const { state } = await begin($, on, { tools: ['mcp__github__x'] })
-  expect(await dial($, 'plugin:p:files')).toEqual(PASSED)
   expect((state.get('mcp') as McpServer[]).map(s => [s.name, s.state])).toEqual([['github', 'connected']])
+})
+
+test('a tick that begins as a start-over empties the atom keeps the failed and loading servers', async ($, on) => {
+  const failed: McpServer = { name: 'plugin:p:files', state: 'failed', reason: 'auth', since: NOW }
+  const { kit, tools, state } = await begin($, on, { stored: [failed, loading('plugin:p:db', NOW + 3_600_000)], tools: [] })
+  state.empty()
+  tools.names = ['mcp__github__x']
+  await kit.clock.advance(POLL_MS + 1000)
+  await kit.clock.settle()
+  expect((state.get('mcp') as McpServer[]).map(s => [s.name, s.state])).toEqual([
+    ['plugin:p:files', 'failed'], ['plugin:p:db', 'loading'], ['github', 'connected'],
+  ])
 })
 
 test('shortName takes the last colon part and reads other characters as underscores', () => {

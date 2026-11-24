@@ -19,13 +19,18 @@ export function readMcp($: EngineInterface): Promise<McpServer[]> {
   return read($, mcpAtom)
 }
 
+// The list a change starts from: the atom's, or, where it reads empty, the last one it held, since a tick that began
+// before a start-over emptied the atom must not drop the servers the start-over is about to put back
+const baseOf = (servers: McpServer[]): McpServer[] => (servers.length > 0 ? servers : mcpMemory.last)
+
 // A write only where the list changes: each tick reads the tool list, and a write on each would redraw the band
 async function updateMcp($: EngineInterface, change: (servers: McpServer[]) => McpServer[]): Promise<void> {
   const current = await read($, mcpAtom)
   if (current.length > 0) mcpMemory.last = current
-  if (isSameServers(current, change(current))) return
+  const base = baseOf(current)
+  if (isSameServers(base, change(base))) return
   await update($, mcpAtom, servers => {
-    mcpMemory.last = change(servers)
+    mcpMemory.last = change(baseOf(servers))
     return mcpMemory.last
   })
 }
