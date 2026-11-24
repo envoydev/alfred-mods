@@ -193,7 +193,7 @@ table.steps { min-width: 720px; }
   <section class="tabpanel" role="tabpanel" id="panel-box" aria-labelledby="tab-box">
     <section class="panel" aria-label="The band">
       <div><h2>The band - the session at a glance</h2>
-        <p class="muted">The band sits right above the box you type in. It shows where the session stands without a command: how full the context is, your limits, the cost, and what Claude is using. When something needs you, it adds a row that says what, and which key to press. Line 1 is the account you are signed in to and Claude Code's version: <code>Acme | Team | CC 2.1.331</code> for a company's plan, <code>org | Personal</code> for a free, Pro or Max plan, <code>org | unknown</code> for a token login. It is a quick check, not proof. Line 2 is the modes on, from Alfred Code and claude-kit: <code>auto-run · auto-compact 400k · scoring 90 3</code>. Then the turn while one runs, the info line, the gauges and the rows under them. Pick a situation to see it react.</p></div>
+        <p class="muted">The band sits right above the box you type in. It shows where the session stands without a command: how full the context is, your limits, the cost, and what Claude is using. When something needs you, it adds a row that says what, and which key to press. Line 1 is the account you are signed in to and Claude Code's version: <code>Acme | Team | CC 2.1.331</code> for a company's plan, <code>org | Personal</code> for a free, Pro or Max plan, <code>org | unknown</code> for a token login. It is a quick check, not proof. Line 1 then counts the MCP servers and, once Claude has answered, the new tool failures with their Inspect button: <code>Acme | Team | CC 2.1.330 │ mcp ✗ 1 · ✓ 10 │ ✗ 6 new 1: Inspect</code>. Line 2 is the modes on, from Alfred Code and claude-kit: <code>auto-run · auto-compact 400k · scoring 90 3</code>. Then the turn while one runs, the info line, the gauges and the rows under them. Pick a situation to see it react.</p></div>
       <div class="live-tools">
         <label for="preset">Situation <select id="preset"></select></label>
         <label class="width" for="cols">Terminal width <output id="colsOut"></output><input type="range" id="cols" min="24" max="270" step="1"></label>
@@ -2036,7 +2036,6 @@ function infoItems(input           )         {
     const cacheState = cacheView(input.cache, billingOf(input.usage.rateWindows), input.now, input.usage.contextTokens)
     items.push({ keep: 4, forms: [dimText(cacheState.leftMs === null ? 'cache cold' : `cache warm ${cacheState.tier.isEstimate ? '≈' : ''}${minutesLeftText(cacheState.leftMs)}`)] })
   }
-  if (input.mcp !== undefined && input.mcp.length > 0) items.push({ keep: 4.5, forms: [input.mcp] })
   const totals = input.totals
   if (totals !== undefined && totals.stepMs > 0) items.push({ keep: 3, forms: [dimText(`≈${Math.round(totals.stepOutput / (totals.stepMs / 1000))} tok/s avg`)] })
   // Claude's last reply, then the running turn's prompt while one runs, else the last turn's, as line 1 of the calm band
@@ -2294,8 +2293,8 @@ return { CONFIG_FILE_NAME, READ_EVERY_MS, PERSONAL, PERSONAL_ORG_TYPES, TEAM_TYP
 })();
 // ---- hooks/band/lines.ts
 __m['band/lines.ts'] = (() => {
-// The band's leading lines (spec 2026-11-23, D4, as the user arranged them on 2026-11-24): `● REC`, the signed-in account
-// and Claude Code's version, then the modes on. Pure: values in, lines out.
+// The band's leading lines (spec 2026-11-23, D4, as the user arranged them on 2026-11-24): `● REC`, the signed-in account,
+// Claude Code's version, the MCP item and the new failures, then the modes on. Pure: values in, lines out.
 const { fitLine, widthOf } = __m['core/format.ts'];
 const { ORG_STRICT, PERSONAL } = __m['account/constants.ts'];
                                               
@@ -2321,21 +2320,23 @@ function orgMark(input           )       {
   return account.kind === undefined || account.kind === null ? [{ text: name }] : [{ text: name }, dim(ORG_JOIN), dim(account.kind)]
 }
 
-// Line 1: REC while it is on, then the account and Claude Code's version ('Acme | Team | CC 2.1.331', the user,
-// 2026-11-24). Never cut for width: the version goes where the line would pass the band's width.
-function identityLine(input           )       {
+// Line 1: REC while it is on, the account and Claude Code's version, the MCP item, then the new failures with their
+// button ('Acme | Team | CC 2.1.330 │ mcp ✗ 1 · ✓ 10 │ ✗ 6 new 1: Inspect', the user, 2026-11-24). Where it would pass
+// the band's width the version goes first, then the MCP item; REC, the account and the failures always stay.
+function identityLine(input           , failures       = [])       {
   const rec = input.rec !== undefined && input.rec.level !== 'off' ? [REC_MARK] : []
   const org = orgMark(input)
   const version = input.session.version
   const withVersion = version === undefined ? org : [...org, ...(org.length === 0 ? [] : [DIM_JOIN]), { text: `${CC_LABEL} ${version}`, tone: 'dim'          }]
-  const full = joinItems([rec, withVersion])
-  return widthOf(full) <= input.columns ? full : joinItems([rec, org])
+  const mcp = input.mcp ?? []
+  const forms = [joinItems([rec, withVersion, mcp, failures]), joinItems([rec, org, mcp, failures]), joinItems([rec, org, failures])]
+  return forms.find(form => widthOf(form) <= input.columns) ?? forms[forms.length - 1] ?? []
 }
 
 // The lines that lead the band, each only when it holds something: the identity, then the modes on a line of their own
 // ('own'), or after the identity on line 1 where the two fit the width, else the identity alone ('joined')
-function leadLines(input           , modesKeep           )         {
-  const identity = identityLine(input)
+function leadLines(input           , modesKeep           , failures       = [])         {
+  const identity = identityLine(input, failures)
   const modes = input.modes ?? []
   if (modesKeep === 'own') return [identity, modes].filter(line => line.length > 0)
   const joined = joinItems([identity, modes])
@@ -2419,7 +2420,13 @@ function bandLines(input           )         {
 // What the band is, in order: the action row where it sits under the input, the identity and modes lines, then the body
 function bandRows(input           , keep      )         {
   const body = bandBody(input, input.columns < 100, keep)
-  return [...body.before, ...leadLines(input, keep.modes), ...body.rows]
+  return [...body.before, ...leadLines(input, keep.modes, failuresItem(input)), ...body.rows]
+}
+
+// The new failures with their button, on line 1 once Claude has answered (asks wait for the turn to end); none before
+function failuresItem(band           )       {
+  if (band.isWorking || band.newFailures === 0) return []
+  return [{ text: `✗ ${band.newFailures} new `, tone: 'fail' }, underButton(band, { key: 'inspect', label: 'Inspect', hotkey: '1' }, '/inspect')]
 }
 
 // The body's rows, and the ones that come before the leading lines: under the input the action row, nearest the input
@@ -2459,10 +2466,7 @@ function bandBody(band           , isNarrow         , keep      )       {
     return { before: [], rows: [[...dim(calm), ...invalid], ...info.map(dim)] }
   }
   if (band.isWorking) return { before: [], rows: [workingLine(band, isNarrow), ...head, line2, ...info] }
-  const failed       = band.newFailures > 0
-    ? [{ text: `✗ ${band.newFailures} new `, tone: 'fail' }, underButton(band, { key: 'inspect', label: 'Inspect', hotkey: '1' }, '/inspect')]
-    : []
-  const items = [warning, ask, skip, failed].filter((item)               => item !== null && item.length > 0)
+  const items = [warning, ask, skip].filter((item)               => item !== null && item.length > 0)
   const joined       = items.flatMap((item, i) => (i === 0 ? item : [{ text: '    ' }, ...item]))
   // Under the input the action row comes first, nearest the input as above it is the last (the user, 2026-11-12, over
   // band-under U2's place after the gauges), so a cut at the screen's edge takes the detail rows first; its commands are
@@ -4209,7 +4213,7 @@ const BAND_PRESETS = [
   ['Recording', 'A red ● REC leads line 1. The pinned line under the prompt leaves REC and ctx out while the band shows them.', { running: true }, null, { user: { rec: 'on' } }],
   ['REC from a project file', 'A committed .claude/settings.json says "on" over a user file saying "off": the order holds for REC as for every field. Mid-session REC never falls because a file went quiet - a typo drops the whole file - so it holds until that file says a lower level or the next claude run.', { running: true }, null, { user: { rec: 'off' }, project: { rec: 'on' } }],
   ['Band collapsed', 'Ctrl+X Ctrl+A hides the band above the input. The pinned line then carries REC, and ctx from 60%, since nothing else shows them.', { collapsed: true }, d => ({ ctxUsed: Math.ceil(Number(d.window) * 0.7), agents: noRun(d.agents) }), { user: { rec: 'on' } }],
-  ['Tool failures', 'Between turns, ✗ 2 new and Inspect take the last row, and the pinned line says it too. /inspect lists the reasons.', {}, d => ({ failures: 2, agents: noRun(d.agents) })],
+  ['Tool failures', 'Between turns, ✗ 2 new and its Inspect button end line 1, after the MCP item, and the pinned line says it too. 1, or a click, opens /inspect with the reasons.', {}, d => ({ failures: 2, agents: noRun(d.agents) })],
   ['Claude works in another folder', "The project row follows Claude's last cd or the last file it edited: the project, the branch of the repository holding the folder with ↑ commits ahead of and ↓ behind its upstream as of the last fetch and the uncommitted +added −removed lines, then the folder; at the project's root the folder is left out.", { running: true }, () => ({ folder: 'src/app/auth' })],
   ['A branch never pushed', 'A local branch has no upstream, so the project row draws no arrows; its uncommitted changes still show. git push -u origin <branch> gives it one.', { running: true, upstream: false }],
   ['Terminal 100 columns wide', 'Under 100 columns the gauges take their narrow form and line 1 shortens. The info line breaks between items onto a second row; past two rows Claude\'s reply time gives way first, then your prompt\'s. The project row shortens its folder.', { running: true, cols: 100 }],
@@ -4255,12 +4259,12 @@ const eff = (m, c) => Object.assign({}, m, BandSettings.asModes(BandSettings.res
 
 const store = { get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
-let data = Object.assign({}, DATA0, store.get('band8-data') || {});
+let data = Object.assign({}, DATA0, store.get('band9-data') || {});
 // The sample session without any situation's own numbers: each situation starts from it, so one's failures or full
 // context never leak into the next
-let base = Object.assign({}, DATA0, store.get('band8-base') || store.get('band8-data') || {});
-let modes = Object.assign({}, MODES0, store.get('band8-modes') || {});
-let cfg = cfgOf(store.get('band8-cfg') || BAND_CFG0);
+let base = Object.assign({}, DATA0, store.get('band9-base') || store.get('band9-data') || {});
+let modes = Object.assign({}, MODES0, store.get('band9-modes') || {});
+let cfg = cfgOf(store.get('band9-cfg') || BAND_CFG0);
 // The situation picked near the message box, an index into BAND_PRESETS; -1 once anything is changed by hand
 let presetIx = -1;
 // The page's tab in view, and the /inspect pane's
@@ -4546,7 +4550,7 @@ function fill() {
   $('cols').value = modes.cols; $('rows').value = modes.rows; $('termRows').value = modes.termRows; fillSettings();
   $('paneW').value = paneW; $('paneData').value = paneRaw;
 }
-function save() { store.set('band8-data', data); store.set('band8-base', base); store.set('band8-modes', modes); store.set('band8-cfg', cfg); store.set('band8-preset', presetIx); store.set('pane2-raw', paneRaw); store.set('pane-w', paneW); }
+function save() { store.set('band9-data', data); store.set('band9-base', base); store.set('band9-modes', modes); store.set('band9-cfg', cfg); store.set('band9-preset', presetIx); store.set('pane2-raw', paneRaw); store.set('pane-w', paneW); }
 
 // ---------- gallery ----------
 // A card's settings files, one line each, as the person would write them
@@ -4592,7 +4596,7 @@ const isBoxPreset = p => !(p[4] && p[4].user && p[4].user.quiet === false);
 function buildPresets() {
   $('preset').innerHTML = '<option value="-1">Your own mix</option>'
     + BAND_PRESETS.map((p, i) => isBoxPreset(p) ? `<option value="${i}">${esc(p[0])}</option>` : '').join('');
-  const kept = store.get('band8-preset');
+  const kept = store.get('band9-preset');
   presetIx = Number.isInteger(kept) && kept >= 0 && kept < BAND_PRESETS.length ? kept : -1;
   $('preset').addEventListener('change', () => {
     const i = +$('preset').value;
@@ -4704,9 +4708,9 @@ function buildMap() {
 // [name, when it shows, the situation, the numbers, the settings files, which drawn lines are the example, what it
 // shows, how it works]. The example is the mod's own lines for that situation, at 150 columns.
 const BAND_PARTS = [
-  ['The identity line', 'line 1, always', { running: true }, d => ({ agents: noRun(d.agents) }), { user: { rec: 'on' } }, (t, i) => i === 0,
-    'A red ● REC while Recording mode masks the screen, the account you are signed in to with its plan kind, and Claude Code\'s version.',
-    'It leads the band in every mode but off and is never dropped for rows; the version goes where the line would pass the width. The account comes from the login record on disk. The modes on follow it on line 2.'],
+  ['The identity line', 'line 1, always', {}, d => ({ failures: 6, agents: noRun(d.agents) }), { user: { rec: 'on' } }, (t, i) => i === 0,
+    'A red ● REC while Recording mode masks the screen, the account you are signed in to with its plan kind, Claude Code\'s version, the MCP servers (◐ loading, ✓ connected, ✗ failed), and the new tool failures with their Inspect button.',
+    'It leads the band in every mode but off and is never dropped for rows. Short of width the version goes first, then the MCP item; REC, the account and the failures stay. The failures wait while a turn runs; 1, or a click, opens /inspect on them, and under the message box the button is the command /inspect. The account comes from the login record on disk.'],
   ['The modes line', 'line 2, while a mode is on', { running: true, alfred: true, autoRun: true, autoCompact: true, scorer: true }, null, null, t => /^auto-run|^auto-compact|^scoring/.test(t),
     'The modes the session runs under: auto-run, auto-compact with where Claude Code compacts, and scoring with its level and rounds.',
     "From Alfred Code's status file and claude-kit's .claude/kit/settings.json: auto-run shows while either turns it on, auto-compact is Alfred Code's alone, and scoring takes Alfred Code's level and rounds, else the kit's pass score and its loop's 3 rounds. Short of rows it joins line 1, and short of width it drops from the end."],
@@ -4714,7 +4718,7 @@ const BAND_PARTS = [
     'The turn Claude is on, how long it has run and its tool calls so far, then the agent at work and what it does now.',
     'Counted from the session\'s own events as they happen. Once Claude has answered, the line stays only while something needs you, as ✓ with the turn\'s total.'],
   ['The info line', 'full band', {}, null, null, t => /tok\/s/.test(t),
-    'The model and its effort, how long the prompt cache stays warm, the MCP servers (◐ loading, ✓ connected, ✗ failed), the average output speed, when Claude last replied and you last sent a prompt, and the session\'s time.',
+    'The model and its effort, how long the prompt cache stays warm, the average output speed, when Claude last replied and you last sent a prompt, and the session\'s time.',
     'Drawn above the gauges by the full band; "band": "calm" leaves it out, with every row under it. Short of width it wraps onto a second row, then gives up Claude\'s reply time, then yours, then the speed and the cache.'],
   ['The gauges', 'always', {}, null, null, t => /^ctx /.test(t),
     'How full the context is, how much of your 5-hour and weekly limits is used and when each resets, then the session\'s cost and today\'s.',
@@ -4732,8 +4736,8 @@ const BAND_PARTS = [
     'Every tool with its calls; the skills loaded into the chat and how many the listing carries; each agent type, ◐ while one runs, ✓ done, ✗ failed; the rule files in the context.',
     '×N is the count this session, agents\' calls included. A row waits for its first item, so a new session shows none of them.'],
   ['The row that asks', 'between turns', {}, d => ({ failures: 2, ctxUsed: Math.ceil(Number(d.window) * 0.82), agents: noRun(d.agents) }), null, t => /^[⚠✗]/.test(t),
-    'What needs you once Claude has answered: new tool failures, the context past the handoff\'s step, or a cache about to go cold.',
-    'Each ask names its key: 1 opens /inspect on the failures, 4 saves a handoff, 3 compacts. Under the message box, where no key reaches, the same asks show the command to type.'],
+    'What needs you once Claude has answered: the context past the handoff\'s step, or a cache about to go cold. The new tool failures are on line 1.',
+    'Each ask names its key: 4 saves a handoff, 3 compacts. Under the message box, where no key reaches, the same asks show the command to type.'],
   ['The pinned line', 'under the message box', { collapsed: true }, d => ({ failures: 2, ctxUsed: Math.ceil(Number(d.window) * 0.7), agents: noRun(d.agents) }), { user: { rec: 'on' } }, null,
     'One line while something needs you: Recording mode on, the context at 60% or more, new failures.',
     'It stays when the band is folded away (Ctrl+X Ctrl+A) or off. While the band is in view it leaves out what the band already shows, and it clears once nothing needs you.'],

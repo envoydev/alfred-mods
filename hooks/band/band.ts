@@ -71,7 +71,13 @@ export function bandLines(input: BandInput): Line[] {
 // What the band is, in order: the action row where it sits under the input, the identity and modes lines, then the body
 function bandRows(input: BandInput, keep: Keep): Line[] {
   const body = bandBody(input, input.columns < 100, keep)
-  return [...body.before, ...leadLines(input, keep.modes), ...body.rows]
+  return [...body.before, ...leadLines(input, keep.modes, failuresItem(input)), ...body.rows]
+}
+
+// The new failures with their button, on line 1 once Claude has answered (asks wait for the turn to end); none before
+function failuresItem(band: BandInput): Line {
+  if (band.isWorking || band.newFailures === 0) return []
+  return [{ text: `✗ ${band.newFailures} new `, tone: 'fail' }, underButton(band, { key: 'inspect', label: 'Inspect', hotkey: '1' }, '/inspect')]
 }
 
 // The body's rows, and the ones that come before the leading lines: under the input the action row, nearest the input
@@ -111,10 +117,7 @@ function bandBody(band: BandInput, isNarrow: boolean, keep: Keep): Body {
     return { before: [], rows: [[...dim(calm), ...invalid], ...info.map(dim)] }
   }
   if (band.isWorking) return { before: [], rows: [workingLine(band, isNarrow), ...head, line2, ...info] }
-  const failed: Line = band.newFailures > 0
-    ? [{ text: `✗ ${band.newFailures} new `, tone: 'fail' }, underButton(band, { key: 'inspect', label: 'Inspect', hotkey: '1' }, '/inspect')]
-    : []
-  const items = [warning, ask, skip, failed].filter((item): item is Line => item !== null && item.length > 0)
+  const items = [warning, ask, skip].filter((item): item is Line => item !== null && item.length > 0)
   const joined: Line = items.flatMap((item, i) => (i === 0 ? item : [{ text: '    ' }, ...item]))
   // Under the input the action row comes first, nearest the input as above it is the last (the user, 2026-11-12, over
   // band-under U2's place after the gauges), so a cut at the screen's edge takes the detail rows first; its commands are

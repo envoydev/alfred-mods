@@ -611,14 +611,15 @@ tool's column to keep its counts, and the Timeline leaves out the prompt's time 
 its tokens.
 
 By default the band is the identity line, the turn while one runs, an info line, the gauges, and rows under them.
-Line 1 is the identity: `● REC` while recording mode is on, the account the session is signed in to, and Claude Code's
-version. Line 2 is the modes on, from Alfred Code and claude-kit. A line with nothing on it is not drawn.
+Line 1 is the identity: `● REC` while recording mode is on, the account the session is signed in to, Claude Code's
+version, the MCP item, and the new tool failures with their Inspect button once Claude has answered. Line 2 is the modes
+on, from Alfred Code and claude-kit. A line with nothing on it is not drawn.
 
 ```text
-Acme | Team | CC 2.1.331
+Acme | Team | CC 2.1.331 │ mcp ✗ 1 · ✓ 10 │ ✗ 6 new 1: Inspect
 auto-run · auto-compact 400k · scoring 90 3
-⟳ Turn 47 · 5:01 · 19 tools
-Sonnet 5.5 ◑ high │ cache warm ≈60m │ mcp ✗ 1 · ✓ 10 │ ≈119 tok/s avg │ Claude 17:13 · you 17:15 │ 9m
+✓ Turn 47 · 5m 1s · 19 tools · 6 ✗
+Sonnet 5.5 ◑ high │ cache warm ≈60m │ ≈119 tok/s avg │ Claude 17:13 · you 17:15 │ 9m
 ctx ▰▰▰▱▱ 30% │ 5h ▰▱▱▱▱ 15% (19:00) │ 7d 40% (11:00)
 project: my-app │ git:(develop) +12 −3 │ folder: .claude
 plan:    Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update interceptor
@@ -649,7 +650,10 @@ rules:   alfred-interaction │ alfred-git │ web:typescript │ 3 always-on ·
   The line is left out while no mode is on, and short of width it drops from the end. Short of rows, after the project
   row, it joins line 1 (`Acme | Team │ auto-run · scoring 90 3`) where the two fit, else line 1 stands alone. The Now
   tab's ALFRED CODE and CLAUDE-KIT sections keep the details: auto-approve, the models, where each value comes from.
-- **The MCP item**, on the info line after the cache, counts the session's MCP servers and never draws a name. `mcp ◐ <connected>/<total>` shows while any
+- **The new failures,** `✗ <n> new` with the Inspect button (`1`, or a click; `/inspect` as text under the input), end
+  line 1 once Claude has answered, and wait while a turn runs. Short of width line 1 gives up Claude Code's version
+  first, then the MCP item; REC, the account and the failures stay.
+- **The MCP item**, on line 1 after Claude Code's version, counts the session's MCP servers and never draws a name. `mcp ◐ <connected>/<total>` shows while any
   server loads, `mcp ✓ <n>` once all are connected, and `mcp ✗ <failed> · ✓ <connected>` when one failed (one waiting
   on a login counts as failed). Claude Code's own `mcp.connect` answers before the server starts, so for each server
   still loading the mod asks Claude Code once for its state (`$.mcp.connect`, which never starts a server the session
@@ -660,7 +664,7 @@ rules:   alfred-interaction │ alfred-git │ web:typescript │ 3 always-on ·
   tool list feeds the item: it reads `mcp ✓ <n>`, has no loading or failed state, and asks nothing. Claude Code adds
   connectors of its own, such as `claude-artifacts`, which count like any server: one that fails reads `✗` though
   `claude mcp list` does not list it.
-- **The info line:** the model and effort, the cache, the MCP item, the average output speed, the times of Claude's
+- **The info line:** the model and effort, the cache, the average output speed, the times of Claude's
   last reply and your last prompt, and the session's time. While a turn runs, the turn line above it counts the turn's
   tool calls, and the gauges add today's cost. Today's cost is the mod's own count on this machine: sessions it did not
   run in are not in it, so it can read lower than a status line's that counts every session.
@@ -728,8 +732,8 @@ as the first row under the prompt whatever a mod does, so with `"above"` it is t
 prompt, and with `"under"` it sits between the prompt and the band. Under the input is the terminal's only (a Desktop
 tab keeps the band above), and it takes no keys, so each button becomes the command that does its job: in fullscreen a
 click presses it, `[ /inspect ]`, `[ /compact ]`, `[ /auto-handoff now ]`; on the main screen
-(`CLAUDE_CODE_NO_FLICKER=0`), where nothing takes a click, it is that command as text. There the action row (new failures, a cache
-warning, the handoff ask) comes first, right under the input, over the turn line and the gauges. In fullscreen the room under the input is about half the screen, less the prompt, two rows when a
+(`CLAUDE_CODE_NO_FLICKER=0`), where nothing takes a click, it is that command as text. There the action row (a cache warning, the
+handoff ask, the skip ask; the new failures are on line 1) comes first, right under the input, over the turn line and the gauges. In fullscreen the room under the input is about half the screen, less the prompt, two rows when a
 status line is set and one for the mod's pinned line; whatever else takes room, a draft of several lines or a taller
 status line, cuts the band at the screen's edge from its last row, `rules:` first. It was built on Claude Code 2.1.322.
 

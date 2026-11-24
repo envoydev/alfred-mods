@@ -59,6 +59,8 @@ function input(o: Partial<BandInput> = {}): BandInput {
 
 const text = (line: Line): string => line.map(s => ('text' in s ? s.text : 'button' in s ? `[ ${s.button.label} ]` : '')).join('')
 const texts = (lines: Line[]): string[] => lines.map(text)
+// The turn line: the band's first line under line 1, which now ends with the new failures (the user, 2026-11-24)
+const turnOf = (lines: Line[]): Line => lines.find(l => text(l).startsWith('✓ ')) ?? []
 
 // The owner's target block, rows 4-7 (docs/superpowers/2026-11-11-band-detail-rows-prompt.md)
 const TARGET_STATS = { Bash: stat(32), AskUserQuestion: stat(4), Read: stat(4), Write: stat(4), Grep: stat(1) }
@@ -338,17 +340,18 @@ const ROW = /^(tools|skills|agents|rules):/
 const labelsOf = (lines: Line[]): string[] => texts(lines).filter(l => ROW.test(l)).map(l => l.slice(0, l.indexOf(':')))
 
 test('short of rows, the second info row goes first, then rules:, then agents:', () => {
-  // At 98 columns the MCP item takes the info line to a second row
-  const at = (maxRows?: number) => bandLines(open({ columns: 98, mcp: [{ text: 'mcp ✗ 1 · ✓ 10' }], ...(maxRows === undefined ? {} : { maxRows }) }))
+  // At 84 columns the times take the info line to a second row
+  const at = (maxRows?: number) => bandLines(open({ columns: 84, ...(maxRows === undefined ? {} : { maxRows }) }))
   // A live agent: line 1, two info rows, the gauges, usage:, four rows
-  expect(at()).toHaveLength(9)
+  // A live agent: two info rows, the gauges, usage:, four rows (one of them wrapping), the turn line
+  expect(at()).toHaveLength(10)
   expect(texts(at()).join('\n')).toContain('Claude ')
   // On one row the times go first
-  expect(texts(at(8)).join('\n')).not.toContain('Claude ')
-  expect(texts(at(8)).join('\n')).toContain('mcp ✗ 1 · ✓ 10')
-  expect(labelsOf(at(8))).toEqual(['tools', 'skills', 'agents', 'rules'])
-  expect(at(8)).toHaveLength(8)
-  expect(labelsOf(at(7))).toEqual(['tools', 'skills', 'agents'])
+  expect(texts(at(9)).join('\n')).not.toContain('Claude ')
+  expect(texts(at(9)).join('\n')).toContain('tok/s avg')
+  expect(labelsOf(at(9))).toEqual(['tools', 'skills', 'agents', 'rules'])
+  expect(at(9)).toHaveLength(9)
+  expect(labelsOf(at(8))).toEqual(['tools', 'skills', 'agents'])
   expect(labelsOf(at(6))).toEqual(['tools', 'skills'])
 })
 
@@ -406,10 +409,10 @@ test('two steps running add a dim +1; a finished plan reads done ✓; with none 
 
 test('idle with a failure, line 1 carries no PLAN in full mode; the calm band keeps it there and draws no row', () => {
   const full = bandLines(input({ plan: planNamed(), newFailures: 1 }))
-  expect(text(full[0] ?? [])).not.toContain('PLAN')
+  expect(text(turnOf(full))).not.toContain('PLAN')
   expect(planRowOf(full)).toBeDefined()
   const calm = bandLines(input({ mode: 'calm', plan: planNamed(), newFailures: 1 }))
-  expect(text(calm[0] ?? [])).toContain('PLAN 3/5')
+  expect(text(turnOf(calm))).toContain('PLAN 3/5')
   expect(planRowOf(calm)).toBeUndefined()
 })
 
@@ -476,7 +479,7 @@ test('a finished plan with its score never overflows the row', () => {
 test('a score that is not the plan\'s own stays off the plan row and on line 1', () => {
   const lines = bandLines(input({ columns: 160, plan: alfredPlan(), score: scored(), scoreLevel: 80, isPlanScore: false, newFailures: 1 }))
   expect(text(lines.find(l => text(l).startsWith('plan:')) ?? [])).not.toContain('score')
-  expect(text(lines[0] ?? [])).toContain('score 85')
+  expect(text(turnOf(lines))).toContain('score 85')
 })
 
 test('short of rows, a dropped plan row hands its count and score to line 1', () => {
@@ -484,9 +487,9 @@ test('short of rows, a dropped plan row hands its count and score to line 1', ()
   // The fewest rows that still draw the plan row, then one fewer
   const least = [2, 3, 4, 5, 6].find(n => planRowOf(b(n)) !== undefined) ?? 0
   expect(least).toBeGreaterThan(2)
-  expect(text(b(least)[0] ?? [])).not.toContain('score')
+  expect(text(turnOf(b(least)))).not.toContain('score')
   expect(planRowOf(b(least - 1))).toBeUndefined()
-  expect(text(b(least - 1)[0] ?? [])).toContain('PLAN 1/4 · score 85 ▲13')
+  expect(text(turnOf(b(least - 1)))).toContain('PLAN 1/4 · score 85 ▲13')
 })
 
 for (const columns of [40, 60, 100]) {
@@ -569,12 +572,13 @@ const buttonsOf = (lines: Line[]) => lines.flat().flatMap(s => ('button' in s ? 
 
 // The user, 2026-11-12: under the input the action row comes first, over the turn line ('✗ 3 new /inspect' then
 // '✓ Turn 18 · 41s · 4 tools' then the gauges), the line nearest the input as above it is the last
-test('under, the action row comes first, over the turn line and the gauges; above it stays last', () => {
-  const under = bandLines(input({ newFailures: 1, under: { buttons: 'click' } }))
-  expect(under.findIndex(l => textOf(l).startsWith('✗ 1 new'))).toBe(0)
-  expect(textOf(under[1]!)).toMatch(/^✓ /)
-  const above = bandLines(input({ newFailures: 1 }))
-  expect(above.findIndex(l => textOf(l).startsWith('✗ 1 new'))).toBe(above.length - 1)
+test('the new failures end line 1, over the turn line and the gauges, under the input and above it', () => {
+  for (const o of [{ under: { buttons: 'click' as const } }, {}]) {
+    const lines = bandLines(input({ newFailures: 1, ...o }))
+    expect(lines.findIndex(l => textOf(l).startsWith('✗ 1 new'))).toBe(0)
+    expect(textOf(lines[1]!)).toMatch(/^✓ /)
+    expect(lines.filter(l => textOf(l).includes('✗ 1 new'))).toHaveLength(1)
+  }
 })
 
 test('fullscreen under, the buttons name their commands and take no hotkey', () => {

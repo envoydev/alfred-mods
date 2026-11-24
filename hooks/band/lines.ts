@@ -1,5 +1,5 @@
-// The band's leading lines (spec 2026-11-23, D4, as the user arranged them on 2026-11-24): `● REC`, the signed-in account
-// and Claude Code's version, then the modes on. Pure: values in, lines out.
+// The band's leading lines (spec 2026-11-23, D4, as the user arranged them on 2026-11-24): `● REC`, the signed-in account,
+// Claude Code's version, the MCP item and the new failures, then the modes on. Pure: values in, lines out.
 import { fitLine, widthOf } from '../core/format'
 import { ORG_STRICT, PERSONAL } from '../account/constants'
 import type { Line, Seg } from '../core/types'
@@ -25,21 +25,23 @@ function orgMark(input: BandInput): Line {
   return account.kind === undefined || account.kind === null ? [{ text: name }] : [{ text: name }, dim(ORG_JOIN), dim(account.kind)]
 }
 
-// Line 1: REC while it is on, then the account and Claude Code's version ('Acme | Team | CC 2.1.331', the user,
-// 2026-11-24). Never cut for width: the version goes where the line would pass the band's width.
-export function identityLine(input: BandInput): Line {
+// Line 1: REC while it is on, the account and Claude Code's version, the MCP item, then the new failures with their
+// button ('Acme | Team | CC 2.1.330 │ mcp ✗ 1 · ✓ 10 │ ✗ 6 new 1: Inspect', the user, 2026-11-24). Where it would pass
+// the band's width the version goes first, then the MCP item; REC, the account and the failures always stay.
+export function identityLine(input: BandInput, failures: Line = []): Line {
   const rec = input.rec !== undefined && input.rec.level !== 'off' ? [REC_MARK] : []
   const org = orgMark(input)
   const version = input.session.version
   const withVersion = version === undefined ? org : [...org, ...(org.length === 0 ? [] : [DIM_JOIN]), { text: `${CC_LABEL} ${version}`, tone: 'dim' as const }]
-  const full = joinItems([rec, withVersion])
-  return widthOf(full) <= input.columns ? full : joinItems([rec, org])
+  const mcp = input.mcp ?? []
+  const forms = [joinItems([rec, withVersion, mcp, failures]), joinItems([rec, org, mcp, failures]), joinItems([rec, org, failures])]
+  return forms.find(form => widthOf(form) <= input.columns) ?? forms[forms.length - 1] ?? []
 }
 
 // The lines that lead the band, each only when it holds something: the identity, then the modes on a line of their own
 // ('own'), or after the identity on line 1 where the two fit the width, else the identity alone ('joined')
-export function leadLines(input: BandInput, modesKeep: ModesKeep): Line[] {
-  const identity = identityLine(input)
+export function leadLines(input: BandInput, modesKeep: ModesKeep, failures: Line = []): Line[] {
+  const identity = identityLine(input, failures)
   const modes = input.modes ?? []
   if (modesKeep === 'own') return [identity, modes].filter(line => line.length > 0)
   const joined = joinItems([identity, modes])

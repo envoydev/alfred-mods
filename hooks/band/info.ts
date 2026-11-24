@@ -26,7 +26,6 @@ function infoItems(input: BandInput): Item[] {
     const cacheState = cacheView(input.cache, billingOf(input.usage.rateWindows), input.now, input.usage.contextTokens)
     items.push({ keep: 4, forms: [dimText(cacheState.leftMs === null ? 'cache cold' : `cache warm ${cacheState.tier.isEstimate ? '≈' : ''}${minutesLeftText(cacheState.leftMs)}`)] })
   }
-  if (input.mcp !== undefined && input.mcp.length > 0) items.push({ keep: 4.5, forms: [input.mcp] })
   const totals = input.totals
   if (totals !== undefined && totals.stepMs > 0) items.push({ keep: 3, forms: [dimText(`≈${Math.round(totals.stepOutput / (totals.stepMs / 1000))} tok/s avg`)] })
   // Claude's last reply, then the running turn's prompt while one runs, else the last turn's, as line 1 of the calm band
