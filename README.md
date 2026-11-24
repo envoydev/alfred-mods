@@ -1119,7 +1119,7 @@ CI (`.github/workflows/ci.yml`) runs `npm run validate` and `npm test` on Linux,
 against the types the pinned Claude Code build writes.
 
 The first interactive `--plugin-dir` session writes the mod types for the running build into
-`.claude-plugin/types/` (git-ignored), which editors and `tsc` read. Requires Node 22 for the scripts (built-ins
+`.claude-plugin/types/` (git-ignored), which editors and `tsc` read. Requires Node 26.13 or newer for the scripts (built-ins
 only) and the `claude` CLI on PATH. This repo's own rules are in `AGENTS.md`; the
 design, the features and the build phases are in [the session-inspector brief](docs/session-inspector-brief.md).
 
