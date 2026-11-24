@@ -205,6 +205,40 @@ test('the hook and the transcript merge by key', async ($, on) => {
   expect(keysOf(state)).toEqual(['.claude/rules/a.md'])
 })
 
+const USER_RULE = '/home/.claude/rules/voice.md'
+const loadedByHook = (path: string) => ({ file_path: path, memory_type: 'User', load_reason: 'path_glob_match', globs: ['**/*.ts'], trigger_file_path: '/x.ts' }) as never
+
+// A User rule has one key from both sources: the hook says its type, and the reader works it out from the config folder
+test('a User rule the hook and the transcript both report counts once, with a root outside the home folder', async ($, on) => {
+  const { kit, state } = await begin($, on, { files: { [PATH]: file(memory(USER_RULE)) } })
+  await $.classic.InstructionsLoaded(loadedByHook(USER_RULE))
+  await kit.clock.advance(1000)
+  expect(keysOf(state)).toEqual(['User:voice.md'])
+})
+
+test('a User rule the hook and the transcript both report counts once, with a root under the home folder', async ($, on) => {
+  const path = `${CONFIG}/projects/-home-work-app/s1.jsonl`
+  const { kit, state } = await begin($, on, { root: '/home/work/app', files: { [path]: file(memory(USER_RULE)) } })
+  await $.classic.InstructionsLoaded(loadedByHook(USER_RULE))
+  await kit.clock.advance(1000)
+  expect(keysOf(state)).toEqual(['User:voice.md'])
+})
+
+test('a User rule the transcript alone reports is keyed User, so the hook later adds nothing', async ($, on) => {
+  const { kit, state } = await begin($, on, { root: '/home/work/app', files: { [`${CONFIG}/projects/-home-work-app/s1.jsonl`]: file(memory(USER_RULE)) } })
+  await kit.clock.advance(1000)
+  expect(keysOf(state)).toEqual(['User:voice.md'])
+})
+
+test('a User rule under a CLAUDE_CONFIG_DIR not named .claude is counted', async ($, on) => {
+  const config = '/cfg/data'
+  const { kit, state } = await begin($, on, {
+    env: { CLAUDE_CONFIG_DIR: config }, files: { [`${config}/projects/-work-app/s1.jsonl`]: file(memory(`${config}/rules/voice.md`)) },
+  })
+  await kit.clock.advance(1000)
+  expect(keysOf(state)).toEqual(['User:voice.md'])
+})
+
 test('isTracked holds with the option on while a transcript is known', { options: { leave_out_skipped_hooks: true } }, async ($, on) => {
   const { kit } = await begin($, on, { usage: breakdownOf(ruleAt('/work/app', 'always')) })
   await kit.clock.advance(1000)
@@ -221,6 +255,7 @@ test('no absolute path is stored', async ($, on) => {
   await kit.clock.advance(1000)
   expect(state.get('transcript')).toEqual({ sessionId: 's1', offset: expect.any(Number), isInLongLine: false })
   expect(state.writes.join('\n')).not.toContain('/home/')
+  expect(state.writes.join('\n')).not.toContain('/work/app')
 })
 
 const text = (lines: Line[]): string[] => lines.map(line => line.map(seg => ('text' in seg ? seg.text : '')).join(''))
@@ -230,6 +265,14 @@ test('the counts line says why the transcript is not read', () => {
   expect(text(ruleSegs({ always: [entry], byPath: [], isTracked: true, note: 'unread' }, false)).at(-1)).toBe('1 always-on · 0 by path · transcript unread')
   expect(text(ruleSegs({ always: [entry], byPath: [], isTracked: true, note: 'not-found' }, false)).at(-1)).toBe('1 always-on · 0 by path · transcript not found')
   expect(text(ruleSegs({ always: [entry], byPath: [], isTracked: true }, false)).at(-1)).toBe('1 always-on · 0 by path')
+})
+
+test('after a resume the counts line drops since resume where the transcript counts the rules from before it', () => {
+  const entry = { key: 'k', label: 'a' }
+  const rules = { always: [entry], byPath: [{ key: 'k2', label: 'b' }], isTracked: true }
+  expect(text(ruleSegs({ ...rules, isSinceResume: false }, true)).at(-1)).toBe('1 always-on · 1 by path')
+  expect(text(ruleSegs({ ...rules, isSinceResume: true }, true)).at(-1)).toBe('1 always-on · 1 by path since resume')
+  expect(text(ruleSegs({ ...rules, isSinceResume: false }, false)).at(-1)).toBe('1 always-on · 1 by path')
 })
 
 const FILLER = unrelated('x'.repeat(MIB - 100))
@@ -295,3 +338,30 @@ for (const [name, env] of [
     expect(keysOf(state)).toEqual(['.claude/rules/a.md'])
   })
 }
+
+// After a resume, the transcript holds the rules loaded before it: 'since resume' stays only where they are not counted
+async function resumeInto($: Engine, on: On, text: string, o: Setup = {}) {
+  const { kit } = await begin($, on, { files: { [S2_PATH]: file(text) }, usage: ALWAYS_RULE, ...o })
+  kit.session.id = 's2'
+  kit.session.turns = 4
+  await $.classic.SessionStart({ source: 'resume' } as never)
+  await kit.clock.advance(1000)
+  await kit.clock.settle()
+}
+const countsLine = async ($: Engine): Promise<string | undefined> => (await rulesRow($))?.split('│').at(-1)?.trim()
+
+test('after a resume read from the first byte the counts line has no since resume', OPTION, async ($, on) => {
+  await resumeInto($, on, memory(ruleAt('/work/app', 'b')))
+  expect(await countsLine($)).toBe('1 always-on · 1 by path')
+})
+
+test('after a resume whose first read began at the 8 MiB tail the counts line keeps since resume', OPTION, async ($, on) => {
+  await resumeInto($, on, FILLER.repeat(9) + memory(ruleAt('/work/app', 'b')))
+  expect(await countsLine($)).toBe('1 always-on · 1 by path since resume')
+})
+
+test('after a resume with no transcript found the counts line keeps since resume', async ($, on) => {
+  await resumeInto($, on, '', { files: {} })
+  await $.classic.InstructionsLoaded({ file_path: ruleAt('/work/app', 'b'), memory_type: 'Project', load_reason: 'path_glob_match', globs: ['**'], trigger_file_path: '/x' } as never)
+  expect(await countsLine($)).toBe('1 always-on · 1 by path since resume · transcript not found')
+})

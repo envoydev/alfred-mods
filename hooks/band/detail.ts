@@ -74,12 +74,13 @@ function rulesDrawn(rules: RulesInput): { always: RuleEntry[]; byPath: RuleEntry
 }
 
 // The rules row's items (spec 2026-11-11, D4): the always-on rules plain, the by-path ones violet, then how many of
-// each; untracked (the option on), by path is not known; after a resume, the by-path ones loaded before are unseen
+// each; untracked (the option on), by path is not known; after a resume, `since resume` only where the by-path ones
+// loaded before are unseen: the transcript counts them unless its first read began at its tail or none is known
 export function ruleSegs(rules: RulesInput, isResumed: boolean): Line[] {
   const { always, byPath } = rulesDrawn(rules)
   if (rules.isTracked && always.length + byPath.length === 0) return [[{ text: 'none loaded', tone: 'dim' }]]
   const counts = rules.isTracked
-    ? `${always.length} always-on · ${byPath.length} by path${isResumed ? ' since resume' : ''}`
+    ? `${always.length} always-on · ${byPath.length} by path${isResumed && rules.isSinceResume !== false ? ' since resume' : ''}`
     : `${always.length} always-on · by path not tracked`
   const summary = rules.note === undefined ? counts : `${counts} · ${TRANSCRIPT_NOTE[rules.note]}`
   return [

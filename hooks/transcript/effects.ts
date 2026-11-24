@@ -6,7 +6,7 @@ import type { EngineInterface } from 'claude-code'
 import type { TranscriptNote, TranscriptReader, TranscriptState } from './types'
 import { CHUNK_BYTES, CONFIG_FOLDER, FIRST_TAIL_BYTES, READ_EVERY_MS, RUN_BYTES, RUN_MS } from './constants'
 import { notifyAll } from './notify'
-import { derivedTranscriptPath, firstNewlineByte, scanChunk } from './lines'
+import { derivedTranscriptPath, firstNewlineByte, ruleTypeOf, scanChunk } from './lines'
 import { ruleEntry } from '../context/rules'
 import type { RuleEntry } from '../context/types'
 import { linkEnds } from '../context/effects'
@@ -23,15 +23,16 @@ function updateReader($: EngineInterface, change: (value: TranscriptReader) => T
 
 // Module memory, which no other plugin reads, so no path reaches `$.state`. `generation` moves with each start-over: a
 // run that began before it writes nothing. `lastTurnCount` is the session's turn count at the last run; `running` the
-// run in progress, of which there is at most one. `wasRead` is whether the file was ever read by this process.
+// run in progress, of which there is at most one. `wasRead` is whether the file was ever read by this process;
+// `startedAtTail` whether this conversation's first read began at the file's tail, so earlier rules are not counted.
 const readerMemory = {
   generation: 0, lastRunAt: null as number | null, lastTurnCount: null as number | null, running: null as Promise<void> | null,
-  wasRead: false, isKnown: false, note: null as TranscriptNote | null, listeners: [] as (() => void)[],
+  wasRead: false, startedAtTail: false, isKnown: false, note: null as TranscriptNote | null, listeners: [] as (() => void)[],
 }
 
 // What the band asks: whether a transcript was read, and why not where it was not
 export function transcriptState(): TranscriptState {
-  return { isKnown: readerMemory.isKnown, note: readerMemory.note }
+  return { isKnown: readerMemory.isKnown, note: readerMemory.note, startedAtTail: readerMemory.startedAtTail }
 }
 
 // The listener hears each run that finds a skip notice for this plugin in the transcript (spec D3). One at a time: a
@@ -47,6 +48,7 @@ export async function resetTranscript($: EngineInterface): Promise<void> {
   readerMemory.lastTurnCount = null
   // What the old conversation's file showed says nothing of the new one's
   readerMemory.wasRead = false
+  readerMemory.startedAtTail = false
   readerMemory.isKnown = false
   readerMemory.note = null
   await updateReader($, () => INITIAL_READER)
@@ -57,20 +59,25 @@ function rootOf($: EngineInterface): Promise<string> {
   return $.session.root().catch(() => $.session.cwd())
 }
 
+// Claude Code's config folder: CLAUDE_CONFIG_DIR, else `.claude` under the home folder (os.homedir(): USERPROFILE on
+// Windows, HOME elsewhere; an empty value is unset). Empty with neither.
+async function configFolderOf($: EngineInterface): Promise<string> {
+  const configDir = (await $.env.get('CLAUDE_CONFIG_DIR').catch(() => undefined)) ?? ''
+  if (configDir !== '') return configDir
+  const profile = (await $.env.get('USERPROFILE').catch(() => undefined)) ?? ''
+  const home = profile === '' ? ((await $.env.get('HOME').catch(() => undefined)) ?? '') : profile
+  return home === '' ? '' : `${home}/${CONFIG_FOLDER}`
+}
+
 // The transcript's path as the engine gives it, or the one Claude Code derives where the call is missing or empty
-// (older builds): `isDerived` for the second, which a missing file does not make unread. Null with no home folder.
-async function pathOf($: EngineInterface, root: string, sessionId: string): Promise<{ path: string; isDerived: boolean } | null> {
+// (older builds): `isDerived` for the second, which a missing file does not make unread. Null with no config folder.
+async function pathOf($: EngineInterface, folder: string, root: string, sessionId: string): Promise<{ path: string; isDerived: boolean } | null> {
   try {
     const given = (await $.session.info()).transcriptPath
     if (given !== '') return { path: given, isDerived: false }
   } catch {
     // A build without the call: the path is derived
   }
-  const configDir = (await $.env.get('CLAUDE_CONFIG_DIR').catch(() => undefined)) ?? ''
-  // Claude Code's home folder is os.homedir(): USERPROFILE on Windows, HOME elsewhere; an empty value is unset
-  const profile = (await $.env.get('USERPROFILE').catch(() => undefined)) ?? ''
-  const home = profile === '' ? ((await $.env.get('HOME').catch(() => undefined)) ?? '') : profile
-  const folder = configDir !== '' ? configDir : home === '' ? '' : `${home}/${CONFIG_FOLDER}`
   return folder === '' ? null : { path: derivedTranscriptPath(folder, root, sessionId), isDerived: true }
 }
 
@@ -87,7 +94,8 @@ async function readRun($: EngineInterface): Promise<void> {
   const sessionId = await $.session.id()
   const isCurrent = async (): Promise<boolean> => generation === readerMemory.generation && sessionId === (await $.session.id())
   const root = await rootOf($)
-  const found = await pathOf($, root, sessionId)
+  const configFolder = await configFolderOf($)
+  const found = await pathOf($, configFolder, root, sessionId)
   // No file where it should be: not found until a file was read, unread after; a refused read is unread either way
   const markMissing = (): void => {
     readerMemory.isKnown = false
@@ -114,7 +122,8 @@ async function readRun($: EngineInterface): Promise<void> {
   const saved = await readReader($)
   // A new session starts at its file's first byte, or its tail; a file smaller than the offset was rewritten: from 0
   const isSame = saved.sessionId === sessionId
-  let { offset, isInLongLine } = isSame ? (saved.offset <= size ? saved : { offset: 0, isInLongLine: false }) : startOf(size)
+  const start = startOf(size)
+  let { offset, isInLongLine } = isSame ? (saved.offset <= size ? saved : { offset: 0, isInLongLine: false }) : start
   const startedAt = await $.clock.now()
   let bytesRead = 0
   try {
@@ -135,13 +144,15 @@ async function readRun($: EngineInterface): Promise<void> {
         isInLongLine = !scan.hasNewline
         isSkipNoticed = scan.isSkipNoticed
         for (const path of scan.paths) {
-          const entry = ruleEntry(path, 'Project', root, linkEnds())
+          const entry = ruleEntry(path, ruleTypeOf(path, configFolder), root, linkEnds())
           if (entry !== null) entries.push(entry)
         }
       }
       bytesRead += length
       if (!(await isCurrent())) return
+      if (!isSame) readerMemory.startedAtTail = start.offset > 0
       if (entries.length > 0) await addPathRules($, entries)
+      if (!(await isCurrent())) return
       await updateReader($, () => ({ sessionId, offset, isInLongLine }))
       if (isSkipNoticed) notifyAll(readerMemory.listeners)
     }
@@ -149,6 +160,7 @@ async function readRun($: EngineInterface): Promise<void> {
     return markUnread()
   }
   if (!(await isCurrent())) return
+  if (!isSame) readerMemory.startedAtTail = start.offset > 0
   await updateReader($, () => ({ sessionId, offset, isInLongLine }))
   readerMemory.wasRead = true
   readerMemory.isKnown = true

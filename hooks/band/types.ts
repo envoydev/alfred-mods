@@ -62,4 +62,5 @@ export type BandInput = {
   mcp?: Seg[]
 }
 
-export type RulesInput = { always: RuleEntry[]; byPath: RuleEntry[]; isTracked: boolean; note?: 'unread' | 'not-found' }
+// `isSinceResume` false where the transcript counts the by-path rules from before a resume; absent, as true
+export type RulesInput = { always: RuleEntry[]; byPath: RuleEntry[]; isTracked: boolean; note?: 'unread' | 'not-found'; isSinceResume?: boolean }

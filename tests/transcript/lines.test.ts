@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { derivedTranscriptPath, firstNewlineByte, scanChunk, utf8Length } from '../../hooks/transcript/lines'
+import { derivedTranscriptPath, firstNewlineByte, ruleTypeOf, scanChunk, utf8Length } from '../../hooks/transcript/lines'
 
 const memoryLine = (path: string) =>
   JSON.stringify({ type: 'attachment', attachment: { type: 'nested_memory', path, displayPath: 'x', content: 'c' } })
@@ -56,4 +56,18 @@ test('the derived path replaces every character outside A-Z a-z 0-9 with -', () 
     .toBe('/Users/jane/.claude/projects/-Users-jane-work-my-app/abc.jsonl')
   expect(derivedTranscriptPath('C:/Users/jane/.claude', 'C:\\work\\app', 'abc'))
     .toBe('C:/Users/jane/.claude/projects/C--work-app/abc.jsonl')
+})
+
+test('a rule under the config folder is User, any other is Project', () => {
+  expect(ruleTypeOf('/home/u/.claude/rules/a.md', '/home/u/.claude')).toBe('User')
+  expect(ruleTypeOf('/home/u/.claude/rules/a.md', '/home/u/.claude/')).toBe('User')
+  expect(ruleTypeOf('/home/u/app/.claude/rules/a.md', '/home/u/.claude')).toBe('Project')
+  expect(ruleTypeOf('/home/u/.claude-other/rules/a.md', '/home/u/.claude')).toBe('Project')
+  expect(ruleTypeOf('/home/u/.claude/rules/a.md', '')).toBe('Project')
+})
+
+test('the config folder compares with either slash, and a drive path without case', () => {
+  expect(ruleTypeOf('C:\\Users\\U\\.claude\\rules\\a.md', 'c:/users/u/.claude')).toBe('User')
+  expect(ruleTypeOf('C:/Users/U/work/.claude/rules/a.md', 'C:\\Users\\U\\.claude')).toBe('Project')
+  expect(ruleTypeOf('/Home/U/.claude/rules/a.md', '/home/u/.claude')).toBe('Project')
 })

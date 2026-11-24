@@ -37,3 +37,6 @@ export const LOW_SURROGATE_MAX = 0xdfff
 
 // Where Claude Code keeps its files, below the home folder, when CLAUDE_CONFIG_DIR is not set
 export const CONFIG_FOLDER = '.claude'
+
+// The type a rule file has: a User rule lies under the config folder, as `memory_type` says in the classic hook
+export const RULE_TYPE = { user: 'User', project: 'Project' } as const

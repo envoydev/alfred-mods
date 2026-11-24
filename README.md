@@ -638,7 +638,8 @@ rules:   alfred-interaction │ alfred-git │ web:typescript │ 3 always-on ·
   the stronger source. Under [REC](#recording-mode) `strict` a company name reads `‹org›`; `Personal` and `unknown`
   stay.
 - **Line 2, the modes:** Alfred Code's mode banner, then claude-kit's, then the MCP item, joined by ` │ `. Where the
-  line does not fit, claude-kit's banner shortens to `kit`, then goes; Alfred Code's banner and the MCP item stay, and the banner is cut when it alone overflows.
+  line does not fit, claude-kit's banner shortens to `kit`, then goes; Alfred Code's banner and the MCP item stay, and
+  the banner is cut when it and the MCP item together overflow.
 - **The MCP item** counts the session's MCP servers and never draws a name. `mcp ◐ <connected>/<total>` shows while any
   server loads, `mcp ✓ <n>` once all are connected, and `mcp ✗ <failed> · ✓ <connected>` when one failed (one waiting
   on a login counts as failed). A server reads connected when its tools show in the session's tool list. A server whose
@@ -694,7 +695,8 @@ transcript past 8 MiB starts 8 MiB from its end, so earlier rules are not counte
 A resumed or branched conversation still holds the skills and agents from before it, which no mods API lists, so those
 rows count from the resume: what came since, with `since resume`, and no row until then. Rules that loaded by path
 before a resume are the exception: the transcript holds them, so the `rules:` row counts them once, unless the
-transcript is past 8 MiB or none is found. The row's counts line still ends `since resume` after any resume.
+transcript is past 8 MiB or none is found. The row's counts line ends `since resume` only then; where the transcript is
+read from its first byte, it is dropped, since nothing is unseen.
 
 When the width runs out, the info line wraps onto a second row between items, and items drop whole only when two rows
 cannot hold them (the version first, then the times); `project:` shortens its folder to the last part, then leaves it

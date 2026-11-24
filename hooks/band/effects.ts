@@ -119,6 +119,7 @@ async function readBandInput(
     isToolsOpen: setting.isToolsOpen === true, skillListing: parts.skills ?? null,
     rules: {
       always: parts.rules ?? [], byPath: session.pathRuleKeys ?? [], isTracked: transcript.isKnown || !at.isLeftOut,
+      isSinceResume: !transcript.isKnown || transcript.startedAtTail,
       ...(transcript.note === null ? {} : { note: transcript.note }),
     },
     ...(at.under === undefined ? {} : { under: at.under }),

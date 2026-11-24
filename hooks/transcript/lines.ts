@@ -9,6 +9,7 @@ import {
   NEWLINE,
   NON_ALPHANUMERIC,
   PROJECTS_FOLDER,
+  RULE_TYPE,
   SKIP_PREFIX,
   SKIP_TEXT,
   SYSTEM_TYPE,
@@ -19,7 +20,8 @@ import {
   UTF8_THREE_BYTE_MAX,
   UTF8_TWO_BYTE_MAX,
 } from './constants'
-import type { ScanResult } from './types'
+import type { RuleType, ScanResult } from './types'
+import { isDrive, slashed } from '../context/rules'
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -52,6 +54,15 @@ export function derivedTranscriptPath(configFolder: string, root: string, sessio
   const folder = root.replace(NON_ALPHANUMERIC, '-')
   const base = configFolder.replace(TRAILING_SLASHES, '')
   return `${base}/${PROJECTS_FOLDER}/${folder}/${sessionId}${TRANSCRIPT_SUFFIX}`
+}
+
+/** A rule's type: User under the config folder, else Project; slashes alike, and a drive path without case. */
+export function ruleTypeOf(path: string, configFolder: string): RuleType {
+  const file = slashed(path)
+  const base = slashed(configFolder).replace(TRAILING_SLASHES, '')
+  if (base === '') return RULE_TYPE.project
+  const fold = (text: string): string => (isDrive(file) || isDrive(`${base}/`) ? text.toLowerCase() : text)
+  return fold(file).startsWith(`${fold(base)}/`) ? RULE_TYPE.user : RULE_TYPE.project
 }
 
 function parseLine(line: string): unknown {
