@@ -31,7 +31,8 @@ A mod is a Claude Code plugin whose hooks run inside Claude Code, so it can watc
 
 Requires Claude Code 2.1.312 or later, in the terminal (`claude --version`) and in the Desktop app's Code tab
 (`/status`). Mods load from 2.1.287, but the handoff and the compact rows use fields this mod is checked against only
-from 2.1.312.
+from 2.1.312. Counting rules that load by path from the session transcript needs 2.1.330 (see
+[What it shows](#what-it-shows)); on an earlier build the mod finds the transcript another way, or says it could not.
 
 Install it from `envoydev`, the one marketplace for envoydev's plugins
 ([envoydev/plugins-marketplaces](https://github.com/envoydev/plugins-marketplaces)). It also lists Alfred Code, which the
@@ -603,11 +604,14 @@ gives up its Show and Copy buttons. A narrow pane, down to 24 columns, keeps the
 tool's column to keep its counts, and the Timeline leaves out the prompt's time to keep how long each turn took and
 its tokens.
 
-By default the band has an info line under its gauges, and rows under that. Its first line starts with the account the
-session is signed in to, `org Personal`:
+By default the band is up to two lines of marks, then the gauges, an info line under them, and rows under that. Line 1
+is the identity: `● REC` while recording mode is on, then the account the session is signed in to. Line 2 is the modes:
+Alfred Code's banner, claude-kit's banner, then the MCP item. A line with nothing on it is not drawn.
 
 ```text
-org Personal │ ctx ▰▰▰▱▱ 30% │ 5h ▰▱▱▱▱ 15% (19:00) │ 7d 40% (11:00)
+org | Personal
+auto-run · auto-compact 490k · scoring 80 │ kit: auto-run · scoring 90 │ mcp ✓ 3
+ctx ▰▰▰▱▱ 30% │ 5h ▰▱▱▱▱ 15% (19:00) │ 7d 40% (11:00)
 Sonnet 5.5 ◑ high │ 9m │ ≈119 tok/s avg │ cache warm ≈60m │ you 17:15 · Claude 17:13 │ CC 2.1.322
 project: my-app │ git:(develop) +12 −3 │ folder: .claude
 plan:    Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update interceptor
@@ -615,22 +619,30 @@ usage:   [ 45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ]
 tools:   Bash ×32 │ AskUserQuestion ×4 │ Read ×4 │ Write ×4 │ Grep ×1
 skills:  superpowers:brainstorming ×1 │ solve-task ×2 │ 57 of 60 listed
 agents:  ◐ alfred-code:web-angular-verifier ×1 │ ✓ Explore ×2 │ ✓ general-purpose ×1 │ 1 running
-rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ web-angular.md │ typescript.md │ 3 always-on · 2 by path
+rules:   alfred-interaction │ alfred-git │ web:typescript │ 3 always-on · 1 by path
 ```
 
-- **`org`** leads the band's first line in every mode but `"off"`, before the gauges, so a calm or short band shows it
-  too: `org Personal` for a free, Pro or Max plan, the company's name for a Team or Enterprise one (cut to 40 cells), and
-  `org unknown` for a token login or when the config cannot be read, a file over 4 MiB included. It follows `● REC` and
-  comes before Alfred Code's mode banner, and like them it is never dropped for width: where the band's first line does
-  not fit beside it, the marks take that line alone. The account comes from the global config
-  (`$CLAUDE_CONFIG_DIR/.claude.json`, else `~/.claude.json`): the mod reads its `oauthAccount` organization type and
-  name and keeps the shown text alone, at session start, after a `/clear`, a resume or a branch, and at the end of a
-  turn when 5 minutes have passed since the last read. It is a quick check before you open a repository, not proof: the
-  name is the login record on disk, which you can edit and which can lag behind an account switch, and Claude Code does
-  not let a mod ask the server which account is active. The account's web page is the stronger source. Under
-  [REC](#recording-mode) `strict` a company name reads `‹org›`; `Personal` and `unknown` stay.
+- **Line 1, the account,** leads the band in every mode but `"off"`: `<name> | Team` or `<name> | Enterprise` for a
+  company's plan (the name cut to 40 cells), `org | Personal` for a free, Pro or Max plan, `org | unknown` for a token
+  login or when the config cannot be read (a file over 4 MiB included), and `<name>` alone for a company whose plan kind
+  the config does not name. `● REC │` comes first while recording mode is on. The line is never cut for width. The
+  account comes from the global config (`$CLAUDE_CONFIG_DIR/.claude.json`, else `~/.claude.json`): the mod reads its
+  `oauthAccount` organization type and name and keeps the shown text alone, at session start, after a `/clear`, a resume
+  or a branch, and at the end of a turn when 5 minutes have passed since the last read. It is a quick check before you
+  open a repository, not proof: the name is the login record on disk, which you can edit and which can lag behind an
+  account switch, and Claude Code does not let a mod ask the server which account is active. The account's web page is
+  the stronger source. Under [REC](#recording-mode) `strict` a company name reads `‹org›`; `Personal` and `unknown`
+  stay.
+- **Line 2, the modes:** Alfred Code's mode banner, then claude-kit's, then the MCP item, joined by ` │ `. Where the
+  line does not fit, claude-kit's banner shortens to `kit`, then goes; Alfred Code's banner and the MCP item stay.
+- **The MCP item** counts the session's MCP servers and never draws a name. `mcp ◐ <connected>/<total>` shows while any
+  server loads, `mcp ✓ <n>` once all are connected, and `mcp ✗ <failed> · ✓ <connected>` when one failed (one waiting
+  on a login counts as failed). A server reads connected when its tools show in the session's tool list. A server whose
+  tools never show, as with tool search, reads connected after 60 seconds, so a working server never reads red; the
+  cost is that a server that dials and never serves reads connected too. With `leave_out_skipped_hooks` on, only the
+  tool list feeds the item: it reads `mcp ✓ <n>` and has no loading or failed state.
 - **The info line:** the model and effort, the session's time, the average output speed, the cache, the times of your
-  last prompt and Claude's reply, and Claude Code's version. While a turn runs, the band's first line counts the turn's
+  last prompt and Claude's reply, and Claude Code's version. While a turn runs, the gauge line counts the turn's
   tool calls, and the gauges add today's cost. Today's cost is the mod's own count on this machine: sessions it did not
   run in are not in it, so it can read lower than a status line's that counts every session.
 - **`project:`** the folder the session started in, then `git:(<branch>)`, the branch of the repository holding the
@@ -662,18 +674,30 @@ was first dispatched, with how many times: `◐` while one of it runs, `✗` onc
 then how many run. `rules:` lists the rule files in the main context: those loaded at start (from `.claude/rules/`, a
 link there named by the file it reaches, and your own rules folder), then those loaded by path, when Claude reads,
 writes or edits a file their `paths:` match, in violet, then how many of each; a compaction
-keeps them. A resumed or branched conversation still holds the skills, agents and by-path rules from before it, which no
+keeps them. A rule from a child folder's `.claude/rules/` reads `<child>:<name>` (`web:typescript`, `apps/web:api`);
+the session's own folder and the levels above it, and your own rules folder, read the plain name. Rules are counted by
+file, not by name, so two files with one name count as two.
+
+Rules that load by path are seen where `classic.InstructionsLoaded` runs. Where it does not (a managed plugin skipped it,
+or `leave_out_skipped_hooks` is on), the mod counts them from the session transcript: each `nested_memory` line the
+transcript holds names a rule file Claude Code loaded. It reads the transcript every 30 seconds and shortly after each
+turn, from where it stopped, and counts only lines Claude Code wrote, not text a message quotes. This needs Claude Code
+2.1.330, which tells a mod the transcript's path; on an earlier build the mod works the path out from the config
+folder, the project root and the session id. The counts line ends `· transcript unread` when a read failed and
+`· transcript not found` when the file is missing, so a count of 0 by path is never silent. A first read of a
+transcript past 8 MiB starts 8 MiB from its end, so earlier rules are not counted. A resumed or branched conversation still holds the skills, agents and by-path rules from before it, which no
 mods API lists, so those rows count from the resume: what came since, with `since resume`, and no row until then.
 
 When the width runs out, the info line wraps onto a second row between items, and items drop whole only when two rows
 cannot hold them (the version first, then the times); `project:` shortens its folder to the last part, then leaves it
 out, and `usage:` drops the rules, then the agents, then the skills. When the band has fewer rows than it needs, as in
-fullscreen under a tall draft, `project:` goes first, then the info line's second row, then the open rows from the last
+fullscreen under a tall draft, `project:` goes first, then line 2, then line 1 joins line 2 as one line where the two
+fit (and where they do not, line 2 goes), then the info line's second row, then the open rows from the last
 (`rules:`, `agents:`, `skills:`, `tools:`), then `usage:`, then `plan:`, then the whole info line, so the line with its
-buttons stays in view. Once `plan:` goes, its count and score move to line 1 while something needs you
+buttons stays in view. Once `plan:` goes, its count and score move to the gauge line while something needs you
 (`PLAN 1/4 · score 85 ▲13`). The full band keeps its colours when idle too, not only while a turn runs; `"band": "calm"`
-goes back to the two lines, dim until something needs you; the `org` mark on line 1 keeps its own colours there, as the
-red `● REC` does, so the account reads easily.
+goes back to the two lines, dim until something needs you; lines 1 and 2 lead the calm band too, and the account on
+line 1 keeps its own colours there, as the red `● REC` does, so it reads easily.
 
 `"bandPlace": "under"` draws the band under the input instead. Claude Code draws its own mode line (`⏵⏵ auto mode on`)
 as the first row under the prompt whatever a mod does, so with `"above"` it is the bottom row, under the band and the
@@ -724,9 +748,16 @@ built-in guard `sec-default@builtin` loads - on a machine with managed settings 
 session signed in to a Team or Enterprise plan - that hook of a mod you install never runs, and `/plugin` says so
 ([Manage mods for your organization](https://code.claude.com/docs/en/plugins/mods/admin)). On such a machine, turn on
 the mod's option `Leave out hooks a managed plugin skips` (`leave_out_skipped_hooks`) in `/config`: the mod leaves those
-ten hooks out, so the notices stop, and loses nothing, as they never ran there. It also leaves out the hook that sees a
-rule load by path, `classic.InstructionsLoaded`, which such a plugin may skip too, and the one that sees a settings file
-change, `classic.ConfigChange`. A new install asks for it once; leave it off anywhere else. Either way the mod reads a
+ten hooks out, so the notices stop, and loses nothing, as they never ran there. It also leaves out four more, 14 in
+all: the hook that sees a rule load by path, `classic.InstructionsLoaded`, which such a plugin may skip too; the one
+that sees a settings file change, `classic.ConfigChange`; `prompt.attachment`, which feeds the Prompt tab's attachment
+parts (the tab then lists none of them); and `mcp.connect`, which gives the MCP item its loading and failed states.
+The mod asks once. On the first skip notice with the option off, the action row shows
+`hooks skipped by a managed plugin · leave them out?` with two buttons: `Leave out` (key 5, or `/inspect skip leave`),
+which turns the option on and reloads the mod, and `Don't ask again` (key 6, or `/inspect skip never`), which stops the
+question for good. An ask left unanswered comes back in the next session that finds a notice. If Claude Code refuses
+the change, a toast gives its reason and the name of the `/config` row. The option stays in `/config` either way; leave
+it off anywhere else. Either way the mod reads a
 `/clear`, a resume or a branch off the session id, so the band starts over within a second and the first prompt carries
 REC's note. A `/clear` after a saved handoff still fills the resume prompt, unless you send a prompt first; resuming a
 conversation of one prompt fills it too, into the empty box, never sent. What it cannot tell without those hooks:
@@ -740,7 +771,9 @@ conversation of one prompt fills it too, into the empty box, never sent. What it
 - the cache's rewrite cost (`rewrite ≈ $…`) is never shown;
 - after a `/model`, the band names the new model at its first reply, not at once, and until then the cache reads as
   the old model's, its cold-cache toast included;
-- the band's `rules:` row lists only the rules loaded at start, and ends `by path not tracked`;
+- the band's `rules:` row counts rules loaded by path from the session transcript, as under
+  [What it shows](#what-it-shows); on a build with no transcript path it lists only the rules loaded at start and ends
+  `by path not tracked`;
 - a compaction Claude Code runs is not counted: the cache is not marked cold, the handoff's ask is not re-armed and the
   next prompt does not carry REC's note again; one the mod starts (its compact button or key, or
   `/auto-handoff compact`) still counts;
@@ -853,9 +886,10 @@ In a project where [Alfred Code](https://github.com/envoydev/alfred-code) publis
 `.alfred/state/sessions/status/<session id>.json` for the session (`.claude/session-inspector/status/<session id>.json`
 through alfred-code 3.12.1, which the mod still reads), the mod reads that one file at the session's start, every 30 seconds and after `/clear`, and shows more:
 
-- **The mode banner:** `auto-run · auto-compact 490k · scoring 80 │` leads the band from the session's start while the
-  stack's auto-run, auto-compact or scoring is on, after `● REC` while recording and after the `org` mark. `490k` is where Claude Code compacts
-  for the session's model; `auto-compact` alone when the stack does not know it. Where the band's first line does not fit beside it, the banner takes that line alone.
+- **The mode banner:** `auto-run · auto-compact 490k · scoring 80` leads line 2 of the band from the session's start
+  while the stack's auto-run, auto-compact or scoring is on. `490k` is where Claude Code compacts
+  for the session's model; `auto-compact` alone when the stack does not know it. Alfred Code's banner stays when
+  claude-kit's shortens or goes.
 - **The runway:** while the stack offers a fresh session at a full context, the band's context gauge measures against
   the stack's trigger instead of the window, `ctx ▰▰▰▱▱ 62% of 150k`, and the turns forecast counts to it.
 - **The ALFRED CODE section** in `/inspect`'s Now tab: what the stack does at a full context, its auto-run, auto-compact and scoring,
@@ -895,9 +929,9 @@ value drops that name only: the mod shows the file's values as written, and a va
 A file that is absent, is not a JSON object or is over 16 KiB gives no kit data. A read that fails for another reason
 keeps the values as they were. Neither shows a toast or an error. The mod does not depend on claude-kit: without the file, none of this draws.
 
-- **The kit banner:** `kit: auto-run · scoring 90 · auto-approve │` follows Alfred Code's banner on the band's first line,
+- **The kit banner:** `kit: auto-run · scoring 90 · auto-approve` follows Alfred Code's banner on line 2 of the band,
   naming only the modes that are on (`scoring` carries the pass score). With none on, there is no banner. Where it
-  would change anything else in the band, it shortens to `kit`, and where even that would, it drops out.
+  would cut Alfred Code's banner or the MCP item, it shortens to `kit`, and where even that would, it drops out.
 - **The CLAUDE-KIT section** in the Now tab, after ALFRED CODE: a row each for auto-run, scoring and auto-approve with
   its value and the file it comes from (`auto-run on · from .claude/kit/settings.json`), where the scoring row also
   carries the pass score (`scoring on · pass 90 · from .claude/kit/settings.json`), one `models:` row for the five

@@ -12,7 +12,7 @@
     "leave_out_skipped_hooks": {
       "type": "boolean",
       "title": "Leave out hooks a managed plugin skips",
-      "description": "Only where Claude Code notes 'alfred-mods: its ... hook was skipped': leaves out the ten hooks seen or documented as skipped (UserPromptSubmit, the two model-switch hooks and the compaction hook among them), the rules hook and the settings-change hook (classic.ConfigChange), so the notices stop. Off elsewhere.",
+      "description": "Only where Claude Code notes 'alfred-mods: its ... hook was skipped': leaves out the ten hooks seen or documented as skipped (UserPromptSubmit, the two model-switch hooks and the compaction hook among them), the rules hook, the settings-change hook (classic.ConfigChange), prompt.attachment and mcp.connect, 14 in all, so the notices stop. Off elsewhere; the mod asks once when it sees a notice.",
       "default": false
     }
   }
