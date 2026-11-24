@@ -37,9 +37,9 @@ export function settle(servers: readonly McpServer[], fromTools: readonly string
     for (const toolServer of shown) named.add(toolServer)
     if (server.state === 'connected') return server
     const isSettled = shown.length > 0 || (server.state === 'loading' && now - server.since >= SETTLE_MS)
-    return isSettled ? { name: server.name, state: 'connected', since: server.since } : server
+    return isSettled ? { name: server.name, state: 'connected', since: server.since, ...(server.isSeeded === true ? { isSeeded: true } : {}) } : server
   })
-  const added = fromTools.filter(toolServer => !named.has(toolServer)).map((toolServer): McpServer => ({ name: toolServer, state: 'connected', since: now }))
+  const added = fromTools.filter(toolServer => !named.has(toolServer)).map((toolServer): McpServer => ({ name: toolServer, state: 'connected', since: now, isSeeded: true }))
   return [...settled, ...added]
 }
 
@@ -53,12 +53,13 @@ export function refusalOf(answer: ConnectAnswer): string | null {
   return answer.value.isConnected ? null : answer.value.reason
 }
 
-// The list with `name` loading since `now`, in the place the name already held or last. A connected entry the tool list
-// seeded under the name's short name is the same server: the event replaces it.
+// The list with `name` loading since `now`, in the place the name already held or last. An entry only the tool list
+// seeded under the name's short name is the same server: the event replaces it. An entry an event made is never
+// replaced by another name: two events are two servers.
 export function markLoading(servers: readonly McpServer[], name: string, now: number): McpServer[] {
   const loading: McpServer = { name, state: 'loading', since: now }
   const exact = servers.findIndex(server => server.name === name)
-  const place = exact >= 0 ? exact : servers.findIndex(server => server.state === 'connected' && isShownBy(loading, server.name))
+  const place = exact >= 0 ? exact : servers.findIndex(server => server.isSeeded === true && isShownBy(loading, server.name))
   if (place < 0) return [...servers, loading]
   return servers.map((server, index) => (index === place ? loading : server))
 }
@@ -70,7 +71,7 @@ export function markFailed(servers: readonly McpServer[], name: string, reason: 
 export function isSameServers(left: readonly McpServer[], right: readonly McpServer[]): boolean {
   return left.length === right.length && left.every((server, index) => {
     const other = right[index]
-    return other !== undefined && server.name === other.name && server.state === other.state && server.reason === other.reason && server.since === other.since
+    return other !== undefined && server.name === other.name && server.state === other.state && server.reason === other.reason && server.since === other.since && server.isSeeded === other.isSeeded
   })
 }
 

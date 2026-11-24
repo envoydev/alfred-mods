@@ -19,13 +19,14 @@ import type { McpServer } from '../../hooks/mcp/types'
 const NOW = Date.parse('2026-10-28T14:00:00Z')
 const PASSED: McpConnectResult = { isConnected: true, server: 'plugin:p:files' }
 const REFUSED: McpConnectResult = { isConnected: false, reason: 'auth', message: 'm' }
-const SHAPE = 'mcp-1'
+const SHAPE = 'mcp-2'
 // Long enough for a poll in the idle cadence's first minutes
 const IDLE_WAIT = POLL_MS * 8
 
 const text = (servers: McpServer[]): string => mcpItem(servers).map(seg => ('text' in seg ? seg.text : '')).join('')
 const loading = (name: string, since = NOW): McpServer => ({ name, state: 'loading', since })
 const connected = (name: string, since = NOW): McpServer => ({ name, state: 'connected', since })
+const seeded = (name: string, since = NOW): McpServer => ({ name, state: 'connected', since, isSeeded: true })
 
 // Another plugin raises mcp.connect as a plugin does, through `$.mcp.connect`, on the command '/dial <server>', which
 // answers the result as JSON. The mod's hook sits between the stand-in and the engine, and sees the stand-in's name as
@@ -206,10 +207,23 @@ test('same short name from two plugins counts twice', () => {
 })
 
 test('an event replaces the connected entry the tool list seeded under its short name', () => {
-  const servers = markLoading([connected('files'), connected('github')], 'plugin:p:files', NOW + 5)
-  expect(servers).toEqual([loading('plugin:p:files', NOW + 5), connected('github')])
-  expect(markLoading([connected('files')], 'files', NOW + 5)).toEqual([loading('files', NOW + 5)])
+  const servers = markLoading([seeded('files'), seeded('github')], 'plugin:p:files', NOW + 5)
+  expect(servers).toEqual([loading('plugin:p:files', NOW + 5), seeded('github')])
+  expect(markLoading([seeded('files')], 'files', NOW + 5)).toEqual([loading('files', NOW + 5)])
   expect(markLoading([loading('files')], 'plugin:p:files', NOW + 5)).toHaveLength(2)
+})
+
+test('two events whose names share a short name are two servers, in either order', () => {
+  const settled: McpServer[] = [connected('files')]
+  expect(markLoading(settled, 'plugin:p:files', NOW + 5)).toEqual([connected('files'), loading('plugin:p:files', NOW + 5)])
+  expect(markLoading([connected('plugin:p:files')], 'files', NOW + 5)).toEqual([connected('plugin:p:files'), loading('files', NOW + 5)])
+  const afterSeed = markLoading(markLoading([seeded('files')], 'plugin:p:files', NOW + 5), 'files', NOW + 6)
+  expect(afterSeed).toEqual([loading('plugin:p:files', NOW + 5), loading('files', NOW + 6)])
+})
+
+test('the tool list marks the servers it adds as seeded, and a settled seed stays seeded', () => {
+  expect(settle([], ['files'], NOW)).toEqual([seeded('files')])
+  expect(settle([{ ...seeded('files'), state: 'failed' }], ['files'], NOW)).toEqual([seeded('files')])
 })
 
 test('a server name is never drawn', () => {
@@ -228,7 +242,7 @@ test('a tool server that no event named counts as connected beside the loading o
 })
 
 // A loading server whose event is in the future never settles by time, so the cadence past EARLY_MS is the loading one
-test('past the first 2 minutes the tool list is read every 5 s while a server loads, every 30 s otherwise', async ($, on) => {
+test('past the first 2 minutes the tool list is read every 5 s while a server loads', async ($, on) => {
   const hot = await begin($, on, { stored: [loading('plugin:p:files', NOW + 3_600_000)] })
   await hot.kit.clock.advance(EARLY_MS + POLL_MS)
   await hot.kit.clock.settle()

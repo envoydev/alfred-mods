@@ -8,7 +8,7 @@ import { EARLY_MS, INITIAL_SERVERS, IDLE_POLL_MS, POLL_MS } from './constants'
 import { isEngineRaise, isSameServers, markFailed, markLoading, refusalOf, settle, toolServers } from './mcp'
 import type { McpServer } from './types'
 
-const mcpAtom = atom({ plugin: 'alfred-mods', key: 'mcp' } as const, INITIAL_SERVERS as McpServer[], { shape: 'mcp-1' })
+const mcpAtom = atom({ plugin: 'alfred-mods', key: 'mcp' } as const, INITIAL_SERVERS as McpServer[], { shape: 'mcp-2' })
 
 // When the tool list was last read, from the clock, whether a read runs now (a read never overlaps another), and the
 // last list the atom held: Claude Code empties $.state at a /clear, a resume or a branch, and the servers stay connected
