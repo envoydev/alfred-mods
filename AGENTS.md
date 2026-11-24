@@ -104,7 +104,7 @@ its tests to the run or takes it past `claude plugin test`'s limit of 1000 test 
   session reads it as the mod's own MCP server (`plugin details` lists it), so a check of what the mod adds to a
   session loads a copy of the files git lists, as `npm run validate` does.
 - **A mod observes and draws.** It never approves, denies or rewrites a tool call, unless the brief names the case.
-  The one call past observing is `$.mcp.connect` on a loading MCP server the mod saw pass its own hook unrefused, to
+  The one call past observing is `$.mcp.connect` on a loading MCP server whose raise the hooks beneath answered unrefused, to
   read its state (the user's ruling, 2026-11-24: Claude Code's `mcp.connect` answers before the server starts, and
   this call never starts a server the session lists). No `$.http.fetch` and no `$.model` calls; `$.process` only
   where the brief allows it, with a timeout. No prompt,

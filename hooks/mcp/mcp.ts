@@ -3,7 +3,7 @@
 import type { Seg } from '../core/types'
 import type { McpConnectResult } from 'claude-code'
 import { DENIED_REASON, ENGINE_ORIGIN, GLYPH, ITEM_JOIN, ITEM_LABEL, NAME_UNSAFE, PLUGIN_SEPARATOR, SERVER_STATE_REASONS, SETTLE_MS, TOOL_PREFIX, TOOL_SEPARATOR } from './constants'
-import type { ConnectAnswer, ListedTool, McpServer, ReadOutcome } from './types'
+import type { ConnectAnswer, ListedTool, McpServer, ReadOutcome, Unreadable } from './types'
 
 const spelled = (name: string): string => name.replace(NAME_UNSAFE, '_')
 
@@ -28,16 +28,20 @@ export function toolServers(tools: readonly ListedTool[]): string[] {
 // A server's name matches a tool server by its last `:`-part or by the whole name, either spelled as a tool's name is
 const isShownBy = (server: McpServer, toolServer: string): boolean => toolServer === shortName(server.name) || toolServer === spelled(server.name)
 
+// Whether a loading server settles by time: one whose state is never read (its raise not yet passed the hooks beneath,
+// or its read refused for this raise)
+const isTimed = (server: McpServer, unreadable: Unreadable): boolean => server.isPassed !== true || unreadable.get(server.name) === server.since
+
 // The servers after a read of the tool list at `now`: a loading or failed one whose tools show is connected, a loading
-// one in `unreadable` (its state read refused) that has loaded for SETTLE_MS too; a failed one with no tools stays so; a
-// tool server no server names is added as connected
-export function settle(servers: readonly McpServer[], fromTools: readonly string[], now: number, unreadable: ReadonlySet<string>): McpServer[] {
+// one that settles by time and has loaded for SETTLE_MS too; a failed one with no tools stays so; a tool server no
+// server names is added as connected
+export function settle(servers: readonly McpServer[], fromTools: readonly string[], now: number, unreadable: Unreadable): McpServer[] {
   const named = new Set<string>()
   const settled = servers.map((server): McpServer => {
     const shown = fromTools.filter(toolServer => isShownBy(server, toolServer))
     for (const toolServer of shown) named.add(toolServer)
     if (server.state === 'connected') return server
-    const isSettled = shown.length > 0 || (server.state === 'loading' && unreadable.has(server.name) && now - server.since >= SETTLE_MS)
+    const isSettled = shown.length > 0 || (server.state === 'loading' && isTimed(server, unreadable) && now - server.since >= SETTLE_MS)
     return isSettled ? { name: server.name, state: 'connected', since: server.since, ...(server.isSeeded === true ? { isSeeded: true } : {}) } : server
   })
   const added = fromTools.filter(toolServer => !named.has(toolServer)).map((toolServer): McpServer => ({ name: toolServer, state: 'connected', since: now, isSeeded: true }))
@@ -72,7 +76,7 @@ export function markFailed(servers: readonly McpServer[], name: string, reason: 
 export function isSameServers(left: readonly McpServer[], right: readonly McpServer[]): boolean {
   return left.length === right.length && left.every((server, index) => {
     const other = right[index]
-    return other !== undefined && server.name === other.name && server.state === other.state && server.reason === other.reason && server.since === other.since && server.isSeeded === other.isSeeded
+    return other !== undefined && server.name === other.name && server.state === other.state && server.reason === other.reason && server.since === other.since && server.isSeeded === other.isSeeded && server.isPassed === other.isPassed
   })
 }
 
@@ -87,10 +91,15 @@ export function mcpItem(servers: readonly McpServer[]): Seg[] {
   return [{ text: `${ITEM_LABEL} ${GLYPH.connected} ${servers.length}`, tone: 'dim' }]
 }
 
-// The servers whose state is read: loading ones an event made (a seeded one is connected already), none a read runs for
-// or was refused for
-export function serversToRead(servers: readonly McpServer[], reading: ReadonlySet<string>, unreadable: ReadonlySet<string>): McpServer[] {
-  return servers.filter(server => server.state === 'loading' && server.isSeeded !== true && !reading.has(server.name) && !unreadable.has(server.name))
+// The servers whose state is read: loading ones whose raise passed the hooks beneath unrefused (so none a hook holds, and
+// never a seeded one), none a read runs for or was refused for under the same raise
+export function serversToRead(servers: readonly McpServer[], reading: ReadonlySet<string>, unreadable: Unreadable): McpServer[] {
+  return servers.filter(server => server.state === 'loading' && server.isPassed === true && !reading.has(server.name) && unreadable.get(server.name) !== server.since)
+}
+
+// The servers once the raise that marked `name` loading at `since` passed the hooks beneath unrefused
+export function markPassed(servers: readonly McpServer[], name: string, since: number): McpServer[] {
+  return servers.map(server => (server.name === name && server.state === 'loading' && server.since === since ? { ...server, isPassed: true } : server))
 }
 
 // What a state read tells: connected, failed with a reason of the server's own, or null for a refusal of the read itself

@@ -17,7 +17,7 @@ import { NOW, OPTIONS, PASSED, REFUSED, SHAPE, begin, connected, dial, loading, 
 
 // Long enough for a poll in the idle cadence's first minutes
 const IDLE_WAIT = POLL_MS * 8
-const NONE = new Set<string>()
+const NONE = new Map<string, number>()
 
 // A `$` of the test's own: the atom's state and the clock, every other call answering nothing. `stored` is the atom's
 // value before the call (undefined reads as a state a /clear emptied).
@@ -42,11 +42,11 @@ const raisedBy = (origin: { plugin: string; tier: string }, answer: { value?: Mc
 const ENGINE = { plugin: 'engine', tier: 'core' }
 const connect = (server: string) => ({ server }) as never
 
-test('the engine\'s own raise marks the server loading and returns the answer untouched', async () => {
+test('the engine\'s own raise marks the server loading, passed once the hooks beneath answer, and returns the answer untouched', async () => {
   const { $, servers } = stateEngine([])
   const answer = { value: PASSED }
   expect(await trackMcpConnect($, connect('unit-pass'), raisedBy(ENGINE, answer))).toBe(answer)
-  expect(servers().find(s => s.name === 'unit-pass')).toEqual(loading('unit-pass'))
+  expect(servers().find(s => s.name === 'unit-pass')).toEqual({ ...loading('unit-pass'), isPassed: true })
 })
 
 test('the engine\'s raise a refusal answers marks the server failed with its reason, the answer untouched', async () => {

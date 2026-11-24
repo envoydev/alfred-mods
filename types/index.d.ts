@@ -247,7 +247,7 @@ export type SkipAsk = { isSkipped: boolean; isAskUp: boolean }
 // part of a tool's name between `mcp__` and the next `__` for one only the tool list showed; `reason` is a refusal's word,
 // set while `failed`; `since` is when the event came or the tool list first showed it; `isSeeded` is true for an entry
 // only the tool list showed, which a later event for the same short name replaces. The name is never drawn.
-export type McpServer = { name: string; state: 'loading' | 'connected' | 'failed'; reason?: string; since: number; isSeeded?: boolean }
+export type McpServer = { name: string; state: 'loading' | 'connected' | 'failed'; reason?: string; since: number; isSeeded?: boolean; isPassed?: boolean }
 
 declare module 'claude-code' {
   interface PluginState {

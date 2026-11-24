@@ -203,7 +203,7 @@ export async function startSession($: EngineInterface, e: HookInput<'session.sta
   await refreshAccount($, true)
   // The servers that joined before the mcp.connect hook, or with the hook left out
   tickMemory.startedAt = await $.clock.now()
-  await seedMcp($, tickMemory.startedAt).catch(() => undefined)
+  await seedMcp($, tickMemory.startedAt, isLeftOut).catch(() => undefined)
   await refreshKit($)
   await rememberStartRoot($)
   await readStatusFile($)

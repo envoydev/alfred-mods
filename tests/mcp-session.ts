@@ -11,7 +11,7 @@ import type { McpServer } from '../hooks/mcp/types'
 export const NOW = Date.parse('2026-10-28T14:00:00Z')
 export const PASSED: McpConnectResult = { isConnected: true, server: 'plugin:p:files' }
 export const REFUSED: McpConnectResult = { isConnected: false, reason: 'auth', message: 'm' }
-export const SHAPE = 'mcp-2'
+export const SHAPE = 'mcp-3'
 
 export const text = (servers: McpServer[]): string => mcpItem(servers).map(seg => ('text' in seg ? seg.text : '')).join('')
 export const loading = (name: string, since = NOW): McpServer => ({ name, state: 'loading', since })

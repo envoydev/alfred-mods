@@ -6,6 +6,9 @@ export type { McpServer }
 // What `$.tool.list()` answers, as far as the MCP state reads it
 export type ListedTool = { name: string; mcp: boolean }
 
+// The servers whose state read was refused, each with the `since` of the raise it was read under
+export type Unreadable = ReadonlyMap<string, number>
+
 // What a state read tells of a server
 export type ReadOutcome = { state: 'connected' } | { state: 'failed'; reason: string }
 
