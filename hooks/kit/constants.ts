@@ -27,7 +27,6 @@ export const KIT_MODEL_ROLES = [
   ['plan', 'plan_model'], ['audit', 'audit_model'], ['review', 'review_model'], ['implement', 'implement_model'], ['search', 'search_model'],
 ] as const
 
-// What the band and the Now tab call the kit, and how a setting reads there
+// What the Now tab calls the kit, and how a setting reads there
 export const KIT_SECTION_HEAD = 'CLAUDE-KIT'
-export const KIT_BANNER_LABEL = 'kit'
 export const KIT_SETTING_ROWS = [['auto-run', KIT_NAMES.autoRun], ['scoring', KIT_NAMES.scoring], ['auto-approve', KIT_NAMES.autoApprove]] as const

@@ -3,12 +3,12 @@ import type { AgentRow } from '../agents/types'
 import type { PlanView, ScoresView } from '../plan/types'
 import type { Live, Session, Pace, Totals, Turn, Usage } from '../session/types'
 import type { Cache } from '../cache/types'
-import type { SkillListing } from '../context/types'
+import type { RuleEntry, SkillListing } from '../context/types'
 import type { Runway } from '../stack/types'
 import type { ToolStat } from '../tools/types'
 import type { RecLevel } from '../rec/types'
 import type { Seg } from '../core/types'
-import type { BandMode, BandSetting } from '../../types'
+import type { AccountKind, BandMode, BandSetting } from '../../types'
 export type { BandMode, BandSetting }
 
 // `plan`: the shown plan or task list while it runs, or for 10 minutes after it finished; `isPlanInvalid`: the shown
@@ -27,11 +27,10 @@ export type BandInput = {
   forecast?: { at: number; label: string }
   // The step F8's ask is up for, or null
   handoffAskStep?: number | null
-  // Alfred Code's runway, which the ctx item measures against while it applies, and the mode banner that leads line 1
+  // The skip ask (spec 2026-11-23, D3) is up: a managed plugin skipped the mod's hooks and the option is off
+  isSkipAskUp?: boolean
+  // Alfred Code's runway, which the ctx item measures against while it applies
   runway?: Runway | null
-  banner?: Seg[]
-  // claude-kit's banner, after Alfred Code's on line 1: it shortens to `kit`, then goes, before any other mark gives way
-  kitBanner?: Seg[]
   // The "band" setting: `full` adds the info line, the turn's tool count and today's cost; absent or `calm`, today's two
   // lines. `totals` and `stats` feed the info line's output speed and tool calls.
   mode?: BandMode
@@ -49,9 +48,12 @@ export type BandInput = {
   // The band drawn under the input (spec 2026-11-11 band-under, U2 and U3): its action row after the gauges, and its
   // buttons pressed by a click (fullscreen) or drawn as the commands that do their jobs (the main screen)
   under?: { buttons: 'click' | 'text' }
-  // What line 1's org mark shows for the signed-in account: 'Personal', a company's name, or null while unknown. The mark
-  // draws 'org <text>' after REC and before Alfred Code's banner; absent, no mark
-  account?: { org: string | null }
+  // What line 1's account mark shows for the signed-in account: 'Personal', a company's name, or null while unknown, and its
+  // plan kind. The mark draws '<name> | <kind>', 'org | Personal' or 'org | unknown' after REC; absent, no mark
+  account?: { org: string | null; kind?: AccountKind | null }
+  // The MCP item (spec 2026-11-23, D5), on the info line after the cache (the user, 2026-11-24); absent or empty, none
+  mcp?: Seg[]
 }
 
-export type RulesInput = { always: string[]; byPath: string[]; isTracked: boolean }
+// `isSinceResume` false where the transcript counts the by-path rules from before a resume; absent, as true
+export type RulesInput = { always: RuleEntry[]; byPath: RuleEntry[]; isTracked: boolean; note?: 'unread' | 'not-found'; isSinceResume?: boolean }

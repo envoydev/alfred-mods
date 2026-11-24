@@ -116,7 +116,7 @@ test('an empty session draws no detail row; each row comes with its first item',
   const rowsOf = (o: Partial<BandInput>) => texts(bandLines(input({ isToolsOpen: true, ...o }))).filter(l => /^(tools|skills|agents|rules):/.test(l))
   expect(rowsOf({ stats: {}, skillListing: { listed: 60, total: 60, tokens: 3200 }, session: { ...input().session, isResumed: true } })).toEqual([])
   expect(rowsOf({ stats: {}, session: { ...input().session, loadedSkills: { 'solve-task': 1 } } })).toEqual(['skills:  solve-task ×1'])
-  expect(rowsOf({ stats: {}, rules: { always: ['a.md'], byPath: [], isTracked: true } })).toEqual(['rules:   a.md │ 1 always-on · 0 by path'])
+  expect(rowsOf({ stats: {}, rules: { always: [rule('a')], byPath: [], isTracked: true } })).toEqual(['rules:   a │ 1 always-on · 0 by path'])
   expect(rowsOf({ stats: {}, session: { ...input().session, agentTypes: { Explore: 1 } } })).toEqual(['agents:  ✓ Explore ×1 │ 0 running'])
   expect(rowsOf({ stats: { Bash: { calls: 2, failures: 0 } as never } })).toEqual(['tools:   Bash ×2'])
   // Untracked by path, with no always-on rule: nothing appeared
@@ -169,20 +169,31 @@ test('a /clear empties the dispatches; a resume starts them over as unseen', asy
   expect(metaOf(state).isResumed).toBe(true)
 })
 
-const TARGET_RULES = { always: ['alfred-interaction.md', 'alfred-git.md', 'alfred-preferences.md'], byPath: ['web-angular.md', 'typescript.md'], isTracked: true }
+const rule = (label: string, key = `.claude/rules/${label}.md`) => ({ key, label })
+const TARGET_RULES = {
+  always: [rule('alfred-interaction'), rule('alfred-git'), rule('alfred-preferences')], byPath: [rule('web-angular'), rule('typescript')], isTracked: true,
+}
 const rulesRow = (b: BandInput): string | undefined => texts(toolRows(b)).find(l => l.startsWith('rules:'))
 
 test('the rules row: always-on, then by path in violet, then the counts', () => {
   expect(rulesRow(input({ isToolsOpen: true, rules: TARGET_RULES })))
-    .toBe('rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ web-angular.md │ typescript.md │ 3 always-on · 2 by path')
+    .toBe('rules:   alfred-interaction │ alfred-git │ alfred-preferences │ web-angular │ typescript │ 3 always-on · 2 by path')
   const items = ruleSegs(TARGET_RULES, false)
-  expect(items[0]).toEqual([{ text: 'alfred-interaction.md' }])
-  expect(items[3]).toEqual([{ text: 'web-angular.md', tone: 'handoff' }])
+  expect(items[0]).toEqual([{ text: 'alfred-interaction' }])
+  expect(items[3]).toEqual([{ text: 'web-angular', tone: 'handoff' }])
   expect(items[5]).toEqual([{ text: '3 always-on · 2 by path', tone: 'dim' }])
 })
 
+test('two rules of one base name at two levels list by label and count as two', () => {
+  const rules = { always: [rule('alfred-awareness'), rule('alfred-awareness', 'web/.claude/rules/alfred-awareness.md')], byPath: [], isTracked: true }
+  expect(texts(ruleSegs(rules, false))).toEqual(['alfred-awareness', 'alfred-awareness', '2 always-on · 0 by path'])
+  const labelled = { always: [rule('alfred-awareness'), { key: 'web/.claude/rules/alfred-awareness.md', label: 'web:alfred-awareness' }], byPath: [], isTracked: true }
+  expect(texts(ruleSegs(labelled, false))).toEqual(['alfred-awareness', 'web:alfred-awareness', '2 always-on · 0 by path'])
+  expect(texts(toggleForms(input({ rules: labelled })))[0]).toContain('2 rules')
+})
+
 test('a name loaded both always-on and by path is drawn and counted once', () => {
-  expect(texts(ruleSegs({ always: ['a.md'], byPath: ['a.md', 'b.md'], isTracked: true }, false))).toEqual(['a.md', 'b.md', '1 always-on · 1 by path'])
+  expect(texts(ruleSegs({ always: [rule('a')], byPath: [rule('a'), rule('b')], isTracked: true }, false))).toEqual(['a', 'b', '1 always-on · 1 by path'])
 })
 
 test('no rule known draws no rules row, also from a state kept before the rules row', () => {
@@ -191,8 +202,8 @@ test('no rule known draws no rules row, also from a state kept before the rules 
 })
 
 test('after a resume the by-path count reads since resume; untracked, by path not tracked', () => {
-  expect(texts(ruleSegs({ always: ['a.md'], byPath: ['b.md'], isTracked: true }, true))).toEqual(['a.md', 'b.md', '1 always-on · 1 by path since resume'])
-  expect(texts(ruleSegs({ always: ['a.md'], byPath: [], isTracked: false }, false))).toEqual(['a.md', '1 always-on · by path not tracked'])
+  expect(texts(ruleSegs({ always: [rule('a')], byPath: [rule('b')], isTracked: true }, true))).toEqual(['a', 'b', '1 always-on · 1 by path since resume'])
+  expect(texts(ruleSegs({ always: [rule('a')], byPath: [], isTracked: false }, false))).toEqual(['a', '1 always-on · by path not tracked'])
   expect(texts(ruleSegs({ always: [], byPath: [], isTracked: false }, false))).toEqual(['0 always-on · by path not tracked'])
 })
 
@@ -210,7 +221,7 @@ test('a by-path load on the main thread is listed once, in load order', async ($
   await $.classic.InstructionsLoaded(load('/w/.claude/rules/web.md', 'path_glob_match'))
   await $.classic.InstructionsLoaded(load('/w/sub/.claude/rules/nested.md', 'nested_traversal'))
   await $.classic.InstructionsLoaded(load('/w/.claude/rules/web.md', 'path_glob_match'))
-  expect(metaOf(state).pathRules).toEqual(['web.md', 'nested.md'])
+  expect(metaOf(state).pathRuleKeys).toEqual([rule('web'), { key: 'sub/.claude/rules/nested.md', label: 'sub:nested' }])
 })
 
 // A rule reached through a link loads under the path the link lands on, outside any rules folder (live, 2026-11-11);
@@ -222,7 +233,7 @@ test("a by-path rule reached through a link is listed by its target's name", asy
   await $.session.start(START)
   await $.classic.InstructionsLoaded(load('/shared/rules/scoped.md', 'path_glob_match'))
   await $.classic.InstructionsLoaded(load('/shared/notes/CLAUDE.md', 'nested_traversal'))
-  expect(metaOf(state).pathRules).toEqual(['scoped.md'])
+  expect(metaOf(state).pathRuleKeys).toEqual([{ key: 'Project:scoped.md', label: 'scoped' }])
 })
 
 test("a subagent's load, a start-up or compaction reload, an include and a non-rule file are not listed", async ($, on) => {
@@ -235,7 +246,7 @@ test("a subagent's load, a start-up or compaction reload, an include and a non-r
   await $.classic.InstructionsLoaded(load('/w/.claude/rules/c.md', 'compact'))
   await $.classic.InstructionsLoaded(load('/w/.claude/rules/d.md', 'include'))
   await $.classic.InstructionsLoaded(load('/w/src/CLAUDE.md', 'nested_traversal'))
-  expect((state.get('session') as Session | undefined)?.pathRules).toBeUndefined()
+  expect((state.get('session') as Session | undefined)?.pathRuleKeys).toBeUndefined()
 })
 
 test('a compaction keeps the by-path rules; a /clear empties them; a resume starts them over', async ($, on) => {
@@ -245,12 +256,12 @@ test('a compaction keeps the by-path rules; a /clear empties them; a resume star
   await $.session.start(START)
   await $.classic.InstructionsLoaded(load('/w/.claude/rules/web.md', 'path_glob_match'))
   await $.session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'q', toolUses: [] }] as never })
-  expect(metaOf(state).pathRules).toEqual(['web.md'])
+  expect(metaOf(state).pathRuleKeys).toEqual([rule('web')])
   await $.classic.SessionStart({ source: 'clear' })
-  expect(metaOf(state).pathRules).toBeUndefined()
+  expect(metaOf(state).pathRuleKeys).toBeUndefined()
   await $.classic.InstructionsLoaded(load('/w/.claude/rules/web.md', 'path_glob_match'))
   await $.classic.SessionStart({ source: 'resume' })
-  expect(metaOf(state).pathRules).toBeUndefined()
+  expect(metaOf(state).pathRuleKeys).toBeUndefined()
   expect(metaOf(state).isResumed).toBe(true)
 })
 
@@ -273,7 +284,7 @@ test('the band draws the rules row from the parts and the loads', async ($, on) 
   await clock.advance(1)
   await $.classic.InstructionsLoaded(load('/w/.claude/rules/web.md', 'path_glob_match'))
   const ui = await $.ui.mount({ plugin: 'alfred-mods', surface: 'terminal', component: 'AbovePrompt', props: BAND })
-  expect(await rows(ui)).toContain('rules:   always.md │ web.md │ 1 always-on · 1 by path')
+  expect(await rows(ui)).toContain('rules:   always │ web │ 1 always-on · 1 by path')
   await ui.unmount()
 })
 
@@ -305,13 +316,13 @@ test('compactions count last, only once the session compacted, and drop first', 
 test('(k ◐) only while agents run; singular forms', () => {
   const one = input({
     isToolsOpen: true, stats: { Bash: stat(1) }, agents: [agent('a1', 'Explore', 'completed')],
-    rules: { always: ['a.md'], byPath: [], isTracked: true }, session: { ...input().session, loadedSkills: { x: 1 }, agentTypes: { Explore: 1 } },
+    rules: { always: [rule('a')], byPath: [], isTracked: true }, session: { ...input().session, loadedSkills: { x: 1 }, agentTypes: { Explore: 1 } },
   })
   expect(labels(one)[0]).toBe('1 tool · 1 skill · 1 agent · 1 rule')
 })
 
 test('a part at 0 is left out; with none, no counts, open or closed', () => {
-  const rulesOnly = input({ isToolsOpen: true, stats: {}, rules: { always: ['a.md', 'b.md'], byPath: [], isTracked: true } })
+  const rulesOnly = input({ isToolsOpen: true, stats: {}, rules: { always: [rule('a'), rule('b')], byPath: [], isTracked: true } })
   expect(labels(rulesOnly)).toEqual(['2 rules'])
   expect(labels(input({ isToolsOpen: true, stats: {} }))).toEqual([])
   expect(labels(input({ stats: {} }))).toEqual([])
@@ -320,19 +331,21 @@ test('a part at 0 is left out; with none, no counts, open or closed', () => {
 // Spec 2026-11-11, D7, and settings-values S6: short of rows, the second info row goes first, then the open rows from
 // the last; the four rows draw at 24, 48 and 100 columns under usage:
 const open = (o: Partial<BandInput> = {}) => input({
-  isToolsOpen: true, agents: TARGET_AGENTS, rules: { always: ['a.md', 'b.md', 'c.md'], byPath: ['d.md', 'e.md'], isTracked: true },
+  isToolsOpen: true, agents: TARGET_AGENTS, rules: { always: [rule('a'), rule('b'), rule('c')], byPath: [rule('d'), rule('e')], isTracked: true },
   session: { ...input().session, agentTypes: TARGET_TYPES, loadedSkills: { 'superpowers:brainstorming': 1, 'solve-task': 2 } }, ...o,
 })
 const ROW = /^(tools|skills|agents|rules):/
 const labelsOf = (lines: Line[]): string[] => texts(lines).filter(l => ROW.test(l)).map(l => l.slice(0, l.indexOf(':')))
 
 test('short of rows, the second info row goes first, then rules:, then agents:', () => {
-  // At 98 columns the version takes a second info row
-  const at = (maxRows?: number) => bandLines(open({ columns: 98, session: { ...open().session, version: '2.1.322' }, ...(maxRows === undefined ? {} : { maxRows }) }))
-  // A live agent: line 1, the gauges, two info rows, usage:, four rows
+  // At 98 columns the MCP item takes the info line to a second row
+  const at = (maxRows?: number) => bandLines(open({ columns: 98, mcp: [{ text: 'mcp ✗ 1 · ✓ 10' }], ...(maxRows === undefined ? {} : { maxRows }) }))
+  // A live agent: line 1, two info rows, the gauges, usage:, four rows
   expect(at()).toHaveLength(9)
-  expect(texts(at())).toContain('CC 2.1.322')
-  expect(texts(at(8))).not.toContain('CC 2.1.322')
+  expect(texts(at()).join('\n')).toContain('Claude ')
+  // On one row the times go first
+  expect(texts(at(8)).join('\n')).not.toContain('Claude ')
+  expect(texts(at(8)).join('\n')).toContain('mcp ✗ 1 · ✓ 10')
   expect(labelsOf(at(8))).toEqual(['tools', 'skills', 'agents', 'rules'])
   expect(at(8)).toHaveLength(8)
   expect(labelsOf(at(7))).toEqual(['tools', 'skills', 'agents'])
@@ -373,11 +386,12 @@ const planNamed = (changes: Parameters<typeof planOf>[0] = {}) => planView(planO
 const planRowOf = (lines: Line[]): string | undefined => texts(lines).find(l => l.startsWith('plan:'))
 const WORKING = { isWorking: true, live: { turnId: 't2', startedAt: NOW - 30_000, toolCalls: 3, toolFailures: 0, runningCalls: [], promptAt: NOW - 30_000 } }
 
-test('the plan row is the target shape, under the info line, and line 1 keeps the turn', () => {
+test('the plan row is the target shape, under the info line and the gauges, and line 1 keeps the turn', () => {
   const lines = texts(bandLines(input({ plan: planNamed(), isToolsOpen: true, ...WORKING })))
   const at = lines.findIndex(l => l.startsWith('plan:'))
   expect(lines[at]).toBe('plan:    Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update interceptor')
-  expect(lines[at - 1]?.startsWith('Sonnet 5.5')).toBe(true)
+  expect(lines[at - 1]?.startsWith('ctx ')).toBe(true)
+  expect(lines[at - 2]?.startsWith('Sonnet 5.5')).toBe(true)
   expect(lines[0]).toBe('⟳ Turn 2 · 0:30 · 3 tools')
 })
 
@@ -593,7 +607,7 @@ test('main screen under, the open rows still draw under usage:', () => {
 test('main screen under at 48 columns, every row the place changes fits', () => {
   const lines = bandLines(input({ columns: 48, newFailures: 1, handoffAskStep: 80, isToolsOpen: true, under: { buttons: 'text' } }))
   const above = bandLines(input({ columns: 48, newFailures: 1, handoffAskStep: 80, isToolsOpen: true }))
-  const gauges = textOf(above[1] ?? [])
+  const gauges = textOf(above.find(l => textOf(l).startsWith('ctx ')) ?? [])
   for (const l of lines.filter(l => textOf(l) !== gauges)) expect(widthOf(l)).toBeLessThanOrEqual(48)
   expect(lines.map(textOf).join('\n')).toContain('/inspect')
 })
@@ -602,7 +616,7 @@ test('main screen under at 48 columns, every row the place changes fits', () => 
 test('fullscreen under at 48 columns, the action row splits with its buttons counted', () => {
   const lines = bandLines(input({ columns: 48, newFailures: 1, handoffAskStep: 80, isToolsOpen: true, under: { buttons: 'click' } }))
   const above = bandLines(input({ columns: 48, newFailures: 1, handoffAskStep: 80, isToolsOpen: true }))
-  const gauges = textOf(above[1] ?? [])
+  const gauges = textOf(above.find(l => textOf(l).startsWith('ctx ')) ?? [])
   for (const l of lines.filter(l => textOf(l) !== gauges)) expect(cellsOf(l)).toBeLessThanOrEqual(48)
   const inspect = lines.find(l => l.some(s => 'button' in s && s.button.key === 'inspect'))
   expect(inspect === undefined ? '' : textOf(inspect)).toBe('✗ 1 new [/inspect]')
@@ -614,8 +628,8 @@ test('above, the buttons keep their hotkeys', () => {
   expect(buttons.some(b => b.key === 'tools')).toBe(false)
 })
 
-// Spec 2026-11-11 settings-values, S6: the user's sample, row for row - the info line ends with the version, then the
-// project row, plan:, usage: as text, and the detail rows
+// Spec 2026-11-11 settings-values, S6, in the user's order of 2026-11-24: the version on the identity line, the turn, the
+// info line, the gauges, then the project row, plan:, usage: as text, and the detail rows
 const USER_ORDER = input({
   columns: 150, isToolsOpen: true, plan: planNamed(), stats: TARGET_STATS, agents: TARGET_AGENTS, rules: TARGET_RULES,
   skillListing: { listed: 57, total: 60, tokens: 3200 },
@@ -629,21 +643,24 @@ const labelOf = (l: string): string => l.slice(0, l.indexOf(':'))
 
 test("the full band's rows in the user's order", () => {
   const lines = texts(bandLines(USER_ORDER))
+  expect(lines[0]).toBe('CC 2.1.322')
   expect(lines.findIndex(l => l.startsWith('Sonnet 5.5'))).toBe(2)
-  expect(lines.slice(3)).toEqual([
+  expect(lines[3]?.startsWith('ctx ')).toBe(true)
+  expect(lines.slice(4)).toEqual([
     'project: my-app │ git:(develop) │ folder: .claude',
     'plan:    Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update interceptor',
     'usage:   [ 45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ]',
     'tools:   Bash ×32 │ AskUserQuestion ×4 │ Read ×4 │ Write ×4 │ Grep ×1',
     'skills:  superpowers:brainstorming ×1 │ solve-task ×2 │ 57 of 60 listed',
     'agents:  ◐ alfred-code:web-angular-verifier ×1 │ ✓ Explore ×2 │ ✓ general-purpose ×1 │ 1 running',
-    'rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ web-angular.md │ typescript.md │ 3 always-on · 2 by path',
+    'rules:   alfred-interaction │ alfred-git │ alfred-preferences │ web-angular │ typescript │ 3 always-on · 2 by path',
   ])
 })
 
-test('the info line ends with the version, and the place and the toggle have left it', () => {
+test('the info line ends with the session time, and the version, the place and the toggle have left it', () => {
   const info = texts(bandLines(USER_ORDER))[2] ?? ''
-  expect(info.endsWith(' │ CC 2.1.322')).toBe(true)
+  expect(info.endsWith(' │ 59m')).toBe(true)
+  expect(info).not.toContain('CC ')
   expect(info).not.toContain('my-app')
   expect(info).not.toMatch(/tools|[▾▸]/)
 })
@@ -683,27 +700,30 @@ test('the detail rows draw however short usage: gets', () => {
   expect([...new Set(labelsOf(lines))]).toEqual(['tools', 'skills', 'agents', 'rules'])
 })
 
-test('4 rows free with a plan keep line 1, the gauges, the info line and plan:', () => {
-  const lines = texts(bandLines({ ...USER_ORDER, maxRows: 4 }))
-  expect(lines).toHaveLength(4)
-  expect(lines[2]?.endsWith(' │ CC 2.1.322')).toBe(true)
-  expect(lines[3]).toBe('plan:    Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update interceptor')
+test('5 rows free with a plan keep the identity, line 1, the info line, the gauges and plan:', () => {
+  const lines = texts(bandLines({ ...USER_ORDER, maxRows: 5 }))
+  expect(lines).toHaveLength(5)
+  expect(lines[0]).toBe('CC 2.1.322')
+  expect(lines[2]?.endsWith(' │ 59m')).toBe(true)
+  expect(lines[3]?.startsWith('ctx ')).toBe(true)
+  expect(lines[4]).toBe('plan:    Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update interceptor')
 })
 
 test('short of rows, the project row goes first, then the detail rows from the last, then usage:, then plan:', () => {
-  const at = (maxRows: number): string[] => texts(bandLines({ ...USER_ORDER, maxRows })).slice(3).map(labelOf)
-  expect(at(10)).toEqual(['project', 'plan', 'usage', 'tools', 'skills', 'agents', 'rules'])
-  expect(at(9)).toEqual(['plan', 'usage', 'tools', 'skills', 'agents', 'rules'])
-  expect(at(6)).toEqual(['plan', 'usage', 'tools'])
-  expect(at(5)).toEqual(['plan', 'usage'])
-  expect(at(4)).toEqual(['plan'])
-  expect(texts(bandLines({ ...USER_ORDER, maxRows: 3 }))).toHaveLength(3)
+  const at = (maxRows: number): string[] => texts(bandLines({ ...USER_ORDER, maxRows })).slice(4).map(labelOf)
+  expect(at(11)).toEqual(['project', 'plan', 'usage', 'tools', 'skills', 'agents', 'rules'])
+  expect(at(10)).toEqual(['plan', 'usage', 'tools', 'skills', 'agents', 'rules'])
+  expect(at(7)).toEqual(['plan', 'usage', 'tools'])
+  expect(at(6)).toEqual(['plan', 'usage'])
+  expect(at(5)).toEqual(['plan'])
+  expect(texts(bandLines({ ...USER_ORDER, maxRows: 4 }))).toHaveLength(4)
 })
 
 test('the calm band draws none of rows 2 to 6', () => {
   const lines = texts(bandLines({ ...USER_ORDER, mode: 'calm' }))
-  expect(lines.length).toBeLessThanOrEqual(2)
-  expect(lines.some(l => /^(project|plan|usage|tools|skills|agents|rules):/.test(l) || l.includes('CC 2.1.322'))).toBe(false)
+  expect(lines[0]).toBe('CC 2.1.322')
+  expect(lines.length).toBeLessThanOrEqual(3)
+  expect(lines.slice(1).some(l => /^(project|plan|usage|tools|skills|agents|rules):/.test(l) || l.includes('CC 2.1.322') || l.startsWith('Sonnet'))).toBe(false)
 })
 
 test("the project and usage rows' tones", () => {
@@ -744,7 +764,7 @@ test('idle and healthy, the full band keeps its colours on every row', () => {
   const lines = bandLines(input({ stats: TARGET_STATS, session: { ...input().session, place: { project: 'my-app', folder: '.claude', branch: 'develop' } } }))
   expect(texts(lines).slice(2)).toEqual(['project: my-app │ git:(develop) │ folder: .claude', 'usage:   [ 45 tools ]'])
   for (const l of lines.slice(0, 2)) expect(l.some(s => 'text' in s && s.tone !== undefined && s.tone !== 'dim')).toBe(true)
-  expect(lines[0]?.find(s => 'text' in s && s.text.startsWith('ctx'))).toMatchObject({ tone: 'usage' })
+  expect(lines[1]?.find(s => 'text' in s && s.text.startsWith('ctx'))).toMatchObject({ tone: 'usage' })
   const calm = bandLines(input({ mode: 'calm' }))
   for (const l of calm) for (const s of l) if ('text' in s) expect(s.tone).toBe('dim')
   const project = lines[2] ?? []

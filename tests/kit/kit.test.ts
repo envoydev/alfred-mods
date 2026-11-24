@@ -145,11 +145,14 @@ test('an unchanged file writes nothing again, whatever the key order or spacing'
   expect(writes()).toBe(atStart)
 })
 
-test("the band's first line carries the kit banner from the file, and the Now tab does not need a line", async ($, on) => {
+// The user's order of 2026-11-24 draws no mode banner in the band: the kit's modes are the Now tab's CLAUDE-KIT section
+test('the band draws no kit banner from the file', async ($, on) => {
   await start($, on, { files: { [FILE]: kitFile(SETTINGS) } })
   const props = { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 8, bodyColumns: 200, scroll: { offset: 0, bodyRows: 8 }, view: {} }
   const ui = await $.ui.mount({ plugin: 'alfred-mods', surface: 'terminal', component: 'AbovePrompt', props })
-  expect((await rows(ui))[0]).toContain('kit: auto-run · scoring 90 · auto-approve')
+  const lines = await rows(ui, { keepOrg: true })
+  expect(lines[0]).toBe('org | unknown')
+  expect(lines.some(line => line.includes('kit: ') || line.includes('auto-approve'))).toBe(false)
 })
 
 const HOOK = { type: 'hook_additional_context', text: 'added', origin: { kind: 'hook' as const, event: 'UserPromptSubmit' } }

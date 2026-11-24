@@ -2,10 +2,11 @@
 import { isLive } from '../agents/agents'
 import { listedText, loadedTexts } from '../context/parts'
 import type { AgentRow } from '../agents/types'
+import type { RuleEntry } from '../context/types'
 import type { BandInput, RulesInput } from './types'
 import type { ToolStat } from '../tools/types'
 import type { Line, Seg } from '../core/types'
-import { ROW_JOIN, ROW_LABEL } from './constants'
+import { ROW_JOIN, ROW_LABEL, TRANSCRIPT_NOTE } from './constants'
 import { wrapRows } from './wrap'
 
 const isSkill = (key: string): boolean => key.startsWith('Skill: ')
@@ -65,22 +66,25 @@ export function toolRows(input: BandInput): Line[] {
 
 const NO_RULES: RulesInput = { always: [], byPath: [], isTracked: true }
 
-// The rules drawn, each name once, an always-on name winning: the always-on ones, then the by-path ones not among them
-function rulesDrawn(rules: RulesInput): { always: string[]; byPath: string[] } {
-  const always = [...new Set(rules.always)]
-  return { always, byPath: [...new Set(rules.byPath)].filter(name => !always.includes(name)) }
+// The rules drawn, each key once, an always-on key winning: the always-on ones, then the by-path ones not among them
+function rulesDrawn(rules: RulesInput): { always: RuleEntry[]; byPath: RuleEntry[] } {
+  const once = (entries: RuleEntry[]): RuleEntry[] => [...new Map(entries.map(entry => [entry.key, entry])).values()]
+  const always = once(rules.always)
+  return { always, byPath: once(rules.byPath).filter(entry => !always.some(rule => rule.key === entry.key)) }
 }
 
 // The rules row's items (spec 2026-11-11, D4): the always-on rules plain, the by-path ones violet, then how many of
-// each; untracked (the option on), by path is not known; after a resume, the by-path ones loaded before are unseen
+// each; untracked (the option on), by path is not known; after a resume, `since resume` only where the by-path ones
+// loaded before are unseen: the transcript counts them unless its first read began at its tail or none is known
 export function ruleSegs(rules: RulesInput, isResumed: boolean): Line[] {
   const { always, byPath } = rulesDrawn(rules)
   if (rules.isTracked && always.length + byPath.length === 0) return [[{ text: 'none loaded', tone: 'dim' }]]
-  const summary = rules.isTracked
-    ? `${always.length} always-on · ${byPath.length} by path${isResumed ? ' since resume' : ''}`
+  const counts = rules.isTracked
+    ? `${always.length} always-on · ${byPath.length} by path${isResumed && rules.isSinceResume !== false ? ' since resume' : ''}`
     : `${always.length} always-on · by path not tracked`
+  const summary = rules.note === undefined ? counts : `${counts} · ${TRANSCRIPT_NOTE[rules.note]}`
   return [
-    ...always.map((text): Line => [{ text }]), ...byPath.map((text): Line => [{ text, tone: 'handoff' }]),
+    ...always.map((rule): Line => [{ text: rule.label }]), ...byPath.map((rule): Line => [{ text: rule.label, tone: 'handoff' }]),
     [{ text: summary, tone: 'dim' }],
   ]
 }

@@ -210,31 +210,31 @@ async function turnAt($: Engine, usage: { current: SessionUsage }, n: number, to
 }
 
 for (const surface of SURFACES) {
-  test(`the band draws the banner and the runway at 120 and 90 columns (${surface})`, async ($, on) => {
+  // The user's order of 2026-11-24 draws no mode banner in the band: the modes stay on the Stack tab
+  test(`the band draws the runway at 120 and 90 columns, and no mode banner (${surface})`, async ($, on) => {
     await start($, on, { files: { [STATUS]: status() }, usage: reading(93_000) })
     for (const columns of [120, 90]) {
       const lines = await rows(await band($, surface, columns))
-      expect(lines[0]!.startsWith('auto-run · scoring 80 │ ')).toBe(true)
-      expect(lines.join('\n')).toContain('ctx ▰▰▰▱▱ 62% of 150k')
+      expect(lines.some(l => l.includes('auto-run'))).toBe(false)
+      expect(lines[0]!.startsWith('ctx ▰▰▰▱▱ 62% of 150k')).toBe(true)
     }
   })
 
-  test(`with 5h and 7d windows at 90 columns the banner takes line 1 alone and every row fits (${surface})`, async ($, on) => {
+  test(`with 5h and 7d windows at 90 columns the runway's gauges stay whole and every row fits (${surface})`, async ($, on) => {
     const windowed: SessionUsage = {
       ...reading(93_000),
       rateLimits: [{ kind: 'five_hour', percentUsed: 45, resetsAt: '2026-10-28T17:00:00Z' }, { kind: 'seven_day', percentUsed: 20, resetsAt: '2026-10-31T09:00:00Z' }],
     }
     await start($, on, { files: { [STATUS]: status() }, usage: windowed })
     const lines = await rows(await band($, surface, 90))
-    expect(lines[0]).toBe('auto-run · scoring 80')
-    expect(lines[1]).toMatch(/^ctx ▰▰▰▱▱ 62% of 150k · 5h .* · 7d ▰▱▱▱▱ 20% \(\d\d\.\d\d \d\d:\d\d\)$/)
+    expect(lines[0]).toMatch(/^ctx ▰▰▰▱▱ 62% of 150k · 5h .* · 7d ▰▱▱▱▱ 20% \(\d\d\.\d\d \d\d:\d\d\)$/)
     for (const l of lines) expect(l.length).toBeLessThanOrEqual(90)
   })
 
-  test(`a fresh session's first file draws the whole banner before any prompt (${surface})`, async ($, on) => {
+  test(`a fresh session's first file draws no mode banner before any prompt (${surface})`, async ($, on) => {
     await start($, on, { files: { [STATUS]: status({ autoCompact: { on: true, at: 490_000 } }) } })
     const lines = await rows(await band($, surface))
-    expect(lines[0]?.startsWith('auto-run · auto-compact 490k · scoring 80')).toBe(true)
+    expect(lines.some(l => l.includes('auto-compact'))).toBe(false)
   })
 
   test(`an ignored file draws no runway and no banner (${surface})`, async ($, on) => {

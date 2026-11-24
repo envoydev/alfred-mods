@@ -12,9 +12,8 @@ import { mask } from '../rec/mask'
 import { settingsInForce } from '../settings/effects'
 import { readRec } from '../rec/effects'
 import { readFailures, readStats } from '../tools/effects'
-import { bannerSegs, runwayOf } from '../stack/stack'
-import { readKit, readKitScoreLevel } from '../kit/effects'
-import { kitBannerSegs } from '../kit/kitlines'
+import { runwayOf } from '../stack/stack'
+import { readKitScoreLevel } from '../kit/effects'
 import { readHandoff, saveNow } from '../handoff/effects'
 import { recSummary } from '../rec/rec'
 import { openInspectFromBand } from '../inspect/effects'
@@ -29,6 +28,11 @@ import { bandFailed } from '../core/failsafe'
 import { isNoColor } from '../core/effects'
 import { spinnerSuffix } from './working'
 import { printable } from '../core/format'
+import { mcpItem } from '../mcp/mcp'
+import { readMcp } from '../mcp/effects'
+import { transcriptState } from '../transcript/effects'
+import { leaveOutSkipped, neverAskSkip, readSkipAsk } from '../skip/effects'
+import { ASK_BUTTONS } from '../skip/constants'
 
 // Calm until session start reads the setting, which turns it full when nothing is stored: a test that never starts
 // a session draws the band it was written for
@@ -101,23 +105,32 @@ async function readBandInput(
   const runway = runwayOf(st, usage, session.model)
   const setting = await readBandSetting($)
   const parts = await readParts($)
+  const account = await readAccount($)
+  const transcript = transcriptState()
   return {
     now, columns: at.columns, ...(at.maxRows === undefined ? {} : { maxRows: at.maxRows }), isWorking: at.isWorking,
     live: await readLive($), usage, session, turns: await readTurns($),
     newFailures: (await readFailures($)).filter(failure => failure.isNew).length, pace: await readPace($), agents: await readAgents($),
     cache: await readCache($), plan: drawing.band, isPlanInvalid: drawing.invalid, score: drawing.score, isPlanScore: drawing.isPlanScore, scoreLevel: (await readScoreLevel($)) ?? (await readKitScoreLevel($)), rec: recSummary(await readRec($)),
-    forecast: forecastTargetOf(handoff, usage, runway), handoffAskStep: handoff.isAskUp ? handoff.handledStep : null, runway, banner: bannerSegs(st), kitBanner: kitBannerSegs(await readKit($)),
-    account: { org: (await readAccount($)).org },
+    forecast: forecastTargetOf(handoff, usage, runway), handoffAskStep: handoff.isAskUp ? handoff.handledStep : null, isSkipAskUp: (await readSkipAsk($)).isAskUp, runway,
+    account: { org: account.org, kind: account.kind }, mcp: mcpItem(await readMcp($)),
     mode: setting.mode, totals: await readTotals($), stats: await readStats($),
     isToolsOpen: setting.isToolsOpen === true, skillListing: parts.skills ?? null,
-    rules: { always: parts.rules ?? [], byPath: session.pathRules ?? [], isTracked: !at.isLeftOut },
+    rules: {
+      always: parts.rules ?? [], byPath: session.pathRuleKeys ?? [], isTracked: transcript.isKnown || !at.isLeftOut,
+      isSinceResume: !transcript.isCountedInFull,
+      ...(transcript.note === null ? {} : { note: transcript.note }),
+    },
     ...(at.under === undefined ? {} : { under: at.under }),
   }
 }
 
 // What the band's buttons do, above or under
 function bandButtons($: EngineInterface, pending: Pending): Record<string, () => unknown> {
-  return { inspect: () => openInspectFromBand($), compact: () => compactNow($, pending), handoff: () => saveNow($) }
+  return {
+    inspect: () => openInspectFromBand($), compact: () => compactNow($, pending), handoff: () => saveNow($),
+    [ASK_BUTTONS.leave.key]: () => leaveOutSkipped($), [ASK_BUTTONS.never.key]: () => neverAskSkip($),
+  }
 }
 
 export async function drawBandAbove($: EngineInterface, e: MatchedInput<'ui.render', { component: 'AbovePrompt' }>, next: MatchedNext<'ui.render', { component: 'AbovePrompt' }>, pending: Pending, isLeftOut: boolean) {

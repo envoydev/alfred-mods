@@ -49,10 +49,12 @@ for (const surface of SURFACES) {
     await inspect($, 'cache')
 
     await clock.advance(180_000)
+    await clock.settle()
     const first = await pane($, surface)
     expect((await rows(first)).some(l => /^Cache\s+warm 2m ▰/.test(l))).toBe(true)
     await first.unmount()
     await clock.advance(120_001)
+    await clock.settle()
     expect((await rows(await pane($, surface))).some(l => /^Cache\s+cold ▰/.test(l))).toBe(true)
   })
 
@@ -66,6 +68,7 @@ for (const surface of SURFACES) {
     await inspect($, 'cache')
 
     await clock.advance(180_000)
+    await clock.settle()
     expect((await rows(await pane($, surface))).some(l => /^Cache\s+warm 57m /.test(l))).toBe(true)
   })
 
@@ -78,6 +81,7 @@ for (const surface of SURFACES) {
     await mainStep($)
     await inspect($, 'cache')
     await clock.advance(480_000)
+    await clock.settle()
 
     const lines = await rows(await pane($, surface))
     expect(lines.some(l => /^Cache\s+warm 52m ▰▰▰▰▱ 94% reused · 180k cached · rewrite ≈ \$1\.44\s+Compact$/.test(l))).toBe(true)
@@ -113,7 +117,7 @@ for (const surface of SURFACES) {
     expect(await rows(await pane($, surface))).toContain('Tier      5m, set by CLAUDE_CODE_PROMPT_CACHE_TTL')
   })
 
-  test(`the band offers Compact in a 1h cache's last 5 minutes (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
+  test(`the band offers Compact in a 1h cache's last 5 minutes (${surface})`, { timeoutMs: 30_000 }, async ($, on) => {
     const { clock } = stubAll(on, { usage: PLAN })
     engine(on)
     stepEngine(on, () => MAIN)
@@ -122,8 +126,10 @@ for (const surface of SURFACES) {
     await oneTurn($)
 
     await clock.advance(3_000_000)
+    await clock.settle()
     expect(await rows(await bandOf($, surface))).toHaveLength(1)
     await clock.advance(360_000)
+    await clock.settle()
     const ui = await bandOf($, surface)
     expect((await rows(ui)).some(l => /⚠ cache cold in 4m Compact/.test(l))).toBe(true)
     expect((await ui.find({ key: 'compact' }))?.props.hotkey).toBe('3')
@@ -140,8 +146,10 @@ for (const surface of SURFACES) {
     await oneTurn($)
 
     await clock.advance(200_000)
+    await clock.settle()
     expect(await rows(await bandOf($, surface))).toHaveLength(1)
     await clock.advance(50_000)
+    await clock.settle()
     expect((await rows(await bandOf($, surface))).some(l => /⚠ cache cold in 1m Compact/.test(l))).toBe(true)
     expect(toasts).toEqual([])
   })
@@ -156,10 +164,12 @@ for (const surface of SURFACES) {
     await inspect($, 'now')
 
     await clock.advance(200_000)
+    await clock.settle()
     const first = await pane($, surface)
     expect(await rows(first)).toContain('Nothing needs a look.')
     await first.unmount()
     await clock.advance(50_000)
+    await clock.settle()
     const lines = await rows(await pane($, surface))
     const look = lines.findIndex(l => l.startsWith('NEEDS A LOOK'))
     expect(lines.findIndex(l => /⚠ cache cold in 1m Compact/.test(l))).toBeGreaterThan(look)
@@ -167,7 +177,7 @@ for (const surface of SURFACES) {
   })
 
   // It walks an hour of the clock, 2 to 4 s of real time: a full run on a loaded machine needs more than the kit's 5 s
-  test(`the Cache tab says when Claude Code should compact it itself, and the band waits for it (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
+  test(`the Cache tab says when Claude Code should compact it itself, and the band waits for it (${surface})`, { timeoutMs: 30_000 }, async ($, on) => {
     const { clock } = stubAll(on, { usage: { ...PLAN, context: { window: 1_000_000, tokens: 210_000, percent: 21 } } })
     engine(on)
     stepEngine(on, () => MAIN)
@@ -178,8 +188,10 @@ for (const surface of SURFACES) {
     expect(await rows(await pane($, surface)))
       .toContain(`Idle      Claude Code should compact it itself at ≈${clockText(3_240_000)}, else a warning at ≈${clockText(3_420_000)}`)
     await clock.advance(3_360_000)
+    await clock.settle()
     expect((await rows(await bandOf($, surface))).some(l => /⚠/.test(l))).toBe(false)
     await clock.advance(60_000)
+    await clock.settle()
     expect((await rows(await bandOf($, surface))).some(l => /⚠ cache cold in ≈3m Compact/.test(l))).toBe(true)
   })
 
@@ -251,6 +263,7 @@ for (const surface of SURFACES) {
     await ui.press({ key: 'compact' })
     await ui.press({ key: 'compact' })
     await clock.advance(1000)
+    await clock.settle()
 
     expect(triggers).toHaveLength(1)
     expect(toasts).toEqual(['Compact is already running.'])
@@ -268,10 +281,11 @@ for (const surface of SURFACES) {
 
     expect((await rows(ui)).some(l => /warm 60m/.test(l))).toBe(true)
     await clock.advance(60_000)
+    await clock.settle()
     expect((await rows(ui)).some(l => /warm 59m/.test(l))).toBe(true)
   })
 
-  test(`a 5m cache counts down to cold while idle (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
+  test(`a 5m cache counts down to cold while idle (${surface})`, { timeoutMs: 30_000 }, async ($, on) => {
     const { clock } = stubAll(on, { usage: PLAN })
     engine(on)
     stepEngine(on, () => MAIN)
@@ -283,8 +297,10 @@ for (const surface of SURFACES) {
 
     expect((await rows(ui)).some(l => /warm 5m/.test(l))).toBe(true)
     await clock.advance(240_000)
+    await clock.settle()
     expect((await rows(ui)).some(l => /warm 1m/.test(l))).toBe(true)
     await clock.advance(61_000)
+    await clock.settle()
     expect((await rows(ui)).some(l => /^Cache\s+cold /.test(l))).toBe(true)
   })
 

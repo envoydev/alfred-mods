@@ -57,8 +57,10 @@ export type Session = {
   // The agents dispatched this conversation, by type, with how many; keys in the order of each type's first dispatch,
   // absent before the first (spec 2026-11-11, D3)
   agentTypes?: Record<string, number>
-  // The rules the main context loaded by path this conversation (classic.InstructionsLoaded), base names in load order,
-  // each once; a compaction keeps them, as Claude Code re-attaches them (spec 2026-11-11, D4)
+  // The rules the main context loaded by path this conversation (classic.InstructionsLoaded), in load order, one entry
+  // per key; a compaction keeps them, as Claude Code re-attaches them (spec 2026-11-11, D4; 2026-11-23, D1)
+  pathRuleKeys?: RuleEntry[]
+  // Declared for a value an older build stored: base names, no longer written
   pathRules?: string[]
 }
 export type Tab = 'now' | 'usage' | 'agents' | 'tools' | 'cache' | 'timeline' | 'plan' | 'prompt'
@@ -201,9 +203,13 @@ export type Parts = {
   memory: { files: number; tokens: number; top: { name: string; tokens: number }[] }
   // The skill listing: the skills it carries, of the session's, and its tokens; absent when the breakdown has none
   skills?: SkillListing
-  // The rule files the breakdown lists, loaded at start: base names in its order, each once (spec 2026-11-11, D4)
-  rules?: string[]
+  // The rule files the breakdown lists, loaded at start, in its order, one entry per key (spec 2026-11-11, D4;
+  // 2026-11-23, D1)
+  rules?: RuleEntry[]
 }
+// A rule file: `key` names it without a home folder or user name (its path relative to the project root, `..` for
+// one above it, else `<type>:<base name>`), `label` is what the band draws (`name`, or `child:name` below the root)
+export type RuleEntry = { key: string; label: string }
 export type SkillListing = { listed: number; total: number; tokens: number }
 
 // claude-kit's settings file (`.claude/kit/settings.json`) as the mod reads it: each name the mod knows whose value is
@@ -221,8 +227,27 @@ export type PromptPart = { type: string; origin: PromptOrigin; event: string | n
 export type PromptRecord = { startedAt: number | null; typedChars: number | null; parts: PromptPart[]; dropped: number }
 
 // What the band shows for the signed-in account, from the global config's oauthAccount: 'Personal' for a free, Pro or
-// Max type, else the organization's name; null when unknown (a token login, no config, a read that failed). Nothing else of that file is kept.
-export type Account = { org: string | null }
+// Max type, else the organization's name; null when unknown (a token login, no config, a read that failed). `kind` is the
+// plan from `organizationType`: Team, Enterprise or Personal, null for any other or none. Nothing else of that file is kept.
+export type AccountKind = 'Team' | 'Enterprise' | 'Personal'
+export type Account = { org: string | null; kind: AccountKind | null }
+
+// Where the transcript reader stands in the main conversation's transcript file: the session id it reads for, the byte
+// offset of the next line start, and whether it is inside a line past one chunk, which it drops to the next newline.
+// The file's path is asked of the engine at each run and never kept: it holds the home folder. `startedAtTail` is whether
+// this conversation's first read began at the file's tail, so earlier rules are not counted; `hasReachedEnd` whether a
+// read of it has reached the file's end (an unfinished last line included) since it began.
+export type TranscriptReader = { sessionId: string | null; offset: number; isInLongLine: boolean; startedAtTail: boolean; hasReachedEnd: boolean }
+
+// The skip ask (spec 2026-11-23, D3): `isSkipped` once the transcript showed a skip notice for this plugin, `isAskUp`
+// while the band asks whether to leave the skipped hooks out
+export type SkipAsk = { isSkipped: boolean; isAskUp: boolean }
+
+// One MCP server the session joined (spec 2026-11-23, D5): `name` as the engine's mcp.connect event spelled it, or the
+// part of a tool's name between `mcp__` and the next `__` for one only the tool list showed; `reason` is a refusal's word,
+// set while `failed`; `since` is when the event came or the tool list first showed it; `isSeeded` is true for an entry
+// only the tool list showed, which a later event for the same short name replaces. The name is never drawn.
+export type McpServer = { name: string; state: 'loading' | 'connected' | 'failed'; reason?: string; since: number; isSeeded?: boolean; isPassed?: boolean }
 
 declare module 'claude-code' {
   interface PluginState {
@@ -240,6 +265,9 @@ declare module 'claude-code' {
       blockers: Shaped<Record<string, number>>
       parts: Shaped<Parts>
       loops: Shaped<Loop[]>
+      transcript: Shaped<TranscriptReader>
+      skip: Shaped<SkipAsk>
+      mcp: Shaped<McpServer[]>
     }
   }
 }

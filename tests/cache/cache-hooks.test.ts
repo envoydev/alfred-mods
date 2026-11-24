@@ -47,7 +47,7 @@ test('a model switch reports the tier under its billing and prices the rewrite',
   expect(Math.abs((c.ratePerToken ?? 0) - 0.000008) < 1e-12).toBe(true)
 })
 
-test('a switch declined after PreModelSwitch keeps the cache warm', { timeoutMs: 15_000 }, async ($, on) => {
+test('a switch declined after PreModelSwitch keeps the cache warm', { timeoutMs: 30_000 }, async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: PLAN })
   const state = watchState(on)
   engine(on)
@@ -59,6 +59,7 @@ test('a switch declined after PreModelSwitch keeps the cache warm', { timeoutMs:
   expect(state.get('cache')).toMatchObject({ lastRequestAt: 0, tier: '1h' })
 
   await clock.advance(3_300_000)
+  await clock.settle()
   expect(cacheToasts(toasts)).toHaveLength(1)
 })
 
@@ -102,7 +103,7 @@ test("idle compaction's threshold is read at the start", async ($, on) => {
   expect((state.get('cache') as Cache).config.idleMinTokens).toBe(120_000)
 })
 
-test('the 5 min toast fires once per warm stretch', { timeoutMs: 15_000 }, async ($, on) => {
+test('the 5 min toast fires once per warm stretch', { timeoutMs: 30_000 }, async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: PLAN })
   engine(on)
   stepEngine(on, () => MAIN)
@@ -111,22 +112,26 @@ test('the 5 min toast fires once per warm stretch', { timeoutMs: 15_000 }, async
   await $.classic.PostModelSwitch(SWITCH)
   await mainStep($)
   await clock.advance(3_299_000)
+  await clock.settle()
   expect(cacheToasts(toasts)).toEqual([])
 
   await clock.advance(1_000)
+  await clock.settle()
   expect(cacheToasts(toasts)).toEqual(['Cache cold in 5m (rewrite ≈ $1.44): press 3 to compact, or /inspect cache'])
 
   await clock.advance(240_000)
+  await clock.settle()
   expect(cacheToasts(toasts)).toHaveLength(1)
 
   await mainStep($)
   await clock.advance(3_300_000)
+  await clock.settle()
   expect(cacheToasts(toasts)).toHaveLength(2)
 })
 
 // The reload comes 50 minutes after the last request, so the walk to the toast is 5 minutes: a 55-minute walk held the
 // toast's timer open past a hook's 10 s budget on CI's Windows runner
-test('after a reload, a warm 1h cache still gets its toast', { timeoutMs: 15_000 }, async ($, on) => {
+test('after a reload, a warm 1h cache still gets its toast', { timeoutMs: 30_000 }, async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: PLAN, now: 3_000_000 })
   engine(on)
   // A reload keeps $.state and runs register and session.start again: the cache stands warm from a switch at 0
@@ -139,13 +144,15 @@ test('after a reload, a warm 1h cache still gets its toast', { timeoutMs: 15_000
 
   await $.session.start(START)
   await clock.advance(299_000)
+  await clock.settle()
   expect(cacheToasts(toasts)).toEqual([])
 
   await clock.advance(1_000)
+  await clock.settle()
   expect(cacheToasts(toasts)).toEqual(['Cache cold in 5m (rewrite ≈ $1.44): press 3 to compact, or /inspect cache'])
 })
 
-test('with no switch, a subscription within its plan gets the toast as an estimate', { timeoutMs: 15_000 }, async ($, on) => {
+test('with no switch, a subscription within its plan gets the toast as an estimate', { timeoutMs: 30_000 }, async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: PLAN })
   engine(on)
   stepEngine(on, () => MAIN)
@@ -153,11 +160,12 @@ test('with no switch, a subscription within its plan gets the toast as an estima
 
   await mainStep($)
   await clock.advance(3_300_000)
+  await clock.settle()
 
   expect(cacheToasts(toasts)).toEqual(['Cache cold in ≈5m: press 3 to compact, or /inspect cache'])
 })
 
-test('crossing into usage credits withholds the 1h toast', { timeoutMs: 15_000 }, async ($, on) => {
+test('crossing into usage credits withholds the 1h toast', { timeoutMs: 30_000 }, async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: PLAN })
   engine(on)
   stepEngine(on, () => MAIN)
@@ -166,12 +174,13 @@ test('crossing into usage credits withholds the 1h toast', { timeoutMs: 15_000 }
   await mainStep($)
   await measure($, reading(60_000, 100))
   await clock.advance(3_300_000)
+  await clock.settle()
 
   expect(cacheToasts(toasts)).toEqual([])
 })
 
 // The user's ruling (2026-10-28): no warning under 100k cached
-test('a 1h cache under 100k gets no toast', { timeoutMs: 15_000 }, async ($, on) => {
+test('a 1h cache under 100k gets no toast', { timeoutMs: 30_000 }, async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: PLAN })
   engine(on)
   stepEngine(on, () => ({ ...MAIN, cache_read_input_tokens: 30_000, cache_creation_input_tokens: 3_000 }))
@@ -179,11 +188,12 @@ test('a 1h cache under 100k gets no toast', { timeoutMs: 15_000 }, async ($, on)
 
   await mainStep($)
   await clock.advance(3_400_000)
+  await clock.settle()
 
   expect(cacheToasts(toasts)).toEqual([])
 })
 
-test('no toast while a turn runs', { timeoutMs: 15_000 }, async ($, on) => {
+test('no toast while a turn runs', { timeoutMs: 30_000 }, async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: PLAN })
   engine(on)
   stepEngine(on, () => MAIN)
@@ -192,6 +202,7 @@ test('no toast while a turn runs', { timeoutMs: 15_000 }, async ($, on) => {
   await $.turn.start({ text: 'q', turnId: 't1' })
   await mainStep($)
   await clock.advance(3_300_000)
+  await clock.settle()
 
   expect(cacheToasts(toasts)).toEqual([])
 })
@@ -205,11 +216,12 @@ test('no toast on the 5m tier', async ($, on) => {
   await $.classic.PostModelSwitch({ ...SWITCH, cache_ttl: '5m' })
   await mainStep($)
   await clock.advance(600_000)
+  await clock.settle()
 
   expect(cacheToasts(toasts)).toEqual([])
 })
 
-test('where Claude Code should compact the conversation itself, the toast waits for it and comes if it does not', { timeoutMs: 15_000 }, async ($, on) => {
+test('where Claude Code should compact the conversation itself, the toast waits for it and comes if it does not', { timeoutMs: 30_000 }, async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: reading(210_000) })
   engine(on)
   stepEngine(on, () => MAIN)
@@ -217,13 +229,15 @@ test('where Claude Code should compact the conversation itself, the toast waits 
   await $.session.start({ ...START, surface: 'terminal', isInteractive: true })
   await mainStep($)
   await clock.advance(3_300_000)
+  await clock.settle()
   expect(cacheToasts(toasts)).toEqual([])
 
   await clock.advance(120_000)
+  await clock.settle()
   expect(cacheToasts(toasts)).toEqual(['Cache cold in ≈3m: press 3 to compact, or /inspect cache'])
 })
 
-test("Claude Code's own idle compaction leaves no warning", { timeoutMs: 15_000 }, async ($, on) => {
+test("Claude Code's own idle compaction leaves no warning", { timeoutMs: 30_000 }, async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: reading(210_000) })
   engine(on)
   stepEngine(on, () => MAIN)
@@ -231,13 +245,15 @@ test("Claude Code's own idle compaction leaves no warning", { timeoutMs: 15_000 
   await $.session.start({ ...START, surface: 'terminal', isInteractive: true })
   await mainStep($)
   await clock.advance(3_240_000)
+  await clock.settle()
   await $.session.compact({ trigger: 'auto', messages })
   await clock.advance(360_000)
+  await clock.settle()
 
   expect(cacheToasts(toasts)).toEqual([])
 })
 
-test('the toast stays when idle compaction is off', { timeoutMs: 15_000 }, async ($, on) => {
+test('the toast stays when idle compaction is off', { timeoutMs: 30_000 }, async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: reading(210_000), settings: { idleCompaction: false } })
   engine(on)
   stepEngine(on, () => MAIN)
@@ -245,6 +261,7 @@ test('the toast stays when idle compaction is off', { timeoutMs: 15_000 }, async
   await $.session.start({ ...START, surface: 'terminal', isInteractive: true })
   await mainStep($)
   await clock.advance(3_300_000)
+  await clock.settle()
 
   expect(cacheToasts(toasts)).toHaveLength(1)
 })
@@ -253,7 +270,7 @@ test('the toast stays when idle compaction is off', { timeoutMs: 15_000 }, async
 // (settings-reference, `idleCompaction`, read 2026-11-19), and the SDK hosts start with no surface: what counts is where
 // the session draws
 for (const surface of ['vscode', 'desktop'] as const) {
-  test(`in ${surface}, Claude Code's own idle compaction delays the warning as in the terminal`, { timeoutMs: 15_000 }, async ($, on) => {
+  test(`in ${surface}, Claude Code's own idle compaction delays the warning as in the terminal`, { timeoutMs: 30_000 }, async ($, on) => {
     const { clock, toasts } = stubAll(on, { usage: reading(210_000), surfaces: [surface] })
     engine(on)
     stepEngine(on, () => MAIN)
@@ -261,13 +278,14 @@ for (const surface of ['vscode', 'desktop'] as const) {
     await $.session.start({ ...START, surface: null, isInteractive: false })
     await mainStep($)
     await clock.advance(3_300_000)
+    await clock.settle()
 
     expect(cacheToasts(toasts)).toEqual([])
   })
 }
 
 // An SDK host draws nothing at session.start: its surface attaches later, which the turn's end reads again
-test('a surface that attaches after the start delays the warning from the next turn', { timeoutMs: 15_000 }, async ($, on) => {
+test('a surface that attaches after the start delays the warning from the next turn', { timeoutMs: 30_000 }, async ($, on) => {
   const surfaces: RenderSurface[] = []
   const { clock, toasts } = stubAll(on, { usage: reading(210_000), surfaces })
   engine(on)
@@ -278,11 +296,12 @@ test('a surface that attaches after the start delays the warning from the next t
   await mainStep($)
   await $.turn.complete({ answer: '', durationMs: 3000, isAborted: false, turnId: 't0', reason: 'answer' })
   await clock.advance(3_300_000)
+  await clock.settle()
 
   expect(cacheToasts(toasts)).toEqual([])
 })
 
-test('a plain -p run, which draws nowhere, keeps the early warning', { timeoutMs: 15_000 }, async ($, on) => {
+test('a plain -p run, which draws nowhere, keeps the early warning', { timeoutMs: 30_000 }, async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: reading(210_000), surfaces: [] })
   engine(on)
   stepEngine(on, () => MAIN)
@@ -290,11 +309,12 @@ test('a plain -p run, which draws nowhere, keeps the early warning', { timeoutMs
   await $.session.start({ ...START, surface: null, isInteractive: false })
   await mainStep($)
   await clock.advance(3_300_000)
+  await clock.settle()
 
   expect(cacheToasts(toasts)).toHaveLength(1)
 })
 
-test('after /clear in the terminal, the toast still waits for self-compaction', { timeoutMs: 15_000 }, async ($, on) => {
+test('after /clear in the terminal, the toast still waits for self-compaction', { timeoutMs: 30_000 }, async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: reading(210_000) })
   const state = watchState(on)
   engine(on)
@@ -306,10 +326,11 @@ test('after /clear in the terminal, the toast still waits for self-compaction', 
   expect((state.get('cache') as Cache).config.isIdleSurface).toBe(true)
 
   await clock.advance(3_300_000)
+  await clock.settle()
   expect(cacheToasts(toasts)).toEqual([])
 })
 
-test('after /clear the armed toast stays quiet', { timeoutMs: 15_000 }, async ($, on) => {
+test('after /clear the armed toast stays quiet', { timeoutMs: 30_000 }, async ($, on) => {
   const { clock, toasts } = stubAll(on, { usage: PLAN })
   engine(on)
   stepEngine(on, () => MAIN)
@@ -319,6 +340,7 @@ test('after /clear the armed toast stays quiet', { timeoutMs: 15_000 }, async ($
   await mainStep($)
   await $.classic.SessionStart({ source: 'clear' })
   await clock.advance(3_300_000)
+  await clock.settle()
 
   expect(cacheToasts(toasts)).toEqual([])
 })

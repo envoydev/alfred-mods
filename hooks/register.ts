@@ -26,6 +26,7 @@ import type { Pending } from './core/types'
 import { reloadSettingsSoon } from './settings/effects'
 import { followSessionStart, startSession } from './lifecycle/effects'
 import { recordAttachment } from './prompt/effects'
+import { trackMcpConnect } from './mcp/effects'
 
 export const register: Register = (on, options) => {
   // The person's word that a managed plugin sends these events on past the mod: Claude Code then tells the model, once
@@ -81,19 +82,19 @@ export const register: Register = (on, options) => {
     // An edit to a settings file (spec settings-values S4): a read inside this hook still answers the old value (F4),
     // so the files are read again at the clock's next tick; left out, the 30 s poll reads them
     on('classic.ConfigChange', ($, e, next) => reloadSettingsSoon($, e, next)).catch(($, e, next) => next(e))
+
+    // What the model reads beside each request, recorded as the engine answered it and passed on untouched. A managed
+    // plugin's notices named it (spec 2026-11-23, D3), so it is left out with the others: the Prompt tab then lists no
+    // attachments.
+    on('prompt.attachment', ($, e, next) => recordAttachment($, e, next)).catch(($, e, next) => next(e))
   }
 
-  on('session.start', ($, e, next) => startSession($, e, next, calls, pending)).catch(($, e, next) => next(e))
+  on('session.start', ($, e, next) => startSession($, e, next, calls, pending, isLeftOut)).catch(($, e, next) => next(e))
 
   // Your prompt, typed at the terminal or sent through Remote Control, waits for the turn that answers it: the engine
   // queues one typed during a turn, and a slash command may start no turn at all. It waits before `next`, as the
   // engine may start its turn before this hook resumes; a prompt dropped beneath leaves, one rewritten is re-keyed.
   on('prompt.submit', ($, e, next) => trackPrompt($, e, next, calls, pending)).catch(($, e, next) => next(e))
-
-  // What the model reads beside each request, recorded as the engine answered it and passed on untouched. It stays out of
-  // the block above: that holds only the hooks a managed plugin's notices have named, and none named `prompt.attachment`;
-  // it moves into that block the day a notice names it.
-  on('prompt.attachment', ($, e, next) => recordAttachment($, e, next)).catch(($, e, next) => next(e))
 
   on('turn.start', ($, e, next) => trackTurnStart($, e, next)).catch(($, e, next) => next(e))
 
@@ -116,6 +117,10 @@ export const register: Register = (on, options) => {
 
     // Claude Code may still ask to confirm the switch, so the cache stays warm; a switch a hook stops reports nothing
     on('classic.PreModelSwitch', ($, e, next) => trackModelSwitchAsk($, e, next, pending)).catch(($, e, next) => next(e))
+
+    // A server about to join the session: loading from the event, failed on a refusal answer, which goes on untouched
+    // (spec 2026-11-23, D5). Left out with the others, the band's MCP item comes from the tool list alone.
+    on('mcp.connect', ($, e, next) => trackMcpConnect($, e, next)).catch(($, e, next) => next(e))
   }
 
   // '/inspect [tab]': opens the pane, never on its own. '/inspect plan <name>' pins that plan; 'plan' alone clears it.

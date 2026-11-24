@@ -29,6 +29,8 @@ export type Options = {
   holdStore?: { key: string; until: Promise<void> | null }
   // Store keys whose reads are refused, as a store that fails would
   refuseStore?: string[]
+  // A read of the file whose path ends in `path` waits for `until`, as a slow disk would
+  holdRead?: { path: string; until: Promise<void> }
   // `agents` is what `$.agent.list()` answers; `preSwitch` what the hooks beneath answer a PreModelSwitch with, such
   // as a deny; `settings` the merged settings object a read projects its key from
   agents?: AgentInfo[]; preSwitch?: ClassicResult; settings?: Record<string, unknown>

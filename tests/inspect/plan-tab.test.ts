@@ -46,8 +46,6 @@ async function begin($: Engine, on: On, o: Parameters<typeof stubAll>[1] & { ans
 
 const pane = ($: Engine, surface: RenderSurface, bodyColumns = 100) =>
   $.ui.mount({ plugin: 'alfred-mods', surface, component: 'Pane', requestId: 'inspect', props: { ...PANE, bodyColumns } })
-// What 'org unknown │ ' takes of line 1: no test here reads an account, so the widths below leave it out
-const ORG_MARK_WIDTH = 'org unknown │ '.length
 const band = ($: Engine, surface: RenderSurface, isWorking: boolean, bodyColumns = 120) =>
   $.ui.mount({
     plugin: 'alfred-mods', surface, component: 'AbovePrompt',
@@ -136,8 +134,8 @@ for (const surface of SURFACES) {
     ]
     await clock.settle()
 
-    expect((await rows(await band($, surface, true, 110 + ORG_MARK_WIDTH)))[0]).toBe(`${PLAN_LINE} +2 agents │ Bash ▸ Run tests 0:00`)
-    expect((await rows(await band($, surface, true, 100 + ORG_MARK_WIDTH)))[0]).toBe(`${PLAN_LINE} +2 agents`)
+    expect((await rows(await band($, surface, true, 110)))[0]).toBe(`${PLAN_LINE} +2 agents │ Bash ▸ Run tests 0:00`)
+    expect((await rows(await band($, surface, true, 100)))[0]).toBe(`${PLAN_LINE} +2 agents`)
 
     const long = 'Update the interceptor and every caller of the refresh endpoint'
     files.current[PLAN_PATH] = file(planText({}, [], plan => {
@@ -145,7 +143,7 @@ for (const surface of SURFACES) {
       if (s4 !== undefined) s4.title = long
     }), NOW + 1)
     await clock.advance(30_000)
-    expect((await rows(await band($, surface, true, 100 + ORG_MARK_WIDTH)))[0]).toBe('Token refresh ▰▰▰▱▱ 3/5 · 60% · 1h 12m · ≈30m left +2 agents')
+    expect((await rows(await band($, surface, true, 100)))[0]).toBe('Token refresh ▰▰▰▱▱ 3/5 · 60% · 1h 12m · ≈30m left +2 agents')
     await finish(clock, calls)
   })
 

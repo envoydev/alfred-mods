@@ -2,7 +2,7 @@
 // it - 'Personal' for a free, Pro or Max account, the company's name for any other
 import { expect, test } from 'claude-code/testing'
 
-import { configPathOf, orgOf } from '../../hooks/account/account'
+import { configPathOf, kindOf, orgOf } from '../../hooks/account/account'
 
 const configWith = (account: unknown): string => JSON.stringify({ numStartups: 3, oauthAccount: account })
 
@@ -60,4 +60,16 @@ test('a Team or Enterprise account, an unknown type or none shows the organizati
 
 test('a company account with no usable name is unknown', () => {
   for (const organizationType of ['claude_team', 'claude_enterprise']) expect(orgOf(configWith({ organizationType }))).toBeNull()
+})
+
+test('kindOf names the plan: Team, Enterprise, or Personal for a free, Pro or Max account', () => {
+  expect(kindOf(configWith({ organizationType: 'claude_team', organizationName: 'Acme Inc' }))).toBe('Team')
+  expect(kindOf(configWith({ organizationType: 'claude_enterprise', organizationName: 'Acme Inc' }))).toBe('Enterprise')
+  for (const organizationType of ['claude_free', 'claude_pro', 'claude_max']) expect(kindOf(configWith({ organizationType }))).toBe('Personal')
+})
+
+test('kindOf is null for any other type, none, no account or text that is no JSON object', () => {
+  for (const organizationType of ['claude_other', 7, null, undefined]) expect(kindOf(configWith({ organizationType, organizationName: 'Acme Inc' }))).toBeNull()
+  expect(kindOf(JSON.stringify({ numStartups: 3 }))).toBeNull()
+  for (const text of ['', '{ bad', '[]', 'null']) expect(kindOf(text)).toBeNull()
 })

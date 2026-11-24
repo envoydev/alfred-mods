@@ -4,6 +4,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, ModelUsage } from 'claude-code'
 import type { Cache, CacheConfig } from './types'
+import { TOAST_HOP_MS } from './constants'
 import { addRequest, afterCompact, billingOf, cacheView, idleOf, isIdleSurfaceOf, minutesLeftText, pinOf, takeRate, takeSwitch, toastAt } from './cache'
 import { noteCompaction, readLive, readUsage, setModel } from '../session/effects'
 import type { Pending, HookInput, HookNext } from '../core/types'
@@ -50,7 +51,7 @@ export async function readCacheConfig($: EngineInterface): Promise<void> {
 }
 
 // Sets the toast's timer afresh: due 5 minutes before a 1h cache goes cold, or 3 where Claude Code should compact it
-// itself first
+// itself first. A toast due past one hop waits a hop and sets its timer again
 export async function armCacheToast($: EngineInterface, pending: Pending): Promise<void> {
   pending.cacheToast?.cancel()
   pending.cacheToast = null
@@ -58,9 +59,9 @@ export async function armCacheToast($: EngineInterface, pending: Pending): Promi
   const usage = await readUsage($)
   const at = toastAt(cache, billingOf(usage.rateWindows), usage.contextTokens)
   if (at === null) return
-  const now = await $.clock.now()
-  pending.cacheToast = $.clock.after(Math.max(0, at - now), () => {
-    toastCacheClosing($).catch(() => undefined)
+  const wait = Math.max(0, at - (await $.clock.now()))
+  pending.cacheToast = $.clock.after(Math.min(wait, TOAST_HOP_MS), () => {
+    (wait > TOAST_HOP_MS ? armCacheToast($, pending) : toastCacheClosing($)).catch(() => undefined)
   })
 }
 

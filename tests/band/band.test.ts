@@ -7,9 +7,6 @@ import { clockText, whenText } from '../../hooks/core/format'
 import { setRec } from '../../hooks/rec/mask'
 import { SPAWN, START, engine, held, rows, spawns, stubAll } from '../kit'
 
-// What 'org unknown │ ' takes of line 1: no test here reads an account
-const ORG_MARK_WIDTH = 'org unknown │ '.length
-
 const SURFACES = ['terminal', 'desktop'] as const
 // Three hours before the 5h window resets, three days before the 7d one: each reset as the band words it
 const NOW = Date.parse('2026-10-28T14:00:00Z')
@@ -84,14 +81,15 @@ for (const surface of SURFACES) {
     expect(lines).toHaveLength(1)
     expect(lines[0]).toMatch(new RegExp(`^ctx ▰▱▱▱▱ 30% │ 5h ▱▱▱▱▱ 15% \\(${R5}\\) │ 7d 40% \\(${R7}\\) │ you \\d\\d:\\d\\d · Claude \\d\\d:\\d\\d$`))
     // The runs inside the line's one truncating Text carry the style; the Text around them carries none
-    // The calm band is dim, but line 1's org mark keeps its own tones, as the red REC mark does: a dim label and a plain value
+    // The calm band is dim, and the account mark on its own line keeps its own tones, as the red REC mark does: a dim label
+    // and a dim kind ('org | unknown'), where a company's name draws plain
     const all = (await ui.findAll({ type: 'Text' })).filter(t => t.props.wrap === undefined)
     const isOrg = (t: (typeof all)[number], text: string): boolean => t.children.includes(text)
     const label = all.filter(t => isOrg(t, 'org')), value = all.filter(t => isOrg(t, 'unknown'))
     expect(label.length).toBeGreaterThan(0)
     expect(label.every(t => t.props.dimColor === true)).toBe(true)
     expect(value.length).toBeGreaterThan(0)
-    expect(value.every(t => t.props.dimColor !== true)).toBe(true)
+    expect(value.every(t => t.props.dimColor === true)).toBe(true)
     const texts = all.filter(t => !label.includes(t) && !value.includes(t))
     expect(texts.length).toBeGreaterThan(0)
     expect(texts.every(t => t.props.dimColor === true)).toBe(true)
@@ -180,10 +178,10 @@ for (const surface of SURFACES) {
       await time.advance(480_000)
     }
 
-    // The org mark leads line 1 and takes its width, which these widths leave to the line as it was
-    const at120 = await rows(await mount($, surface, band(false, 120 + ORG_MARK_WIDTH)))
-    const at110 = await rows(await mount($, surface, band(false, 110 + ORG_MARK_WIDTH)))
-    const at100 = await rows(await mount($, surface, band(false, 100 + ORG_MARK_WIDTH)))
+    // The account mark has a line of its own, so the gauge line keeps the band's whole width
+    const at120 = await rows(await mount($, surface, band(false, 120)))
+    const at110 = await rows(await mount($, surface, band(false, 110)))
+    const at100 = await rows(await mount($, surface, band(false, 100)))
 
     const gauges = `^ctx ▰▱▱▱▱ 20% ≈\\d+ turns │ 5h ▱▱▱▱▱ 15% \\(${R5}\\) on pace │ 7d 40% \\(${R7}\\) │ \\$3\\.12`
     expect(at120).toHaveLength(1)

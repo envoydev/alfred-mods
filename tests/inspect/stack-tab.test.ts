@@ -168,9 +168,13 @@ for (const surface of SURFACES) {
     expect((await rows(ui)).join('\n')).not.toContain(email)
   })
 
-  test(`the banner draws unchanged under /rec strict (${surface})`, async ($, on) => {
+  // The user's order of 2026-11-24 draws no mode banner in the band: the modes stay on the Stack tab
+  test(`the band draws REC and the runway and no mode banner under /rec strict (${surface})`, async ($, on) => {
     await now($, on, surface, { files: { [STATUS]: status() }, store: { 'settings:rec': 'strict' } })
-    expect((await rows(await band($, surface)))[0]?.startsWith('● REC │ org unknown │ auto-run · scoring 80 │ ctx ▰▰▰▱▱ 62% of 150k')).toBe(true)
+    const lines = await rows(await band($, surface))
+    expect(lines[0]).toBe('● REC │ org | unknown')
+    expect(lines.some(line => line.includes('auto-run'))).toBe(false)
+    expect(lines.some(line => line.startsWith('ctx ▰▰▰▱▱ 62% of 150k'))).toBe(true)
   })
 }
 

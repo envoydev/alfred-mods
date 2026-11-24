@@ -241,9 +241,9 @@ test('with leave_out_skipped_hooks on, a by-path load reaches no hook of the mod
   await $.session.start(START)
   await clock.advance(1)
   await $.classic.InstructionsLoaded(load('/w/.claude/rules/web.md', 'path_glob_match'))
-  expect((state.get('session') as Session | undefined)?.pathRules).toBeUndefined()
+  expect((state.get('session') as Session | undefined)?.pathRuleKeys).toBeUndefined()
   const ui = await $.ui.mount({ plugin: 'alfred-mods', surface: 'terminal', component: 'AbovePrompt', props: BAND })
-  expect(await rows(ui)).toContain('rules:   always.md │ 1 always-on · by path not tracked')
+  expect(await rows(ui)).toContain('rules:   always │ 1 always-on · by path not tracked')
   await ui.unmount()
 })
 

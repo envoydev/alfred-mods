@@ -1,4 +1,5 @@
 // The account folder's named values
+import type { AccountKind } from './types'
 
 // Claude Code's global config, in CLAUDE_CONFIG_DIR or the home folder
 export const CONFIG_FILE_NAME = '.claude.json'
@@ -12,6 +13,9 @@ export const READ_EVERY_MS = 300_000
 export const PERSONAL = 'Personal'
 
 export const PERSONAL_ORG_TYPES: readonly string[] = ['claude_free', 'claude_pro', 'claude_max']
+
+// The plan kinds the band names beside a company's name, by organization type; the personal types are Personal
+export const TEAM_TYPES: Readonly<Record<string, Exclude<AccountKind, 'Personal'>>> = { claude_team: 'Team', claude_enterprise: 'Enterprise' }
 
 // What REC strict draws in a company name's place
 export const ORG_STRICT = '‹org›'
