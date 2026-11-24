@@ -169,6 +169,10 @@ code.
   1 the top.
 - **`/inspect fill`** fills Alfred Code's resume prompt into the empty prompt box, as `f` does
   ([With Alfred Code](#with-alfred-code)).
+- **`/inspect skip leave`** and **`/inspect skip never`** answer the band's question about hooks a managed plugin
+  skips, as its `Leave out` and `Don't ask again` buttons do (keys 5 and 6): `leave` turns on the option that leaves
+  those hooks out and reloads the mod, `never` stops the question
+  ([What it shows](#what-it-shows)).
 - **`/inspect close`** closes the pane. So does Esc at an idle, empty prompt, or in the pane while it has the keys
   (Ctrl+X Tab). On the terminal's main screen, where nothing takes a click, these are the ways to close it; in
   fullscreen its ✕ takes a click too.
@@ -615,7 +619,7 @@ ctx ▰▰▰▱▱ 30% │ 5h ▰▱▱▱▱ 15% (19:00) │ 7d 40% (11:00)
 Sonnet 5.5 ◑ high │ 9m │ ≈119 tok/s avg │ cache warm ≈60m │ you 17:15 · Claude 17:13 │ CC 2.1.322
 project: my-app │ git:(develop) +12 −3 │ folder: .claude
 plan:    Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update interceptor
-usage:   [ 45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ]
+usage:   [ 45 tools · 2 skills · 4 agents (1 ◐) · 4 rules ]
 tools:   Bash ×32 │ AskUserQuestion ×4 │ Read ×4 │ Write ×4 │ Grep ×1
 skills:  superpowers:brainstorming ×1 │ solve-task ×2 │ 57 of 60 listed
 agents:  ◐ alfred-code:web-angular-verifier ×1 │ ✓ Explore ×2 │ ✓ general-purpose ×1 │ 1 running
@@ -634,7 +638,7 @@ rules:   alfred-interaction │ alfred-git │ web:typescript │ 3 always-on ·
   the stronger source. Under [REC](#recording-mode) `strict` a company name reads `‹org›`; `Personal` and `unknown`
   stay.
 - **Line 2, the modes:** Alfred Code's mode banner, then claude-kit's, then the MCP item, joined by ` │ `. Where the
-  line does not fit, claude-kit's banner shortens to `kit`, then goes; Alfred Code's banner and the MCP item stay.
+  line does not fit, claude-kit's banner shortens to `kit`, then goes; Alfred Code's banner and the MCP item stay, and the banner is cut when it alone overflows.
 - **The MCP item** counts the session's MCP servers and never draws a name. `mcp ◐ <connected>/<total>` shows while any
   server loads, `mcp ✓ <n>` once all are connected, and `mcp ✗ <failed> · ✓ <connected>` when one failed (one waiting
   on a login counts as failed). A server reads connected when its tools show in the session's tool list. A server whose
@@ -695,8 +699,8 @@ transcript is past 8 MiB or none is found. The row's counts line still ends `sin
 When the width runs out, the info line wraps onto a second row between items, and items drop whole only when two rows
 cannot hold them (the version first, then the times); `project:` shortens its folder to the last part, then leaves it
 out, and `usage:` drops the rules, then the agents, then the skills. When the band has fewer rows than it needs, as in
-fullscreen under a tall draft, `project:` goes first, then line 2, then line 1 joins line 2 as one line where the two
-fit (and where they do not, line 2 goes), then the info line's second row, then the open rows from the last
+fullscreen under a tall draft, `project:` goes first, then line 2 joins line 1 on one line where the two
+fit (where they do not, line 2 goes), then the info line's second row, then the open rows from the last
 (`rules:`, `agents:`, `skills:`, `tools:`), then `usage:`, then `plan:`, then the whole info line, so the line with its
 buttons stays in view. Once `plan:` goes, its count and score move to the gauge line while something needs you
 (`PLAN 1/4 · score 85 ▲13`). The full band keeps its colours when idle too, not only while a turn runs; `"band": "calm"`
