@@ -26,3 +26,8 @@ export const TIMES_JOIN = ' · '
 
 // What ends the rules row's counts where the transcript reader cannot count by path
 export const TRANSCRIPT_NOTE = { unread: 'transcript unread', 'not-found': 'transcript not found' } as const
+
+// The modes line under the identity (the user, 2026-11-24: 'auto-run · auto-compact 400k · scoring 90 3'): each mode's
+// word, and the join between them
+export const MODE_WORDS = { autoRun: 'auto-run', autoCompact: 'auto-compact', scoring: 'scoring' } as const
+export const MODES_JOIN = ' · '

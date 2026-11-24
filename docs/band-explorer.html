@@ -98,7 +98,7 @@ table.settings { border-collapse: collapse; width: 100%; min-width: 860px; font-
 table.settings col.c-field { width: 21%; } table.settings col.c-src { width: 15%; } table.settings col.c-use { width: 19%; }
 table.settings th, table.settings td { padding: 7px 9px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
 table.settings tr:last-child th, table.settings tr:last-child td { border-bottom: 0; }
-table.settings thead th { font-weight: 600; font-size: 12px; background: var(--chip); }
+table.settings thead th { font-weight: 600; font-size: 12px; background: var(--chip); overflow-wrap: anywhere; }
 table.settings thead th small { display: block; font-weight: 400; color: var(--muted); }
 table.settings thead th.hi { color: var(--accent); }
 table.settings tbody th { font-weight: 400; }
@@ -146,7 +146,10 @@ a { color: var(--accent); }
 @media (max-width: 640px) { .mapzone { grid-template-columns: minmax(0, 1fr); } .zone-label { order: -1; } }
 /* A picker never widens the page: its longest option is cut, not the panel around it */
 .panel > *, .live-tools > * { min-width: 0; max-width: 100%; }
-.live-tools select { min-width: min(220px, 100%); max-width: 100%; flex: 0 1 auto; text-overflow: ellipsis; }
+/* A fixed width with no percentage, so every engine sizes the label around the whole picker and the next control starts
+   after it: Safari sized the label from the picker's text and let the next one overlap */
+.live-tools select { width: 240px; min-width: 0; max-width: calc(100vw - 140px); flex: none; text-overflow: ellipsis; }
+.live-tools label:has(> select) { flex: none; }
 .live-tools output { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--accent); min-width: 3ch; }
 .live-tools label.width { flex: 1 1 280px; max-width: 440px; }
 .live-tools label.width input { flex: 1; min-width: 90px; }
@@ -190,7 +193,7 @@ table.steps { min-width: 720px; }
   <section class="tabpanel" role="tabpanel" id="panel-box" aria-labelledby="tab-box">
     <section class="panel" aria-label="The band">
       <div><h2>The band - the session at a glance</h2>
-        <p class="muted">The band sits right above the box you type in. It shows where the session stands without a command: how full the context is, your limits, the cost, and what Claude is using. When something needs you, it adds a row that says what, and which key to press. Line 1 is the account you are signed in to and Claude Code's version: <code>Acme | Team | CC 2.1.331</code> for a company's plan, <code>org | Personal</code> for a free, Pro or Max plan, <code>org | unknown</code> for a token login. It is a quick check, not proof. Then the turn while one runs, the info line, the gauges and the rows under them. Pick a situation to see it react.</p></div>
+        <p class="muted">The band sits right above the box you type in. It shows where the session stands without a command: how full the context is, your limits, the cost, and what Claude is using. When something needs you, it adds a row that says what, and which key to press. Line 1 is the account you are signed in to and Claude Code's version: <code>Acme | Team | CC 2.1.331</code> for a company's plan, <code>org | Personal</code> for a free, Pro or Max plan, <code>org | unknown</code> for a token login. It is a quick check, not proof. Line 2 is the modes on, from Alfred Code and claude-kit: <code>auto-run · auto-compact 400k · scoring 90 3</code>. Then the turn while one runs, the info line, the gauges and the rows under them. Pick a situation to see it react.</p></div>
       <div class="live-tools">
         <label for="preset">Situation <select id="preset"></select></label>
         <label class="width" for="cols">Terminal width <output id="colsOut"></output><input type="range" id="cols" min="24" max="270" step="1"></label>
@@ -361,7 +364,7 @@ table.steps { min-width: 720px; }
 </div>
 
 <script>
-// alfred-mods band code, bundled from hooks/ (core/constants.ts, core/format.ts, agents/agents.ts, cache/constants.ts, cache/cache.ts, core/forecast.ts, session/windows.ts, place/place.ts, context/constants.ts, context/rules.ts, context/parts.ts, plan/planlines.ts, kit/constants.ts, band/constants.ts, band/gauges.ts, band/wrap.ts, band/detail.ts, band/project.ts, band/info.ts, skip/constants.ts, band/working.ts, account/constants.ts, band/lines.ts, band/band.ts, mcp/constants.ts, mcp/mcp.ts, core/guards.ts, tools/constants.ts, tools/compact.ts, plan/constants.ts, plan/plan.ts)
+// alfred-mods band code, bundled from hooks/ (core/constants.ts, core/format.ts, agents/agents.ts, cache/constants.ts, cache/cache.ts, core/forecast.ts, session/windows.ts, place/place.ts, context/constants.ts, context/rules.ts, context/parts.ts, plan/planlines.ts, kit/constants.ts, band/constants.ts, band/gauges.ts, band/wrap.ts, band/detail.ts, band/project.ts, band/info.ts, skip/constants.ts, band/working.ts, account/constants.ts, band/lines.ts, band/band.ts, mcp/constants.ts, mcp/mcp.ts, core/guards.ts, kit/kit.ts, kit/kitlines.ts, band/modes.ts, handoff/handoff.ts, stack/constants.ts, stack/stack.ts, tools/constants.ts, tools/compact.ts, plan/constants.ts, plan/plan.ts)
 const BandCore = (() => {
 const __m = {};
 // ---- hooks/core/constants.ts
@@ -1566,7 +1569,11 @@ const KIT_MODEL_ROLES = [
 const KIT_SECTION_HEAD = 'CLAUDE-KIT'
 const KIT_SETTING_ROWS = [['auto-run', KIT_NAMES.autoRun], ['scoring', KIT_NAMES.scoring], ['auto-approve', KIT_NAMES.autoApprove]]         
 
-return { KIT_FILE, KIT_FILE_MAX_CHARS, KIT_HOOK_EVENT, WHOLE_NUMBER, KIT_ON, KIT_OFF, PASS_SCORE_MIN, PASS_SCORE_MAX, KIT_NAMES, KIT_SWITCH_NAMES, KIT_MODEL_NAMES, KIT_MODEL_ROLES, KIT_SECTION_HEAD, KIT_SETTING_ROWS };
+// The rounds claude-kit's grading loop runs, which its settings file does not carry: round 0 grades, rounds 1-3 revise
+// (claude-kit's refining-plans skill, 'The loop')
+const KIT_SCORING_ROUNDS = 3
+
+return { KIT_FILE, KIT_FILE_MAX_CHARS, KIT_HOOK_EVENT, WHOLE_NUMBER, KIT_ON, KIT_OFF, PASS_SCORE_MIN, PASS_SCORE_MAX, KIT_NAMES, KIT_SWITCH_NAMES, KIT_MODEL_NAMES, KIT_MODEL_ROLES, KIT_SECTION_HEAD, KIT_SETTING_ROWS, KIT_SCORING_ROUNDS };
 })();
 // ---- hooks/band/constants.ts
 __m['band/constants.ts'] = (() => {
@@ -1599,7 +1606,12 @@ const TIMES_JOIN = ' · '
 // What ends the rules row's counts where the transcript reader cannot count by path
 const TRANSCRIPT_NOTE = { unread: 'transcript unread', 'not-found': 'transcript not found' }         
 
-return { ROW_LABEL, ORG_LABEL, ORG_JOIN, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN, WINDOW_LABEL, CC_LABEL, TIMES_JOIN, TRANSCRIPT_NOTE };
+// The modes line under the identity (the user, 2026-11-24: 'auto-run · auto-compact 400k · scoring 90 3'): each mode's
+// word, and the join between them
+const MODE_WORDS = { autoRun: 'auto-run', autoCompact: 'auto-compact', scoring: 'scoring' }         
+const MODES_JOIN = ' · '
+
+return { ROW_LABEL, ORG_LABEL, ORG_JOIN, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN, WINDOW_LABEL, CC_LABEL, TIMES_JOIN, TRANSCRIPT_NOTE, MODE_WORDS, MODES_JOIN };
 })();
 // ---- hooks/band/gauges.ts
 __m['band/gauges.ts'] = (() => {
@@ -2282,13 +2294,13 @@ return { CONFIG_FILE_NAME, READ_EVERY_MS, PERSONAL, PERSONAL_ORG_TYPES, TEAM_TYP
 })();
 // ---- hooks/band/lines.ts
 __m['band/lines.ts'] = (() => {
-// The band's leading line (spec 2026-11-23, D4, as the user arranged it on 2026-11-24): `● REC`, the signed-in account and
-// Claude Code's version. Pure: values in, lines out.
+// The band's leading lines (spec 2026-11-23, D4, as the user arranged them on 2026-11-24): `● REC`, the signed-in account
+// and Claude Code's version, then the modes on. Pure: values in, lines out.
 const { fitLine, widthOf } = __m['core/format.ts'];
 const { ORG_STRICT, PERSONAL } = __m['account/constants.ts'];
                                               
 const { CC_LABEL, ORG_JOIN, ORG_LABEL, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN } = __m['band/constants.ts'];
-                                        
+                                                   
 
 const REC_MARK      = { text: '● REC', tone: 'fail', bold: true }
 
@@ -2320,10 +2332,14 @@ function identityLine(input           )       {
   return widthOf(full) <= input.columns ? full : joinItems([rec, org])
 }
 
-// The lines that lead the band: the identity line, when it holds something
-function leadLines(input           )         {
+// The lines that lead the band, each only when it holds something: the identity, then the modes on a line of their own
+// ('own'), or after the identity on line 1 where the two fit the width, else the identity alone ('joined')
+function leadLines(input           , modesKeep           )         {
   const identity = identityLine(input)
-  return identity.length > 0 ? [identity] : []
+  const modes = input.modes ?? []
+  if (modesKeep === 'own') return [identity, modes].filter(line => line.length > 0)
+  const joined = joinItems([identity, modes])
+  return joined.length === 0 ? [] : [widthOf(joined) <= input.columns ? joined : identity].filter(line => line.length > 0)
 }
 
 return { REC_MARK, identityLine, leadLines };
@@ -2333,7 +2349,7 @@ __m['band/band.ts'] = (() => {
 // The band above the prompt, from the session's values to lines of styled segments. Calm by default: colour
 // appears only when a threshold is crossed, something failed or a turn runs.
 const { isLive } = __m['agents/agents.ts'];
-                                        
+                                                   
                                             
                                               
 const { ROW_JOIN } = __m['band/constants.ts'];
@@ -2369,40 +2385,41 @@ function underRows(viewport                                          , chrome   
 
 // What the full band keeps under its identity line: the modes line, the rows the info line may take (none for 0), the
 // project row, the open detail rows (how many lines of them), the usage row and the plan row
-                                                                                                                       
+                                                                                                                                         
 
-const KEEP_ALL       = { infoUpTo: 2, isPlaceKept: true, toolRowsKept: Infinity, isUsageKept: true, isPlanKept: true }
+const KEEP_ALL       = { modes: 'own', infoUpTo: 2, isPlaceKept: true, toolRowsKept: Infinity, isUsageKept: true, isPlanKept: true }
 
 // Line 1 is the identity ('● REC' while REC is on, the signed-in account and Claude Code's version), left out when it holds
-// nothing; then the body: the turn line, the info line, the gauges and the rows under them (the user's order, 2026-11-24).
+// nothing, and line 2 the modes on (Alfred Code's and claude-kit's); then the body: the turn line, the info line, the gauges and the rows under them (the user's order, 2026-11-24).
 // The identity is never dropped for rows or width.
 function bandLines(input           )         {
   // "band": "off" draws none, above or under, and the pinned line counts it as out of view
   if (input.mode === 'off') return []
   const max = input.maxRows
   if (max === undefined) return bandRows(input, KEEP_ALL)
-  // Short of rows, the project row gives way first, then the info line's second row, then the open detail rows from the
-  // last, then the usage row, then the plan row, then the info line: the line under them holds the buttons, and a digit
-  // arms only those in view
+  // Short of rows, the project row gives way first, then the modes join line 1, then the info line's second row, then the
+  // open detail rows from the last, then the usage row, then the plan row, then the info line: the line under them holds
+  // the buttons, and a digit arms only those in view
   const noPlace       = { ...KEEP_ALL, isPlaceKept: false }
-  for (const keep of [KEEP_ALL, noPlace, { ...noPlace, infoUpTo: 1 }]                 ) {
+  const joined       = { ...noPlace, modes: 'joined' }
+  for (const keep of [KEEP_ALL, noPlace, joined, { ...joined, infoUpTo: 1 }]                 ) {
     const lines = bandRows(input, keep)
     if (lines.length <= max) return lines
   }
-  const core       = { infoUpTo: 1, isPlaceKept: false, toolRowsKept: 0, isUsageKept: true, isPlanKept: true }
+  const core       = { modes: 'joined', infoUpTo: 1, isPlaceKept: false, toolRowsKept: 0, isUsageKept: true, isPlanKept: true }
   const coreLines = bandRows(input, core)
   if (coreLines.length <= max) return bandRows(input, { ...core, toolRowsKept: max - coreLines.length })
   for (const keep of [{ ...core, isUsageKept: false }, { ...core, isUsageKept: false, isPlanKept: false }]) {
     const lines = bandRows(input, keep)
     if (lines.length <= max) return lines
   }
-  return bandRows(input, { infoUpTo: 0, isPlaceKept: false, toolRowsKept: 0, isUsageKept: false, isPlanKept: false })
+  return bandRows(input, { modes: 'joined', infoUpTo: 0, isPlaceKept: false, toolRowsKept: 0, isUsageKept: false, isPlanKept: false })
 }
 
-// What the band is, in order: the action row where it sits under the input, the identity line, then the body
+// What the band is, in order: the action row where it sits under the input, the identity and modes lines, then the body
 function bandRows(input           , keep      )         {
   const body = bandBody(input, input.columns < 100, keep)
-  return [...body.before, ...leadLines(input), ...body.rows]
+  return [...body.before, ...leadLines(input, keep.modes), ...body.rows]
 }
 
 // The body's rows, and the ones that come before the leading lines: under the input the action row, nearest the input
@@ -2629,6 +2646,610 @@ __m['core/guards.ts'] = (() => {
 const isRecord = (value         )                                   => typeof value === 'object' && value !== null && !Array.isArray(value)
 
 return { isRecord };
+})();
+// ---- hooks/kit/kit.ts
+__m['kit/kit.ts'] = (() => {
+// Reads claude-kit's settings file. Pure: text in, values out.
+const { isRecord } = __m['core/guards.ts'];
+                                        
+const { KIT_FILE, KIT_FILE_MAX_CHARS, KIT_MODEL_NAMES, KIT_MODEL_ROLES, KIT_NAMES, KIT_OFF, KIT_ON, KIT_SWITCH_NAMES, PASS_SCORE_MAX, PASS_SCORE_MIN, WHOLE_NUMBER } = __m['kit/constants.ts'];
+
+// Where the file is: under the session's root. A trailing separator of the root goes; the rest of the path stays as the
+// host spells it.
+const kitPathOf = (root        )         => `${root.replace(/[\\/]+$/, '')}/${KIT_FILE}`
+
+// The pass score as the kit takes it: a whole number from 1 to 100, written as a JSON number or a string of digits
+function passScoreOf(value         )                {
+  const score = typeof value === 'number' ? value : typeof value === 'string' && WHOLE_NUMBER.test(value) ? Number(value) : 0
+  return Number.isInteger(score) && score >= PASS_SCORE_MIN && score <= PASS_SCORE_MAX ? score : null
+}
+
+// Whether a name's value is one it takes
+function isGood(name        , value         )          {
+  if (KIT_SWITCH_NAMES.includes(name)) return value === KIT_ON || value === KIT_OFF
+  if (name === KIT_NAMES.passScore) return passScoreOf(value) !== null
+  return typeof value === 'string' && KIT_MODEL_NAMES.includes(value)
+}
+
+const KNOWN_NAMES                    = [...KIT_SWITCH_NAMES, KIT_NAMES.passScore, ...KIT_MODEL_ROLES.map(([, name]) => name)]
+
+// The values of the names the mod knows, each only when its own value is good; a name it does not know is ignored. Null
+// where the text is no kit data: over the size cap, not JSON, or not one object. Only a known name is ever read, so a
+// name such as `__proto__` is never looked at.
+function parseKitSettings(text        )                   {
+  if (text.length > KIT_FILE_MAX_CHARS) return null
+  let parsed         
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return null
+  }
+  if (!isRecord(parsed)) return null
+  const values            = {}
+  for (const name of KNOWN_NAMES) {
+    const value = Object.hasOwn(parsed, name) ? parsed[name] : undefined
+    if (!isGood(name, value)) continue
+    values[name] = name === KIT_NAMES.passScore ? (passScoreOf(value)          ) : (value          )
+  }
+  return values
+}
+
+function isKitOn(values           , name        )          {
+  return values[name] === KIT_ON
+}
+
+// The pass score while scoring is on
+function kitPassScore(values           )                {
+  if (!isKitOn(values, KIT_NAMES.scoring)) return null
+  const score = values[KIT_NAMES.passScore]
+  return typeof score === 'number' ? score : null
+}
+
+return { kitPathOf, parseKitSettings, isKitOn, kitPassScore };
+})();
+// ---- hooks/kit/kitlines.ts
+__m['kit/kitlines.ts'] = (() => {
+// The kit's draw: the Now tab's CLAUDE-KIT section. Pure: values in, lines out.
+const { fitLine } = __m['core/format.ts'];
+                                         
+                                       
+const { KIT_FILE, KIT_MODEL_ROLES, KIT_NAMES, KIT_SECTION_HEAD, KIT_SETTING_ROWS } = __m['kit/constants.ts'];
+const { kitPassScore } = __m['kit/kit.ts'];
+
+// The Now tab's CLAUDE-KIT section: each switch the file sets with its value and the file, the pass score on the scoring
+// row, and the models. Nothing with no kit data, or none of the names set.
+function kitLines(kit          , columns        )         {
+  const values = kit.values
+  if (values === null) return []
+  const row = (text        )       => [{ text: fitLine(text, columns) }]
+  const out         = []
+  for (const [label, name] of KIT_SETTING_ROWS) {
+    const value = values[name]
+    if (value === undefined) continue
+    const pass = name === KIT_NAMES.scoring ? kitPassScore(values) : null
+    out.push(row(`${label} ${value}${pass === null ? '' : ` · pass ${pass}`} · from ${KIT_FILE}`))
+  }
+  const models = KIT_MODEL_ROLES.flatMap(([role, name]) => {
+    const value = values[name]
+    return value === undefined ? [] : [`${role} ${value}`]
+  })
+  if (models.length > 0) out.push(row(`models: ${models.join(' · ')}`))
+  return out.length === 0 ? [] : [[{ text: KIT_SECTION_HEAD, bold: true }], ...out]
+}
+
+return { kitLines };
+})();
+// ---- hooks/band/modes.ts
+__m['band/modes.ts'] = (() => {
+// The band's modes line (the user, 2026-11-24): 'auto-run · auto-compact 400k · scoring 90 3', from what the session uses
+// now - Alfred Code's status file and claude-kit's settings file. Pure: values in, lines out.
+const { tokensText, widthOf } = __m['core/format.ts'];
+                                              
+const { isKitOn, kitPassScore } = __m['kit/kit.ts'];
+const { KIT_NAMES, KIT_SCORING_ROUNDS } = __m['kit/constants.ts'];
+                                            
+                                           
+const { MODE_WORDS, MODES_JOIN } = __m['band/constants.ts'];
+
+// Each mode on, in its order. auto-run shows while either source runs it; auto-compact is Alfred Code's alone, with
+// Claude Code's compaction point where the status file names it; scoring takes Alfred Code's level and rounds while
+// its scoring is on, else claude-kit's pass score and the rounds its loop runs.
+function modeItems(stack              , kit                 )        {
+  const used = stack !== null && stack.state === 'used' ? stack : null
+  const values = kit?.values ?? null
+  const items        = []
+  if (used?.autoRun === true || (values !== null && isKitOn(values, KIT_NAMES.autoRun))) items.push({ text: MODE_WORDS.autoRun, tone: 'warn' })
+  if (used?.autoCompact?.on === true) {
+    const at = used.autoCompact.at
+    items.push({ text: at === null ? MODE_WORDS.autoCompact : `${MODE_WORDS.autoCompact} ${tokensText(at)}` })
+  }
+  if (used?.scorer?.on === true) items.push({ text: `${MODE_WORDS.scoring} ${used.scorer.level} ${used.scorer.rounds}` })
+  else if (values !== null && isKitOn(values, KIT_NAMES.scoring)) {
+    const pass = kitPassScore(values)
+    items.push({ text: pass === null ? MODE_WORDS.scoring : `${MODE_WORDS.scoring} ${pass} ${KIT_SCORING_ROUNDS}` })
+  }
+  return items
+}
+
+// The modes on, joined, within the band's width: the last mode goes first where the line would pass it. Empty with
+// none on.
+function modesLine(stack              , kit                 , columns        )       {
+  const items = modeItems(stack, kit)
+  const join = (count        )       => items.slice(0, count).flatMap((item, i) => (i === 0 ? [item] : [{ text: MODES_JOIN, tone: 'dim'          }, item]))
+  for (let count = items.length; count > 0; count--) {
+    const line = join(count)
+    if (widthOf(line) <= columns) return line
+  }
+  return []
+}
+
+return { modesLine };
+})();
+// ---- hooks/handoff/handoff.ts
+__m['handoff/handoff.ts'] = (() => {
+// F8's handoff (spec 'F8 Handoff'): its stored settings, the steps a reading handles, the percent over the point
+// where Claude Code compacts by itself, the stack's per-session status file that stands F8 down, what a save writes to
+// HANDOFF.md, the Now tab's HANDOFF row and F8's toasts.
+                                                   
+
+const { barSegs, percentSeg } = __m['band/gauges.ts'];
+const { clockText, durationText, minutesText, modelText, tokensText, usdText } = __m['core/format.ts'];
+const { isRecord } = __m['core/guards.ts'];
+                                              
+const { joinPath } = __m['place/place.ts'];
+                                                                                                 
+                                            
+                                             
+
+const MODES                = ['ask', 'auto', 'off']
+
+// A whole percent from 10 to 95, the only thresholds the command takes
+function isThreshold(value         )                  {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 10 && value <= 95
+}
+
+// The threshold, then every 5 points up to 95
+function stepsOf(threshold        )           {
+  const steps           = []
+  for (let step = threshold; step <= 95; step += 5) steps.push(step)
+  return steps
+}
+
+// The tokens in use over the compaction point, as a whole percent rounded down, so no step is reached early
+function percentOf(tokens        , point        )         {
+  return point > 0 ? Math.floor((tokens * 100) / point) : 0
+}
+
+// F8's threshold over the window, so the forecast's turns run to the same moment: 80% of 390k on 1M is 31
+function windowThreshold(threshold        , point        , window        )         {
+  return window > 0 ? Math.round((threshold * point) / window) : threshold
+}
+
+// The highest step the reading reached that is past the one handled, or null
+function nextStep(handled               , percent        , steps          )                {
+  const reached = steps.filter(step => step <= percent && (handled === null || step > handled))
+  return reached.length === 0 ? null : Math.max(...reached)
+}
+
+// The highest step at or under a reading, which a compaction re-arms from
+function stepUnder(percent        , steps          )                {
+  return nextStep(null, percent, steps)
+}
+
+// The stack's status file: valid with schema 1 and this session's id; F8 stands down when the stack handles a full
+// context itself (`fresh-session` or `compact`), runs otherwise, and says why a file it could not use was ignored
+function parseStatus(text        , session        )                                                                      {
+  let value         
+  try {
+    value = JSON.parse(text)
+  } catch {
+    return { state: 'ignored', reason: 'not JSON' }
+  }
+  if (!isRecord(value)) return { state: 'ignored', reason: 'not JSON' }
+  if (value.schema === undefined) return { state: 'ignored', reason: 'no schema' }
+  if (value.schema !== 1) return { state: 'ignored', reason: `schema ${typeof value.schema === 'number' ? value.schema : 'not 1'}` }
+  if (value.session !== session) return { state: 'ignored', reason: 'another session' }
+  return value.fullContext === 'fresh-session' || value.fullContext === 'compact' ? { state: 'stood-down', reason: null } : { state: 'runs', reason: null }
+}
+
+const HANDOFF_PATH = '.claude/session-inspector/HANDOFF.md'
+const HANDOFF_USAGE = 'Usage: /auto-handoff [ask|auto|off|at <percent>|now|compact|later]. The mode is the "handoff" field of "alfred-mods" in a settings file ("ask", "auto" or "off"), the first ask "handoffAt" (10 to 95); ask, auto, off and at <percent> set them in ~/.claude/settings.json. now saves a handoff, compact saves one then compacts, later puts the ask off until the next step.'
+
+// Where the stack publishes the session's status file: under `.alfred/state/` from the release after alfred-code 3.12.1,
+// under `.claude/session-inspector/` through it (and, relative to each turn's cwd, from older stacks)
+const STATUS_DIR = '.alfred/state/sessions/status'
+const OLD_STATUS_DIR = '.claude/session-inspector/status'
+
+// The old relative status path for a session id; an id that could leave the folder has none
+function statusPath(id        )                {
+  return /^[\w-]+$/.test(id) ? `${OLD_STATUS_DIR}/${id}.json` : null
+}
+
+// The places to look for a session's status file, first found wins: the new path under the root now, under the root
+// read at session start (a root that moved mid-session; skipped when it is the same), the old path under the root now (a
+// stack on 3.12.1 or older), then the old relative path, which `$.fs` resolves against the working folder. A refused
+// root gives no root path; an id that could leave the folder gives no path at all.
+function statusPaths(id        , roots                                                   )           {
+  const relative = statusPath(id)
+  if (relative === null) return []
+  const { root, startRoot } = roots
+  const paths           = []
+  if (root !== null) paths.push(joinPath(root, `${STATUS_DIR}/${id}.json`))
+  if (startRoot !== null && startRoot !== root) paths.push(joinPath(startRoot, `${STATUS_DIR}/${id}.json`))
+  if (root !== null) paths.push(joinPath(root, relative))
+  paths.push(relative)
+  return paths
+}
+
+const MARKER = '<!-- session-inspector handoff v1 -->'
+const FOREIGN = "HANDOFF.md exists and is not the mod's"
+const RESUME_PROMPT = 'Read .claude/session-inspector/HANDOFF.md, check that the branch it names is checked out, and continue from its Next section.'
+
+// F8's toasts (spec 'F8 toasts'), each a function of its values
+const TOASTS = {
+  ask: (step        )         => `Context past ${step}%: press 4 or run /auto-handoff now to save a handoff`,
+  autoFirst: (percent        )         => `Handoff saved at ${percent}% to ${HANDOFF_PATH} - /clear fills a resume prompt`,
+  saved: ()         => `Handoff saved to ${HANDOFF_PATH} - /clear fills a resume prompt`,
+  // While the stack stands F8 down, a save arms no resume prompt
+  savedOnly: ()         => `Handoff saved to ${HANDOFF_PATH}`,
+  compacting: ()         => `Handoff saved to ${HANDOFF_PATH} - compacting`,
+  filled: (at        )         => `Resume prompt filled from the handoff saved ${clockText(at)} - press Enter to send`,
+  fallback: (at        )         => `Handoff saved ${clockText(at)}: ask Claude to read ${HANDOFF_PATH}`,
+  failed: (reason        )         => `Handoff not saved: ${reason}`,
+}
+
+const MAX_PATHS = 50
+const INDENT = '    '
+
+// The Git part from the one `git status --porcelain=v1 --branch` call: its lines verbatim, indented so the `##` branch
+// line never reads as a heading, up to 50 paths then `+N more`; or why git was not available
+function gitPart(result                          )           {
+  const unavailable = (reason        )           => [`Git: not available (${reason})`]
+  if (result instanceof Error) {
+    if (/timed? ?out/i.test(result.message)) return unavailable('timed out')
+    if (/ENOENT|not found|cannot start|spawn/i.test(result.message)) return unavailable('git not found')
+    return unavailable(result.message.split('\n')[0] ?? 'failed')
+  }
+  if (result.exitCode !== 0) return unavailable(/not a git repository/i.test(result.stderr) ? 'not a repository' : `exit ${result.exitCode}`)
+  const lines = result.stdout.split('\n').map(line => line.trimEnd()).filter(line => line !== '')
+  const [branch, ...paths] = lines
+  const shown = paths.slice(0, MAX_PATHS).map(path => INDENT + path)
+  const more = paths.length > MAX_PATHS ? [`${INDENT}+${paths.length - MAX_PATHS} more`] : []
+  return [...(branch === undefined ? [] : [INDENT + branch]), ...shown, ...more]
+}
+
+// The branch from the Git part's `## <branch>...<upstream>` line, or null with no git
+function branchOf(git          )                {
+  const line = git[0]?.trimStart() ?? ''
+  if (!line.startsWith('## ')) return null
+  return line.slice(3).replace(/^No commits yet on /, '').split('...')[0]?.split(' ')[0] || null
+}
+
+const pad = (value        )         => String(value).padStart(2, '0')
+const plural = (count        , word        )         => `${count} ${word}${count === 1 ? '' : 's'}`
+
+function nextLine(plan                   )         {
+  if (plan === null) return 'No plan file this session; see Git below.'
+  if (plan === 'tasks') return 'Task list in use; its items are not written to this file.'
+  const running = plan.steps.find(step => step.status === 'in_progress')
+  if (running !== undefined) {
+    const of = running.forecastMs === null ? '' : ` of ≈${minutesText(running.forecastMs)}`
+    return `${running.id} ${running.title} - in progress, ${minutesText(running.actualMs)}${of}.`
+  }
+  const next = plan.steps.find(step => step.status === 'pending')
+  return next === undefined ? 'Plan finished.' : `${next.id} ${next.title} - next.`
+}
+
+function stepLine(step                           )         {
+  const isDone = step.status === 'done' || step.status === 'skipped'
+  const state = step.status === 'done' ? `done in ${minutesText(step.actualMs)}` : step.status === 'in_progress' ? 'in progress' : step.status
+  const notes = step.notes > 0 ? ` - ✎ ${plural(step.notes, 'note')}` : ''
+  return `- [${isDone ? 'x' : ' '}] ${step.id} ${step.title} - ${state}${notes}`
+}
+
+// HANDOFF.md, as the spec's example shows it; the caller masks keys, emails and phones in it before the write
+function handoffText(save           )         {
+  const date = new Date(save.at)
+  const branch = branchOf(save.git)
+  const about = [
+    save.percent === null ? `Saved before a context reading (asks at ${save.threshold}%) by alfred-mods` : `Saved at ${save.percent}% context (asks at ${save.threshold}%) by alfred-mods`,
+    `session ${save.session.slice(0, 8)}`,
+    ...(save.model === null ? [] : [modelText(save.model, true)]),
+    ...(branch === null ? [] : [`branch ${branch}`]),
+  ]
+  const out = [
+    MARKER,
+    `# Handoff - ${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${clockText(save.at)}`,
+    '',
+    `${about.join(' · ')}.`,
+    `To continue in a new session, ask Claude to read ${HANDOFF_PATH} and resume from Next.`,
+    '', '## Next', '', nextLine(save.plan),
+  ]
+  if (save.plan !== null && save.plan !== 'tasks') {
+    out.push('', `## Plan - ${save.plan.title}, ${save.plan.finished}/${save.plan.total}`, '', `From ${save.plan.file}.`, '', ...save.plan.steps.map(stepLine))
+    if (save.scores !== null) {
+      const totals = save.scores.totals.map(total => `R${total.round} ${total.total}`).join(' → ')
+      const open = save.scores.open.map(finding =>
+        `${finding.id === null ? '' : `${finding.id} `}${finding.text}${finding.severity === null ? '' : ` (${finding.severity})`}`)
+      out.push('', `Scores (${save.scores.name}): ${totals}${open.length > 0 ? ` · open: ${open.join('; ')}` : ''}`)
+    }
+  }
+  out.push('', '## Git', '', ...save.git)
+  const counts = save.counts
+  const session = [
+    `Turn ${counts.turn}`,
+    ...(counts.durationMs === null ? [] : [durationText(counts.durationMs)]),
+    `${plural(counts.calls, 'tool call')}${counts.failed > 0 ? `, ${counts.failed} failed` : ''}`,
+    ...(counts.agents > 0 ? [plural(counts.agents, 'agent')] : []),
+    ...(counts.costUsd === null ? [] : [`${usdText(counts.costUsd)}${counts.isEstimate ? ' est.' : ''}`]),
+  ]
+  out.push('', '## Session', '', session.join(' · '), '')
+  return out.join('\n')
+}
+
+const button = (key        , hotkey        , label        )      => ({ button: { key, label, hotkey, tone: 'handoff', plain: true } })
+const SEP      = { text: ' · ' }
+
+// The HANDOFF section (spec 'The HANDOFF row and the keys'): its violet heading and one row by state, then a failed
+// save's reason or the last save's path; nothing while F8 is off. Why a stack status file was not used is the ALFRED
+// CODE section's (Phase 5).
+function handoffLines(view             , _columns        )         {
+  if (view.mode === 'off') return []
+  const of = view.compactPoint !== null && view.window !== null && view.compactPoint !== view.window ? ` of ${tokensText(view.compactPoint)}` : ''
+  const plain = view.percent === null ? 'ctx –' : `ctx ${view.percent}%${of}`
+  const gauge = (percent        )        => [{ text: 'ctx ' }, ...barSegs(percent), percentSeg(percent), { text: of }]
+  const steps = stepsOf(view.threshold)
+  const after = (step               )                => steps.find(known => step === null || known > step) ?? null
+  let row      
+  if (view.stackStatus.state === 'stood-down') {
+    const ctx = view.runway === null ? plain : `ctx ${view.runway.percent}% of ${tokensText(view.runway.resumeAt)}`
+    row = [{ text: `${ctx} · handoff by Alfred Code` }]
+  }
+  else if (view.mode === 'auto') {
+    const next = after(view.handledStep)
+    const saved = view.lastSave?.isOk === true
+      ? ` · saved${view.handledStep === null ? '' : ` at ${view.handledStep}%`} (${clockText(view.lastSave.at)})`
+        + `${next === null ? '' : ` · next save at ${next}%`}`
+      : ` · saves at ${view.threshold}%`
+    row = [{ text: plain + saved }]
+  } else if (view.percent === null) row = [{ text: `ctx – · asks at ${view.threshold}%` }]
+  else if (!view.isAskUp) {
+    const next = after(view.handledStep)
+    row = [...gauge(view.percent), { text: next === null ? ' · ' : ` · asks at ${next}% · ` }, button('handoff-save', 'h', 'save now')]
+  } else {
+    const next = after(view.handledStep)
+    row = [
+      { text: '⚠ ', tone: 'warn' }, ...gauge(view.percent), { text: ` · past ${view.handledStep ?? view.threshold}% · ` },
+      button('handoff-save', 'h', 'save handoff'),
+      ...(view.isWorking ? [] : [SEP, button('handoff-compact', 'c', 'compact')]),
+      SEP, button('handoff-dismiss', 'r', next === null ? 'dismiss' : `remind at ${next}%`),
+    ]
+  }
+  const out         = [[{ text: 'HANDOFF', bold: true, tone: 'handoff' }], row]
+  const last                    = view.lastSave
+  if (last !== null && !last.isOk) out.push([{ text: `✗ save failed ${clockText(last.at)}: ${last.reason ?? 'unknown'}`, tone: 'fail' }])
+  else if (last !== null) out.push([{ text: `last save ${clockText(last.at)} · ${HANDOFF_PATH}`, tone: 'dim' }])
+  return out
+}
+
+const RESUME_WINDOW_MS = 2 * 60 * 60_000
+
+// F8's context percent: the tokens in use over the compaction point, else over the window; null while either is unknown
+function handoffPercent(handoff                               , usage                                                )                {
+  const point = handoff.compactPoint ?? usage.contextWindow
+  return usage.contextTokens === null || point === null ? null : percentOf(usage.contextTokens, point)
+}
+
+// The Now tab's HANDOFF section reads the atom with F8's percent and the runway
+function handoffViewOf(handoff         , usage       , isWorking         , runway               )              {
+  return { ...handoff, percent: handoffPercent(handoff, usage), window: usage.contextWindow, isWorking, runway }
+}
+
+// What the forecast counts to: the stack's resume trigger over the window while the runway applies and the window is
+// known, else F8's threshold over the window, to the compaction point's moment
+function forecastTargetOf(handoff         , usage       , runway               )                                {
+  if (runway !== null && runway.at !== null) return { at: runway.at, label: tokensText(runway.resumeAt) }
+  return { at: handoff.compactPoint !== null && usage.contextWindow !== null ? windowThreshold(handoff.threshold, handoff.compactPoint, usage.contextWindow) : handoff.threshold, label: `${handoff.threshold}%` }
+}
+
+return { MODES, isThreshold, stepsOf, percentOf, windowThreshold, nextStep, stepUnder, parseStatus, HANDOFF_PATH, HANDOFF_USAGE, statusPath, statusPaths, MARKER, FOREIGN, RESUME_PROMPT, TOASTS, gitPart, handoffText, handoffLines, RESUME_WINDOW_MS, handoffPercent, handoffViewOf, forecastTargetOf };
+})();
+// ---- hooks/stack/constants.ts
+__m['stack/constants.ts'] = (() => {
+// The stack folder's named values
+
+// The largest token count a status file field may hold: a context window, the auto-compact point, the resume point
+const MAX_TOKENS = 10_000_000
+
+// The smallest context window, and the smallest resume point, a status file may give
+const MIN_WINDOW = 1000
+
+// The fill's toasts (spec 'The fill'), none carrying the prompt's text
+const STACK_TOASTS = {
+  filled: "Alfred Code's resume prompt filled - Enter in the prompt box sends it",
+  notEmpty: "Prompt not empty: clear it, then press f to fill Alfred Code's resume prompt",
+  dialog: 'A dialog holds the keys: close it, then press f again',
+  noBox: 'No prompt box here to fill',
+  notFilled: "Alfred Code's resume prompt was not filled",
+  unanswered: 'The app did not answer in time: press f again',
+  gone: 'Alfred Code has no resume prompt now',
+}
+
+// A refusal's toast by the fill's refusal; one a later build adds reads as not filled
+const FILL_REFUSALS                              = new Map([
+  ['dialog', STACK_TOASTS.dialog],
+  ['no_composer', STACK_TOASTS.noBox],
+  ['unanswered', STACK_TOASTS.unanswered],
+])
+
+return { MAX_TOKENS, MIN_WINDOW, STACK_TOASTS, FILL_REFUSALS };
+})();
+// ---- hooks/stack/stack.ts
+__m['stack/stack.ts'] = (() => {
+// Alfred Code's status file past Phase 4's fields (Phase 5 spec 'The reader'): each field checked alone, a bad one
+// read as unknown and named in `ignored`, the rest of the file still used.
+const { clockText, fitLine, tokensText } = __m['core/format.ts'];
+const { isRecord } = __m['core/guards.ts'];
+const { parseStatus } = __m['handoff/handoff.ts'];
+                                              
+                                             
+const { FILL_REFUSALS, MAX_TOKENS, MIN_WINDOW, STACK_TOASTS } = __m['stack/constants.ts'];
+                                                                                                   
+
+const NO_FILE = 'no status file for this session'
+const UNREADABLE = 'unreadable'
+
+
+const CONTEXTS                = ['fresh-session', 'compact', 'off']
+// Control characters, C0, DEL and C1
+const CONTROL = /[\u0000-\u001f\u007f-\u009f]/
+// The prompt's: every control character but a line feed and a tab
+const PROMPT_CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/
+
+const isWhole = (value         , min        , max        )                  => typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max
+
+// A field's rule: the value it reads as, or `bad`; a missing field never reaches a rule
+                                            
+
+const fullContextRule                    = value => CONTEXTS.find(context => context === value) ?? 'bad'
+const modelRule                      = value => value === null || (typeof value === 'string' && value.length >= 1 && value.length <= 100 && !CONTROL.test(value)) ? value : 'bad'
+const windowRule                      = value => value === null || isWhole(value, MIN_WINDOW, MAX_TOKENS) ? value : 'bad'
+const autoRunRule                = value => typeof value === 'boolean' ? value : 'bad'
+const scorerRule                           = value => {
+  if (value === null) return null
+  if (!isRecord(value) || typeof value.on !== 'boolean' || !isWhole(value.level, 1, 100) || !isWhole(value.rounds, 1, 10)) return 'bad'
+  return { on: value.on, level: value.level, rounds: value.rounds }
+}
+const autoCompactRule                                = value => {
+  if (value === null) return null
+  if (!isRecord(value) || typeof value.on !== 'boolean' || !(value.at === null || isWhole(value.at, 1, MAX_TOKENS))) return 'bad'
+  return { on: value.on, at: value.at }
+}
+// The plan folder (alfred-code's plan folder contract): relative to the project root, forward slashes, each segment a
+// plain name, so a read never leaves the project; the trailing slash dropped
+const planRule                      = value => {
+  if (value === null) return null
+  if (typeof value !== 'string' || value.length > 300 || CONTROL.test(value) || value.includes('\\') || /^[A-Za-z]:/.test(value)) return 'bad'
+  const segs = value.replace(/\/$/, '').split('/')
+  return segs.every(segment => segment !== '' && segment !== '.' && segment !== '..') ? segs.join('/') : 'bad'
+}
+const promptRule                      = value => value === null || (typeof value === 'string' && value.length >= 1 && value.length <= 1000 && !PROMPT_CONTROL.test(value)) ? value : 'bad'
+
+function parseStack(text        , session        )            {
+  const status = parseStatus(text, session)
+  if (status.state === 'ignored') return { state: 'ignored', reason: status.reason ?? 'not JSON' }
+  // parseStatus has read the text as a record
+  const value = JSON.parse(text)                           
+  const ignored           = []
+  const field =    (name        , rule         )           => {
+    if (!(name in value) || value[name] === undefined) return null
+    const got = rule(value[name])
+    if (got !== 'bad') return got
+    ignored.push(name)
+    return null
+  }
+  const fullContext = field('fullContext', fullContextRule)
+  const model = field('model', modelRule)
+  const window = field('window', windowRule)
+  // Under the file's own valid window, else under MAX_TOKENS; a file's own null means no offer at this window
+  const resumeAt = field               ('resumeAt', value => value === null || isWhole(value, MIN_WINDOW, (window ?? MAX_TOKENS) - 1) ? value : 'bad')
+  const noOffer = value.resumeAt === null
+  const autoRun = field('autoRun', autoRunRule)
+  const scorer = field('scorer', scorerRule)
+  const autoCompact = field('autoCompact', autoCompactRule)
+  const plan = field('plan', planRule)
+  const prompt = field('handoffPrompt', promptRule)
+  const parsed = typeof value.updatedAt === 'string' ? Date.parse(value.updatedAt) : NaN
+  return {
+    state: 'used',
+    fields: { fullContext, model, window, resumeAt, hasNoOffer: noOffer, autoRun, scorer, autoCompact, plan, updatedAt: Number.isNaN(parsed) ? null : parsed, ignoredFields: ignored },
+    prompt,
+  }
+}
+
+// A model id as both sides spell it: lowercase, a trailing `[...]` suffix dropped (`claude-opus-5-5[1m]`)
+const bareModel = (model        )         => model.toLowerCase().replace(/\[[^\]]*\]$/, '')
+
+// The file's model and the session's agree when either is unknown or both name the same model
+function modelsAgree(left               , right               )          {
+  return left === null || right === null || bareModel(left) === bareModel(right)
+}
+
+
+function runwayOf(stack       , usage       , sessionModel               )                {
+  if (stack.state !== 'used' || stack.fullContext !== 'fresh-session' || stack.resumeAt === null || usage.contextTokens === null) return null
+  if (!modelsAgree(stack.model, sessionModel)) return null
+  return { percent: Math.floor((usage.contextTokens * 100) / stack.resumeAt), resumeAt: stack.resumeAt, at: usage.contextWindow === null ? null : Math.round((stack.resumeAt * 100) / usage.contextWindow) }
+}
+
+// A compaction point in whole thousands, `490k`
+const thousands = (at        )         => `${Math.round(at / 1000)}k`
+
+const HEAD       = [{ text: 'ALFRED CODE', bold: true, tone: 'handoff' }]
+const FILL      = { button: { key: 'stack-fill', label: 'fill prompt', hotkey: 'f', tone: 'handoff', plain: true } }
+// 'resume: ' before the prompt's line, two spaces and 'f: fill prompt' after it
+const BESIDE = 'resume: '.length + 2 + 'f: fill prompt'.length
+
+// Line 2 by fullContext; an unknown resumeAt or window drops its part, an unknown fullContext the line
+function contextLine(stack       , runway               )                {
+  if (stack.fullContext === 'compact') return 'compacts where Claude Code compacts'
+  if (stack.fullContext === 'off') return 'full context: off · Handoff runs'
+  if (stack.fullContext === null) return null
+  if (stack.hasNoOffer) return 'fresh session: no offer at this window'
+  if (stack.resumeAt === null) return 'fresh session offered'
+  const of = stack.window === null ? '' : ` of ${tokensText(stack.window)}`
+  return `fresh session offered from ${tokensText(stack.resumeAt)}${of}${runway === null ? '' : ` · ctx ${runway.percent}% of it`}`
+}
+
+// Line 3: the modes known, joined
+function modesLine(stack       )                {
+  const scorer = stack.scorer === null ? null
+    : stack.scorer.on ? `scoring on (level ${stack.scorer.level}, ${stack.scorer.rounds} round${stack.scorer.rounds === 1 ? '' : 's'})` : 'scoring off'
+  const compact = stack.autoCompact === null ? null
+    : !stack.autoCompact.on ? 'auto-compact off' : stack.autoCompact.at === null ? 'auto-compact on' : `auto-compact on (at ${thousands(stack.autoCompact.at)})`
+  const parts = [stack.autoRun === null ? null : `auto-run ${stack.autoRun ? 'on' : 'off'}`, compact, scorer].filter((part)                 => part !== null)
+  return parts.length === 0 ? null : parts.join(' · ')
+}
+
+// The Now tab's ALFRED CODE section (spec 'The ALFRED CODE section'), the brief's diagnostics row: the reason a file
+// was not used, else what the stack reports, with the resume prompt's first line and its fill while the stack owns the
+// full context
+function stackLines(stack       , opts                                                                                                )         {
+  if (stack.state === 'none') return [HEAD, [{ text: `Alfred Code: ${NO_FILE}`, tone: 'dim' }]]
+  if (stack.state === 'ignored') return [HEAD, [{ text: `Alfred Code status file not used: ${stack.reason ?? 'unknown'}`, tone: 'dim' }]]
+  const out         = [HEAD]
+  const context = contextLine(stack, opts.runway)
+  if (context !== null) out.push([{ text: context }])
+  const modes = modesLine(stack)
+  if (modes !== null) out.push([{ text: modes }])
+  if (stack.model !== null) {
+    const row       = [{ text: `model ${stack.model}` }]
+    if (!modelsAgree(stack.model, opts.sessionModel)) row.push({ text: ` · this session runs ${opts.sessionModel ?? ''}: runway not used`, tone: 'warn' })
+    out.push(row)
+  }
+  if (fillReady(stack, opts.prompt)) {
+    out.push([{ text: `resume: ${fitLine(opts.prompt, Math.max(1, opts.columns - BESIDE))}  ` }, FILL])
+  }
+  const written = stack.updatedAt === null ? '' : ` · written ${clockText(stack.updatedAt)}`
+  const ignored = stack.ignoredFields.length === 0 ? '' : ` · ignored: ${stack.ignoredFields.join(', ')}`
+  out.push([{ text: `read ${stack.readAt === null ? '–' : clockText(stack.readAt)}${written}${ignored}`, tone: 'dim' }])
+  return out
+}
+
+// A press fills only while line 5 would draw: a used file that owns the full context, with a prompt (Decision 7), so a
+// press from a frame drawn before the file changed fills nothing
+function fillReady(stack       , prompt               )                   {
+  return prompt !== null && stack.state === 'used' && (stack.fullContext === 'fresh-session' || stack.fullContext === 'compact')
+}
+
+// The toast for what the prompt box answered; an absent cause is a hook's refusal, unknown. 'unanswered' (a headless
+// app silent for 5 s) arrived in Claude Code 2.1.329, and a refusal a later build adds reads as not filled
+function fillToast(result                                         )         {
+  if (result.isFilled) return STACK_TOASTS.filled
+  return (result.refusal === undefined ? undefined : FILL_REFUSALS.get(result.refusal)) ?? STACK_TOASTS.notFilled
+}
+
+return { NO_FILE, UNREADABLE, parseStack, modelsAgree, runwayOf, stackLines, fillReady, fillToast };
 })();
 // ---- hooks/tools/constants.ts
 __m['tools/constants.ts'] = (() => {
@@ -3265,7 +3886,7 @@ function candidatesByName                                             (byFolder 
 
 return { time, json, parsePlan, parseScores, isFinishedStep, isPlanDone, isPlanRunning, shownPlan, creditedPlan, planView, scoresView, tasksAfter, taskView, taskStatusKey, stepStatusKey, FINISH_SHOWN_MS, newUserNotes, plansRoots, chosenPlansDir, plansDirs, scoresDirs, candidatesByName };
 })();
-return { bandLines: __m['band/band.ts'].bandLines, statusText: __m['band/band.ts'].statusText, underRows: __m['band/band.ts'].underRows, cellsOf: __m['band/wrap.ts'].cellsOf, groupLines: __m['tools/compact.ts'].groupLines, mcpItem: __m['mcp/mcp.ts'].mcpItem, planView: __m['plan/plan.ts'].planView, newRow: __m['agents/agents.ts'].newRow };
+return { bandLines: __m['band/band.ts'].bandLines, statusText: __m['band/band.ts'].statusText, underRows: __m['band/band.ts'].underRows, cellsOf: __m['band/wrap.ts'].cellsOf, groupLines: __m['tools/compact.ts'].groupLines, mcpItem: __m['mcp/mcp.ts'].mcpItem, kitLines: __m['kit/kitlines.ts'].kitLines, modesLine: __m['band/modes.ts'].modesLine, stackLines: __m['stack/stack.ts'].stackLines, planView: __m['plan/plan.ts'].planView, newRow: __m['agents/agents.ts'].newRow };
 })();
 
 // The explorer's numbers and switches as the band's input, the way hooks/band/effects.ts' readBandInput builds it, and the
@@ -3381,11 +4002,11 @@ const BandAdapter = (() => {
         rateWindows: [
           { kind: 'five_hour', percentUsed: num(d.h5), resetsAt: resets(now, d.h5Reset) },
           { kind: 'seven_day', percentUsed: num(d.d7), resetsAt: resets(now, d.d7Reset) },
-        ],
+        ].filter(w => String(w.kind === 'five_hour' ? d.h5 : d.d7).trim() !== ''),
         costUsd: m.fresh ? 0 : num(d.cost), todayUsd: num(d.today), readingAt: now, ...(m.fresh ? { rateWindowsAt: now - 60 * MIN } : {}),
       },
       session: {
-        model: modelId(d.model), effort: m.fresh ? null : String(d.effort || '') || null, compactions: m.fresh ? 0 : 1, lastCompactAt: null,
+        model: modelId(d.model), effort: m.fresh ? null : String(d.effort || '') || null, compactions: m.fresh ? 0 : num(d.compactions), lastCompactAt: null,
         lastPromptAt: m.fresh ? null : youAt, lastReplyAt: m.fresh ? null : lastReply, turnCount: m.fresh ? 0 : m.running ? turnN - 1 : turnN, waitingPrompts: [],
         mainToolCalls: tools.reduce((n, t) => n + t.n, 0), loadedSkills: Object.fromEntries(skills.map(s => [s.name, s.n])),
         ...(place ? { place } : {}), ...(String(d.cc || '') ? { version: String(d.cc) } : {}),
@@ -3393,6 +4014,11 @@ const BandAdapter = (() => {
       },
       turns, newFailures: num(d.failures), pace: {}, agents,
       // The login record's reading: 'unknown' (or a blank) is no known org
+      modes: BandCore.modesLine(
+        m.alfred ? { state: 'used', reason: null, fullContext: m.runway ? 'fresh-session' : 'compact', model: null, window: null, resumeAt: null, hasNoOffer: false,
+          autoRun: !!m.autoRun, scorer: { on: !!m.scorer, level: num(d.scorerVal), rounds: Math.max(1, num(d.scorerRounds)) },
+          autoCompact: { on: !!m.autoCompact, at: num(d.compactAt) > 0 ? num(d.compactAt) * 1000 : null }, hasPrompt: false, plan: null, updatedAt: null, readAt: null, ignoredFields: [] } : null,
+        m.kit ? { values: { auto_run: m.kitAutoRun ? 'on' : 'off', scoring: m.kitScoring ? 'on' : 'off', pass_score: num(d.kitPass) || 90 } } : null, g.columns),
       account: { org: ['', 'unknown'].includes(String(d.org ?? 'Personal').trim()) ? null : String(d.org ?? 'Personal').trim(),
         kind: ['Team', 'Enterprise', 'Personal'].includes(String(d.orgKind || '').trim()) ? String(d.orgKind).trim() : null },
       mcp,
@@ -3538,23 +4164,23 @@ const BandSettings = (() => {
 
 // The band's data as a session starts now, the session's situation, and the gallery's cards
 const BAND_DATA0 = {
-  model: 'Sonnet 5.5', effort: 'high', sessionTime: '9m', tokS: 119, cacheMin: 60,
-  ctxUsed: 140, window: 400, trigger: 180, h5: 54, h5Reset: '11.11 20:10', d7: 49, d7Reset: '16.11 03:00',
-  cost: 1.26, today: 18.62, turn: 2, turnTime: '5:37', turnTools: 41,
-  org: 'Acme', orgKind: 'Team', youAt: '17:15', claudeAt: '17:13', project: 'my-app', folder: '.claude', branch: 'develop', ahead: 1, behind: 2, added: 41, removed: 30, cc: '2.1.331',
+  model: 'Opus 5.5', effort: 'high', sessionTime: '12h', tokS: 92, cacheMin: 60,
+  ctxUsed: 320, window: 1000, trigger: 600, h5: '', h5Reset: '', d7: 11, d7Reset: '30.11 23:00',
+  cost: 64.58, today: 232.38, turn: 47, turnTime: '5:01', turnTools: 19, compactions: 0,
+  org: 'Acme', orgKind: 'Team', youAt: '11:03', claudeAt: '11:03', project: 'alfred-mods', folder: 'tests/mcp', branch: 'develop', ahead: 0, behind: 0, added: 107, removed: 0, cc: '2.1.330',
   mcpOk: 10, mcpFailed: 1, mcpLoading: 0,
-  compactAt: 490, scorerVal: 80, failures: 0, planTitle: 'Token refresh', planDone: 3, planTotal: 5, planStep: 'S4 Update interceptor',
+  compactAt: 400, scorerVal: 90, scorerRounds: 3, kitPass: 90, failures: 8, planTitle: 'Token refresh', planDone: 3, planTotal: 5, planStep: 'S4 Update interceptor',
   planScore: 85, planPrevScore: 72,
   listed: 57, ofSkills: 60,
-  tools: 'Bash 32\nAskUserQuestion 4\nRead 4\nWrite 4\nGrep 1',
-  skills: 'superpowers:brainstorming 1\nsolve-task 2',
-  agents: 'alfred-code:web-angular-verifier 1 running Read src/app/auth/token.interceptor.ts\nExplore 2\ngeneral-purpose 1',
-  rules: 'alfred-interaction.md\nalfred-git.md\nalfred-preferences.md\nweb:angular.md path\ntypescript.md path'
+  tools: 'Bash 512\nRead 241\nEdit 158\nGrep 72\nWrite 48\nAgent 31\nTaskUpdate 15',
+  skills: 'solve-task 3\nsuperpowers:brainstorming 2\nsuperpowers:writing-plans 2\nrefining-plans 2\ntypescript 4\njavascript 4\nproject-structure 4\nts-js-testing 3\nplugin-authoring 2\nplugin-packaging 1\nauto-run 1\nmarkdown-style 1',
+  agents: 'general-purpose 14\nExplore 9\nplan-grader 5\nPlan 3',
+  rules: 'communication.md\nexecution.md\ncommits.md\ncleanup.md\nauto-run.md\nplan-approval.md\nrefining-plans.md\nwindows-vm.md\nsuperpowers-location.md\ntypescript.md path\nproject-structure.md path\nplugin-handling.md path'
 }
 // The session's situation: what is happening, not what the settings say
 const BAND_MODES0 = {
-  running: true, fullscreen: false, statusLine: false, alfred: true, autoRun: false, autoCompact: true, scorer: true, runway: false,
-  upstream: true, plan: false, planAwaiting: false, grading: false, withheld: false, fresh: false, collapsed: false, cols: 150, rows: 12, termRows: 40
+  running: true, fullscreen: false, statusLine: false, alfred: true, autoRun: true, autoCompact: true, scorer: true, runway: false,
+  kit: true, kitAutoRun: true, kitScoring: true, upstream: true, plan: false, planAwaiting: false, grading: false, withheld: false, fresh: false, collapsed: false, cols: 150, rows: 12, termRows: 40
 }
 const BAND_BASE = {
   running: false, fullscreen: false, statusLine: false, alfred: false, autoRun: false, autoCompact: false, scorer: false, runway: false,
@@ -3562,15 +4188,18 @@ const BAND_BASE = {
 }
 // No settings file sets anything: every field takes its default
 const BAND_CFG0 = { user: {}, project: {}, local: {}, legacy: {} }
+// One agent at work, for the situations that show it beside the turn
+const withRun = d => ({ agents: String(d.agents || '').replace(/^(Explore \d+)$/m, '$1 running Read hooks/mcp/mcp.ts') })
 const noRun = s => String(s || '').split('\n').map(l => l.replace(/\s+running(\s.*)?$/i, '')).join('\n')
 // [name, what it shows, the situation, the data, the settings files]
 const BAND_PRESETS = [
   ['Between turns, nothing to act on', 'Claude has answered and nothing needs you, so the band leads with the gauges, in their colours as while a turn runs (the calm band dims instead). No file sets anything, so every field takes its default: above the input, full, detail rows open.', {}, d => ({ agents: noRun(d.agents) })],
-  ['A turn is running', 'Line 1 counts the turn: ⟳, its time and its tool calls, with an agent at work beside it. Asks and their buttons wait for the turn to end.', { running: true }],
+  ['A turn is running', 'Line 1 counts the turn: ⟳, its time and its tool calls, with an agent at work beside it. Asks and their buttons wait for the turn to end.', { running: true }, withRun],
   ['Detail rows closed', 'Set in this project\'s local file. The usage: row keeps the counts - not a button, no arrow, no t: the rows under it open and close only by the value.', { running: true }, null, { local: { bandRows: false } }],
   ['A local file over the user\'s', 'The user file puts the band under the input with its rows closed in every project; this project\'s local file opens the rows again. Each other field falls through to the user file, then the default.', { running: true, fullscreen: true }, null, { user: { bandPlace: 'under', bandRows: false }, local: { bandRows: true } }],
   ['A bad value falls through', 'The local file says "compact", which "band" does not take, so the user file\'s "calm" applies, and the mod says so once in a toast that never quotes the bad value.', { running: true }, null, { user: { band: 'calm' }, local: { band: 'compact' } }],
-  ['With Alfred Code: auto-run, auto-compact, scoring and the runway', "The band draws no mode banner: Alfred Code's auto-run, auto-compact and scoring are in /inspect's Now tab. With the runway, ctx is measured against Alfred Code's trigger, not the window.", { running: true, alfred: true, autoRun: true, autoCompact: true, scorer: true, runway: true }],
+  ['With Alfred Code: auto-run, auto-compact, scoring and the runway', "Line 2 reads the modes from Alfred Code's status file: auto-run, auto-compact with where Claude Code compacts for the session's model, and scoring with its level and rounds. Scoring also colours the plan's score: green at or above the bar, amber under it, so 85 is amber against 90. With the runway, ctx is measured against Alfred Code's trigger, not the window. The /inspect Now tab's ALFRED CODE section has the details.", { running: true, alfred: true, autoRun: true, autoCompact: true, scorer: true, runway: true, plan: true }],
+  ['With claude-kit only', "Line 2 reads claude-kit's .claude/kit/settings.json: auto-run, and scoring with its pass score and the 3 rounds its grading loop runs. The kit's file says nothing of auto-compact, so that mode shows only with Alfred Code. Auto-approve and the models are in the /inspect Now tab's CLAUDE-KIT section.", { running: true, kit: true, kitAutoRun: true, kitScoring: true }],
   ['A plan in progress', 'The plan row sits under the project row, above usage: - the title, the steps done, the step in progress and the plan\'s score with its change from the round before.', { running: true, plan: true }],
   ['An Alfred Code plan and its score', "Alfred Code's status file names the plan's folder; the plan row reads its status.json and ends with the score from its scoring.json: the kept round's total, ▲ against the round before, green at or above the scoring bar and amber under it. While grading still runs, the newest total shows, marked grading; a plan Alfred Code withheld shows it marked withheld.", { running: true, alfred: true, scorer: true, plan: true }, () => ({ planTitle: 'Waste bin (plannings)', planDone: 1, planTotal: 4, planStep: '3 Restore deleted plan books', planScore: 85, planPrevScore: 72 })],
   ['An Alfred Code plan awaiting approval', 'Before you approve it, the plan row says awaiting approval in place of a step; its score shows once it was graded, amber here as 76 is under the scoring bar of 80.', { alfred: true, scorer: true, plan: true, planAwaiting: true }, d => ({ planTitle: 'Waste bin (plannings)', planDone: 0, planTotal: 4, planStep: '', planScore: 76, planPrevScore: 64, agents: noRun(d.agents) })],
@@ -3593,7 +4222,7 @@ const BAND_PRESETS = [
   ['Under the input, main screen', 'The main screen takes no clicks, so each button is its command as text to type.', {}, d => ({ failures: 1, agents: noRun(d.agents) }), { user: { bandPlace: 'under' } }],
   ['Under, fullscreen, a 24-row window', 'Fullscreen gives everything under the input about half the window. Less the prompt and Claude Code\'s own footer line, 6 band rows remain here; the rest give way in the band\'s order, the project row first.', { fullscreen: true, termRows: 24, running: true }, null, { user: { bandPlace: 'under' } }],
   ['Choices from the old commands', 'Someone who ran /rec strict and /band rows off on 0.7 keeps both after the update. One toast gives the line to paste, and each old choice retires once the user file sets that field.', { running: true }, null, { legacy: { rec: 'strict', bandRows: false } }],
-  ['First second of a session', 'Before the first reply: ctx waits (ctx —), and 5h and 7d carry the values an earlier session stored, marked ≈.', { fresh: true }, () => ({ agents: '' })]
+  ['First second of a session', 'Before the first reply: ctx waits (ctx —), and 5h and 7d carry the values an earlier session stored, marked ≈.', { fresh: true }, () => ({ agents: '', h5: 54, h5Reset: '24.11 16:00' })]
 ]
 
 </script>
@@ -3604,18 +4233,18 @@ const MODES0 = BAND_MODES0;
 const FIELDS = [
   ['model','Model'],['effort','Effort'],['sessionTime','Session time'],['tokS','Speed, tok/s',1],['cacheMin','Cache warm, min',1],
   ['ctxUsed','Context used, k',1],['window','Window, k',1],['trigger','Alfred Code trigger, k',1],
-  ['h5','5h used, %',1],['h5Reset','5h resets'],['d7','7d used, %',1],['d7Reset','7d resets'],
-  ['cost','Session cost, $',1],['today','Today, $',1],['turn','Turn number',1],['turnTime','Turn time'],['turnTools','Turn tool calls',1],
+  ['h5','5h used, % (blank: no reading)',1],['h5Reset','5h resets'],['d7','7d used, %',1],['d7Reset','7d resets'],
+  ['cost','Session cost, $',1],['today','Today, $',1],['turn','Turn number',1],['turnTime','Turn time'],['turnTools','Turn tool calls',1],['compactions','Compactions',1],
   ['org','Account: Personal, a company name or unknown'],['orgKind','Plan kind: Team, Enterprise or Personal (blank: unknown)'],['youAt','Your last prompt'],['claudeAt','Claude last reply'],['project','Project'],['folder','Folder Claude works in (blank: the root)'],
   ['branch','Branch'],['ahead','Commits ahead of the upstream',1],['behind','Commits behind the upstream',1],
   ['added','Lines added, uncommitted',1],['removed','Lines removed, uncommitted',1],['cc','Claude Code version'],['mcpOk','MCP servers connected',1],['mcpFailed','MCP servers failed',1],['mcpLoading','MCP servers loading',1],
-  ['compactAt','Auto-compact at, k (0: unknown)',1],['scorerVal','Scoring bar',1],['failures','New tool failures',1],['planTitle','Plan title'],['planDone','Plan steps done',1],
+  ['compactAt','Auto-compact at, k (0: unknown)',1],['scorerVal','Scoring bar',1],['scorerRounds','Scoring rounds (Alfred Code)',1],['kitPass','claude-kit pass score',1],['failures','New tool failures',1],['planTitle','Plan title'],['planDone','Plan steps done',1],
   ['planTotal','Plan steps',1],['planStep','Step in progress'],['planScore','Plan score (0: not graded)',1],['planPrevScore','Score of the round before (0: none)',1],['listed','Skills listed',1],['ofSkills','of session skills',1]
 ];
 // What the session is doing; the mod's own switches are settings (BandSettings)
 const SWITCHES = [
   ['running','A turn is running'],['fullscreen','Fullscreen (CLAUDE_CODE_NO_FLICKER=1)'],
-  ['alfred','Alfred Code is installed'],['autoRun','auto-run on'],['autoCompact','auto-compact on'],['scorer','scoring on'],['runway','Runway: fresh session at the trigger'],
+  ['alfred','Alfred Code is installed'],['autoRun','auto-run on'],['autoCompact','auto-compact on'],['scorer','scoring on'],['kit','claude-kit is set up'],['kitAutoRun','claude-kit auto-run on'],['kitScoring','claude-kit scoring on'],['runway','Runway: fresh session at the trigger'],
   ['upstream','The branch has an upstream (pushed with -u)'],['plan','A plan file exists'],['planAwaiting','The plan awaits approval (Alfred Code)'],['grading','Grading still runs (Alfred Code)'],['withheld','Alfred Code withheld the plan'],['fresh','First second of the session'],['collapsed','Band collapsed (Ctrl+X Ctrl+A, above only)']
 ];
 // The four sources the page edits, each the "alfred-mods" fields it sets
@@ -3626,12 +4255,12 @@ const eff = (m, c) => Object.assign({}, m, BandSettings.asModes(BandSettings.res
 
 const store = { get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
-let data = Object.assign({}, DATA0, store.get('band4-data') || {});
+let data = Object.assign({}, DATA0, store.get('band8-data') || {});
 // The sample session without any situation's own numbers: each situation starts from it, so one's failures or full
 // context never leak into the next
-let base = Object.assign({}, DATA0, store.get('band4-base') || store.get('band4-data') || {});
-let modes = Object.assign({}, MODES0, store.get('band4-modes') || {});
-let cfg = cfgOf(store.get('band4-cfg') || BAND_CFG0);
+let base = Object.assign({}, DATA0, store.get('band8-base') || store.get('band8-data') || {});
+let modes = Object.assign({}, MODES0, store.get('band8-modes') || {});
+let cfg = cfgOf(store.get('band8-cfg') || BAND_CFG0);
 // The situation picked near the message box, an index into BAND_PRESETS; -1 once anything is changed by hand
 let presetIx = -1;
 // The page's tab in view, and the /inspect pane's
@@ -3809,7 +4438,7 @@ function terminal(d, m, ex, part) {
   out.push(edge, html([S('> ', 'dim'), S('type your next message', 'zone')]), edge);
   const foot = [];
   if (r.pinned) foot.push(html([S('⚠ alfred-mods: ', 'warn'), S(r.pinned, '')]));
-  foot.push(html([S('⏸ manual mode on · ? for shortcuts', 'dim'),
+  foot.push(html([S('⏵⏵ auto mode on · 1 shell', 'dim'),
     S(m.under ? "   (Claude Code's own line: always the footer's first row - the band can only follow it)" : "   (Claude Code's own line)", 'zone')]));
   if (m.under) lines.forEach(l => foot.push(BandAdapter.lineHtml(l)));
   foot.forEach(f => out.push('  ' + f));
@@ -3917,7 +4546,7 @@ function fill() {
   $('cols').value = modes.cols; $('rows').value = modes.rows; $('termRows').value = modes.termRows; fillSettings();
   $('paneW').value = paneW; $('paneData').value = paneRaw;
 }
-function save() { store.set('band4-data', data); store.set('band4-base', base); store.set('band4-modes', modes); store.set('band4-cfg', cfg); store.set('band4-preset', presetIx); store.set('pane-raw', paneRaw); store.set('pane-w', paneW); }
+function save() { store.set('band8-data', data); store.set('band8-base', base); store.set('band8-modes', modes); store.set('band8-cfg', cfg); store.set('band8-preset', presetIx); store.set('pane2-raw', paneRaw); store.set('pane-w', paneW); }
 
 // ---------- gallery ----------
 // A card's settings files, one line each, as the person would write them
@@ -3963,7 +4592,7 @@ const isBoxPreset = p => !(p[4] && p[4].user && p[4].user.quiet === false);
 function buildPresets() {
   $('preset').innerHTML = '<option value="-1">Your own mix</option>'
     + BAND_PRESETS.map((p, i) => isBoxPreset(p) ? `<option value="${i}">${esc(p[0])}</option>` : '').join('');
-  const kept = store.get('band4-preset');
+  const kept = store.get('band8-preset');
   presetIx = Number.isInteger(kept) && kept >= 0 && kept < BAND_PRESETS.length ? kept : -1;
   $('preset').addEventListener('change', () => {
     const i = +$('preset').value;
@@ -4077,8 +4706,11 @@ function buildMap() {
 const BAND_PARTS = [
   ['The identity line', 'line 1, always', { running: true }, d => ({ agents: noRun(d.agents) }), { user: { rec: 'on' } }, (t, i) => i === 0,
     'A red ● REC while Recording mode masks the screen, the account you are signed in to with its plan kind, and Claude Code\'s version.',
-    'It leads the band in every mode but off and is never dropped for rows; the version goes where the line would pass the width. The account comes from the login record on disk. The band draws no mode banner: Alfred Code\'s and claude-kit\'s modes are in /inspect\'s Now tab.'],
-  ['The turn', 'while Claude works', { running: true }, null, null, t => /Turn \d/.test(t),
+    'It leads the band in every mode but off and is never dropped for rows; the version goes where the line would pass the width. The account comes from the login record on disk. The modes on follow it on line 2.'],
+  ['The modes line', 'line 2, while a mode is on', { running: true, alfred: true, autoRun: true, autoCompact: true, scorer: true }, null, null, t => /^auto-run|^auto-compact|^scoring/.test(t),
+    'The modes the session runs under: auto-run, auto-compact with where Claude Code compacts, and scoring with its level and rounds.',
+    "From Alfred Code's status file and claude-kit's .claude/kit/settings.json: auto-run shows while either turns it on, auto-compact is Alfred Code's alone, and scoring takes Alfred Code's level and rounds, else the kit's pass score and its loop's 3 rounds. Short of rows it joins line 1, and short of width it drops from the end."],
+  ['The turn', 'while Claude works', { running: true }, withRun, null, t => /Turn \d/.test(t),
     'The turn Claude is on, how long it has run and its tool calls so far, then the agent at work and what it does now.',
     'Counted from the session\'s own events as they happen. Once Claude has answered, the line stays only while something needs you, as ✓ with the turn\'s total.'],
   ['The info line', 'full band', {}, null, null, t => /tok\/s/.test(t),
@@ -4160,9 +4792,10 @@ const PANE0 = {
     memory: '5 files 6.5k · .claude/CLAUDE.md 2.1k · User CLAUDE.md 1.5k · AutoMem MEMORY.md 1.2k · +2',
     account: 'Max 20x', compactions: '1, at 14:40'
   },
-  alfredCode: { model: 'claude-sonnet-5-5', resume: 'Read the run ledger and continue from its Next step', read: '17:13', written: '17:12' }
+  kit: { auto_run: 'on', scoring: 'on', pass_score: 90, auto_approve: 'on', plan_model: 'opus', review_model: 'opus', implement_model: 'sonnet' },
+  alfredCode: { model: 'claude-opus-5-5', resume: 'Read the run ledger and continue from its Next step', read: '17:13', written: '17:12' }
 };
-let paneRaw = store.get('pane-raw') || JSON.stringify(PANE0, null, 2);
+let paneRaw = store.get('pane2-raw') || JSON.stringify(PANE0, null, 2);
 let pane; try { pane = JSON.parse(paneRaw); } catch { pane = JSON.parse(JSON.stringify(PANE0)); }
 let paneW = store.get('pane-w') || 90;
 
@@ -4174,7 +4807,7 @@ const TAB_ASKS = {
 };
 let paneTab = TABS.includes(store.get('pane-tab')) ? store.get('pane-tab') : 'Now';
 const TAB_NOTES = {
-  Now: 'The tab to keep open while Claude works: the plan step, the handoff state, Alfred Code\'s status, running agents and new failures. Opening it marks failures as seen.',
+  Now: 'The tab to keep open while Claude works: the plan step, the handoff state, Alfred Code\'s modes (auto-run, auto-compact, scoring), claude-kit\'s switches and models, running agents and new failures. Opening it marks failures as seen.',
   Usage: 'What fills the context and the limits, from Claude Code\'s own estimate.',
   Agents: 'With two agents or more, a time axis (one lane each, the newest 8), then each agent\'s detail. Under about 30 columns no lane is drawn.',
   Tools: 'Calls per tool from the band\'s tools list, with failures and blocks from the pane data. Under 45 columns the name column narrows.',
@@ -4226,17 +4859,20 @@ function tabNow(d, m, p, w) {
     L.push([S('  ⚠ ', 'warn'), S('ctx ', 'f-usage'), gauge(pct), S(` ${pct}% · past ${step}% · `, ''), S('h: save handoff', 'f-handoff bold'),
       ...(m.running ? [] : [S(' · c: compact', '')]), S(step >= 95 ? ' · r: dismiss' : ` · r: remind at ${step + 5}%`, '')]);
   } else L.push([S('  ctx ', 'f-usage'), gauge(pct), S(` ${pct}% · asks at 80% · `, ''), S('h: save now', 'bold')]);
-  L.push([S('ALFRED CODE', 'bold')]);
-  if (!m.alfred) L.push([S('  Alfred Code: no status file for this session', 'dim')]);
-  else {
-    const a = p.alfredCode || {};
-    L.push([S('  full context: ', 'dim'), S(m.runway ? `fresh session at ${num(d.trigger)}k` : 'compact (Claude Code\'s own point)', '')]);
-    L.push([S('  modes: ', 'dim'), S(m.autoRun ? 'auto-run on' : 'auto-run off', m.autoRun ? 'warn' : ''), S(' · ', 'dim'),
-      S(!m.autoCompact ? 'auto-compact off' : num(d.compactAt) > 0 ? `auto-compact on (at ${Math.round(num(d.compactAt))}k)` : 'auto-compact on', ''), S(' · ', 'dim'), S(m.scorer ? `scoring ${num(d.scorerVal)}` : 'scoring off', '')]);
-    L.push([S('  judged as: ', 'dim'), S(a.model || '-', modelCls(a.model))]);
-    if (m.runway) L.push([S('  resume: ', 'dim'), S((a.resume || '-') + '   ', ''), S('f: fill prompt', 'bold')]);
-    L.push([S(`  read ${a.read || '-'} · written ${a.written || '-'}`, 'dim')]);
-  }
+  // Alfred Code's section, drawn by the mod's own code (hooks/stack/stack.ts) from the status file this sample stands for
+  const a = p.alfredCode || {};
+  const clock = hhmm => { const x = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || '')); if (!x) return null; const t = new Date(); t.setHours(+x[1], +x[2], 0, 0); return t.getTime(); };
+  const stack = !m.alfred
+    ? { state: 'none', reason: null, fullContext: null, model: null, window: null, resumeAt: null, hasNoOffer: false, autoRun: null, scorer: null, autoCompact: null, hasPrompt: false, plan: null, updatedAt: null, readAt: null, ignoredFields: [] }
+    : { state: 'used', reason: null, fullContext: m.runway ? 'fresh-session' : 'compact', model: a.model || null, window: num(d.window) * 1000 || null,
+      resumeAt: m.runway ? num(d.trigger) * 1000 : null, hasNoOffer: false, autoRun: !!m.autoRun,
+      scorer: { on: !!m.scorer, level: num(d.scorerVal), rounds: 3 }, autoCompact: { on: !!m.autoCompact, at: num(d.compactAt) > 0 ? num(d.compactAt) * 1000 : null },
+      hasPrompt: !!m.runway, plan: null, updatedAt: clock(a.written), readAt: clock(a.read), ignoredFields: [] };
+  BandCore.stackLines(stack, { prompt: m.runway ? a.resume || null : null, runway: null, sessionModel: a.model || null, columns: w - 2 }).forEach((line, i) =>
+    L.push(line.map((seg, k) => S((i > 0 && k === 0 ? '  ' : '') + seg.text, seg.bold || i === 0 ? 'bold' : seg.tone === 'dim' ? 'dim' : seg.tone === 'warn' ? 'warn' : ''))));
+  // claude-kit's switches and models, as the mod draws them from .claude/kit/settings.json (hooks/kit/kitlines.ts)
+  BandCore.kitLines({ values: p.kit && typeof p.kit === 'object' ? p.kit : null }, w).forEach((line, i) =>
+    L.push(line.map(seg => S(i === 0 ? seg.text : '  ' + seg.text, seg.bold ? 'bold' : ''))));
   const run = (p.agents || []).filter(a => a.state === 'running');
   L.push([S('AGENTS ', 'f-agents bold'), S(run.length ? `${run.length} running` : 'none running', run.length ? '' : 'dim')]);
   run.forEach(a => L.push([S('  ⟳ ', 'bold'), S(a.type + ' ', 'bold'), S(`[${a.model}${a.effort ? ' ◑ ' + a.effort : ''}]`, modelCls(a.model)),

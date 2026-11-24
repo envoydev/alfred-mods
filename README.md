@@ -33,6 +33,8 @@ Requires Claude Code 2.1.312 or later, in the terminal (`claude --version`) and 
 (`/status`). Mods load from 2.1.287, but the handoff and the compact rows use fields this mod is checked against only
 from 2.1.312. Counting rules that load by path from the session transcript needs 2.1.330 (see
 [What it shows](#what-it-shows)); on an earlier build the mod finds the transcript another way, or says it could not.
+Using the mod needs no Node: Claude Code runs its hooks in its own runtime. Node 26.13 or newer is for working on
+the mod only (see Development below).
 
 Install it from `envoydev`, the one marketplace for envoydev's plugins
 ([envoydev/plugins-marketplaces](https://github.com/envoydev/plugins-marketplaces)). It also lists Alfred Code, which the
@@ -610,11 +612,11 @@ its tokens.
 
 By default the band is the identity line, the turn while one runs, an info line, the gauges, and rows under them.
 Line 1 is the identity: `● REC` while recording mode is on, the account the session is signed in to, and Claude Code's
-version. A line with nothing on it is not drawn. The band draws no mode banner: Alfred Code's modes are in the Now
-tab's ALFRED CODE section and claude-kit's in its CLAUDE-KIT section.
+version. Line 2 is the modes on, from Alfred Code and claude-kit. A line with nothing on it is not drawn.
 
 ```text
 Acme | Team | CC 2.1.331
+auto-run · auto-compact 400k · scoring 90 3
 ⟳ Turn 47 · 5:01 · 19 tools
 Sonnet 5.5 ◑ high │ cache warm ≈60m │ mcp ✗ 1 · ✓ 10 │ ≈119 tok/s avg │ Claude 17:13 · you 17:15 │ 9m
 ctx ▰▰▰▱▱ 30% │ 5h ▰▱▱▱▱ 15% (19:00) │ 7d 40% (11:00)
@@ -639,6 +641,14 @@ rules:   alfred-interaction │ alfred-git │ web:typescript │ 3 always-on ·
   the stronger source. Under [REC](#recording-mode) `strict` a company name reads `‹org›`; `Personal` and `unknown`
   stay. Claude Code's version follows the account, `| CC 2.1.331`, and goes where the line would pass the band's
   width.
+- **Line 2, the modes,** shows the modes the session runs under, joined by ` · `: `auto-run` (amber) while Alfred
+  Code's status file or claude-kit's `.claude/kit/settings.json` turns it on; `auto-compact 400k` while Alfred Code
+  compacts for you, with Claude Code's compaction point when the status file names it; and `scoring <level> <rounds>`
+  while scoring is on - Alfred Code's level and rounds, else claude-kit's pass score and the 3 rounds its grading loop
+  runs (claude-kit's file names no rounds). claude-kit alone gives no `auto-compact`, which only Alfred Code reports.
+  The line is left out while no mode is on, and short of width it drops from the end. Short of rows, after the project
+  row, it joins line 1 (`Acme | Team │ auto-run · scoring 90 3`) where the two fit, else line 1 stands alone. The Now
+  tab's ALFRED CODE and CLAUDE-KIT sections keep the details: auto-approve, the models, where each value comes from.
 - **The MCP item**, on the info line after the cache, counts the session's MCP servers and never draws a name. `mcp ◐ <connected>/<total>` shows while any
   server loads, `mcp ✓ <n>` once all are connected, and `mcp ✗ <failed> · ✓ <connected>` when one failed (one waiting
   on a login counts as failed). Claude Code's own `mcp.connect` answers before the server starts, so for each server
@@ -1119,7 +1129,7 @@ CI (`.github/workflows/ci.yml`) runs `npm run validate` and `npm test` on Linux,
 against the types the pinned Claude Code build writes.
 
 The first interactive `--plugin-dir` session writes the mod types for the running build into
-`.claude-plugin/types/` (git-ignored), which editors and `tsc` read. Requires Node 22 for the scripts (built-ins
+`.claude-plugin/types/` (git-ignored), which editors and `tsc` read. Requires Node 26.13 or newer for the scripts (built-ins
 only) and the `claude` CLI on PATH. This repo's own rules are in `AGENTS.md`; the
 design, the features and the build phases are in [the session-inspector brief](docs/session-inspector-brief.md).
 

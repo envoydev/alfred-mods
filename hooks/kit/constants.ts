@@ -30,3 +30,7 @@ export const KIT_MODEL_ROLES = [
 // What the Now tab calls the kit, and how a setting reads there
 export const KIT_SECTION_HEAD = 'CLAUDE-KIT'
 export const KIT_SETTING_ROWS = [['auto-run', KIT_NAMES.autoRun], ['scoring', KIT_NAMES.scoring], ['auto-approve', KIT_NAMES.autoApprove]] as const
+
+// The rounds claude-kit's grading loop runs, which its settings file does not carry: round 0 grades, rounds 1-3 revise
+// (claude-kit's refining-plans skill, 'The loop')
+export const KIT_SCORING_ROUNDS = 3

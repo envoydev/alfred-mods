@@ -13,7 +13,8 @@ import { settingsInForce } from '../settings/effects'
 import { readRec } from '../rec/effects'
 import { readFailures, readStats } from '../tools/effects'
 import { runwayOf } from '../stack/stack'
-import { readKitScoreLevel } from '../kit/effects'
+import { readKit, readKitScoreLevel } from '../kit/effects'
+import { modesLine } from './modes'
 import { readHandoff, saveNow } from '../handoff/effects'
 import { recSummary } from '../rec/rec'
 import { openInspectFromBand } from '../inspect/effects'
@@ -113,7 +114,7 @@ async function readBandInput(
     newFailures: (await readFailures($)).filter(failure => failure.isNew).length, pace: await readPace($), agents: await readAgents($),
     cache: await readCache($), plan: drawing.band, isPlanInvalid: drawing.invalid, score: drawing.score, isPlanScore: drawing.isPlanScore, scoreLevel: (await readScoreLevel($)) ?? (await readKitScoreLevel($)), rec: recSummary(await readRec($)),
     forecast: forecastTargetOf(handoff, usage, runway), handoffAskStep: handoff.isAskUp ? handoff.handledStep : null, isSkipAskUp: (await readSkipAsk($)).isAskUp, runway,
-    account: { org: account.org, kind: account.kind }, mcp: mcpItem(await readMcp($)),
+    account: { org: account.org, kind: account.kind }, mcp: mcpItem(await readMcp($)), modes: modesLine(st, await readKit($), at.columns),
     mode: setting.mode, totals: await readTotals($), stats: await readStats($),
     isToolsOpen: setting.isToolsOpen === true, skillListing: parts.skills ?? null,
     rules: {

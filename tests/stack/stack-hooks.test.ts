@@ -210,13 +210,13 @@ async function turnAt($: Engine, usage: { current: SessionUsage }, n: number, to
 }
 
 for (const surface of SURFACES) {
-  // The user's order of 2026-11-24 draws no mode banner in the band: the modes stay on the Stack tab
-  test(`the band draws the runway at 120 and 90 columns, and no mode banner (${surface})`, async ($, on) => {
+  // The modes line under the identity (the user, 2026-11-24): 'auto-run · scoring 80 3' from the status file
+  test(`the band draws the runway at 120 and 90 columns, and the modes line (${surface})`, async ($, on) => {
     await start($, on, { files: { [STATUS]: status() }, usage: reading(93_000) })
     for (const columns of [120, 90]) {
       const lines = await rows(await band($, surface, columns))
-      expect(lines.some(l => l.includes('auto-run'))).toBe(false)
-      expect(lines[0]!.startsWith('ctx ▰▰▰▱▱ 62% of 150k')).toBe(true)
+      expect(lines[0]).toBe('auto-run · scoring 80 3')
+      expect(lines[1]!.startsWith('ctx ▰▰▰▱▱ 62% of 150k')).toBe(true)
     }
   })
 
@@ -227,14 +227,14 @@ for (const surface of SURFACES) {
     }
     await start($, on, { files: { [STATUS]: status() }, usage: windowed })
     const lines = await rows(await band($, surface, 90))
-    expect(lines[0]).toMatch(/^ctx ▰▰▰▱▱ 62% of 150k · 5h .* · 7d ▰▱▱▱▱ 20% \(\d\d\.\d\d \d\d:\d\d\)$/)
+    expect(lines.find(l => l.startsWith('ctx '))).toMatch(/^ctx ▰▰▰▱▱ 62% of 150k · 5h .* · 7d ▰▱▱▱▱ 20% \(\d\d\.\d\d \d\d:\d\d\)$/)
     for (const l of lines) expect(l.length).toBeLessThanOrEqual(90)
   })
 
-  test(`a fresh session's first file draws no mode banner before any prompt (${surface})`, async ($, on) => {
+  test(`a fresh session's first file draws the modes before any prompt (${surface})`, async ($, on) => {
     await start($, on, { files: { [STATUS]: status({ autoCompact: { on: true, at: 490_000 } }) } })
     const lines = await rows(await band($, surface))
-    expect(lines.some(l => l.includes('auto-compact'))).toBe(false)
+    expect(lines).toContain('auto-run · auto-compact 490k · scoring 80 3')
   })
 
   test(`an ignored file draws no runway and no banner (${surface})`, async ($, on) => {

@@ -1,10 +1,10 @@
-// The band's leading line (spec 2026-11-23, D4, as the user arranged it on 2026-11-24): `● REC`, the signed-in account and
-// Claude Code's version. Pure: values in, lines out.
+// The band's leading lines (spec 2026-11-23, D4, as the user arranged them on 2026-11-24): `● REC`, the signed-in account
+// and Claude Code's version, then the modes on. Pure: values in, lines out.
 import { fitLine, widthOf } from '../core/format'
 import { ORG_STRICT, PERSONAL } from '../account/constants'
 import type { Line, Seg } from '../core/types'
 import { CC_LABEL, ORG_JOIN, ORG_LABEL, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN } from './constants'
-import type { BandInput } from './types'
+import type { BandInput, ModesKeep } from './types'
 
 export const REC_MARK: Seg = { text: '● REC', tone: 'fail', bold: true }
 
@@ -36,8 +36,12 @@ export function identityLine(input: BandInput): Line {
   return widthOf(full) <= input.columns ? full : joinItems([rec, org])
 }
 
-// The lines that lead the band: the identity line, when it holds something
-export function leadLines(input: BandInput): Line[] {
+// The lines that lead the band, each only when it holds something: the identity, then the modes on a line of their own
+// ('own'), or after the identity on line 1 where the two fit the width, else the identity alone ('joined')
+export function leadLines(input: BandInput, modesKeep: ModesKeep): Line[] {
   const identity = identityLine(input)
-  return identity.length > 0 ? [identity] : []
+  const modes = input.modes ?? []
+  if (modesKeep === 'own') return [identity, modes].filter(line => line.length > 0)
+  const joined = joinItems([identity, modes])
+  return joined.length === 0 ? [] : [widthOf(joined) <= input.columns ? joined : identity].filter(line => line.length > 0)
 }

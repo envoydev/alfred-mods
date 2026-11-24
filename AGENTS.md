@@ -39,8 +39,9 @@ mod, so run one such session first (the folder is git-ignored and belongs to the
 lockfile, check `scripts/` under `tsconfig.scripts.json` (nodenext, Node's types). Nothing the mod ships imports them.
 
 `npm run validate` and `npm test` run `scripts/validate.ts` and `scripts/test.ts` on Node's type stripping, so a
-maintainer's Node is 22.18 or newer on the 22 line, or 23.6 or newer (https://nodejs.org/api/typescript.md); `engines`
-stays `>=22`. CI's `node-version: 22` takes the newest 22.x. Both run on a scratch copy of the files git would ship
+maintainer's Node is 26.13.0 or newer, the line every envoydev plugin uses (the user, 2026-11-24; type stripping is
+on by default from 23.6, https://nodejs.org/api/typescript.md): `engines` is `>=26.13.0` and `.nvmrc` says `26`. CI's
+`node-version: 26` takes the newest 26.x. Both run on a scratch copy of the files git would ship
 (`scripts/shipped-copy.ts`): a git-ignored copy of the repo that an audit leaves under `docs/superpowers/` never adds
 its tests to the run or takes it past `claude plugin test`'s limit of 1000 test files.
 
