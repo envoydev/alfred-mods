@@ -78,6 +78,18 @@ test('Leave out calls config.set with the option key, and the ask closes', async
   expect(await askRows(await above($))).toEqual([])
 })
 
+test('a notice after a successful Leave out, before any reload, raises no ask', async ($, on) => {
+  const { kit, config } = await begin($, on)
+  await (await above($)).press({ key: 'skip-leave' })
+  expect(config.calls).toEqual([{ key: OPTION_KEY, value: true }])
+  expect(await askRows(await above($))).toEqual([])
+  kit.files.current[PATH] = file(notice + notice)
+  await kit.clock.advance(30_000)
+  await kit.clock.settle()
+  expect(await askRows(await above($))).toEqual([])
+  expect(config.calls).toHaveLength(1)
+})
+
 test('a deny toasts its reason and the config row', async ($, on) => {
   const { kit, config } = await begin($, on, { deny: 'locked' })
   await (await above($)).press({ key: 'skip-leave' })
