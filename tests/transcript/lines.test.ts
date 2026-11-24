@@ -40,6 +40,16 @@ test('a skip notice counts only on a system informational line', () => {
   const quoted = JSON.stringify({ type: 'user', message: { content: 'alfred-mods: its x hook was skipped.' } })
   expect(scanChunk(`${quoted}\n`).isSkipNoticed).toBe(false)
 })
+// The notice as Claude Code 2.1.331 wrote it in a real transcript (seen 2026-11-24 under a managed plugin), and the
+// task notification that repeats its text on a queue-operation line, which is no notice of its own
+test('the notice as Claude Code writes it counts, and a queue-operation line with its text does not', () => {
+  const text = 'alfred-mods: its classic.SessionStart hook was skipped. "managed-sec" runs first and sent the event on past it.'
+  const notice = JSON.stringify({ type: 'system', subtype: 'informational', content: text, level: 'notice', isMeta: false, timestamp: '2026-11-24T09:07:00.000Z' })
+  const queued = JSON.stringify({ type: 'queue-operation', operation: 'enqueue', content: `<task-notification>${text}</task-notification>` })
+  expect(scanChunk(`${notice}\n`).isSkipNoticed).toBe(true)
+  expect(scanChunk(`${queued}\n`).isSkipNoticed).toBe(false)
+})
+
 test('several rule paths and a skip notice in one chunk give the paths in order and the notice', () => {
   const unrelated = JSON.stringify({ type: 'user', message: 'hi' })
   const text = [memoryLine('/a/.claude/rules/one.md'), unrelated, noticeLine, memoryLine('/a/.claude/rules/two.md'), memoryLine('/a/.claude/rules/one.md')]
