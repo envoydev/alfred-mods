@@ -342,8 +342,8 @@ file already has.
 
 #### `band` - how much the band shows
 
-`"full"` (the default) draws the turn, the gauges, an info line and the rows under it; `"calm"` keeps the first two
-lines; `"off"` draws no band at all. `/inspect band off|calm|full` sets it.
+`"full"` (the default) draws the turn, the gauges, an info line and the rows under it; `"calm"` keeps the turn and
+the gauge lines; `"off"` draws no band at all. `/inspect band off|calm|full` sets it.
 
 ```json
 { "alfred-mods": { "band": "calm" } }
@@ -685,8 +685,12 @@ turn, from where it stopped, and counts only lines Claude Code wrote, not text a
 2.1.330, which tells a mod the transcript's path; on an earlier build the mod works the path out from the config
 folder, the project root and the session id. The counts line ends `· transcript unread` when a read failed and
 `· transcript not found` when the file is missing, so a count of 0 by path is never silent. A first read of a
-transcript past 8 MiB starts 8 MiB from its end, so earlier rules are not counted. A resumed or branched conversation still holds the skills, agents and by-path rules from before it, which no
-mods API lists, so those rows count from the resume: what came since, with `since resume`, and no row until then.
+transcript past 8 MiB starts 8 MiB from its end, so earlier rules are not counted.
+
+A resumed or branched conversation still holds the skills and agents from before it, which no mods API lists, so those
+rows count from the resume: what came since, with `since resume`, and no row until then. Rules that loaded by path
+before a resume are the exception: the transcript holds them, so the `rules:` row counts them once, unless the
+transcript is past 8 MiB or none is found. The row's counts line still ends `since resume` after any resume.
 
 When the width runs out, the info line wraps onto a second row between items, and items drop whole only when two rows
 cannot hold them (the version first, then the times); `project:` shortens its folder to the last part, then leaves it
