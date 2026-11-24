@@ -228,6 +228,8 @@ test('a User rule the transcript alone reports is keyed User, so the hook later 
   const { kit, state } = await begin($, on, { root: '/home/work/app', files: { [`${CONFIG}/projects/-home-work-app/s1.jsonl`]: file(memory(USER_RULE)) } })
   await kit.clock.advance(1000)
   expect(keysOf(state)).toEqual(['User:voice.md'])
+  await $.classic.InstructionsLoaded(loadedByHook(USER_RULE))
+  expect(keysOf(state)).toEqual(['User:voice.md'])
 })
 
 test('a User rule under a CLAUDE_CONFIG_DIR not named .claude is counted', async ($, on) => {
@@ -253,7 +255,7 @@ test('isTracked holds with the option on while a transcript is known', { options
 test('no absolute path is stored', async ($, on) => {
   const { kit, state } = await begin($, on)
   await kit.clock.advance(1000)
-  expect(state.get('transcript')).toEqual({ sessionId: 's1', offset: expect.any(Number), isInLongLine: false })
+  expect(state.get('transcript')).toEqual({ sessionId: 's1', offset: expect.any(Number), isInLongLine: false, startedAtTail: false, hasReachedEnd: true })
   expect(state.writes.join('\n')).not.toContain('/home/')
   expect(state.writes.join('\n')).not.toContain('/work/app')
 })
@@ -290,6 +292,13 @@ test('a given path whose file is not there yet notes nothing, and the file is re
 
 test('a stat refused on a file that is there notes unread', OPTION, async ($, on) => {
   const { kit } = await begin($, on, { transcript: { transcriptPath: PATH }, usage: ALWAYS_RULE, refuseStat: [PATH] })
+  await kit.clock.advance(1000)
+  await kit.clock.settle()
+  expect(await rulesRow($)).toBe('rules:   always │ 1 always-on · by path not tracked · transcript unread')
+})
+
+test('a stat refused on a derived path whose file is there notes unread, not not found', OPTION, async ($, on) => {
+  const { kit } = await begin($, on, { transcript: { sessionInfoThrows: true }, usage: ALWAYS_RULE, refuseStat: [PATH] })
   await kit.clock.advance(1000)
   await kit.clock.settle()
   expect(await rulesRow($)).toBe('rules:   always │ 1 always-on · by path not tracked · transcript unread')

@@ -40,6 +40,15 @@ test('a skip notice counts only on a system informational line', () => {
   const quoted = JSON.stringify({ type: 'user', message: { content: 'alfred-mods: its x hook was skipped.' } })
   expect(scanChunk(`${quoted}\n`).isSkipNoticed).toBe(false)
 })
+test('several rule paths and a skip notice in one chunk give the paths in order and the notice', () => {
+  const unrelated = JSON.stringify({ type: 'user', message: 'hi' })
+  const text = [memoryLine('/a/.claude/rules/one.md'), unrelated, noticeLine, memoryLine('/a/.claude/rules/two.md'), memoryLine('/a/.claude/rules/one.md')]
+    .map(line => `${line}\n`).join('')
+  const result = scanChunk(text)
+  expect(result.paths).toEqual(['/a/.claude/rules/one.md', '/a/.claude/rules/two.md', '/a/.claude/rules/one.md'])
+  expect(result.isSkipNoticed).toBe(true)
+  expect(result.consumedBytes).toBe(utf8Length(text))
+})
 test('crlf lines parse', () => {
   expect(scanChunk(`${memoryLine('/a/.claude/rules/w.md')}\r\n`).paths).toEqual(['/a/.claude/rules/w.md'])
 })

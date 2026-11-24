@@ -1,6 +1,6 @@
 // The transcript folder's effects: the one reader of the main conversation's transcript file (spec 2026-11-23, D2),
-// its $.state atom, and the module memory around it. The atom holds the session id, the offset and a flag, never the
-// file's path, which holds the home folder.
+// its $.state atom, and the module memory around it. The atom holds the session id, the offset and three flags, never
+// the file's path, which holds the home folder.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 import type { TranscriptNote, TranscriptReader, TranscriptState } from './types'
@@ -12,8 +12,9 @@ import type { RuleEntry } from '../context/types'
 import { linkEnds } from '../context/effects'
 import { addPathRules, readSession } from '../session/effects'
 
-const INITIAL_READER: TranscriptReader = { sessionId: null, offset: 0, isInLongLine: false }
-const readerAtom = atom({ plugin: 'alfred-mods', key: 'transcript' } as const, INITIAL_READER, { shape: 'transcript-1' })
+const INITIAL_READER: TranscriptReader = { sessionId: null, offset: 0, isInLongLine: false, startedAtTail: false, hasReachedEnd: false }
+const FROM_START = { offset: 0, isInLongLine: false, startedAtTail: false, hasReachedEnd: false }
+const readerAtom = atom({ plugin: 'alfred-mods', key: 'transcript' } as const, INITIAL_READER, { shape: 'transcript-2' })
 function readReader($: EngineInterface) {
   return read($, readerAtom)
 }
@@ -24,15 +25,20 @@ function updateReader($: EngineInterface, change: (value: TranscriptReader) => T
 // Module memory, which no other plugin reads, so no path reaches `$.state`. `generation` moves with each start-over: a
 // run that began before it writes nothing. `lastTurnCount` is the session's turn count at the last run; `running` the
 // run in progress, of which there is at most one. `wasRead` is whether the file was ever read by this process;
-// `startedAtTail` whether this conversation's first read began at the file's tail, so earlier rules are not counted.
+// `startedAtTail` and `hasReachedEnd` copy the atom's flags of that name at the end of a run, so a reload of the plugin
+// loses neither.
 const readerMemory = {
   generation: 0, lastRunAt: null as number | null, lastTurnCount: null as number | null, running: null as Promise<void> | null,
-  wasRead: false, startedAtTail: false, isKnown: false, note: null as TranscriptNote | null, listeners: [] as (() => void)[],
+  wasRead: false, startedAtTail: false, hasReachedEnd: false, isKnown: false, note: null as TranscriptNote | null, listeners: [] as (() => void)[],
 }
 
-// What the band asks: whether a transcript was read, and why not where it was not
+// What the band asks: whether a transcript was read, why not where it was not, and whether every rule of this
+// conversation is counted: a read from the first byte has reached the file's end
 export function transcriptState(): TranscriptState {
-  return { isKnown: readerMemory.isKnown, note: readerMemory.note, startedAtTail: readerMemory.startedAtTail }
+  return {
+    isKnown: readerMemory.isKnown, note: readerMemory.note,
+    isCountedInFull: readerMemory.isKnown && readerMemory.hasReachedEnd && !readerMemory.startedAtTail,
+  }
 }
 
 // The listener hears each run that finds a skip notice for this plugin in the transcript (spec D3). One at a time: a
@@ -49,6 +55,7 @@ export async function resetTranscript($: EngineInterface): Promise<void> {
   // What the old conversation's file showed says nothing of the new one's
   readerMemory.wasRead = false
   readerMemory.startedAtTail = false
+  readerMemory.hasReachedEnd = false
   readerMemory.isKnown = false
   readerMemory.note = null
   await updateReader($, () => INITIAL_READER)
@@ -92,16 +99,23 @@ function startOf(size: number): Pick<TranscriptReader, 'offset' | 'isInLongLine'
 async function readRun($: EngineInterface): Promise<void> {
   const generation = readerMemory.generation
   const sessionId = await $.session.id()
-  const isCurrent = async (): Promise<boolean> => generation === readerMemory.generation && sessionId === (await $.session.id())
+  // The id is asked first: the generation is compared after the wait, so a start-over during it is seen
+  const isCurrent = async (): Promise<boolean> => {
+    const currentId = await $.session.id()
+    return generation === readerMemory.generation && sessionId === currentId
+  }
   const root = await rootOf($)
   const configFolder = await configFolderOf($)
   const found = await pathOf($, configFolder, root, sessionId)
-  // No file where it should be: not found until a file was read, unread after; a refused read is unread either way
-  const markMissing = (): void => {
+  // No file where it should be: not found until a file was read, unread after; a refused read is unread either way.
+  // A run that a start-over passed over notes nothing.
+  const markMissing = async (): Promise<void> => {
+    if (!(await isCurrent())) return
     readerMemory.isKnown = false
     readerMemory.note = readerMemory.wasRead ? 'unread' : 'not-found'
   }
-  const markUnread = (): void => {
+  const markUnread = async (): Promise<void> => {
+    if (!(await isCurrent())) return
     readerMemory.isKnown = false
     readerMemory.note = 'unread'
   }
@@ -109,6 +123,7 @@ async function readRun($: EngineInterface): Promise<void> {
   if (!(await $.fs.exists(found.path))) {
     // A path the engine gave names a file it writes with the first message: not yet there is no failure
     if (found.isDerived || readerMemory.wasRead) return markMissing()
+    if (!(await isCurrent())) return
     readerMemory.isKnown = true
     readerMemory.note = null
     return
@@ -123,9 +138,12 @@ async function readRun($: EngineInterface): Promise<void> {
   // A new session starts at its file's first byte, or its tail; a file smaller than the offset was rewritten: from 0
   const isSame = saved.sessionId === sessionId
   const start = startOf(size)
-  let { offset, isInLongLine } = isSame ? (saved.offset <= size ? saved : { offset: 0, isInLongLine: false }) : start
+  let { offset, isInLongLine, startedAtTail, hasReachedEnd } = isSame
+    ? (saved.offset <= size ? saved : FROM_START)
+    : { ...start, startedAtTail: start.offset > 0, hasReachedEnd: false }
   const startedAt = await $.clock.now()
   let bytesRead = 0
+  let isPartialTail = false
   try {
     while (offset < size && bytesRead < RUN_BYTES && (await $.clock.now()) - startedAt < RUN_MS) {
       const length = Math.min(CHUNK_BYTES, size - offset)
@@ -139,7 +157,10 @@ async function readRun($: EngineInterface): Promise<void> {
       } else {
         const scan = scanChunk(await $.fs.read(found.path, { offset, length }))
         // A whole chunk with no newline is one long line, skipped to its end; a shorter one is a line still being written
-        if (!scan.hasNewline && length < CHUNK_BYTES) break
+        if (!scan.hasNewline && length < CHUNK_BYTES) {
+          isPartialTail = true
+          break
+        }
         offset += scan.hasNewline ? scan.consumedBytes : length
         isInLongLine = !scan.hasNewline
         isSkipNoticed = scan.isSkipNoticed
@@ -149,19 +170,21 @@ async function readRun($: EngineInterface): Promise<void> {
         }
       }
       bytesRead += length
+      // No wait between this check and the call it guards
       if (!(await isCurrent())) return
-      if (!isSame) readerMemory.startedAtTail = start.offset > 0
       if (entries.length > 0) await addPathRules($, entries)
       if (!(await isCurrent())) return
-      await updateReader($, () => ({ sessionId, offset, isInLongLine }))
+      await updateReader($, () => ({ sessionId, offset, isInLongLine, startedAtTail, hasReachedEnd }))
       if (isSkipNoticed) notifyAll(readerMemory.listeners)
     }
   } catch {
     return markUnread()
   }
   if (!(await isCurrent())) return
-  if (!isSame) readerMemory.startedAtTail = start.offset > 0
-  await updateReader($, () => ({ sessionId, offset, isInLongLine }))
+  hasReachedEnd = hasReachedEnd || isPartialTail || offset >= size
+  await updateReader($, () => ({ sessionId, offset, isInLongLine, startedAtTail, hasReachedEnd }))
+  readerMemory.startedAtTail = startedAtTail
+  readerMemory.hasReachedEnd = hasReachedEnd
   readerMemory.wasRead = true
   readerMemory.isKnown = true
   readerMemory.note = null
@@ -171,6 +194,7 @@ async function readRun($: EngineInterface): Promise<void> {
 // never rejects: a run that fails notes the transcript unread and the next tick tries again
 export function readTranscriptIfDue($: EngineInterface, now: number): Promise<void> {
   if (readerMemory.running !== null) return Promise.resolve()
+  const generation = readerMemory.generation
   const run = (async (): Promise<void> => {
     try {
       const turnCount = (await readSession($)).turnCount
@@ -180,6 +204,8 @@ export function readTranscriptIfDue($: EngineInterface, now: number): Promise<vo
       readerMemory.lastTurnCount = turnCount
       await readRun($)
     } catch {
+      // A run that a start-over passed over notes nothing
+      if (generation !== readerMemory.generation) return
       readerMemory.isKnown = false
       readerMemory.note = 'unread'
     }

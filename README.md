@@ -694,9 +694,10 @@ transcript past 8 MiB starts 8 MiB from its end, so earlier rules are not counte
 
 A resumed or branched conversation still holds the skills and agents from before it, which no mods API lists, so those
 rows count from the resume: what came since, with `since resume`, and no row until then. Rules that loaded by path
-before a resume are the exception: the transcript holds them, so the `rules:` row counts them once, unless the
-transcript is past 8 MiB or none is found. The row's counts line ends `since resume` only then; where the transcript is
-read from its first byte, it is dropped, since nothing is unseen.
+before a resume are the exception: the transcript holds them, so the `rules:` row counts them once. The counts line
+ends `since resume` until a read from the transcript's first byte has reached its end; then it is dropped, since nothing
+is unseen. It stays where the transcript is past 8 MiB (the first read starts at its tail), where none is found or
+`transcript unread` shows (the read failed), and while a long first read is still short of the end.
 
 When the width runs out, the info line wraps onto a second row between items, and items drop whole only when two rows
 cannot hold them (the version first, then the times); `project:` shortens its folder to the last part, then leaves it

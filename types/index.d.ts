@@ -234,8 +234,10 @@ export type Account = { org: string | null; kind: AccountKind | null }
 
 // Where the transcript reader stands in the main conversation's transcript file: the session id it reads for, the byte
 // offset of the next line start, and whether it is inside a line past one chunk, which it drops to the next newline.
-// The file's path is asked of the engine at each run and never kept: it holds the home folder.
-export type TranscriptReader = { sessionId: string | null; offset: number; isInLongLine: boolean }
+// The file's path is asked of the engine at each run and never kept: it holds the home folder. `startedAtTail` is whether
+// this conversation's first read began at the file's tail, so earlier rules are not counted; `hasReachedEnd` whether a
+// read of it has reached the file's end (an unfinished last line included) since it began.
+export type TranscriptReader = { sessionId: string | null; offset: number; isInLongLine: boolean; startedAtTail: boolean; hasReachedEnd: boolean }
 
 // The skip ask (spec 2026-11-23, D3): `isSkipped` once the transcript showed a skip notice for this plugin, `isAskUp`
 // while the band asks whether to leave the skipped hooks out
