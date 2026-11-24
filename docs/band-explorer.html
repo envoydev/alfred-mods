@@ -3384,11 +3384,11 @@ const BandAdapter = (() => {
         rateWindows: [
           { kind: 'five_hour', percentUsed: num(d.h5), resetsAt: resets(now, d.h5Reset) },
           { kind: 'seven_day', percentUsed: num(d.d7), resetsAt: resets(now, d.d7Reset) },
-        ],
+        ].filter(w => String(w.kind === 'five_hour' ? d.h5 : d.d7).trim() !== ''),
         costUsd: m.fresh ? 0 : num(d.cost), todayUsd: num(d.today), readingAt: now, ...(m.fresh ? { rateWindowsAt: now - 60 * MIN } : {}),
       },
       session: {
-        model: modelId(d.model), effort: m.fresh ? null : String(d.effort || '') || null, compactions: m.fresh ? 0 : 1, lastCompactAt: null,
+        model: modelId(d.model), effort: m.fresh ? null : String(d.effort || '') || null, compactions: m.fresh ? 0 : num(d.compactions), lastCompactAt: null,
         lastPromptAt: m.fresh ? null : youAt, lastReplyAt: m.fresh ? null : lastReply, turnCount: m.fresh ? 0 : m.running ? turnN - 1 : turnN, waitingPrompts: [],
         mainToolCalls: tools.reduce((n, t) => n + t.n, 0), loadedSkills: Object.fromEntries(skills.map(s => [s.name, s.n])),
         ...(place ? { place } : {}), ...(String(d.cc || '') ? { version: String(d.cc) } : {}),
@@ -3541,18 +3541,18 @@ const BandSettings = (() => {
 
 // The band's data as a session starts now, the session's situation, and the gallery's cards
 const BAND_DATA0 = {
-  model: 'Sonnet 5.5', effort: 'high', sessionTime: '9m', tokS: 119, cacheMin: 60,
-  ctxUsed: 140, window: 400, trigger: 180, h5: 54, h5Reset: '11.11 20:10', d7: 49, d7Reset: '16.11 03:00',
-  cost: 1.26, today: 18.62, turn: 2, turnTime: '5:37', turnTools: 41,
-  org: 'Acme', orgKind: 'Team', youAt: '17:15', claudeAt: '17:13', project: 'my-app', folder: '.claude', branch: 'develop', ahead: 1, behind: 2, added: 41, removed: 30, cc: '2.1.331',
+  model: 'Opus 5.5', effort: 'high', sessionTime: '12h', tokS: 92, cacheMin: 60,
+  ctxUsed: 320, window: 1000, trigger: 600, h5: '', h5Reset: '', d7: 11, d7Reset: '30.11 23:00',
+  cost: 64.58, today: 232.38, turn: 47, turnTime: '5:01', turnTools: 19, compactions: 0,
+  org: 'Acme', orgKind: 'Team', youAt: '11:03', claudeAt: '11:03', project: 'alfred-mods', folder: 'tests/mcp', branch: 'develop', ahead: 0, behind: 0, added: 107, removed: 0, cc: '2.1.330',
   mcpOk: 10, mcpFailed: 1, mcpLoading: 0,
-  compactAt: 490, scorerVal: 80, failures: 0, planTitle: 'Token refresh', planDone: 3, planTotal: 5, planStep: 'S4 Update interceptor',
+  compactAt: 490, scorerVal: 90, failures: 8, planTitle: 'Token refresh', planDone: 3, planTotal: 5, planStep: 'S4 Update interceptor',
   planScore: 85, planPrevScore: 72,
   listed: 57, ofSkills: 60,
-  tools: 'Bash 32\nAskUserQuestion 4\nRead 4\nWrite 4\nGrep 1',
-  skills: 'superpowers:brainstorming 1\nsolve-task 2',
-  agents: 'alfred-code:web-angular-verifier 1 running Read src/app/auth/token.interceptor.ts\nExplore 2\ngeneral-purpose 1',
-  rules: 'alfred-interaction.md\nalfred-git.md\nalfred-preferences.md\nweb:angular.md path\ntypescript.md path'
+  tools: 'Bash 512\nRead 241\nEdit 158\nGrep 72\nWrite 48\nAgent 31\nTaskUpdate 15',
+  skills: 'solve-task 3\nsuperpowers:brainstorming 2\nsuperpowers:writing-plans 2\nrefining-plans 2\ntypescript 4\njavascript 4\nproject-structure 4\nts-js-testing 3\nplugin-authoring 2\nplugin-packaging 1\nauto-run 1\nmarkdown-style 1',
+  agents: 'general-purpose 14\nExplore 9\nplan-grader 5\nPlan 3',
+  rules: 'communication.md\nexecution.md\ncommits.md\ncleanup.md\nauto-run.md\nplan-approval.md\nrefining-plans.md\nwindows-vm.md\nsuperpowers-location.md\ntypescript.md path\nproject-structure.md path\nplugin-handling.md path'
 }
 // The session's situation: what is happening, not what the settings say
 const BAND_MODES0 = {
@@ -3565,11 +3565,13 @@ const BAND_BASE = {
 }
 // No settings file sets anything: every field takes its default
 const BAND_CFG0 = { user: {}, project: {}, local: {}, legacy: {} }
+// One agent at work, for the situations that show it beside the turn
+const withRun = d => ({ agents: String(d.agents || '').replace(/^(Explore \d+)$/m, '$1 running Read hooks/mcp/mcp.ts') })
 const noRun = s => String(s || '').split('\n').map(l => l.replace(/\s+running(\s.*)?$/i, '')).join('\n')
 // [name, what it shows, the situation, the data, the settings files]
 const BAND_PRESETS = [
   ['Between turns, nothing to act on', 'Claude has answered and nothing needs you, so the band leads with the gauges, in their colours as while a turn runs (the calm band dims instead). No file sets anything, so every field takes its default: above the input, full, detail rows open.', {}, d => ({ agents: noRun(d.agents) })],
-  ['A turn is running', 'Line 1 counts the turn: ⟳, its time and its tool calls, with an agent at work beside it. Asks and their buttons wait for the turn to end.', { running: true }],
+  ['A turn is running', 'Line 1 counts the turn: ⟳, its time and its tool calls, with an agent at work beside it. Asks and their buttons wait for the turn to end.', { running: true }, withRun],
   ['Detail rows closed', 'Set in this project\'s local file. The usage: row keeps the counts - not a button, no arrow, no t: the rows under it open and close only by the value.', { running: true }, null, { local: { bandRows: false } }],
   ['A local file over the user\'s', 'The user file puts the band under the input with its rows closed in every project; this project\'s local file opens the rows again. Each other field falls through to the user file, then the default.', { running: true, fullscreen: true }, null, { user: { bandPlace: 'under', bandRows: false }, local: { bandRows: true } }],
   ['A bad value falls through', 'The local file says "compact", which "band" does not take, so the user file\'s "calm" applies, and the mod says so once in a toast that never quotes the bad value.', { running: true }, null, { user: { band: 'calm' }, local: { band: 'compact' } }],
@@ -3596,7 +3598,7 @@ const BAND_PRESETS = [
   ['Under the input, main screen', 'The main screen takes no clicks, so each button is its command as text to type.', {}, d => ({ failures: 1, agents: noRun(d.agents) }), { user: { bandPlace: 'under' } }],
   ['Under, fullscreen, a 24-row window', 'Fullscreen gives everything under the input about half the window. Less the prompt and Claude Code\'s own footer line, 6 band rows remain here; the rest give way in the band\'s order, the project row first.', { fullscreen: true, termRows: 24, running: true }, null, { user: { bandPlace: 'under' } }],
   ['Choices from the old commands', 'Someone who ran /rec strict and /band rows off on 0.7 keeps both after the update. One toast gives the line to paste, and each old choice retires once the user file sets that field.', { running: true }, null, { legacy: { rec: 'strict', bandRows: false } }],
-  ['First second of a session', 'Before the first reply: ctx waits (ctx —), and 5h and 7d carry the values an earlier session stored, marked ≈.', { fresh: true }, () => ({ agents: '' })]
+  ['First second of a session', 'Before the first reply: ctx waits (ctx —), and 5h and 7d carry the values an earlier session stored, marked ≈.', { fresh: true }, () => ({ agents: '', h5: 54, h5Reset: '24.11 16:00' })]
 ]
 
 </script>
@@ -3607,8 +3609,8 @@ const MODES0 = BAND_MODES0;
 const FIELDS = [
   ['model','Model'],['effort','Effort'],['sessionTime','Session time'],['tokS','Speed, tok/s',1],['cacheMin','Cache warm, min',1],
   ['ctxUsed','Context used, k',1],['window','Window, k',1],['trigger','Alfred Code trigger, k',1],
-  ['h5','5h used, %',1],['h5Reset','5h resets'],['d7','7d used, %',1],['d7Reset','7d resets'],
-  ['cost','Session cost, $',1],['today','Today, $',1],['turn','Turn number',1],['turnTime','Turn time'],['turnTools','Turn tool calls',1],
+  ['h5','5h used, % (blank: no reading)',1],['h5Reset','5h resets'],['d7','7d used, %',1],['d7Reset','7d resets'],
+  ['cost','Session cost, $',1],['today','Today, $',1],['turn','Turn number',1],['turnTime','Turn time'],['turnTools','Turn tool calls',1],['compactions','Compactions',1],
   ['org','Account: Personal, a company name or unknown'],['orgKind','Plan kind: Team, Enterprise or Personal (blank: unknown)'],['youAt','Your last prompt'],['claudeAt','Claude last reply'],['project','Project'],['folder','Folder Claude works in (blank: the root)'],
   ['branch','Branch'],['ahead','Commits ahead of the upstream',1],['behind','Commits behind the upstream',1],
   ['added','Lines added, uncommitted',1],['removed','Lines removed, uncommitted',1],['cc','Claude Code version'],['mcpOk','MCP servers connected',1],['mcpFailed','MCP servers failed',1],['mcpLoading','MCP servers loading',1],
@@ -3629,12 +3631,12 @@ const eff = (m, c) => Object.assign({}, m, BandSettings.asModes(BandSettings.res
 
 const store = { get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
-let data = Object.assign({}, DATA0, store.get('band5-data') || {});
+let data = Object.assign({}, DATA0, store.get('band6-data') || {});
 // The sample session without any situation's own numbers: each situation starts from it, so one's failures or full
 // context never leak into the next
-let base = Object.assign({}, DATA0, store.get('band5-base') || store.get('band5-data') || {});
-let modes = Object.assign({}, MODES0, store.get('band5-modes') || {});
-let cfg = cfgOf(store.get('band5-cfg') || BAND_CFG0);
+let base = Object.assign({}, DATA0, store.get('band6-base') || store.get('band6-data') || {});
+let modes = Object.assign({}, MODES0, store.get('band6-modes') || {});
+let cfg = cfgOf(store.get('band6-cfg') || BAND_CFG0);
 // The situation picked near the message box, an index into BAND_PRESETS; -1 once anything is changed by hand
 let presetIx = -1;
 // The page's tab in view, and the /inspect pane's
@@ -3812,7 +3814,7 @@ function terminal(d, m, ex, part) {
   out.push(edge, html([S('> ', 'dim'), S('type your next message', 'zone')]), edge);
   const foot = [];
   if (r.pinned) foot.push(html([S('⚠ alfred-mods: ', 'warn'), S(r.pinned, '')]));
-  foot.push(html([S('⏸ manual mode on · ? for shortcuts', 'dim'),
+  foot.push(html([S('⏵⏵ auto mode on · 1 shell', 'dim'),
     S(m.under ? "   (Claude Code's own line: always the footer's first row - the band can only follow it)" : "   (Claude Code's own line)", 'zone')]));
   if (m.under) lines.forEach(l => foot.push(BandAdapter.lineHtml(l)));
   foot.forEach(f => out.push('  ' + f));
@@ -3920,7 +3922,7 @@ function fill() {
   $('cols').value = modes.cols; $('rows').value = modes.rows; $('termRows').value = modes.termRows; fillSettings();
   $('paneW').value = paneW; $('paneData').value = paneRaw;
 }
-function save() { store.set('band5-data', data); store.set('band5-base', base); store.set('band5-modes', modes); store.set('band5-cfg', cfg); store.set('band5-preset', presetIx); store.set('pane-raw', paneRaw); store.set('pane-w', paneW); }
+function save() { store.set('band6-data', data); store.set('band6-base', base); store.set('band6-modes', modes); store.set('band6-cfg', cfg); store.set('band6-preset', presetIx); store.set('pane-raw', paneRaw); store.set('pane-w', paneW); }
 
 // ---------- gallery ----------
 // A card's settings files, one line each, as the person would write them
@@ -3966,7 +3968,7 @@ const isBoxPreset = p => !(p[4] && p[4].user && p[4].user.quiet === false);
 function buildPresets() {
   $('preset').innerHTML = '<option value="-1">Your own mix</option>'
     + BAND_PRESETS.map((p, i) => isBoxPreset(p) ? `<option value="${i}">${esc(p[0])}</option>` : '').join('');
-  const kept = store.get('band5-preset');
+  const kept = store.get('band6-preset');
   presetIx = Number.isInteger(kept) && kept >= 0 && kept < BAND_PRESETS.length ? kept : -1;
   $('preset').addEventListener('change', () => {
     const i = +$('preset').value;
@@ -4081,7 +4083,7 @@ const BAND_PARTS = [
   ['The identity line', 'line 1, always', { running: true }, d => ({ agents: noRun(d.agents) }), { user: { rec: 'on' } }, (t, i) => i === 0,
     'A red ● REC while Recording mode masks the screen, the account you are signed in to with its plan kind, and Claude Code\'s version.',
     'It leads the band in every mode but off and is never dropped for rows; the version goes where the line would pass the width. The account comes from the login record on disk. The band draws no mode banner: Alfred Code\'s and claude-kit\'s modes are in /inspect\'s Now tab.'],
-  ['The turn', 'while Claude works', { running: true }, null, null, t => /Turn \d/.test(t),
+  ['The turn', 'while Claude works', { running: true }, withRun, null, t => /Turn \d/.test(t),
     'The turn Claude is on, how long it has run and its tool calls so far, then the agent at work and what it does now.',
     'Counted from the session\'s own events as they happen. Once Claude has answered, the line stays only while something needs you, as ✓ with the turn\'s total.'],
   ['The info line', 'full band', {}, null, null, t => /tok\/s/.test(t),
