@@ -79,7 +79,8 @@ test('a change Alfred Code writes is read on the 30-second poll; a file that wil
   expect(p().planFiles.find(w => w.name === 'waste-bin')).toMatchObject({ isInvalid: true })
 })
 
-test('a plan completed as the status file lets it go stays for 10 minutes, then leaves; one let go unfinished leaves at once', async ($, on) => {
+// Ten minutes of the mock clock: the Windows runner took 5.0 s on 0.14.1's main run, so it carries its own timeout
+test('a plan completed as the status file lets it go stays for 10 minutes, then leaves; one let go unfinished leaves at once', { timeoutMs: 30_000 }, async ($, on) => {
   const { p, files, clock } = await start($, on, { [STATUS]: session(FOLDER), [PLAN_STATUS]: { text: STATUS_JSON, mtimeMs: 2 } })
   files.current[PLAN_STATUS] = statusWith({ completedAt: '2026-11-13T12:00Z' }, 3)
   files.current[STATUS] = session(null)
