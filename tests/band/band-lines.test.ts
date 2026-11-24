@@ -166,13 +166,14 @@ test('above the input the action row stays last, after the rows under the gauges
   expect(lines[lines.length - 1]).toContain('✗ 1 new')
 })
 
-test('the idle band with a turn running holds the lines too', () => {
+test('a band with a turn running holds the lines too, and draws the turn on its own row', () => {
   const live = { turnId: 't2', startedAt: NOW - 5000, toolCalls: 1, toolFailures: 0, runningCalls: [], promptAt: NOW - 5000 }
-  const lines = texts(bandLines(input({ ...FULL, live })))
+  const lines = texts(bandLines(input({ ...FULL, isWorking: true, live })))
   expect(lines.slice(0, 2)).toEqual(['Acme | Team', `${MODES} │ mcp ✓ 3`])
-  expect(lines.length).toBeGreaterThan(3)
+  expect(lines[2]).toMatch(/^⟳ Turn 2 · 0:05/)
+  const idle = texts(bandLines(input({ ...FULL, live })))
+  expect(idle.some(line => line.startsWith('⟳'))).toBe(false)
 })
-
 // A cut line ends with an ellipsis, measured and cut on the text as drawn: REC masks an email to '‹email›', so a cell
 // count taken on the raw text would cut in the wrong place, and the raw text must never reach the drawn line
 test('a banner cut with REC off ends with an ellipsis within the width', () => {
@@ -203,6 +204,14 @@ test('a cut on a segment edge still ends with an ellipsis, REC on or off', () =>
       setRec('off', [], null)
     }
   }
+})
+
+test('a segment with no width never follows the cut ellipsis, so the line stays within the width', () => {
+  const mcp = [{ text: 'aaaaaaaa' }, { text: '' }, { text: 'bbbb' }, { text: '' }]
+  const line = bandLines(input({ account: TEAM, mcp, columns: 8 }))[1] ?? []
+  expect(text(line)).toBe('aaaaaaa…')
+  expect(widthOf(line)).toBe(8)
+  expect(line.at(-1)).toEqual({ text: 'aaaaaaa…' })
 })
 
 test('a line that fits is not cut and gets no ellipsis', () => {

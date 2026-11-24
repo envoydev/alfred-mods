@@ -13,7 +13,8 @@ const joinItems = (items: Line[]): Line => items.filter(item => item.length > 0)
 
 // A line cut to `max` cells and ending with an ellipsis, as drawn: measured and cut on the masked text, so a secret shows
 // no prefix. A segment past the cut keeps its tone and the ones after it go; a cut on a segment's edge puts the
-// ellipsis in place of the last cell.
+// ellipsis in place of the last cell of the last segment that has text. A segment with no width is kept only while
+// cells are left, so none follows the ellipsis.
 function cutLine(line: Line, max: number): Line {
   if (widthOf(line) <= max) return line
   const out: Line = []
@@ -21,6 +22,10 @@ function cutLine(line: Line, max: number): Line {
   let isCut = false
   for (const seg of line) {
     const width = widthOf([seg])
+    if (width === 0) {
+      if (left > 0) out.push(seg)
+      continue
+    }
     if (width <= left) {
       out.push(seg)
       left -= width
@@ -32,9 +37,11 @@ function cutLine(line: Line, max: number): Line {
     }
     break
   }
-  const last = out.at(-1)
-  if (isCut || last === undefined || !('text' in last)) return out
-  return [...out.slice(0, -1), { ...last, text: `${maskedText(last.text).slice(0, -1)}…` }]
+  if (isCut) return out
+  const at = out.findLastIndex(seg => widthOf([seg]) > 0)
+  const last = out[at]
+  if (last === undefined || !('text' in last)) return out
+  return [...out.slice(0, at), { ...last, text: `${maskedText(last.text).slice(0, -1)}…` }]
 }
 
 // The signed-in account's mark, as the Claude mobile app names it: '<company name> | Team' (or Enterprise), 'org | Personal'

@@ -170,8 +170,9 @@ async function readRun($: EngineInterface): Promise<void> {
         }
       }
       bytesRead += length
-      // No wait between this check and the call it guards
-      if (!(await isCurrent())) return
+      // The check is the last thing before the call it guards: no hop between the compare and `addPathRules`
+      const currentId = await $.session.id()
+      if (generation !== readerMemory.generation || currentId !== sessionId) return
       if (entries.length > 0) await addPathRules($, entries)
       if (!(await isCurrent())) return
       await updateReader($, () => ({ sessionId, offset, isInLongLine, startedAtTail, hasReachedEnd }))
