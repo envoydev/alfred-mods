@@ -114,13 +114,14 @@ test("full mode: line 1 counts the turn's tools, line 2 adds today while it fits
     columns, newFailures: 1, turns: [turn(1, 20), turn(2, 25), turn(3, 30)],
     pace: { five_hour: { resetsAt: '2026-10-28T17:00:00Z', points, toastedMarks: [] } },
   }))
+  // Line 1 holds the new failures, then the turn line, the info line and the gauges
   const wide = needs(200)
-  expect(text(wide[1] ?? [])).toBe(text(infoLine(input({ columns: 200 }))))
-  expect(text(wide[2] ?? []).endsWith('$1.29 · today $10.46')).toBe(true)
-  const cut = widthOf(wide[2] ?? []) - 1
+  expect(text(wide[2] ?? [])).toBe(text(infoLine(input({ columns: 200 }))))
+  expect(text(wide[3] ?? []).endsWith('$1.29 · today $10.46')).toBe(true)
+  const cut = widthOf(wide[3] ?? []) - 1
   expect(cut).toBeGreaterThanOrEqual(100)
-  expect(text(needs(cut)[2] ?? []).endsWith('$1.29')).toBe(true)
-  expect(text(needs(99)[2] ?? []).includes('$')).toBe(false)
+  expect(text(needs(cut)[3] ?? []).endsWith('$1.29')).toBe(true)
+  expect(text(needs(99)[3] ?? []).includes('$')).toBe(false)
 })
 
 test('full mode, idle and healthy: the info line, the gauges in their colours and usage:, no times on the gauge line', () => {
@@ -150,8 +151,10 @@ test("REC's mark takes a line of its own: the lines under it keep the band's wid
   for (const o of [{ newFailures: 1 }, {}]) {
     const plain = bandLines(input({ columns: 128, ...o }))
     const marked = bandLines(input({ columns: 128, ...o, ...marks }))
-    expect(text(marked[0] ?? [])).toBe('● REC')
-    expect(texts(marked.slice(1))).toEqual(texts(plain))
+    // With new failures line 1 holds them, and REC leads it
+    const isFailed = 'newFailures' in o
+    expect(text(marked[0] ?? [])).toBe(isFailed ? '● REC │ ✗ 1 new [ Inspect ]' : '● REC')
+    expect(texts(marked.slice(1))).toEqual(texts(isFailed ? plain.slice(1) : plain))
     expect(texts(marked).includes(FULL)).toBe(true)
   }
 })
@@ -159,7 +162,7 @@ test("REC's mark takes a line of its own: the lines under it keep the band's wid
 // A bare digit arms only the buttons wholly inside the band's window (types, `maxRows`): short of rows, the info line
 // goes, so the line under it, with [Inspect], [Compact] or [Handoff], stays in view
 test('short of rows, the full band drops its info line and keeps the buttons in view', () => {
-  const inspect = (lines: Line[]): boolean => (lines[lines.length - 1] ?? []).some(s => 'button' in s && s.button.key === 'inspect')
+  const inspect = (lines: Line[]): boolean => lines.flat().some(s => 'button' in s && s.button.key === 'inspect')
   const short = bandLines(input({ newFailures: 1, maxRows: 3 }))
   expect(short).toHaveLength(3)
   expect(inspect(short)).toBe(true)
@@ -242,7 +245,7 @@ const FOUR: Partial<BandInput> = {
 }
 
 test('short of rows, the open rows give way first, then usage:, then the info line, and the buttons stay in view', () => {
-  const inspect = (lines: Line[]): boolean => (lines[lines.length - 1] ?? []).some(s => 'button' in s && s.button.key === 'inspect')
+  const inspect = (lines: Line[]): boolean => lines.flat().some(s => 'button' in s && s.button.key === 'inspect')
   // Something in each of the four rows, which wait for their first item (the user, 2026-11-12)
   const at = (maxRows: number) => bandLines(input({ ...FOUR, isToolsOpen: true, newFailures: 1, maxRows }))
   expect(texts(at(7)).filter(l => /^(tools|skills|agents|rules):/.test(l))).toHaveLength(2)
@@ -347,13 +350,13 @@ test('short of rows, the project row goes first, then the second info row, befor
   const at = (maxRows: number) => texts(bandLines(input({ ...FOUR, columns: 79, session: meta, isToolsOpen: true, newFailures: 1, maxRows })))
   const second = `${TIMES} │ 59m`
   const open = 4
-  // The identity, line 1, two info rows, the gauges, the project row, usage:, four rows, the action row
-  expect(at(8 + open)).toContain('project: alfred-mods │ git:(develop)')
-  expect(at(7 + open).some(l => l.startsWith('project:'))).toBe(false)
-  expect(at(7 + open)).toContain(second)
-  expect(at(6 + open)).not.toContain(second)
-  expect(at(6 + open)).toContain(`${HEAD} │ you ${clockText(P)} │ 59m`)
-  for (const n of [8 + open, 7 + open, 6 + open]) {
+  // Line 1 with the account and the new failures, the turn line, two info rows, the gauges, the project row, usage:, four rows
+  expect(at(7 + open)).toContain('project: alfred-mods │ git:(develop)')
+  expect(at(6 + open).some(l => l.startsWith('project:'))).toBe(false)
+  expect(at(6 + open)).toContain(second)
+  expect(at(5 + open)).not.toContain(second)
+  expect(at(5 + open)).toContain(`${HEAD} │ you ${clockText(P)} │ 59m`)
+  for (const n of [7 + open, 6 + open, 5 + open]) {
     expect(at(n)).toHaveLength(n)
     expect(at(n).filter(l => /^(tools|skills|agents|rules):/.test(l))).toHaveLength(open)
   }

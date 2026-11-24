@@ -205,7 +205,8 @@ for (const surface of SURFACES) {
     await $.turn.start({ text: 'q', turnId: 't1' })
     await $.tool.call({ tool: 'Bash', command: 'false 1' })
     await $.turn.complete({ answer: '', durationMs: 3000, isAborted: false, turnId: 't1', reason: 'answer' })
-    expect((await rows(await band($, surface, false)))[0]?.endsWith(' │ PLAN 3/5 · score 81 ▲13')).toBe(true)
+    // Line 1 holds the new failure; the turn line under it ends with the plan
+    expect((await rows(await band($, surface, false))).find(l => l.includes('PLAN'))?.endsWith(' │ PLAN 3/5 · score 81 ▲13')).toBe(true)
   })
 
   test(`an invalid plan file says so on line 2 and in the tab (${surface})`, async ($, on) => {

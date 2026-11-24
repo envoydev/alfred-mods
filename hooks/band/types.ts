@@ -51,7 +51,7 @@ export type BandInput = {
   // What line 1's account mark shows for the signed-in account: 'Personal', a company's name, or null while unknown, and its
   // plan kind. The mark draws '<name> | <kind>', 'org | Personal' or 'org | unknown' after REC; absent, no mark
   account?: { org: string | null; kind?: AccountKind | null }
-  // The MCP item (spec 2026-11-23, D5), on the info line after the cache (the user, 2026-11-24); absent or empty, none
+  // The MCP item (spec 2026-11-23, D5), on line 1 after the identity (the user, 2026-11-24); absent or empty, none
   mcp?: Seg[]
   // The modes line under the identity (the user, 2026-11-24): Alfred Code's and claude-kit's modes on; absent or empty, none
   modes?: Line

@@ -32,11 +32,11 @@ test('a working band leads with it', () => {
   expect(first({ isWorking: true, live })).toBe('org | Personal')
 })
 
-test('under the input the action row leads and the account line follows it', () => {
+test('under the input the account leads line 1 and the new failures end it', () => {
   const lines = bandLines(input({ under: { buttons: 'click' }, newFailures: 1 }))
   expect(texts(lines).filter(line => line.includes('org | Personal'))).toHaveLength(1)
-  expect(text(lines[0] ?? []).startsWith('✗ 1 new')).toBe(true)
-  expect(text(lines[1] ?? [])).toBe('org | Personal')
+  expect(text(lines[0] ?? []).startsWith('org | Personal │ ✗ 1 new')).toBe(true)
+  expect(texts(lines).filter(line => line.includes('✗ 1 new'))).toHaveLength(1)
 })
 
 test('before any reading the account draws alone, so it shows from the start', () => {

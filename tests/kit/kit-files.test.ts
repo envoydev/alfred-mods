@@ -106,7 +106,8 @@ for (const surface of SURFACES) {
     await $.tool.call({ tool: 'Bash', command: 'false 1' })
     await $.turn.complete({ answer: '', durationMs: 3000, isAborted: false, turnId: 't1', reason: 'answer' })
 
-    const line = (await rows(await band($, surface)))[0]
+    // Line 1 holds the new failure; the turn line under it ends with the plan
+    const line = (await rows(await band($, surface))).find(l => l.includes('PLAN'))
     expect(line).toMatch(/ │ PLAN 2\/5 · score 91 ▲27$/)
   })
 }
