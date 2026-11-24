@@ -33,6 +33,8 @@ Requires Claude Code 2.1.312 or later, in the terminal (`claude --version`) and 
 (`/status`). Mods load from 2.1.287, but the handoff and the compact rows use fields this mod is checked against only
 from 2.1.312. Counting rules that load by path from the session transcript needs 2.1.330 (see
 [What it shows](#what-it-shows)); on an earlier build the mod finds the transcript another way, or says it could not.
+Using the mod needs no Node: Claude Code runs its hooks in its own runtime. Node 26.13 or newer is for working on
+the mod only (see Development below).
 
 Install it from `envoydev`, the one marketplace for envoydev's plugins
 ([envoydev/plugins-marketplaces](https://github.com/envoydev/plugins-marketplaces)). It also lists Alfred Code, which the

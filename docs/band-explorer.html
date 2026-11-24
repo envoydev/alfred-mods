@@ -98,7 +98,7 @@ table.settings { border-collapse: collapse; width: 100%; min-width: 860px; font-
 table.settings col.c-field { width: 21%; } table.settings col.c-src { width: 15%; } table.settings col.c-use { width: 19%; }
 table.settings th, table.settings td { padding: 7px 9px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
 table.settings tr:last-child th, table.settings tr:last-child td { border-bottom: 0; }
-table.settings thead th { font-weight: 600; font-size: 12px; background: var(--chip); }
+table.settings thead th { font-weight: 600; font-size: 12px; background: var(--chip); overflow-wrap: anywhere; }
 table.settings thead th small { display: block; font-weight: 400; color: var(--muted); }
 table.settings thead th.hi { color: var(--accent); }
 table.settings tbody th { font-weight: 400; }
@@ -146,7 +146,10 @@ a { color: var(--accent); }
 @media (max-width: 640px) { .mapzone { grid-template-columns: minmax(0, 1fr); } .zone-label { order: -1; } }
 /* A picker never widens the page: its longest option is cut, not the panel around it */
 .panel > *, .live-tools > * { min-width: 0; max-width: 100%; }
-.live-tools select { min-width: min(220px, 100%); max-width: 100%; flex: 0 1 auto; text-overflow: ellipsis; }
+/* A fixed width with no percentage, so every engine sizes the label around the whole picker and the next control starts
+   after it: Safari sized the label from the picker's text and let the next one overlap */
+.live-tools select { width: 240px; min-width: 0; max-width: calc(100vw - 140px); flex: none; text-overflow: ellipsis; }
+.live-tools label:has(> select) { flex: none; }
 .live-tools output { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--accent); min-width: 3ch; }
 .live-tools label.width { flex: 1 1 280px; max-width: 440px; }
 .live-tools label.width input { flex: 1; min-width: 90px; }
@@ -3626,12 +3629,12 @@ const eff = (m, c) => Object.assign({}, m, BandSettings.asModes(BandSettings.res
 
 const store = { get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
-let data = Object.assign({}, DATA0, store.get('band4-data') || {});
+let data = Object.assign({}, DATA0, store.get('band5-data') || {});
 // The sample session without any situation's own numbers: each situation starts from it, so one's failures or full
 // context never leak into the next
-let base = Object.assign({}, DATA0, store.get('band4-base') || store.get('band4-data') || {});
-let modes = Object.assign({}, MODES0, store.get('band4-modes') || {});
-let cfg = cfgOf(store.get('band4-cfg') || BAND_CFG0);
+let base = Object.assign({}, DATA0, store.get('band5-base') || store.get('band5-data') || {});
+let modes = Object.assign({}, MODES0, store.get('band5-modes') || {});
+let cfg = cfgOf(store.get('band5-cfg') || BAND_CFG0);
 // The situation picked near the message box, an index into BAND_PRESETS; -1 once anything is changed by hand
 let presetIx = -1;
 // The page's tab in view, and the /inspect pane's
@@ -3917,7 +3920,7 @@ function fill() {
   $('cols').value = modes.cols; $('rows').value = modes.rows; $('termRows').value = modes.termRows; fillSettings();
   $('paneW').value = paneW; $('paneData').value = paneRaw;
 }
-function save() { store.set('band4-data', data); store.set('band4-base', base); store.set('band4-modes', modes); store.set('band4-cfg', cfg); store.set('band4-preset', presetIx); store.set('pane-raw', paneRaw); store.set('pane-w', paneW); }
+function save() { store.set('band5-data', data); store.set('band5-base', base); store.set('band5-modes', modes); store.set('band5-cfg', cfg); store.set('band5-preset', presetIx); store.set('pane-raw', paneRaw); store.set('pane-w', paneW); }
 
 // ---------- gallery ----------
 // A card's settings files, one line each, as the person would write them
@@ -3963,7 +3966,7 @@ const isBoxPreset = p => !(p[4] && p[4].user && p[4].user.quiet === false);
 function buildPresets() {
   $('preset').innerHTML = '<option value="-1">Your own mix</option>'
     + BAND_PRESETS.map((p, i) => isBoxPreset(p) ? `<option value="${i}">${esc(p[0])}</option>` : '').join('');
-  const kept = store.get('band4-preset');
+  const kept = store.get('band5-preset');
   presetIx = Number.isInteger(kept) && kept >= 0 && kept < BAND_PRESETS.length ? kept : -1;
   $('preset').addEventListener('change', () => {
     const i = +$('preset').value;
