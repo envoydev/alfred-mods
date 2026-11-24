@@ -28,14 +28,15 @@ export function toolServers(tools: readonly ListedTool[]): string[] {
 // A server's name matches a tool server by its last `:`-part or by the whole name, either spelled as a tool's name is
 const isShownBy = (server: McpServer, toolServer: string): boolean => toolServer === shortName(server.name) || toolServer === spelled(server.name)
 
-// Whether a loading server settles by time: one whose state is never read (its raise not yet passed the hooks beneath,
-// or its read refused for this raise)
-const isTimed = (server: McpServer, unreadable: Unreadable): boolean => server.isPassed !== true || unreadable.get(server.name) === server.since
+// Whether a loading server settles by time: one whose state is never read (no read runs, its raise not yet passed the
+// hooks beneath, or its read refused for this raise). `unreadable` is null where no state is read at all.
+const isTimed = (server: McpServer, unreadable: Unreadable | null): boolean =>
+  unreadable === null || server.isPassed !== true || unreadable.get(server.name) === server.since
 
 // The servers after a read of the tool list at `now`: a loading or failed one whose tools show is connected, a loading
 // one that settles by time and has loaded for SETTLE_MS too; a failed one with no tools stays so; a tool server no
 // server names is added as connected
-export function settle(servers: readonly McpServer[], fromTools: readonly string[], now: number, unreadable: Unreadable): McpServer[] {
+export function settle(servers: readonly McpServer[], fromTools: readonly string[], now: number, unreadable: Unreadable | null): McpServer[] {
   const named = new Set<string>()
   const settled = servers.map((server): McpServer => {
     const shown = fromTools.filter(toolServer => isShownBy(server, toolServer))

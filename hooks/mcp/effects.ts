@@ -6,7 +6,7 @@ import type { EngineInterface } from 'claude-code'
 import type { HookInput, HookNext } from '../core/types'
 import { EARLY_MS, INITIAL_SERVERS, IDLE_POLL_MS, POLL_MS } from './constants'
 import { isEngineRaise, isSameServers, markFailed, markLoading, markPassed, markRead, readOutcome, refusalOf, serversToRead, settle, toolServers } from './mcp'
-import type { McpServer } from './types'
+import type { McpServer, ReadOutcome } from './types'
 
 const mcpAtom = atom({ plugin: 'alfred-mods', key: 'mcp' } as const, INITIAL_SERVERS as McpServer[], { shape: 'mcp-3' })
 
@@ -60,7 +60,8 @@ export async function trackMcpConnect($: EngineInterface, e: HookInput<'mcp.conn
   await updateMcp($, servers => markLoading(servers, e.server, now))
   const answer = await next(e)
   const refusal = refusalOf(answer)
-  await updateMcp($, servers => (refusal === null ? markPassed(servers, e.server, now) : markFailed(servers, e.server, refusal)))
+  // A write that fails must not reach the hook's catch, which would raise the connect beneath a second time
+  await updateMcp($, servers => (refusal === null ? markPassed(servers, e.server, now) : markFailed(servers, e.server, refusal))).catch(() => undefined)
   return answer
 }
 
@@ -68,7 +69,7 @@ export async function trackMcpConnect($: EngineInterface, e: HookInput<'mcp.conn
 async function refreshMcp($: EngineInterface, now: number): Promise<void> {
   mcpMemory.lastReadAt = now
   const names = await $.tool.list().then(toolServers, () => [])
-  await updateMcp($, servers => settle(servers, names, now, mcpMemory.unreadable))
+  await updateMcp($, servers => settle(servers, names, now, mcpMemory.isReadOff ? null : mcpMemory.unreadable))
   readServerStates($, baseOf(await read($, mcpAtom)))
 }
 
@@ -89,8 +90,13 @@ function readServerStates($: EngineInterface, servers: readonly McpServer[]): vo
 // One read: its outcome marks the server, a refused read leaves it to the tool list and SETTLE_MS. A write that fails
 // leaves it for the next poll to read again.
 async function readServerState($: EngineInterface, server: McpServer): Promise<void> {
-  const result = await $.mcp.connect(server.name).catch(() => null)
-  const outcome = result === null ? null : readOutcome(result)
+  let outcome: ReadOutcome | null
+  try {
+    outcome = readOutcome(await $.mcp.connect(server.name))
+  } catch {
+    // A build with no read throws at once, or rejects: the same as a refusal
+    outcome = null
+  }
   if (outcome === null) {
     mcpMemory.unreadable.set(server.name, server.since)
     return

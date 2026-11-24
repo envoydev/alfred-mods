@@ -88,6 +88,7 @@ test('settle times out a loading server never read: refused under its own raise,
   expect(settle([passed('a'), passed('b')], [], late, new Map([['b', NOW]]))).toEqual([passed('a'), connected('b')])
   expect(settle([passed('a')], [], late, new Map([['a', NOW - 1]]))).toEqual([passed('a')])
   expect(settle([loading('c')], [], late, NONE)).toEqual([connected('c')])
+  expect(settle([passed('d')], [], late, null)).toEqual([connected('d')])
 })
 
 test('a loading server whose raise the hooks beneath have not answered is never read', async ($, on) => {
@@ -98,11 +99,15 @@ test('a loading server whose raise the hooks beneath have not answered is never 
   expect(servers()).toEqual([loading('plugin:p:files')])
 })
 
-test('with leave_out_skipped_hooks on, no state is read', { options: { leave_out_skipped_hooks: true } }, async ($, on) => {
-  const { kit, beneath } = await begin($, on, { stored: [passed('plugin:p:files')], read: UP })
+test('with leave_out_skipped_hooks on, no state is read, and a passed server left loading settles by time', { options: { leave_out_skipped_hooks: true } }, async ($, on) => {
+  const { kit, beneath, servers } = await begin($, on, { stored: [passed('plugin:p:files')], read: UP })
   await kit.clock.advance(POLL * 3)
   await kit.clock.settle()
   expect(beneath.reads).toBe(0)
+  expect(servers()).toEqual([passed('plugin:p:files')])
+  await kit.clock.advance(SETTLE_MS)
+  await kit.clock.settle()
+  expect(servers()).toEqual([connected('plugin:p:files')])
 })
 
 test('serversToRead takes passed loading servers only, and a refusal under an older raise does not stop a newer one', () => {
