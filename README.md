@@ -625,15 +625,15 @@ gives up its Show and Copy buttons. A narrow pane, down to 24 columns, keeps the
 tool's column to keep its counts, and the Timeline leaves out the prompt's time to keep how long each turn took and
 its tokens.
 
-By default the band is the identity line, the turn while one runs, an info line, the gauges, the modes lines and rows
+By default the band is the identity line, the turn while one runs or just ended (on line 1 where the width holds both,
+else a row of its own), an info line, the gauges, the modes lines and rows
 under them. Line 1 is the identity: `● REC` while recording mode is on, the account the session is signed in to,
 Claude Code's version, the MCP item, and the new tool failures with their Inspect button once Claude has answered. Under
 the gauges, `alfred-code:` and `claude-kit:` each show the modes that source has on, claude-kit's with its models. A line
 with nothing on it is not drawn.
 
 ```text
-Acme | Team | CC 2.1.331 │ mcp ✗ 1 · ✓ 10 │ ✗ 6 new 1: Inspect
-✓ Turn 47 · 5m 1s · 19 tools · 6 ✗
+Acme | Team | CC 2.1.331 │ mcp ✗ 1 · ✓ 10 │ ✓ Turn 47 · 5m 1s · 19 tools │ ✗ 6 new 1: Inspect
 Sonnet 5.5 ◑ high │ cache warm ≈60m │ ≈119 tok/s avg │ Claude 17:13 · you 17:15 │ 9m
 ctx ▰▰▰▱▱ 30% │ 5h ▰▱▱▱▱ 15% (19:00) │ 7d 40% (11:00)
 alfred-code: auto-run · auto-compact 400k · scoring 90 3
@@ -659,6 +659,9 @@ rules:   alfred-interaction │ alfred-git │ web:typescript │ 3 always-on ·
   the stronger source. Under [REC](#recording-mode) `strict` a company name reads `‹org›`; `Personal` and `unknown`
   stay. Claude Code's version follows the account, `| CC 2.1.331`, and goes where the line would pass the band's
   width.
+  The turn, running (`⟳ Turn 48 · 0:12 · 3 tools`) or finished, joins line 1 after the MCP item where the width holds
+  both, and Claude Code's version gives way first; short of that the turn keeps its own row. On line 1 the turn's own
+  `· k ✗` is left out while the new failures show. The line can change rows when the MCP item changes width mid-turn.
 - **The modes lines** sit under the context gauges and above the project row, one per source, each with the source's own
   values: `alfred-code: auto-run · auto-compact 400k · scoring 90 3` from Alfred Code's status file and `claude-kit:
   auto-run · scoring 90 6 · plan opus | audit opus | review opus | implement sonnet | search haiku` from claude-kit's

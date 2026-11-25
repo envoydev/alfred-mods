@@ -193,7 +193,7 @@ table.steps { min-width: 720px; }
   <section class="tabpanel" role="tabpanel" id="panel-box" aria-labelledby="tab-box">
     <section class="panel" aria-label="The band">
       <div><h2>The band - the session at a glance</h2>
-        <p class="muted">The band sits right above the box you type in. It shows where the session stands without a command: how full the context is, your limits, the cost, and what Claude is using. When something needs you, it adds a row that says what, and which key to press. Line 1 is the account you are signed in to and Claude Code's version: <code>Acme | Team | CC 2.1.331</code> for a company's plan, <code>Personal</code> for a free, Pro or Max plan, <code>org | unknown</code> for a token login. It is a quick check, not proof. Line 1 then counts the MCP servers and, once Claude has answered, the new tool failures with their Inspect button: <code>Acme | Team | CC 2.1.330 │ mcp ✗ 1 · ✓ 10 │ ✗ 6 new 1: Inspect</code>. A server you turned off in <code>/mcp</code> or in a settings file is not counted, and one whose state cannot be read leaves the count after 60 seconds with no tools. Then the turn while one runs, the info line and the gauges. Under them each source has its own modes line: <code>alfred-code: auto-run · auto-compact 400k · scoring 90 3</code> from Alfred Code's status file, its rounds as <code>/alfred-code:mode:scoring</code> sets them, and <code>claude-kit: auto-run · scoring 90 6 · plan opus | audit opus | review opus | implement sonnet | search haiku</code> from claude-kit's settings file, its rounds the ones its grading loop runs - 3, or 6 under its auto-run. Then the rows under them. Pick a situation to see it react.</p></div>
+        <p class="muted">The band sits right above the box you type in. It shows where the session stands without a command: how full the context is, your limits, the cost, and what Claude is using. When something needs you, it adds a row that says what, and which key to press. Line 1 is the account you are signed in to and Claude Code's version: <code>Acme | Team | CC 2.1.331</code> for a company's plan, <code>Personal</code> for a free, Pro or Max plan, <code>org | unknown</code> for a token login. It is a quick check, not proof. Line 1 then counts the MCP servers and, once Claude has answered, the new tool failures with their Inspect button: <code>Acme | Team | CC 2.1.330 │ mcp ✗ 1 · ✓ 10 │ ✗ 6 new 1: Inspect</code>. A server you turned off in <code>/mcp</code> or in a settings file is not counted, and one whose state cannot be read leaves the count after 60 seconds with no tools. Then the turn, running or finished, joins line 1 where the width holds both, and keeps its own row where it does not; then the info line and the gauges. Under them each source has its own modes line: <code>alfred-code: auto-run · auto-compact 400k · scoring 90 3</code> from Alfred Code's status file, its rounds as <code>/alfred-code:mode:scoring</code> sets them, and <code>claude-kit: auto-run · scoring 90 6 · plan opus | audit opus | review opus | implement sonnet | search haiku</code> from claude-kit's settings file, its rounds the ones its grading loop runs - 3, or 6 under its auto-run. Then the rows under them. Pick a situation to see it react.</p></div>
       <div class="live-tools">
         <label for="preset">Situation <select id="preset"></select></label>
         <label class="width" for="cols">Terminal width <output id="colsOut"></output><input type="range" id="cols" min="24" max="270" step="1"></label>
@@ -1669,7 +1669,11 @@ const SOURCE_LABEL_CELLS = Math.max(SOURCE_LABELS.alfredCode.length, SOURCE_LABE
 // claude-kit's models, written as its status line writes them (the user, 2026-11-25)
 const MODELS_JOIN = ' | '
 
-return { ROW_LABEL, ORG_LABEL, ORG_JOIN, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN, WINDOW_LABEL, CC_LABEL, TIMES_JOIN, TRANSCRIPT_NOTE, MODE_WORDS, MODES_JOIN, SOURCE_LABELS, SOURCE_LABEL_CELLS, MODELS_JOIN };
+// The cells line 1 keeps for the turn when it merges the turn in, and the failures count line 1 reserves room for
+const TURN_ROOM_MIN = 24
+const FAILURES_RESERVE_COUNT = 99
+
+return { ROW_LABEL, ORG_LABEL, ORG_JOIN, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN, WINDOW_LABEL, CC_LABEL, TIMES_JOIN, TRANSCRIPT_NOTE, MODE_WORDS, MODES_JOIN, SOURCE_LABELS, SOURCE_LABEL_CELLS, MODELS_JOIN, TURN_ROOM_MIN, FAILURES_RESERVE_COUNT };
 })();
 // ---- hooks/band/gauges.ts
 __m['band/gauges.ts'] = (() => {
@@ -2207,16 +2211,22 @@ function withTimes(input           , line      )       {
   return line
 }
 
-function lastTurn(input           , isNarrow         )       {
+// The last turn's own part, with its failure count unless the line shows the failures item
+function turnPart(input           , isNarrow         , isFailuresShown         )       {
   const turn = input.turns[input.turns.length - 1]
   if (turn === undefined) return []
   const ok = turn.endReason === 'answer'
   const line       = [{ text: ok ? '✓' : '✗', tone: ok ? 'ok' : 'fail' }, { text: ` Turn ${turn.turnNumber} · ${durationText(turn.durationMs)}` }]
   if (isNarrow) return line
   line.push({ text: ` · ${turn.toolCalls} ${turn.toolCalls === 1 ? 'tool' : 'tools'}` })
-  if (turn.toolFailures > 0) line.push({ text: ` · ${turn.toolFailures} ✗`, tone: 'fail' })
+  if (turn.toolFailures > 0 && !isFailuresShown) line.push({ text: ` · ${turn.toolFailures} ✗`, tone: 'fail' })
+  return line
+}
+
+function lastTurn(input           , isNarrow         )       {
+  const line = turnPart(input, isNarrow, false)
   // In full mode the times are the info line's
-  return input.mode === 'full' ? line : [...line, ...times(input)]
+  return isNarrow || input.mode === 'full' ? line : [...line, ...times(input)]
 }
 
 const agentCount = (count        )         => `${count} ${count === 1 ? 'agent' : 'agents'}`
@@ -2232,6 +2242,34 @@ function planTail(input           , isRowDrawn         )       {
   return [{ text: ROW_JOIN, tone: 'dim' }, ...parts.flatMap((line, i) => (i === 0 ? line : [{ text: ' · ' }, ...line]))]
 }
 
+function bashPart(input           )       {
+  const bash       = []
+  const calls = input.live.runningCalls.filter(call => call.tool === 'Bash')
+  const newest = calls[calls.length - 1]
+  if (newest !== undefined) {
+    bash.push({ text: ` │ Bash ▸ ${newest.label} ${elapsedText(input.now - newest.startedAt)}` })
+    if (calls.length > 1) bash.push({ text: ` +${calls.length - 1}`, tone: 'dim' })
+  }
+  return bash
+}
+
+const agentParts = (running            )       => running.map(agent => ({ text: agent.action === null ? ` │ ${agent.type}` : ` │ ${agent.type} ▸ ${agent.action}` }))
+
+// The first `kept` agent parts, the rest as ' +N agents'
+function foldedParts(parts      , kept        )       {
+  const rest = parts.length - kept
+  return [...parts.slice(0, kept), ...(rest > 0 ? [{ text: ` +${agentCount(rest)}`, tone: 'dim'          }] : [])]
+}
+
+function turnHead(input           , isNarrow         , running            )      {
+  const took = elapsedText(input.now - (input.live.startedAt ?? input.now))
+  const count = input.mode === 'full' ? ` · ${input.live.toolCalls} ${input.live.toolCalls === 1 ? 'tool' : 'tools'}` : ''
+  const turnNumber = input.session.turnCount + 1
+  return input.isWorking
+    ? { text: isNarrow ? `⟳ Turn ${turnNumber} ${took}` : `⟳ Turn ${turnNumber} · ${took}${count}`, bold: true }
+    : { text: `⟳ ${agentCount(running.length)}`, bold: true }
+}
+
 // The turn, or the agents while only they run, or the plan line while a plan runs; then each live agent's action and
 // the running Bash. Past the width the agent parts fold into ' +N agents', then the Bash part goes, then the plan's
 // step, then its title is cut.
@@ -2240,32 +2278,54 @@ function workingLine(input           , isNarrow         )       {
   // The full band's plan has its own row, so line 1 keeps the turn there
   const plan = input.mode === 'full' ? null : input.plan
   if (plan !== null && isNarrow) return narrowPlan(plan, running.length)
-  const turnNumber = input.session.turnCount + 1
-  const took = elapsedText(input.now - (input.live.startedAt ?? input.now))
-  const count = input.mode === 'full' ? ` · ${input.live.toolCalls} ${input.live.toolCalls === 1 ? 'tool' : 'tools'}` : ''
-  const head      = input.isWorking
-    ? { text: isNarrow ? `⟳ Turn ${turnNumber} ${took}` : `⟳ Turn ${turnNumber} · ${took}${count}`, bold: true }
-    : { text: `⟳ ${agentCount(running.length)}`, bold: true }
+  const head = turnHead(input, isNarrow, running)
   if (isNarrow) return input.isWorking && running.length > 0 ? [head, { text: ` · ${agentCount(running.length)}` }] : [head]
-  const bash       = []
-  const calls = input.live.runningCalls.filter(call => call.tool === 'Bash')
-  const newest = calls[calls.length - 1]
-  if (newest !== undefined) {
-    bash.push({ text: ` │ Bash ▸ ${newest.label} ${elapsedText(input.now - newest.startedAt)}` })
-    if (calls.length > 1) bash.push({ text: ` +${calls.length - 1}`, tone: 'dim' })
-  }
-  const parts       = running.map(agent => ({ text: agent.action === null ? ` │ ${agent.type}` : ` │ ${agent.type} ▸ ${agent.action}` }))
-  const folded = (kept        )       => {
-    const rest = parts.length - kept
-    return [...parts.slice(0, kept), ...(rest > 0 ? [{ text: ` +${agentCount(rest)}`, tone: 'dim'          }] : [])]
-  }
+  const bash = bashPart(input)
+  const parts = agentParts(running)
   const lead       = plan === null ? [head] : planLine(plan, Infinity)
   for (let kept = parts.length; kept >= 0; kept--) {
-    const line       = [...lead, ...folded(kept), ...bash]
+    const line       = [...lead, ...foldedParts(parts, kept), ...bash]
     if (widthOf(line) <= input.columns) return line
   }
-  if (plan === null) return [head, ...folded(0), ...bash]
-  return [...planLine(plan, input.columns - widthOf(folded(0))), ...folded(0)]
+  if (plan === null) return [head, ...foldedParts(parts, 0), ...bash]
+  return [...planLine(plan, input.columns - widthOf(foldedParts(parts, 0))), ...foldedParts(parts, 0)]
+}
+
+// The turn's whole forms, widest first, none cut: the running turn's or the last turn's. Empty with no turn to draw.
+function turnForms(input           , isNarrow         , isPlanRowDrawn         , isFailuresShown         )         {
+  const running = input.agents.filter(agent => isLive(agent.status))
+  const forms         = []
+  if (input.isWorking || running.length > 0) {
+    const plan = input.mode === 'full' ? null : input.plan
+    if (plan !== null && isNarrow) forms.push(narrowPlan(plan, running.length), narrowPlan(plan, 0))
+    else if (isNarrow) {
+      const head = turnHead(input, true, running)
+      if (input.isWorking && running.length > 0) forms.push([head, { text: ` · ${agentCount(running.length)}` }])
+      forms.push([head])
+    } else {
+      const head = turnHead(input, false, running)
+      const lead       = plan === null ? [head] : planLine(plan, Infinity)
+      const bash = bashPart(input)
+      const parts = agentParts(running)
+      for (let kept = parts.length; kept >= 0; kept--) forms.push([...lead, ...foldedParts(parts, kept), ...bash])
+      if (parts.length > 0) forms.push([...lead, ...foldedParts(parts, 0)])
+      forms.push(lead)
+      if (plan !== null) forms.push(narrowPlan(plan, running.length), narrowPlan(plan, 0))
+      else if (input.isWorking) forms.push([turnHead(input, true, running)])
+    }
+  } else if (input.turns.length > 0) {
+    const tail = planTail(input, isPlanRowDrawn)
+    const full = turnPart(input, false, isFailuresShown)
+    const withTimes = input.mode === 'full' ? full : [...full, ...times(input)]
+    const narrow = turnPart(input, true, isFailuresShown)
+    if (isNarrow) forms.push([...narrow, ...tail], narrow)
+    else {
+      const wide = input.mode === 'full' ? [withTimes] : [withTimes, full]
+      for (const form of wide) forms.push([...form, ...tail], form)
+      forms.push(narrow)
+    }
+  }
+  return forms.filter((form, i) => form.length > 0 && (i === 0 || JSON.stringify(form) !== JSON.stringify(forms[i - 1])))
 }
 
 // What the spinner adds after the engine's suffix: an agent's action and context on that agent's spinner; on the main
@@ -2322,7 +2382,7 @@ function withPlanTail(input           , line      , isRowDrawn         )       {
   return line.length > 0 && widthOf(full) <= input.columns ? full : line
 }
 
-return { underButton, withToday, withTimes, lastTurn, workingLine, spinnerSuffix, cacheWarning, handoffAsk, skipAsk, withPlanTail };
+return { underButton, withToday, withTimes, lastTurn, workingLine, turnForms, spinnerSuffix, cacheWarning, handoffAsk, skipAsk, withPlanTail };
 })();
 // ---- hooks/account/constants.ts
 __m['account/constants.ts'] = (() => {
@@ -2358,8 +2418,9 @@ __m['band/lines.ts'] = (() => {
 const { fitLine, widthOf } = __m['core/format.ts'];
 const { ORG_STRICT, PERSONAL } = __m['account/constants.ts'];
                                               
-const { CC_LABEL, ORG_JOIN, ORG_LABEL, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN, MODES_JOIN, SOURCE_LABELS, SOURCE_LABEL_CELLS } = __m['band/constants.ts'];
-                                                   
+const { CC_LABEL, TURN_ROOM_MIN, ORG_JOIN, ORG_LABEL, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN, MODES_JOIN, SOURCE_LABELS, SOURCE_LABEL_CELLS } = __m['band/constants.ts'];
+                                                              
+const { cellsOf } = __m['band/wrap.ts'];
 
 const REC_MARK      = { text: '● REC', tone: 'fail', bold: true }
 
@@ -2380,17 +2441,22 @@ function orgMark(input           )       {
   return account.kind === undefined || account.kind === null ? [{ text: name }] : [{ text: name }, dim(ORG_JOIN), dim(account.kind)]
 }
 
-// Line 1: REC while it is on, the account and Claude Code's version, the MCP item, then the new failures with their
-// button ('Acme | Team | CC 2.1.330 │ mcp ✗ 1 · ✓ 10 │ ✗ 6 new 1: Inspect', the user, 2026-11-24). Where it would pass
-// the band's width the version goes first, then the MCP item; REC, the account and the failures always stay.
-function identityLine(input           , failures       = [])       {
+// The three forms of line 1, widest first: with the version, without it, and without the MCP item as well
+function identityForms(input           , failures       = [])         {
   const rec = input.rec !== undefined && input.rec.level !== 'off' ? [REC_MARK] : []
   const org = orgMark(input)
   const version = input.session.version
   const withVersion = version === undefined ? org : [...org, ...(org.length === 0 ? [] : [DIM_JOIN]), { text: `${CC_LABEL} ${version}`, tone: 'dim'          }]
   const mcp = input.mcp ?? []
-  const forms = [joinItems([rec, withVersion, mcp, failures]), joinItems([rec, org, mcp, failures]), joinItems([rec, org, failures])]
-  return forms.find(form => widthOf(form) <= input.columns) ?? forms[forms.length - 1] ?? []
+  return [joinItems([rec, withVersion, mcp, failures]), joinItems([rec, org, mcp, failures]), joinItems([rec, org, failures])]
+}
+
+// Line 1: REC while it is on, the account and Claude Code's version, the MCP item, then the new failures with their
+// button ('Acme | Team | CC 2.1.330 │ mcp ✗ 1 · ✓ 10 │ ✗ 6 new 1: Inspect', the user, 2026-11-24). Where it would pass
+// the band's width the version goes first, then the MCP item; REC, the account and the failures always stay.
+function identityLine(input           , failures       = [])       {
+  const forms = identityForms(input, failures)
+  return forms.find(form => cellsOf(form) <= input.columns) ?? forms[forms.length - 1] ?? []
 }
 
 const labelled = (label        , line      )       => [{ text: `${label} `, tone: 'dim' }, ...line]
@@ -2418,13 +2484,27 @@ function sourceLines(input           , keep           )         {
   return form === undefined ? [] : [form]
 }
 
-// The line that leads the band: the identity, when it holds something
-function leadLines(input           , failures       = [])         {
+// The line that leads the band: the identity, when it holds something. Where the width holds the identity, the turn's
+// least form and the widest failures item, the turn joins it after the MCP item (spec 2026-11-25): the first base - with
+// the version, else without - whose room holds TURN_ROOM_MIN, then the turn's widest form that fits. The rule reads only
+// the width and the identity, so a running and a finished turn merge at the same widths. Else the turn keeps its row.
+function leadLines(input           , failures      , turn           )                                          {
   const identity = identityLine(input, failures)
-  return identity.length === 0 ? [] : [identity]
+  const own = { lines: identity.length === 0 ? [] : [identity], isTurnTaken: false }
+  if (turn.forms.length === 0) return own
+  const join = cellsOf([{ text: ROW_JOIN }])
+  const bases = identityForms(input).slice(0, 2)
+  const base = bases.find(form => form.length > 0 && input.columns - cellsOf(form) - join - turn.reserveCells >= TURN_ROOM_MIN)
+  if (base === undefined) return own
+  const failuresCells = failures.length === 0 ? 0 : join + cellsOf(failures)
+  const room = input.columns - cellsOf(base) - join - failuresCells
+  const form = turn.forms.find(candidate => cellsOf(candidate) <= room)
+  if (form === undefined) return own
+  const line = joinItems([base, form, failures])
+  return cellsOf(line) <= input.columns ? { lines: [line], isTurnTaken: true } : own
 }
 
-return { REC_MARK, identityLine, sourceLines, leadLines };
+return { REC_MARK, identityForms, identityLine, sourceLines, leadLines };
 })();
 // ---- hooks/band/band.ts
 __m['band/band.ts'] = (() => {
@@ -2434,14 +2514,14 @@ const { isLive } = __m['agents/agents.ts'];
                                                    
                                             
                                               
-const { ROW_JOIN } = __m['band/constants.ts'];
+const { FAILURES_RESERVE_COUNT, ROW_JOIN } = __m['band/constants.ts'];
 const { leadLines, sourceLines } = __m['band/lines.ts'];
 const { fiveHourPace, gauges, narrowGauges, percentText } = __m['band/gauges.ts'];
 const { cellsOf } = __m['band/wrap.ts'];
 const { toolRows } = __m['band/detail.ts'];
 const { placeRow, planRow, usageRow } = __m['band/project.ts'];
 const { infoRows } = __m['band/info.ts'];
-const { cacheWarning, handoffAsk, lastTurn, skipAsk, underButton, withPlanTail, withTimes, withToday, workingLine } = __m['band/working.ts'];
+const { cacheWarning, handoffAsk, lastTurn, skipAsk, turnForms, underButton, withPlanTail, withTimes, withToday, workingLine } = __m['band/working.ts'];
 
 const { REC_MARK } = __m['band/lines.ts'];
 
@@ -2502,7 +2582,13 @@ function bandLines(input           )         {
 // What the band is, in order: the action row where it sits under the input, the identity and modes lines, then the body
 function bandRows(input           , keep      )         {
   const body = bandBody(input, input.columns < 100, keep)
-  return [...body.before, ...leadLines(input, failuresItem(input)), ...body.rows]
+  const lead = leadLines(input, failuresItem(input), { forms: body.turnForms, reserveCells: failuresReserve(input) })
+  return [...body.before, ...lead.lines, ...(lead.isTurnTaken || body.turn.length === 0 ? [] : [body.turn]), ...body.rows]
+}
+
+// The cells line 1 holds back for the new failures: ' │ ' and the item at its widest count, buttons counted
+function failuresReserve(band           )         {
+  return cellsOf([{ text: ROW_JOIN }, ...failuresItem({ ...band, newFailures: FAILURES_RESERVE_COUNT, isWorking: false })])
 }
 
 // The new failures with their button, on line 1 once Claude has answered (asks wait for the turn to end); none before
@@ -2512,14 +2598,14 @@ function failuresItem(band           )       {
 }
 
 // The body's rows, and the ones that come before the leading lines: under the input the action row, nearest the input
-                                            
+                                                                           
 
 function bandBody(band           , isNarrow         , keep      )       {
   const usage = band.usage
   // Before the first reading the calm band waits; the full band draws once the model or a stored window is known
   const isFullKnown = band.mode === 'full' && (band.session.model !== null || usage.rateWindows.length > 0)
   const sources = sourceLines(band, keep.modes)
-  if (band.turns.length === 0 && usage.contextPercent === null && !isFullKnown) return { before: [], rows: sources }
+  if (band.turns.length === 0 && usage.contextPercent === null && !isFullKnown) return { before: [], turn: [], turnForms: [], rows: sources }
   const invalid       = band.isPlanInvalid ? [{ text: ROW_JOIN, tone: 'dim' }, { text: 'plan file invalid', tone: 'warn' }] : []
   const gaugeLine = isNarrow ? narrowGauges(usage, band.runway) : withToday(band, gauges(band), invalid)
   const line2 = [...gaugeLine, ...invalid]
@@ -2543,21 +2629,24 @@ function bandBody(band           , isNarrow         , keep      )       {
     // not only when active work'); the calm band stays one dim line until something needs you. The identity and modes
     // lines are no part of that line: the account mark, like the red REC mark, keeps its own tones so the account check
     // reads easily (the owner, 2026-11-21)
-    if (band.mode === 'full') return { before: [], rows: [...head, [...gaugeLine, ...invalid], ...sources, ...info] }
+    if (band.mode === 'full') return { before: [], turn: [], turnForms: [], rows: [...head, [...gaugeLine, ...invalid], ...sources, ...info] }
     const calm = isNarrow ? gaugeLine : withTimes(band, gaugeLine)
     const dim = (line      )       => line.map(seg => ('text' in seg ? { text: seg.text, tone: 'dim'          } : seg))
-    return { before: [], rows: [[...dim(calm), ...invalid], ...sources.map(dim), ...info.map(dim)] }
+    return { before: [], turn: [], turnForms: [], rows: [[...dim(calm), ...invalid], ...sources.map(dim), ...info.map(dim)] }
   }
-  if (band.isWorking) return { before: [], rows: [workingLine(band, isNarrow), ...head, line2, ...sources, ...info] }
+  const isPlanRowDrawn = head.length > 0 && keep.isPlanKept
+  const isFailuresShown = failuresItem(band).length > 0
+  if (band.isWorking) return { before: [], turn: workingLine(band, isNarrow), turnForms: turnForms(band, isNarrow, isPlanRowDrawn, isFailuresShown), rows: [...head, line2, ...sources, ...info] }
   const items = [warning, ask, skip].filter((item)               => item !== null && item.length > 0)
   const joined       = items.flatMap((item, i) => (i === 0 ? item : [{ text: '    ' }, ...item]))
   // Under the input the action row comes first, nearest the input as above it is the last (the user, 2026-11-12, over
   // band-under U2's place after the gauges), so a cut at the screen's edge takes the detail rows first; its commands are
   // longer than the digits above, so the items take a row each when one row cannot hold them
   const action         = items.length === 0 ? [] : band.under !== undefined && cellsOf(joined) > band.columns ? items : [joined]
-  const first = agentsRun ? workingLine(band, isNarrow) : withPlanTail(band, lastTurn(band, isNarrow), head.length > 0 && keep.isPlanKept)
+  const first = agentsRun ? workingLine(band, isNarrow) : withPlanTail(band, lastTurn(band, isNarrow), isPlanRowDrawn)
   const nonEmpty = (rows        )         => rows.filter(segs => segs.length > 0)
-  return band.under === undefined ? { before: [], rows: nonEmpty([first, ...head, line2, ...sources, ...info, ...action]) } : { before: action, rows: nonEmpty([first, ...head, line2, ...sources, ...info]) }
+  const turn = { turn: first, turnForms: turnForms(band, isNarrow, isPlanRowDrawn, isFailuresShown) }
+  return band.under === undefined ? { before: [], ...turn, rows: nonEmpty([...head, line2, ...sources, ...info, ...action]) } : { before: action, ...turn, rows: nonEmpty([...head, line2, ...sources, ...info]) }
 }
 
 return { REC_MARK, statusText, underRows, bandLines };
@@ -4972,7 +5061,7 @@ const noRun = s => String(s || '').split('\n').map(l => l.replace(/\s+running(\s
 // [name, what it shows, the situation, the data, the settings files]
 const BAND_PRESETS = [
   ['Between turns, nothing to act on', 'Claude has answered and nothing needs you, so the band leads with the gauges, in their colours as while a turn runs (the calm band dims instead). No file sets anything, so every field takes its default: above the input, full, detail rows open.', {}, d => ({ agents: noRun(d.agents) })],
-  ['A turn is running', 'Line 1 counts the turn: ⟳, its time and its tool calls, with an agent at work beside it. Asks and their buttons wait for the turn to end.', { running: true }, withRun],
+  ['A turn is running', 'The turn - ⟳, its time and its tool calls - joins line 1 after the MCP item where the width holds both, and keeps its own row where it does not. An agent at work shows beside it. Asks and their buttons wait for the turn to end.', { running: true }, withRun],
   ['Detail rows closed', 'Set in this project\'s local file. The usage: row keeps the counts - not a button, no arrow, no t: the rows under it open and close only by the value.', { running: true }, null, { local: { bandRows: false } }],
   ['A local file over the user\'s', 'The user file puts the band under the input with its rows closed in every project; this project\'s local file opens the rows again. Each other field falls through to the user file, then the default.', { running: true, fullscreen: true }, null, { user: { bandPlace: 'under', bandRows: false }, local: { bandRows: true } }],
   ['A bad value falls through', 'The local file says "compact", which "band" does not take, so the user file\'s "calm" applies, and the mod says so once in a toast that never quotes the bad value.', { running: true }, null, { user: { band: 'calm' }, local: { band: 'compact' } }],
