@@ -625,7 +625,7 @@ gives up its Show and Copy buttons. A narrow pane, down to 24 columns, keeps the
 tool's column to keep its counts, and the Timeline leaves out the prompt's time to keep how long each turn took and
 its tokens.
 
-By default the band is the identity line, the turn while one runs or just ended (on line 1 where the width holds both,
+By default the band is the identity line, the turn while one runs, or the finished turn while something needs you (the idle, healthy band has no turn row; on line 1 where the width holds both,
 else a row of its own), an info line, the gauges, the modes lines and rows
 under them. Line 1 is the identity: `● REC` while recording mode is on, the account the session is signed in to,
 Claude Code's version, the MCP item, and the new tool failures with their Inspect button once Claude has answered. Under
@@ -660,8 +660,8 @@ rules:   alfred-interaction │ alfred-git │ web:typescript │ 3 always-on ·
   stay. Claude Code's version follows the account, `| CC 2.1.331`, and goes where the line would pass the band's
   width.
   The turn, running (`⟳ Turn 48 · 0:12 · 3 tools`) or finished, joins line 1 after the MCP item where the width holds
-  both, and Claude Code's version gives way first; short of that the turn keeps its own row. On line 1 the turn's own
-  `· k ✗` is left out while the new failures show. The line can change rows when the MCP item changes width mid-turn.
+  both, and Claude Code's version gives way first; short of that the turn keeps its own row. The line can change rows
+  when the MCP item changes width mid-turn.
 - **The modes lines** sit under the context gauges and above the project row, one per source, each with the source's own
   values: `alfred-code: auto-run · auto-compact 400k · scoring 90 3` from Alfred Code's status file and `claude-kit:
   auto-run · scoring 90 6 · plan opus | audit opus | review opus | implement sonnet | search haiku` from claude-kit's
@@ -677,7 +677,8 @@ rules:   alfred-interaction │ alfred-git │ web:typescript │ 3 always-on ·
   CLAUDE-KIT sections keep the details: auto-approve and where each value comes from.
 - **The new failures,** `✗ <n> new` with the Inspect button (`1`, or a click; `/inspect` as text under the input), end
   line 1 once Claude has answered, and wait while a turn runs. Short of width line 1 gives up Claude Code's version
-  first, then the MCP item; REC, the account and the failures stay.
+  first, then the MCP item; REC, the account and the failures stay. With the failures on line 1, the turn's own `· k ✗` is
+  left out, and the turn may sit between the MCP item and them.
 - **The MCP item**, on line 1 after Claude Code's version, counts the session's MCP servers and never draws a name. `mcp
   ◐ <connected>/<total>` shows while any server loads, `mcp ✓ <n>` once all are connected, and `mcp ✗ <failed> · ✓
   <connected>` when one failed (one waiting on a login counts as failed). A server turned off is not counted. The mod

@@ -4,7 +4,7 @@
 import { fitLine, widthOf } from '../core/format'
 import { ORG_STRICT, PERSONAL } from '../account/constants'
 import type { Line, Seg } from '../core/types'
-import { CC_LABEL, TURN_ROOM_MIN, ORG_JOIN, ORG_LABEL, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN, MODES_JOIN, SOURCE_LABELS, SOURCE_LABEL_CELLS } from './constants'
+import { CC_LABEL, MODES_JOIN, ORG_JOIN, ORG_LABEL, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN, SOURCE_LABEL_CELLS, SOURCE_LABELS, TURN_ROOM_MIN } from './constants'
 import type { BandInput, ModesKeep, TurnOffer } from './types'
 import { cellsOf } from './wrap'
 
