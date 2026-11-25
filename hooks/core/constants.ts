@@ -9,3 +9,5 @@ export const MODEL_ID = new RegExp(`(${FAMILIES.join('|')})(?:-(\\d+)(?:-(\\d+))
 // A hotkey of one digit, which also answers from the empty prompt
 export const DIGIT_HOTKEY = /^\d$/
 
+// What marks an effort level as worked out here, not yet carried by a request
+export const EFFORT_GUESS_MARK = '≈'

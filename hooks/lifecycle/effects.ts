@@ -2,6 +2,7 @@
 import { readBandSetting, resetBandFooter, syncStatusLine } from '../band/effects'
 import { armCacheToast, readCache, readCacheConfig, resetCache, takeResumeRate } from '../cache/effects'
 import { setCostBaseline, bumpTick, dropPassedWindows, forgetMidTurnRead, forgetStoredWindows, forgetTurnSpend, refreshUsageMidTurn, isMidTurnReadDue, isTodayStale, markResumed, pruneCost, readLive, readModelAndVersion, readUsage, resetLive, resetSession, resetPace, resetTick, resetTotals, resetTurns, resetUsage, seedRateWindows, refreshUsage, readTodayUsd } from '../session/effects'
+import { guessEffort } from '../effort/effects'
 import { readAgents, refreshLiveAgents, resetAgents, resetLoops } from '../agents/effects'
 import { notePermissionMode, resetBlockers, resetFailures, resetQuiet, resetStats } from '../tools/effects'
 import { refreshAccount } from '../account/effects'
@@ -37,6 +38,7 @@ const tickMemory = { minute: -1, startedAt: 0 }
 // context's parts. Each read stands alone: a refusal leaves its value as it was.
 async function readStartFacts($: EngineInterface): Promise<void> {
   await readModelAndVersion($)
+  await guessEffort($)
   await readPlace($).catch(() => undefined)
   await seedRateWindows($).catch(() => undefined)
   await resetBandFooter($)

@@ -78,16 +78,16 @@ test('a company name is plain and the bar and the kind are dim', () => {
   expect(text(bandLines(input({ account: { org: 'Acme', kind: 'Enterprise' } }))[0] ?? [])).toBe('Acme | Enterprise')
 })
 
-test('a personal account reads org | Personal', () => {
+test('a personal account reads Personal, with no org label (the user, 2026-11-25)', () => {
   const line = bandLines(input({ account: { org: 'Personal', kind: 'Personal' } }))[0] ?? []
-  expect(text(line)).toBe('org | Personal')
-  expect(line).toEqual([{ text: 'org', tone: 'dim' }, { text: ' | ', tone: 'dim' }, { text: 'Personal', tone: 'dim' }])
+  expect(text(line)).toBe('Personal')
+  expect(line).toEqual([{ text: 'Personal', tone: 'dim' }])
 })
 
 test('a company named Personal on a Team plan draws its name and its kind', () => {
   expect(texts(bandLines(input({ account: { org: 'Personal', kind: 'Team' } })))[0]).toBe('Personal | Team')
-  expect(texts(bandLines(input({ account: { org: 'Personal', kind: null } })))[0]).toBe('org | Personal')
-  expect(texts(bandLines(input({ account: { org: 'Acme', kind: 'Personal' } })))[0]).toBe('org | Personal')
+  expect(texts(bandLines(input({ account: { org: 'Personal', kind: null } })))[0]).toBe('Personal')
+  expect(texts(bandLines(input({ account: { org: 'Acme', kind: 'Personal' } })))[0]).toBe('Personal')
 })
 
 test('an unknown account reads org | unknown', () => {
@@ -102,7 +102,7 @@ test('a company with no known kind reads its name alone, cut to 40 cells', () =>
 
 test('REC strict hides a company name', () => {
   expect(texts(bandLines(input({ rec: STRICT, account: TEAM })))[0]).toBe('● REC │ ‹org› | Team')
-  expect(texts(bandLines(input({ rec: STRICT, account: { org: 'Personal', kind: 'Personal' } })))[0]).toBe('● REC │ org | Personal')
+  expect(texts(bandLines(input({ rec: STRICT, account: { org: 'Personal', kind: 'Personal' } })))[0]).toBe('● REC │ Personal')
   expect(texts(bandLines(input({ rec: REC, account: TEAM })))[0]).toBe('● REC │ Acme | Team')
 })
 

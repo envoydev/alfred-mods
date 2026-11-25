@@ -193,7 +193,7 @@ table.steps { min-width: 720px; }
   <section class="tabpanel" role="tabpanel" id="panel-box" aria-labelledby="tab-box">
     <section class="panel" aria-label="The band">
       <div><h2>The band - the session at a glance</h2>
-        <p class="muted">The band sits right above the box you type in. It shows where the session stands without a command: how full the context is, your limits, the cost, and what Claude is using. When something needs you, it adds a row that says what, and which key to press. Line 1 is the account you are signed in to and Claude Code's version: <code>Acme | Team | CC 2.1.331</code> for a company's plan, <code>org | Personal</code> for a free, Pro or Max plan, <code>org | unknown</code> for a token login. It is a quick check, not proof. Line 1 then counts the MCP servers and, once Claude has answered, the new tool failures with their Inspect button: <code>Acme | Team | CC 2.1.330 │ mcp ✗ 1 · ✓ 10 │ ✗ 6 new 1: Inspect</code>. Line 2 is the modes on, from Alfred Code and claude-kit: <code>auto-run · auto-compact 400k · scoring 90 3</code>. Then the turn while one runs, the info line, the gauges and the rows under them. Pick a situation to see it react.</p></div>
+        <p class="muted">The band sits right above the box you type in. It shows where the session stands without a command: how full the context is, your limits, the cost, and what Claude is using. When something needs you, it adds a row that says what, and which key to press. Line 1 is the account you are signed in to and Claude Code's version: <code>Acme | Team | CC 2.1.331</code> for a company's plan, <code>Personal</code> for a free, Pro or Max plan, <code>org | unknown</code> for a token login. It is a quick check, not proof. Line 1 then counts the MCP servers and, once Claude has answered, the new tool failures with their Inspect button: <code>Acme | Team | CC 2.1.330 │ mcp ✗ 1 · ✓ 10 │ ✗ 6 new 1: Inspect</code>. Line 2 is the modes on, from Alfred Code and claude-kit: <code>auto-run · auto-compact 400k · scoring 90 3</code>. Then the turn while one runs, the info line, the gauges and the rows under them. Pick a situation to see it react.</p></div>
       <div class="live-tools">
         <label for="preset">Situation <select id="preset"></select></label>
         <label class="width" for="cols">Terminal width <output id="colsOut"></output><input type="range" id="cols" min="24" max="270" step="1"></label>
@@ -380,13 +380,15 @@ const MODEL_ID = new RegExp(`(${FAMILIES.join('|')})(?:-(\\d+)(?:-(\\d+))?)?`)
 // A hotkey of one digit, which also answers from the empty prompt
 const DIGIT_HOTKEY = /^\d$/
 
+// What marks an effort level as worked out here, not yet carried by a request
+const EFFORT_GUESS_MARK = '≈'
 
-return { FAMILIES, MODEL_ID, DIGIT_HOTKEY };
+return { FAMILIES, MODEL_ID, DIGIT_HOTKEY, EFFORT_GUESS_MARK };
 })();
 // ---- hooks/core/format.ts
 __m['core/format.ts'] = (() => {
 // Plain values to the strings the band and the pane draw: bars, token counts, times, money, one-line cuts.
-const { DIGIT_HOTKEY, FAMILIES, MODEL_ID } = __m['core/constants.ts'];
+const { DIGIT_HOTKEY, EFFORT_GUESS_MARK, FAMILIES, MODEL_ID } = __m['core/constants.ts'];
                                      
 
 // The one bar, in the band and the pane: 5 cells of 20%, ▰ filled and ▱ empty; a cell fills only when its share is
@@ -517,6 +519,12 @@ function buttonCells(labelCells        , hotkey                    , isPlain    
   return isPlain ? (hotkey === undefined ? 0 : hotkey.length + 2) + labelCells : labelCells + 4
 }
 
+// The effort level as the band and the pane draw it, a guess marked; null with none
+function effortText(shown                                                          )                {
+  if (shown.effort === null) return null
+  return shown.effortFrom === 'guess' ? `${EFFORT_GUESS_MARK}${shown.effort}` : shown.effort
+}
+
 // A model id's family and version: 'claude-opus-5-5' is opus 5.5; an id with no known family has none
 function modelParts(model        )                                                    {
   const match = MODEL_ID.exec(model)
@@ -534,7 +542,7 @@ function modelText(model        , title = false)         {
   return parts.version === null ? name : `${name} ${parts.version}`
 }
 
-return { barText, toneOf, tokensText, durationText, minutesText, elapsedText, clockText, whenText, usdText, printable, fingerprint, setMasker, oneLine, fitLine, cutMasked, maskedText, widthOf, isPlainButton, buttonCells, modelParts, modelText };
+return { barText, toneOf, tokensText, durationText, minutesText, elapsedText, clockText, whenText, usdText, printable, fingerprint, setMasker, oneLine, fitLine, cutMasked, maskedText, widthOf, isPlainButton, buttonCells, effortText, modelParts, modelText };
 })();
 // ---- hooks/agents/agents.ts
 __m['agents/agents.ts'] = (() => {
@@ -2010,7 +2018,7 @@ return { planRow, placeRow, usageRow };
 __m['band/info.ts'] = (() => {
 // The full band's info line: model, effort, cache, MCP, speed, times and the session's time
 const { billingOf, cacheView, minutesLeftText } = __m['cache/cache.ts'];
-const { minutesText, modelParts, modelText } = __m['core/format.ts'];
+const { effortText, minutesText, modelParts, modelText } = __m['core/format.ts'];
                                         
                                               
 const { TIMES_JOIN } = __m['band/constants.ts'];
@@ -2030,7 +2038,8 @@ function infoItems(input           )         {
   if (model !== null) {
     const family = modelParts(model)?.family
     const name      = family === undefined ? { text: modelText(model, true) } : { text: modelText(model, true), tone: family }
-    items.push({ keep: 6, forms: [input.session.effort === null ? [name] : [name, { text: ` ◑ ${input.session.effort}`, tone: 'dim' }]] })
+    const effort = effortText(input.session)
+    items.push({ keep: 6, forms: [effort === null ? [name] : [name, { text: ` ◑ ${effort}`, tone: 'dim' }]] })
   }
   if (input.cache.sessionCounts.read + input.cache.sessionCounts.write > 0) {
     const cacheState = cacheView(input.cache, billingOf(input.usage.rateWindows), input.now, input.usage.contextTokens)
@@ -2307,15 +2316,15 @@ const MARK_SEP      = { text: ROW_JOIN, tone: 'dim' }
 const DIM_JOIN      = { text: ORG_JOIN, tone: 'dim' }
 const joinItems = (items        )       => items.filter(item => item.length > 0).flatMap((item, i) => (i === 0 ? item : [MARK_SEP, ...item]))
 
-// The signed-in account's mark, as the Claude mobile app names it: '<company name> | Team' (or Enterprise), 'org | Personal'
-// or 'org | unknown'. A company name is cut to 40 cells and draws '‹org›' under REC strict; one with no known kind
-// reads its name alone. None without an account. The name is plain; the label, the bar and the kind are dim.
+// The signed-in account's mark: '<company name> | Team' (or Enterprise), 'Personal' with no label where there is no
+// organization (the user, 2026-11-25), or 'org | unknown'. A company name is cut to 40 cells and draws '‹org›' under REC
+// strict; one with no known kind reads its name alone. None without an account. A company name is plain; the rest is dim.
 function orgMark(input           )       {
   const account = input.account
   if (account === undefined) return []
   const dim = (text        )      => ({ text, tone: 'dim' })
   if (account.org === null) return [dim(ORG_LABEL), dim(ORG_JOIN), dim(ORG_UNKNOWN)]
-  if (account.kind === PERSONAL || ((account.kind === undefined || account.kind === null) && account.org === PERSONAL)) return [dim(ORG_LABEL), dim(ORG_JOIN), dim(PERSONAL)]
+  if (account.kind === PERSONAL || ((account.kind === undefined || account.kind === null) && account.org === PERSONAL)) return [dim(PERSONAL)]
   const name = input.rec?.level === 'strict' ? ORG_STRICT : fitLine(account.org, ORG_MAX_CELLS)
   return account.kind === undefined || account.kind === null ? [{ text: name }] : [{ text: name }, dim(ORG_JOIN), dim(account.kind)]
 }
@@ -4010,7 +4019,7 @@ const BandAdapter = (() => {
         costUsd: m.fresh ? 0 : num(d.cost), todayUsd: num(d.today), readingAt: now, ...(m.fresh ? { rateWindowsAt: now - 60 * MIN } : {}),
       },
       session: {
-        model: modelId(d.model), effort: m.fresh ? null : String(d.effort || '') || null, compactions: m.fresh ? 0 : num(d.compactions), lastCompactAt: null,
+        model: modelId(d.model), effort: String(d.effort || '') || null, ...(m.fresh ? { effortFrom: 'guess' } : {}), compactions: m.fresh ? 0 : num(d.compactions), lastCompactAt: null,
         lastPromptAt: m.fresh ? null : youAt, lastReplyAt: m.fresh ? null : lastReply, turnCount: m.fresh ? 0 : m.running ? turnN - 1 : turnN, waitingPrompts: [],
         mainToolCalls: tools.reduce((n, t) => n + t.n, 0), loadedSkills: Object.fromEntries(skills.map(s => [s.name, s.n])),
         ...(place ? { place } : {}), ...(String(d.cc || '') ? { version: String(d.cc) } : {}),
@@ -4226,7 +4235,7 @@ const BAND_PRESETS = [
   ['Under the input, main screen', 'The main screen takes no clicks, so each button is its command as text to type.', {}, d => ({ failures: 1, agents: noRun(d.agents) }), { user: { bandPlace: 'under' } }],
   ['Under, fullscreen, a 24-row window', 'Fullscreen gives everything under the input about half the window. Less the prompt and Claude Code\'s own footer line, 6 band rows remain here; the rest give way in the band\'s order, the project row first.', { fullscreen: true, termRows: 24, running: true }, null, { user: { bandPlace: 'under' } }],
   ['Choices from the old commands', 'Someone who ran /rec strict and /band rows off on 0.7 keeps both after the update. One toast gives the line to paste, and each old choice retires once the user file sets that field.', { running: true }, null, { legacy: { rec: 'strict', bandRows: false } }],
-  ['First second of a session', 'Before the first reply: ctx waits (ctx —), and 5h and 7d carry the values an earlier session stored, marked ≈.', { fresh: true }, () => ({ agents: '', h5: 54, h5Reset: '24.11 16:00' })]
+  ['First second of a session', 'Before the first reply: ctx waits (ctx —), the effort is worked out from your settings, and 5h and 7d carry the values an earlier session stored, both marked ≈.', { fresh: true }, () => ({ agents: '', h5: 54, h5Reset: '24.11 16:00' })]
 ]
 
 </script>

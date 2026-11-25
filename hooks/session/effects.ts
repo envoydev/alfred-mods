@@ -171,9 +171,21 @@ export async function noteCompaction($: EngineInterface, at: number): Promise<vo
   await updateSession($, session => ({ ...session, compactions: session.compactions + 1, lastCompactAt: at }))
 }
 
-// The model a switch moved to, before its first step names it
+// The model a switch moved to, before its first step names it: the other model's effort goes, to be guessed again
 export async function setModel($: EngineInterface, model: string): Promise<void> {
-  await updateSession($, session => ({ ...session, model }))
+  await updateSession($, session => {
+    if (session.model === model) return session
+    const { effortFrom: _dropped, ...kept } = session
+    return { ...kept, model, effort: null }
+  })
+}
+
+// The effort worked out for `model` before a request tells it. One a request told stays, and a guess for a model the
+// session has since left is dropped.
+export async function setEffortGuess($: EngineInterface, model: string, effort: string | null): Promise<void> {
+  const isKept = (session: Session): boolean => session.model !== model || session.effortFrom === 'step' || session.effort === effort
+  if (isKept(await readSession($))) return
+  await updateSession($, session => (isKept(session) ? session : { ...session, effort, effortFrom: 'guess' }))
 }
 
 // A skill the main loop loaded: in its context from then on, until the conversation starts over
@@ -396,9 +408,14 @@ export async function* trackTurnStep($: EngineInterface, e: HookInput<'turn.step
   } catch {
     // A step with no start time streams with no timing
   }
+  // Before the request goes, so the band names its model and effort while it runs
+  try {
+    await updateSession($, session => ({ ...session, model: e.model, effort: e.effort === undefined ? null : String(e.effort), effortFrom: 'step' }))
+  } catch {
+    // The band keeps the last model and effort; the step itself goes on
+  }
   const step = yield* next(e)
   try {
-    await updateSession($, session => ({ ...session, model: e.model, effort: e.effort === undefined ? session.effort : String(e.effort) }))
     const output = step.usage?.output_tokens
     if (output !== undefined && startedAt !== null) {
       const ms = (await $.clock.now()) - startedAt

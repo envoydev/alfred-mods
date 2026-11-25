@@ -12,15 +12,15 @@ const MARK_SEP: Seg = { text: ROW_JOIN, tone: 'dim' }
 const DIM_JOIN: Seg = { text: ORG_JOIN, tone: 'dim' }
 const joinItems = (items: Line[]): Line => items.filter(item => item.length > 0).flatMap((item, i) => (i === 0 ? item : [MARK_SEP, ...item]))
 
-// The signed-in account's mark, as the Claude mobile app names it: '<company name> | Team' (or Enterprise), 'org | Personal'
-// or 'org | unknown'. A company name is cut to 40 cells and draws '‹org›' under REC strict; one with no known kind
-// reads its name alone. None without an account. The name is plain; the label, the bar and the kind are dim.
+// The signed-in account's mark: '<company name> | Team' (or Enterprise), 'Personal' with no label where there is no
+// organization (the user, 2026-11-25), or 'org | unknown'. A company name is cut to 40 cells and draws '‹org›' under REC
+// strict; one with no known kind reads its name alone. None without an account. A company name is plain; the rest is dim.
 function orgMark(input: BandInput): Line {
   const account = input.account
   if (account === undefined) return []
   const dim = (text: string): Seg => ({ text, tone: 'dim' })
   if (account.org === null) return [dim(ORG_LABEL), dim(ORG_JOIN), dim(ORG_UNKNOWN)]
-  if (account.kind === PERSONAL || ((account.kind === undefined || account.kind === null) && account.org === PERSONAL)) return [dim(ORG_LABEL), dim(ORG_JOIN), dim(PERSONAL)]
+  if (account.kind === PERSONAL || ((account.kind === undefined || account.kind === null) && account.org === PERSONAL)) return [dim(PERSONAL)]
   const name = input.rec?.level === 'strict' ? ORG_STRICT : fitLine(account.org, ORG_MAX_CELLS)
   return account.kind === undefined || account.kind === null ? [{ text: name }] : [{ text: name }, dim(ORG_JOIN), dim(account.kind)]
 }

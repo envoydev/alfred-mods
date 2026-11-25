@@ -281,8 +281,12 @@ rules:   alfred-interaction.md │ alfred-git.md │ alfred-preferences.md │ w
   when a percent as shown, a kind or a reset changed: every write rewrites the file the machine's sessions share); a
   session with none of its own shows the stored ones whose reset is ahead, each marked `≈`, in the band and the Usage
   tab, and the tick drops each as its reset passes. The first reading after a request decides: its windows, or none
-  off a subscription, where a stored plan window would price the cache on the wrong tier. Left out: ctx before the first request and the effort before the first reply (no `$.http.fetch` or
-  `$.model` call), and RAM or the account, which the mods API does not give.
+  off a subscription, where a stored plan window would price the cache on the wrong tier. Left out: ctx before the first request (no `$.http.fetch` or
+  `$.model` call), and RAM or the account, which the mods API does not give. The effort changed on 2026-11-25 (the user:
+  it 'is not seeing when session just started'): `hooks/effort/` works it out from `CLAUDE_CODE_EFFORT_LEVEL`, the
+  settings files and the model's default, drawn `≈` until the main loop's request, whose level is now stored as it is
+  sent. Checked on 2.1.332 against a local stub API: `--effort` reaches neither `$.settings.read` nor `$.config.list`.
+  The same day, line 1 dropped the `org` label for a personal account (`Personal | CC 2.1.332`).
 - **The tools toggle** (the user, 2026-11-11: every tool by name, the skills in context, the agents and the rules, open
   by default; spec `2026-11-11-band-detail-rows-design.md`): `[ <calls> tools · <k> skills · <a> agents (<r> ◐) · <n>
   rules ▾ ]`, the session's tool calls (Skill calls apart, agents' included), the skills the main loop loaded, the

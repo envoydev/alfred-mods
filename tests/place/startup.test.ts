@@ -306,7 +306,8 @@ for (const surface of SURFACES) {
     await $.session.start(START)
     const lines = await rows(await mount($, surface))
     // The info line above the gauges and the version on the identity line (the user, 2026-11-24)
-    expect(lines[0]).toBe('Sonnet 5.5 │ <1m')
+    // The effort is the settings' guess until a request tells it (the user, 2026-11-25)
+    expect(lines[0]).toBe('Sonnet 5.5 ◑ ≈medium │ <1m')
     expect(lines[1]?.startsWith('ctx — │ 5h ▱▱▱▱▱ ≈15% (')).toBe(true)
     // The detail rows are open from the first draw (spec 2026-11-11, D1), but each waits for its first item (the user,
     // 2026-11-12), and no usage: with nothing counted

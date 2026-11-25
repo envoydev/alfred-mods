@@ -1,6 +1,6 @@
 // The full band's info line: model, effort, cache, MCP, speed, times and the session's time
 import { billingOf, cacheView, minutesLeftText } from '../cache/cache'
-import { minutesText, modelParts, modelText } from '../core/format'
+import { effortText, minutesText, modelParts, modelText } from '../core/format'
 import type { BandInput } from './types'
 import type { Line, Seg } from '../core/types'
 import { TIMES_JOIN } from './constants'
@@ -20,7 +20,8 @@ function infoItems(input: BandInput): Item[] {
   if (model !== null) {
     const family = modelParts(model)?.family
     const name: Seg = family === undefined ? { text: modelText(model, true) } : { text: modelText(model, true), tone: family }
-    items.push({ keep: 6, forms: [input.session.effort === null ? [name] : [name, { text: ` ◑ ${input.session.effort}`, tone: 'dim' }]] })
+    const effort = effortText(input.session)
+    items.push({ keep: 6, forms: [effort === null ? [name] : [name, { text: ` ◑ ${effort}`, tone: 'dim' }]] })
   }
   if (input.cache.sessionCounts.read + input.cache.sessionCounts.write > 0) {
     const cacheState = cacheView(input.cache, billingOf(input.usage.rateWindows), input.now, input.usage.contextTokens)

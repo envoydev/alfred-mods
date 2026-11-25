@@ -631,7 +631,7 @@ rules:   alfred-interaction │ alfred-git │ web:typescript │ 3 always-on ·
 ```
 
 - **Line 1, the account,** leads the band in every mode but `"off"`: `<name> | Team` or `<name> | Enterprise` for a
-  company's plan (the name cut to 40 cells), `org | Personal` for a free, Pro or Max plan, `org | unknown` for a token
+  company's plan (the name cut to 40 cells), `Personal`, with no `org` label, for a free, Pro or Max plan, `org | unknown` for a token
   login or when the config cannot be read (a file over 4 MiB included), and `<name>` alone for a company whose plan kind
   the config does not name. `● REC │` comes first while recording mode is on. The line is never cut for width. The
   account comes from the global config (`$CLAUDE_CONFIG_DIR/.claude.json`, else `~/.claude.json`): the mod reads its
@@ -741,8 +741,16 @@ The full band draws from the session's first second, before any prompt: the mode
 and branch (read from git's own `HEAD` file, and again every 30 seconds for a checkout or a move to another folder)
 and the version, with the 5h and 7d windows the last turn on this machine stored, marked `≈15%` until this session's
 first reply brings its own, and only while their reset is still ahead; a session off a subscription, which has no
-windows, drops them at its first request. The context's fill waits for the first request (`ctx —`), and the effort
-for the first reply; nothing is fetched to get them sooner. The calm band waits for the first reading, as before.
+windows, drops them at its first request. The context's fill waits for the first request (`ctx —`); nothing is fetched
+to get it sooner. The calm band waits for the first reading, as before.
+
+Until a request tells the effort, the band and the `/inspect` Usage tab show the level Claude Code should send, marked
+`◑ ≈medium`. It follows Claude Code's own order ([Adjust effort level](https://code.claude.com/docs/en/model-config#adjust-effort-level)):
+`CLAUDE_CODE_EFFORT_LEVEL`, then the settings files (`modelSettings` and `effortLevel`, capped by `maxEffortLevel`),
+then the model's default. A mod cannot read `claude --effort`, a `/effort` pick for one session, or an organization's
+default or limit, so the guess can differ from them. It reads a `modelSettings` entry written under a full model id, not
+under an alias such as `opus`. The mark goes as the first request is sent, with the level it carries. A
+model that takes no effort, or one newer than this version knows, shows none.
 
 An agent whose last step stopped at the output limit ends its Agents row with `⚠ max_tokens`, and its result reads
 `result (cut off): …`, as the report ends mid-way. The Timeline's `spend` is the session's spend while the turn ran,

@@ -38,6 +38,9 @@ export type WaitingPrompt = { at: number; fingerprint: string }
 export type Place = { project: string; folder?: string; branch: string | null; changes?: { added: number; removed: number }; sync?: { ahead: number; behind: number } }
 export type Session = {
   model: string | null; effort: string | null; compactions: number; lastCompactAt: number | null
+  // Where the effort came from: 'guess', worked out from the settings before a request told it, or 'step', the level the
+  // main loop's last request carried (null where it carried none); absent before either
+  effortFrom?: 'guess' | 'step'
   lastPromptAt: number | null; lastReplyAt: number | null; turnCount: number; waitingPrompts: WaitingPrompt[]
   // The main loop's settled tool calls this session
   mainToolCalls: number

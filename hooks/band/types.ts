@@ -49,7 +49,7 @@ export type BandInput = {
   // buttons pressed by a click (fullscreen) or drawn as the commands that do their jobs (the main screen)
   under?: { buttons: 'click' | 'text' }
   // What line 1's account mark shows for the signed-in account: 'Personal', a company's name, or null while unknown, and its
-  // plan kind. The mark draws '<name> | <kind>', 'org | Personal' or 'org | unknown' after REC; absent, no mark
+  // plan kind. The mark draws '<name> | <kind>', 'Personal' or 'org | unknown' after REC; absent, no mark
   account?: { org: string | null; kind?: AccountKind | null }
   // The MCP item (spec 2026-11-23, D5), on line 1 after the identity (the user, 2026-11-24); absent or empty, none
   mcp?: Seg[]

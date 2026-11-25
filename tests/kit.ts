@@ -61,6 +61,8 @@ export type Options = {
   // Claude Code's settings files by source, each the file's object: a read with a `source` answers that file's key,
   // absent when the file or the key is; `refuseSource` denies those sources' reads, as a build without them would
   sources?: Partial<Record<SettingsSource, Record<string, unknown>>>; refuseSource?: string[]
+  // Runs before a read of one whole settings file answers, which the effort guess alone makes: a test acts while it waits
+  beforeWholeSource?: () => Promise<void>
   // What a read of `settings:moved` answers while the test stored none: true ('told') by default, so a test of an
   // earlier command's choice meets no toast of S7's; 'unset' answers nothing, as a machine not yet told
   moved?: 'told' | 'unset'
@@ -185,10 +187,11 @@ export function stubAll(on: On, o: Options = {}): {
     user: { ...o.sources?.user }, project: { ...o.sources?.project }, local: { ...o.sources?.local },
     flag: { ...o.sources?.flag }, policy: { ...o.sources?.policy },
   }
-  on('settings.read', (_, e) => {
+  on('settings.read', async (_, e) => {
     const key = e !== undefined && 'key' in e && typeof e.key === 'string' ? e.key : null
     const source = e !== undefined && 'source' in e && typeof e.source === 'string' ? (e.source as SettingsSource) : null
     if (source !== null) {
+      if (key === null) await o.beforeWholeSource?.()
       if (o.refuseSource?.includes(source) === true) return { deny: `test: settings source refused, ${source}` }
       return { value: (key === null ? sources[source] : sources[source][key]) as Settings }
     }

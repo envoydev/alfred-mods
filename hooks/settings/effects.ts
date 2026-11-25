@@ -7,6 +7,7 @@ import { applyQuiet } from '../tools/effects'
 import { recStatus } from '../rec/rec'
 import { applyRec, recWordCount } from '../rec/effects'
 import { applyBandSetting } from '../band/effects'
+import { guessEffort } from '../effort/effects'
 import type { EngineInterface } from 'claude-code'
 import { applyHandoffSetting } from '../handoff/effects'
 import type { HookInput, HookNext } from '../core/types'
@@ -87,6 +88,8 @@ async function readSettingsNow($: EngineInterface, isStart: boolean): Promise<vo
   await applyQuiet($)
   await applyBandSetting($)
   await applyHandoffSetting($)
+  // A /effort or /model that saved a level before the first request moves the guess
+  await guessEffort($)
 }
 
 // S7: a field the user's own file sets, machine-wide as the store is, drops its old value; a project or local value
