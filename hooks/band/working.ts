@@ -40,16 +40,22 @@ export function withTimes(input: BandInput, line: Line): Line {
   return line
 }
 
-export function lastTurn(input: BandInput, isNarrow: boolean): Line {
+// The last turn's own part, with its failure count unless the line shows the failures item
+function turnPart(input: BandInput, isNarrow: boolean, isFailuresShown: boolean): Line {
   const turn = input.turns[input.turns.length - 1]
   if (turn === undefined) return []
   const ok = turn.endReason === 'answer'
   const line: Line = [{ text: ok ? '✓' : '✗', tone: ok ? 'ok' : 'fail' }, { text: ` Turn ${turn.turnNumber} · ${durationText(turn.durationMs)}` }]
   if (isNarrow) return line
   line.push({ text: ` · ${turn.toolCalls} ${turn.toolCalls === 1 ? 'tool' : 'tools'}` })
-  if (turn.toolFailures > 0) line.push({ text: ` · ${turn.toolFailures} ✗`, tone: 'fail' })
+  if (turn.toolFailures > 0 && !isFailuresShown) line.push({ text: ` · ${turn.toolFailures} ✗`, tone: 'fail' })
+  return line
+}
+
+export function lastTurn(input: BandInput, isNarrow: boolean): Line {
+  const line = turnPart(input, isNarrow, false)
   // In full mode the times are the info line's
-  return input.mode === 'full' ? line : [...line, ...times(input)]
+  return isNarrow || input.mode === 'full' ? line : [...line, ...times(input)]
 }
 
 const agentCount = (count: number): string => `${count} ${count === 1 ? 'agent' : 'agents'}`
@@ -65,6 +71,34 @@ function planTail(input: BandInput, isRowDrawn: boolean): Line {
   return [{ text: ROW_JOIN, tone: 'dim' }, ...parts.flatMap((line, i) => (i === 0 ? line : [{ text: ' · ' }, ...line]))]
 }
 
+function bashPart(input: BandInput): Line {
+  const bash: Line = []
+  const calls = input.live.runningCalls.filter(call => call.tool === 'Bash')
+  const newest = calls[calls.length - 1]
+  if (newest !== undefined) {
+    bash.push({ text: ` │ Bash ▸ ${newest.label} ${elapsedText(input.now - newest.startedAt)}` })
+    if (calls.length > 1) bash.push({ text: ` +${calls.length - 1}`, tone: 'dim' })
+  }
+  return bash
+}
+
+const agentParts = (running: AgentRow[]): Line => running.map(agent => ({ text: agent.action === null ? ` │ ${agent.type}` : ` │ ${agent.type} ▸ ${agent.action}` }))
+
+// The first `kept` agent parts, the rest as ' +N agents'
+function foldedParts(parts: Line, kept: number): Line {
+  const rest = parts.length - kept
+  return [...parts.slice(0, kept), ...(rest > 0 ? [{ text: ` +${agentCount(rest)}`, tone: 'dim' as const }] : [])]
+}
+
+function turnHead(input: BandInput, isNarrow: boolean, running: AgentRow[]): Seg {
+  const took = elapsedText(input.now - (input.live.startedAt ?? input.now))
+  const count = input.mode === 'full' ? ` · ${input.live.toolCalls} ${input.live.toolCalls === 1 ? 'tool' : 'tools'}` : ''
+  const turnNumber = input.session.turnCount + 1
+  return input.isWorking
+    ? { text: isNarrow ? `⟳ Turn ${turnNumber} ${took}` : `⟳ Turn ${turnNumber} · ${took}${count}`, bold: true }
+    : { text: `⟳ ${agentCount(running.length)}`, bold: true }
+}
+
 // The turn, or the agents while only they run, or the plan line while a plan runs; then each live agent's action and
 // the running Bash. Past the width the agent parts fold into ' +N agents', then the Bash part goes, then the plan's
 // step, then its title is cut.
@@ -73,32 +107,54 @@ export function workingLine(input: BandInput, isNarrow: boolean): Line {
   // The full band's plan has its own row, so line 1 keeps the turn there
   const plan = input.mode === 'full' ? null : input.plan
   if (plan !== null && isNarrow) return narrowPlan(plan, running.length)
-  const turnNumber = input.session.turnCount + 1
-  const took = elapsedText(input.now - (input.live.startedAt ?? input.now))
-  const count = input.mode === 'full' ? ` · ${input.live.toolCalls} ${input.live.toolCalls === 1 ? 'tool' : 'tools'}` : ''
-  const head: Seg = input.isWorking
-    ? { text: isNarrow ? `⟳ Turn ${turnNumber} ${took}` : `⟳ Turn ${turnNumber} · ${took}${count}`, bold: true }
-    : { text: `⟳ ${agentCount(running.length)}`, bold: true }
+  const head = turnHead(input, isNarrow, running)
   if (isNarrow) return input.isWorking && running.length > 0 ? [head, { text: ` · ${agentCount(running.length)}` }] : [head]
-  const bash: Line = []
-  const calls = input.live.runningCalls.filter(call => call.tool === 'Bash')
-  const newest = calls[calls.length - 1]
-  if (newest !== undefined) {
-    bash.push({ text: ` │ Bash ▸ ${newest.label} ${elapsedText(input.now - newest.startedAt)}` })
-    if (calls.length > 1) bash.push({ text: ` +${calls.length - 1}`, tone: 'dim' })
-  }
-  const parts: Line = running.map(agent => ({ text: agent.action === null ? ` │ ${agent.type}` : ` │ ${agent.type} ▸ ${agent.action}` }))
-  const folded = (kept: number): Line => {
-    const rest = parts.length - kept
-    return [...parts.slice(0, kept), ...(rest > 0 ? [{ text: ` +${agentCount(rest)}`, tone: 'dim' as const }] : [])]
-  }
+  const bash = bashPart(input)
+  const parts = agentParts(running)
   const lead: Line = plan === null ? [head] : planLine(plan, Infinity)
   for (let kept = parts.length; kept >= 0; kept--) {
-    const line: Line = [...lead, ...folded(kept), ...bash]
+    const line: Line = [...lead, ...foldedParts(parts, kept), ...bash]
     if (widthOf(line) <= input.columns) return line
   }
-  if (plan === null) return [head, ...folded(0), ...bash]
-  return [...planLine(plan, input.columns - widthOf(folded(0))), ...folded(0)]
+  if (plan === null) return [head, ...foldedParts(parts, 0), ...bash]
+  return [...planLine(plan, input.columns - widthOf(foldedParts(parts, 0))), ...foldedParts(parts, 0)]
+}
+
+// The turn's whole forms, widest first, none cut: the running turn's or the last turn's. Empty with no turn to draw.
+export function turnForms(input: BandInput, isNarrow: boolean, isPlanRowDrawn: boolean, isFailuresShown: boolean): Line[] {
+  const running = input.agents.filter(agent => isLive(agent.status))
+  const forms: Line[] = []
+  if (input.isWorking || running.length > 0) {
+    const plan = input.mode === 'full' ? null : input.plan
+    if (plan !== null && isNarrow) forms.push(narrowPlan(plan, running.length), narrowPlan(plan, 0))
+    else if (isNarrow) {
+      const head = turnHead(input, true, running)
+      if (input.isWorking && running.length > 0) forms.push([head, { text: ` · ${agentCount(running.length)}` }])
+      forms.push([head])
+    } else {
+      const head = turnHead(input, false, running)
+      const lead: Line = plan === null ? [head] : planLine(plan, Infinity)
+      const bash = bashPart(input)
+      const parts = agentParts(running)
+      for (let kept = parts.length; kept >= 0; kept--) forms.push([...lead, ...foldedParts(parts, kept), ...bash])
+      if (parts.length > 0) forms.push([...lead, ...foldedParts(parts, 0)])
+      forms.push(lead)
+      if (plan !== null) forms.push(narrowPlan(plan, running.length), narrowPlan(plan, 0))
+      else if (input.isWorking) forms.push([turnHead(input, true, running)])
+    }
+  } else if (input.turns.length > 0) {
+    const tail = planTail(input, isPlanRowDrawn)
+    const full = turnPart(input, false, isFailuresShown)
+    const withTimes = input.mode === 'full' ? full : [...full, ...times(input)]
+    const narrow = turnPart(input, true, isFailuresShown)
+    if (isNarrow) forms.push([...narrow, ...tail], narrow)
+    else {
+      const wide = input.mode === 'full' ? [withTimes] : [withTimes, full]
+      for (const form of wide) forms.push([...form, ...tail], form)
+      forms.push(narrow)
+    }
+  }
+  return forms.filter((form, i) => form.length > 0 && (i === 0 || JSON.stringify(form) !== JSON.stringify(forms[i - 1])))
 }
 
 // What the spinner adds after the engine's suffix: an agent's action and context on that agent's spinner; on the main

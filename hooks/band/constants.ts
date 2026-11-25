@@ -36,3 +36,7 @@ export const SOURCE_LABELS = { alfredCode: 'alfred-code:', kit: 'claude-kit:' } 
 export const SOURCE_LABEL_CELLS = Math.max(SOURCE_LABELS.alfredCode.length, SOURCE_LABELS.kit.length) + 1
 // claude-kit's models, written as its status line writes them (the user, 2026-11-25)
 export const MODELS_JOIN = ' | '
+
+// The cells line 1 keeps for the turn when it merges the turn in, and the failures count line 1 reserves room for
+export const TURN_ROOM_MIN = 24
+export const FAILURES_RESERVE_COUNT = 99
