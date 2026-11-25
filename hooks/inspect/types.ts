@@ -1,6 +1,7 @@
 // The inspect pane's types
 import type { Runway, Stack } from '../stack/types'
 import type { KitState } from '../kit/types'
+import type { PluginRow } from '../plugins/types'
 import type { HandoffView } from '../handoff/types'
 import type { Totals } from '../session/types'
 import type { Failure, ToolStat } from '../tools/types'
@@ -17,5 +18,7 @@ export type TabInput = BandInput & {
   blockers?: Record<string, number>; parts?: Parts; loops?: Loop[]
   // claude-kit's status as last read, or none seen
   kit?: KitState
+  // The plugins the settings files turn on or off
+  plugins?: PluginRow[]
   stack?: { view: Stack; prompt: string | null; runway: Runway | null; sessionModel: string | null }
 }

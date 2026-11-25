@@ -601,6 +601,13 @@ open session; a bare `/rec` or `/auto-handoff` reads the files again at once. A 
   ([With Alfred Code](#with-alfred-code)).
 - **With claude-kit:** where the project has claude-kit's `.claude/kit/settings.json`, a CLAUDE-KIT section in the Now
   tab shows the kit's modes ([With claude-kit](#with-claude-kit)).
+- **The PLUGINS section** in the Now tab: each plugin a settings file turns on or off, the envoydev stack first
+  (`alfred-code@envoydev on · .claude/settings.json`). Per plugin the highest file that names it decides - managed
+  settings, `--settings`, `.claude/settings.local.json`, `.claude/settings.json`, then `~/.claude/settings.json`
+  ([plugin docs](https://code.claude.com/docs/en/plugins/loading#find-where-a-plugin-is-enabled)). One turned on
+  that `plugins/installed_plugins.json` shows is not installed for this project adds `not installed here`. The rows
+  say what the files set, not what this session loaded: a plugin with no entry follows its default, and a
+  `--plugin-dir` copy (`<name>@inline`) shows only where a file names it. Past 12 rows the rest are counted.
 - **The Prompt tab** (`/inspect prompt`, `m`): what the main loop's last turn carried for the model, besides what you
   typed ([The Prompt tab](#the-prompt-tab)).
 
@@ -665,18 +672,25 @@ rules:   alfred-interaction │ alfred-git │ web:typescript │ 3 always-on ·
   first, then the MCP item; REC, the account and the failures stay.
 - **The MCP item**, on line 1 after Claude Code's version, counts the session's MCP servers and never draws a name. `mcp
   ◐ <connected>/<total>` shows while any server loads, `mcp ✓ <n>` once all are connected, and `mcp ✗ <failed> · ✓
-  <connected>` when one failed (one waiting on a login counts as failed). A server turned off is not counted: it leaves
-  the item when Claude Code answers `disabled` for it. One you turn off after it has connected stays counted until the
-  next `claude` run. Claude Code's own `mcp.connect` answers before the server starts, so for each server still loading
-  the mod asks Claude Code once for its state (`$.mcp.connect`, which never starts a server the session already lists):
-  the answer, when the server is up or has failed, settles it (measured on 2.1.331). It asks only about a server whose
-  connect the hooks beneath the mod's have answered unrefused, so never one another plugin holds back. A server also
-  reads connected when its tools show in the session's tool list. Where the question is refused or fails, or another
-  plugin holds the server back, and its tools do not show, the mod cannot tell its state: after 60 seconds it leaves the
-  count, so a working server whose tools never show, as with tool search, is not counted either. It is counted once its
-  tools show. With `leave_out_skipped_hooks` on, only the tool list feeds the item: it reads `mcp ✓ <n>`, has no loading
-  or failed state, and asks nothing. Claude Code adds connectors of its own, such as `claude-artifacts`, which count
-  like any server: one that fails reads `✗` though `claude mcp list` does not list it.
+  <connected>` when one failed (one waiting on a login counts as failed). A server turned off is not counted. The mod
+  reads Claude Code's own records of it on each poll, so one you turn off mid-session leaves the item at the next poll,
+  within 30 seconds: the project's `disabledMcpServers` in `~/.claude.json` (in `$CLAUDE_CONFIG_DIR` when set), a
+  default-off built-in such as `computer-use` that the project's `enabledMcpServers` does not list, and from any
+  settings file the `.mcp.json` servers `disabledMcpjsonServers` rejects and the names `deniedMcpServers` blocks ([MCP
+  docs](https://code.claude.com/docs/en/mcp#disable-a-server-without-removing-it)). A session started in a subfolder
+  takes the nearest project above it. A name is matched as written, and as a tool spells it; a rejected `.mcp.json` name
+  also hides a server of another scope with that name. A server whose tools show stays counted whatever the records say.
+  It also leaves the item when Claude Code answers `disabled` for it. Claude Code's own `mcp.connect` answers before the
+  server starts, so for each server still loading the mod asks Claude Code once for its state (`$.mcp.connect`, which
+  never starts a server the session already lists): the answer, when the server is up or has failed, settles it
+  (measured on 2.1.331). It asks only about a server whose connect the hooks beneath the mod's have answered unrefused,
+  so never one another plugin holds back. A server also reads connected when its tools show in the session's tool list.
+  Where the question is refused or fails, or another plugin holds the server back, and its tools do not show, the mod
+  cannot tell its state: after 60 seconds it leaves the count, so a working server whose tools never show, as with tool
+  search, is not counted either. It is counted once its tools show. With `leave_out_skipped_hooks` on, only the tool
+  list feeds the item: it reads `mcp ✓ <n>`, has no loading or failed state, and asks nothing. Claude Code adds
+  connectors of its own, such as `claude-artifacts`, which count like any server: one that fails reads `✗` though
+  `claude mcp list` does not list it.
 - **The info line:** the model and effort, the cache, the average output speed, the times of Claude's
   last reply and your last prompt, and the session's time. While a turn runs, the turn line above it counts the turn's
   tool calls, and the gauges add today's cost. Today's cost is the mod's own count on this machine: sessions it did not

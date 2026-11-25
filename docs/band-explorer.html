@@ -2537,7 +2537,20 @@ const DENIED_REASON = 'denied'
 // `next.origin.plugin` of the engine's own raise: another plugin's `$.mcp.connect` carries its own name
 const ENGINE_ORIGIN = 'engine'
 
-return { SETTLE_MS, SERVER_STATE_REASONS, SERVER_OFF_REASON, POLL_MS, EARLY_MS, IDLE_POLL_MS, INITIAL_SERVERS, TOOL_PREFIX, TOOL_SEPARATOR, NAME_UNSAFE, PLUGIN_SEPARATOR, ITEM_LABEL, GLYPH, ITEM_JOIN, DENIED_REASON, ENGINE_ORIGIN };
+// Where Claude Code records the servers turned off (code.claude.com/docs/en/mcp, 'Disable a server without removing it',
+// and settings-reference, read 2026-11-25): per project in the global config, `disabledMcpServers` for a server that
+// is on by default and `enabledMcpServers` for a built-in that is off by default; in any settings file,
+// `disabledMcpjsonServers` for a rejected .mcp.json server and `deniedMcpServers` entries that name one
+const CONFIG_PROJECTS_KEY = 'projects'
+const PROJECT_OFF_KEY = 'disabledMcpServers'
+const PROJECT_ON_KEY = 'enabledMcpServers'
+const SETTINGS_OFF_KEY = 'disabledMcpjsonServers'
+const SETTINGS_DENIED_KEY = 'deniedMcpServers'
+const DENIED_NAME_FIELD = 'serverName'
+// The built-in servers that are off until the project opts in; the docs name `computer-use`
+const DEFAULT_OFF_SERVERS                    = ['computer-use']
+
+return { SETTLE_MS, SERVER_STATE_REASONS, SERVER_OFF_REASON, POLL_MS, EARLY_MS, IDLE_POLL_MS, INITIAL_SERVERS, TOOL_PREFIX, TOOL_SEPARATOR, NAME_UNSAFE, PLUGIN_SEPARATOR, ITEM_LABEL, GLYPH, ITEM_JOIN, DENIED_REASON, ENGINE_ORIGIN, CONFIG_PROJECTS_KEY, PROJECT_OFF_KEY, PROJECT_ON_KEY, SETTINGS_OFF_KEY, SETTINGS_DENIED_KEY, DENIED_NAME_FIELD, DEFAULT_OFF_SERVERS };
 })();
 // ---- hooks/mcp/mcp.ts
 __m['mcp/mcp.ts'] = (() => {
@@ -2549,6 +2562,8 @@ const { DENIED_REASON, ENGINE_ORIGIN, GLYPH, ITEM_JOIN, ITEM_LABEL, NAME_UNSAFE,
                                                                                             
 
 const spelled = (name        )         => name.replace(NAME_UNSAFE, '_')
+// A server's name as a tool's name spells it
+const spelledName = spelled
 
 // A server's name as a tool's name spells it: the last `:`-part, characters outside [A-Za-z0-9_-] read `_`
 function shortName(name        )         {
@@ -2666,7 +2681,7 @@ function markRead(servers                      , name        , since        , ou
   })
 }
 
-return { shortName, toolServers, settle, isEngineRaise, refusalOf, markLoading, markFailed, isSameServers, mcpItem, serversToRead, markPassed, readOutcome, markRead };
+return { spelledName, shortName, toolServers, isShownBy, settle, isEngineRaise, refusalOf, markLoading, markFailed, isSameServers, mcpItem, serversToRead, markPassed, readOutcome, markRead };
 })();
 // ---- hooks/core/guards.ts
 __m['core/guards.ts'] = (() => {

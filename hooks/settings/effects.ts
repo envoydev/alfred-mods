@@ -185,6 +185,13 @@ export function reloadSettingsSoon($: EngineInterface, e: HookInput<'classic.Con
   return next(e)
 }
 
+// Every settings source as loaded, each a whole file's object: a refused read or a source with no file is absent
+export async function readSettingsLayers($: EngineInterface): Promise<Partial<Record<Source, unknown>>> {
+  const layers: Partial<Record<Source, unknown>> = {}
+  for (const source of SOURCES) layers[source] = await $.settings.read({ source }).catch(() => undefined)
+  return layers
+}
+
 // The settings as last resolved, with each value's source; null before the first read
 export function resolvedSettings(): ResolvedSettings | null {
   return settingsMemory.resolved

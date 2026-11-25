@@ -17,6 +17,7 @@ import { recStatus } from '../rec/rec'
 import { storedMark } from '../session/windows'
 import { stackLines } from '../stack/stack'
 import { kitLines } from '../kit/kitlines'
+import { pluginLines } from '../plugins/plugins'
 import type { AgentRow } from '../agents/types'
 import type { Parts } from '../context/types'
 import type { Line, Seg, Tone } from '../core/types'
@@ -265,6 +266,7 @@ export function nowLines(input: TabInput): Line[] {
   if (input.handoff !== undefined) out.push(...handoffLines(input.handoff, input.columns))
   if (input.stack !== undefined) out.push(...stackLines(input.stack.view, { ...input.stack, columns: input.columns }))
   if (input.kit !== undefined) out.push(...kitLines(input.kit, input.columns))
+  if (input.plugins !== undefined) out.push(...pluginLines(input.plugins, input.columns))
   out.push(...agentsSection(input))
   const fresh = input.failures.filter(failure => failure.isNew).length
   out.push([{ text: 'NEEDS A LOOK', bold: true }, ...(fresh > 0 ? [{ text: `  ${fresh} new`, tone: 'fail' as const }] : [])])

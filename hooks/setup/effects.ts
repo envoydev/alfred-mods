@@ -75,12 +75,22 @@ async function keepFolder($: EngineInterface, verb: 'init' | 'configure'): Promi
   return verb === 'init' ? [line, ...(await runUpdate($, inForce.folder))].join('\n') : line
 }
 
+// The dialog's answer, or null where it is dismissed, has nobody to ask, or the build has no dialog: an older build
+// throws at the call itself, which a rejection handler alone would miss
+async function askedFolder($: EngineInterface, now: PlansFolder | null): Promise<string | null> {
+  try {
+    return await $.ui.ask(ASK_QUESTION, { header: ASK_HEADER, options: askLabels(now) })
+  } catch {
+    return null
+  }
+}
+
 // No value given: Claude Code's question dialog asks it (the user, 2026-11-25). Dismissed, or with nobody to ask as in
 // a `-p` run, init keeps a set folder and everything else offers the choices as lines and a pane.
 async function askFolder($: EngineInterface, verb: 'init' | 'configure'): Promise<string> {
   setupMemory.chosen = null
   const now = currentFolder()
-  const answer = await $.ui.ask(ASK_QUESTION, { header: ASK_HEADER, options: askLabels(now) }).catch(() => null)
+  const answer = await askedFolder($, now)
   if (answer === null) return (verb === 'init' ? await keepFolder($, verb) : null) ?? offerChoices($)
   const folder = answeredFolder(answer, now)
   if (folder === null) return SETUP_USAGE

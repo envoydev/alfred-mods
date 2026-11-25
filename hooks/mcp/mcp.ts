@@ -6,6 +6,8 @@ import { DENIED_REASON, ENGINE_ORIGIN, GLYPH, ITEM_JOIN, ITEM_LABEL, NAME_UNSAFE
 import type { ConnectAnswer, ListedTool, McpServer, ReadOutcome, Unreadable } from './types'
 
 const spelled = (name: string): string => name.replace(NAME_UNSAFE, '_')
+// A server's name as a tool's name spells it
+export const spelledName = spelled
 
 // A server's name as a tool's name spells it: the last `:`-part, characters outside [A-Za-z0-9_-] read `_`
 export function shortName(name: string): string {
@@ -26,7 +28,7 @@ export function toolServers(tools: readonly ListedTool[]): string[] {
 }
 
 // A server's name matches a tool server by its last `:`-part or by the whole name, either spelled as a tool's name is
-const isShownBy = (server: McpServer, toolServer: string): boolean => toolServer === shortName(server.name) || toolServer === spelled(server.name)
+export const isShownBy = (server: McpServer, toolServer: string): boolean => toolServer === shortName(server.name) || toolServer === spelled(server.name)
 
 // Whether time decides a loading server: one whose state is never read (no read runs, its raise not yet passed the
 // hooks beneath, or its read refused for this raise). `unreadable` is null where no state is read at all.

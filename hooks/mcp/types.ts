@@ -14,3 +14,7 @@ export type ReadOutcome = { state: 'connected' } | { state: 'failed'; reason: st
 
 // What an mcp.connect hook's `next(e)` answers: the engine's result, or a hook's refusal
 export type ConnectAnswer = { value?: McpConnectResult; deny?: string }
+
+// What the off list is read from: the global config's text (null where it cannot be read), the project root, and each
+// settings source as loaded
+export type OffInput = { configText: string | null; root: string; layers: Readonly<Partial<Record<string, unknown>>> }

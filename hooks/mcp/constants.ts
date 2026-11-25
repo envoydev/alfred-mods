@@ -34,3 +34,16 @@ export const DENIED_REASON = 'denied'
 
 // `next.origin.plugin` of the engine's own raise: another plugin's `$.mcp.connect` carries its own name
 export const ENGINE_ORIGIN = 'engine'
+
+// Where Claude Code records the servers turned off (code.claude.com/docs/en/mcp, 'Disable a server without removing it',
+// and settings-reference, read 2026-11-25): per project in the global config, `disabledMcpServers` for a server that
+// is on by default and `enabledMcpServers` for a built-in that is off by default; in any settings file,
+// `disabledMcpjsonServers` for a rejected .mcp.json server and `deniedMcpServers` entries that name one
+export const CONFIG_PROJECTS_KEY = 'projects'
+export const PROJECT_OFF_KEY = 'disabledMcpServers'
+export const PROJECT_ON_KEY = 'enabledMcpServers'
+export const SETTINGS_OFF_KEY = 'disabledMcpjsonServers'
+export const SETTINGS_DENIED_KEY = 'deniedMcpServers'
+export const DENIED_NAME_FIELD = 'serverName'
+// The built-in servers that are off until the project opts in; the docs name `computer-use`
+export const DEFAULT_OFF_SERVERS: readonly string[] = ['computer-use']

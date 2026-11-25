@@ -31,6 +31,7 @@ import { readPrompt } from '../prompt/effects'
 import { mask } from '../rec/mask'
 import { runwayOf } from '../stack/stack'
 import { readKit } from '../kit/effects'
+import { readPluginRows } from '../plugins/effects'
 import { kitPassScore } from '../kit/kit'
 import { leaveOutSkipped, neverAskSkip } from '../skip/effects'
 import { SKIP_USAGE, SKIP_WORDS } from '../skip/constants'
@@ -191,6 +192,7 @@ export async function drawInspectPane($: EngineInterface, e: MatchedInput<'ui.re
     handoff: handoffViewOf(handoff, usage, counts.turnId !== null, runway),
     stack: { view: st, prompt: stackPrompt(), runway, sessionModel: session.model },
     kit,
+    plugins: shown.tab === 'now' ? await readPluginRows($) : undefined,
   }
   const bar = tabBar(shown.tab, counts.turnId !== null, e.props.bodyColumns)
   const body = shown.tab === 'usage' ? usageLines(input)
