@@ -66,3 +66,6 @@ export type ModesKeep = 'own' | 'joined' | 'none'
 
 // `isSinceResume` false where the transcript counts the by-path rules from before a resume; absent, as true
 export type RulesInput = { always: RuleEntry[]; byPath: RuleEntry[]; isTracked: boolean; note?: 'unread' | 'not-found'; isSinceResume?: boolean }
+
+// The turn's whole forms for line 1, widest first, and the cells its failures item may take there
+export type TurnOffer = { forms: Line[]; reserveCells: number }

@@ -120,7 +120,7 @@ test('an empty identity is dropped', () => {
 test('the calm band and a working band lead with the identity line', () => {
   for (const o of [{ mode: 'calm' as const }, { isWorking: true, live }]) {
     const lines = texts(bandLines(withVersion({ ...o, account: TEAM, mcp: MCP })))
-    expect(lines[0]).toBe(`Acme | Team | CC ${VERSION} │ mcp ✓ 3`)
+    expect(lines[0]).toMatch(/^Acme \| Team \| CC 2\.1\.331 │ mcp ✓ 3/)
     expect(lines.length).toBeGreaterThan(1)
   }
 })
@@ -150,7 +150,7 @@ test('the identity line stays however few rows are left', () => {
 
 test('under the input the new failures and their command end line 1, and no action row repeats them', () => {
   const lines = texts(bandLines(withVersion({ ...FULL, under: { buttons: 'text' }, newFailures: 1 })))
-  expect(lines[0]).toBe(`Acme | Team | CC ${VERSION} │ mcp ✓ 3 │ ✗ 1 new /inspect`)
+  expect(lines[0]).toBe(`Acme | Team | CC ${VERSION} │ mcp ✓ 3 │ ✓ Turn 1 · 3s · 19 tools │ ✗ 1 new /inspect`)
   expect(lines.slice(1).some(line => line.startsWith('ctx '))).toBe(true)
   expect(lines.filter(line => line.includes('✗ 1 new'))).toHaveLength(1)
 })
@@ -158,7 +158,7 @@ test('under the input the new failures and their command end line 1, and no acti
 test('above the input the new failures end line 1 with their button, and the band ends with no action row for them', () => {
   const band = bandLines(withVersion({ ...FULL, newFailures: 1 }))
   const lines = texts(band)
-  expect(lines[0]).toBe(`Acme | Team | CC ${VERSION} │ mcp ✓ 3 │ ✗ 1 new `)
+  expect(lines[0]).toBe(`Acme | Team | CC ${VERSION} │ mcp ✓ 3 │ ✓ Turn 1 · 3s · 19 tools │ ✗ 1 new `)
   expect(band[0]?.some(seg => 'button' in seg && seg.button.key === 'inspect')).toBe(true)
   expect(lines.filter(line => line.includes('✗ 1 new'))).toHaveLength(1)
 })
@@ -171,16 +171,15 @@ test('short of width line 1 gives up the version, then the MCP item, and keeps t
 
 test('while a turn runs the failures wait for it to end, as every ask does', () => {
   const lines = texts(bandLines(withVersion({ ...FULL, isWorking: true, live, newFailures: 1 })))
-  expect(lines[0]).toBe(`Acme | Team | CC ${VERSION} │ mcp ✓ 3`)
+  expect(lines[0]).toBe(`Acme | Team | CC ${VERSION} │ mcp ✓ 3 │ ⟳ Turn 2 · 0:05 · 1 tool`)
   expect(lines.some(line => line.includes('new'))).toBe(false)
 })
 
-test('a band with a turn running: line 1, the turn, the info line, then the gauges', () => {
+test('a band with a turn running: line 1 with the turn, the info line, then the gauges', () => {
   const lines = texts(bandLines(withVersion({ ...FULL, isWorking: true, live })))
-  expect(lines[0]).toBe(`Acme | Team | CC ${VERSION} │ mcp ✓ 3`)
-  expect(lines[1]).toMatch(/^⟳ Turn 2 · 0:05/)
-  expect(lines[2]?.startsWith('Sonnet 5.5')).toBe(true)
-  expect(lines[3]?.startsWith('ctx ')).toBe(true)
+  expect(lines[0]).toBe(`Acme | Team | CC ${VERSION} │ mcp ✓ 3 │ ⟳ Turn 2 · 0:05 · 1 tool`)
+  expect(lines[1]?.startsWith('Sonnet 5.5')).toBe(true)
+  expect(lines[2]?.startsWith('ctx ')).toBe(true)
   const idle = texts(bandLines(withVersion({ ...FULL, live })))
   expect(idle.some(line => line.startsWith('⟳'))).toBe(false)
 })

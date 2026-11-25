@@ -26,6 +26,7 @@ const SCORES_FIXED = (() => {
   scores.rounds[1]?.findings.unshift({ id: 'F1', text: 'No migration rollback', severity: 'BLOCKER', status: 'fixed', by: 'S3' })
   return JSON.stringify(scores)
 })()
+const ACCOUNT = 'org | unknown │ '
 const PLAN_LINE = 'Token refresh ▰▰▰▱▱ 3/5 · 60% · 1h 12m · ≈30m left │ ▶ Update interceptor'
 
 // A file written at the session's start, so its plan runs this session
@@ -115,13 +116,13 @@ for (const surface of SURFACES) {
 
   test(`the band's line 1 is the plan line while it runs (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     const { clock } = await begin($, on, { answer: slowCalls })
-    expect((await rows(await band($, surface, true)))[0]).toBe(PLAN_LINE)
+    expect((await rows(await band($, surface, true)))[0]).toBe(`${ACCOUNT}${PLAN_LINE}`)
 
     await $.agent.spawn({ ...SPAWN, subagentType: 'Explore', description: 'one' })
     const call = $.tool.call(grep({ agentId: 'a1' }))
     await clock.settle()
-    expect((await rows(await band($, surface, true)))[0]).toBe(`${PLAN_LINE} │ Explore ▸ Grep AuthService`)
-    expect((await rows(await band($, surface, true, 70)))[0]).toBe('⟳ S4 12m · 1 agent')
+    expect((await rows(await band($, surface, true)))[0]).toBe(`${ACCOUNT}${PLAN_LINE} │ Explore ▸ Grep AuthService`)
+    expect((await rows(await band($, surface, true, 70)))[0]).toBe(`${ACCOUNT}⟳ S4 12m · 1 agent`)
     await finish(clock, [call])
   })
 
@@ -134,8 +135,8 @@ for (const surface of SURFACES) {
     ]
     await clock.settle()
 
-    expect((await rows(await band($, surface, true, 110)))[0]).toBe(`${PLAN_LINE} +2 agents │ Bash ▸ Run tests 0:00`)
-    expect((await rows(await band($, surface, true, 100)))[0]).toBe(`${PLAN_LINE} +2 agents`)
+    expect((await rows(await band($, surface, true, 110)))[0]).toBe(`${ACCOUNT}${PLAN_LINE} +2 agents`)
+    expect((await rows(await band($, surface, true, 100)))[0]).toBe(`${ACCOUNT}${PLAN_LINE} +2 agents`)
 
     const long = 'Update the interceptor and every caller of the refresh endpoint'
     files.current[PLAN_PATH] = file(planText({}, [], plan => {
@@ -143,7 +144,7 @@ for (const surface of SURFACES) {
       if (s4 !== undefined) s4.title = long
     }), NOW + 1)
     await clock.advance(30_000)
-    expect((await rows(await band($, surface, true, 100)))[0]).toBe('Token refresh ▰▰▰▱▱ 3/5 · 60% · 1h 12m · ≈30m left +2 agents')
+    expect((await rows(await band($, surface, true, 100)))[0]).toBe(`${ACCOUNT}⟳ S4 12m · 2 agents`)
     await finish(clock, calls)
   })
 
@@ -152,7 +153,7 @@ for (const surface of SURFACES) {
     await inspect($, 'plan old')
     await $.turn.start({ text: 'q', turnId: 't1' })
 
-    expect((await rows(await band($, surface, true)))[0]).toBe(PLAN_LINE)
+    expect((await rows(await band($, surface, true)))[0]).toBe(`${ACCOUNT}${PLAN_LINE}`)
   })
 
   test(`a running turn's time shows on the running step as it goes (${surface})`, async ($, on) => {
@@ -166,7 +167,7 @@ for (const surface of SURFACES) {
   test(`a plan left running by an earlier session keeps out of line 1 (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {
     const { clock } = await begin($, on, { files: { [PLAN_PATH]: file(PLAN_JSON, NOW - 60_000) } })
 
-    expect((await rows(await band($, surface, true)))[0]).toBe('⟳ Turn 1 · 0:00')
+    expect((await rows(await band($, surface, true)))[0]).toBe(`${ACCOUNT}⟳ Turn 1 · 0:00`)
     await inspect($, 'plan')
     const ui = await pane($, surface)
     expect((await rows(ui)).map(fold)).toContain('Plan · Token refresh 3/5 · ≈1h 42m total · ≈30m left (×1.2)')
@@ -183,9 +184,9 @@ for (const surface of SURFACES) {
     await clock.advance(30_000)
     expect(toasts).toContain('Plan done: Token refresh in 1h 19m')
     await clock.advance(60_000)
-    expect((await rows(await band($, surface, true)))[0]?.startsWith('Token refresh ▰▰▰▰▰ done ✓ in 1h 19m')).toBe(true)
+    expect((await rows(await band($, surface, true)))[0]?.startsWith(`${ACCOUNT}Token refresh ▰▰▰▰▰ done ✓ in 1h 19m`)).toBe(true)
     await clock.advance(600_000)
-    expect((await rows(await band($, surface, true)))[0]).toBe('⟳ Turn 1 · 0:00')
+    expect((await rows(await band($, surface, true)))[0]).toBe(`${ACCOUNT}⟳ Turn 1 · 0:00`)
   })
 
   test(`idle and calm, the plan adds nothing; idle with something to look at, PLAN and the score join line 1 (${surface})`, async ($, on) => {
@@ -205,8 +206,8 @@ for (const surface of SURFACES) {
     await $.turn.start({ text: 'q', turnId: 't1' })
     await $.tool.call({ tool: 'Bash', command: 'false 1' })
     await $.turn.complete({ answer: '', durationMs: 3000, isAborted: false, turnId: 't1', reason: 'answer' })
-    // Line 1 holds the new failure; the turn line under it ends with the plan
-    expect((await rows(await band($, surface, false))).find(l => l.includes('PLAN'))?.endsWith(' │ PLAN 3/5 · score 81 ▲13')).toBe(true)
+    // Line 1 holds the turn with the plan tail, then the new failure
+    expect((await rows(await band($, surface, false))).find(l => l.includes('PLAN'))?.includes(' │ PLAN 3/5 · score 81 ▲13 │ ✗ 1 new')).toBe(true)
   })
 
   test(`an invalid plan file says so on line 2 and in the tab (${surface})`, async ($, on) => {
@@ -253,7 +254,7 @@ for (const surface of SURFACES) {
     await $.tool.call({ tool: 'TodoWrite', todos: [todo('A', 'completed'), todo('B', 'in_progress'), todo('C', 'pending')] })
 
     expect((await planTab($, surface)).some(l => l.startsWith('Plan · Tasks 1/3'))).toBe(true)
-    expect((await rows(await band($, surface, true)))[0]?.startsWith('Tasks ▰▱▱▱▱ 1/3 · 33%')).toBe(true)
+    expect((await rows(await band($, surface, true)))[0]?.startsWith(`${ACCOUNT}Tasks ▰▱▱▱▱ 1/3 · 33%`)).toBe(true)
   })
 
   test(`/inspect plan <name> pins a plan, and an unknown name lists the plans (${surface})`, { timeoutMs: 15_000 }, async ($, on) => {

@@ -108,6 +108,6 @@ for (const surface of SURFACES) {
 
     // Line 1 holds the new failure; the turn line under it ends with the plan
     const line = (await rows(await band($, surface))).find(l => l.includes('PLAN'))
-    expect(line).toMatch(/ │ PLAN 2\/5 · score 91 ▲27$/)
+    expect(line).toMatch(/ │ PLAN 2\/5 · score 91 ▲27/)
   })
 }

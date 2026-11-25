@@ -4,8 +4,9 @@
 import { fitLine, widthOf } from '../core/format'
 import { ORG_STRICT, PERSONAL } from '../account/constants'
 import type { Line, Seg } from '../core/types'
-import { CC_LABEL, ORG_JOIN, ORG_LABEL, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN, MODES_JOIN, SOURCE_LABELS, SOURCE_LABEL_CELLS } from './constants'
-import type { BandInput, ModesKeep } from './types'
+import { CC_LABEL, TURN_ROOM_MIN, ORG_JOIN, ORG_LABEL, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN, MODES_JOIN, SOURCE_LABELS, SOURCE_LABEL_CELLS } from './constants'
+import type { BandInput, ModesKeep, TurnOffer } from './types'
+import { cellsOf } from './wrap'
 
 export const REC_MARK: Seg = { text: '● REC', tone: 'fail', bold: true }
 
@@ -26,17 +27,22 @@ function orgMark(input: BandInput): Line {
   return account.kind === undefined || account.kind === null ? [{ text: name }] : [{ text: name }, dim(ORG_JOIN), dim(account.kind)]
 }
 
-// Line 1: REC while it is on, the account and Claude Code's version, the MCP item, then the new failures with their
-// button ('Acme | Team | CC 2.1.330 │ mcp ✗ 1 · ✓ 10 │ ✗ 6 new 1: Inspect', the user, 2026-11-24). Where it would pass
-// the band's width the version goes first, then the MCP item; REC, the account and the failures always stay.
-export function identityLine(input: BandInput, failures: Line = []): Line {
+// The three forms of line 1, widest first: with the version, without it, and without the MCP item as well
+export function identityForms(input: BandInput, failures: Line = []): Line[] {
   const rec = input.rec !== undefined && input.rec.level !== 'off' ? [REC_MARK] : []
   const org = orgMark(input)
   const version = input.session.version
   const withVersion = version === undefined ? org : [...org, ...(org.length === 0 ? [] : [DIM_JOIN]), { text: `${CC_LABEL} ${version}`, tone: 'dim' as const }]
   const mcp = input.mcp ?? []
-  const forms = [joinItems([rec, withVersion, mcp, failures]), joinItems([rec, org, mcp, failures]), joinItems([rec, org, failures])]
-  return forms.find(form => widthOf(form) <= input.columns) ?? forms[forms.length - 1] ?? []
+  return [joinItems([rec, withVersion, mcp, failures]), joinItems([rec, org, mcp, failures]), joinItems([rec, org, failures])]
+}
+
+// Line 1: REC while it is on, the account and Claude Code's version, the MCP item, then the new failures with their
+// button ('Acme | Team | CC 2.1.330 │ mcp ✗ 1 · ✓ 10 │ ✗ 6 new 1: Inspect', the user, 2026-11-24). Where it would pass
+// the band's width the version goes first, then the MCP item; REC, the account and the failures always stay.
+export function identityLine(input: BandInput, failures: Line = []): Line {
+  const forms = identityForms(input, failures)
+  return forms.find(form => cellsOf(form) <= input.columns) ?? forms[forms.length - 1] ?? []
 }
 
 const labelled = (label: string, line: Line): Line => [{ text: `${label} `, tone: 'dim' }, ...line]
@@ -64,8 +70,22 @@ export function sourceLines(input: BandInput, keep: ModesKeep): Line[] {
   return form === undefined ? [] : [form]
 }
 
-// The line that leads the band: the identity, when it holds something
-export function leadLines(input: BandInput, failures: Line = []): Line[] {
+// The line that leads the band: the identity, when it holds something. Where the width holds the identity, the turn's
+// least form and the widest failures item, the turn joins it after the MCP item (spec 2026-11-25): the first base - with
+// the version, else without - whose room holds TURN_ROOM_MIN, then the turn's widest form that fits. The rule reads only
+// the width and the identity, so a running and a finished turn merge at the same widths. Else the turn keeps its row.
+export function leadLines(input: BandInput, failures: Line, turn: TurnOffer): { lines: Line[]; isTurnTaken: boolean } {
   const identity = identityLine(input, failures)
-  return identity.length === 0 ? [] : [identity]
+  const own = { lines: identity.length === 0 ? [] : [identity], isTurnTaken: false }
+  if (turn.forms.length === 0) return own
+  const join = cellsOf([{ text: ROW_JOIN }])
+  const bases = identityForms(input).slice(0, 2)
+  const base = bases.find(form => form.length > 0 && input.columns - cellsOf(form) - join - turn.reserveCells >= TURN_ROOM_MIN)
+  if (base === undefined) return own
+  const failuresCells = failures.length === 0 ? 0 : join + cellsOf(failures)
+  const room = input.columns - cellsOf(base) - join - failuresCells
+  const form = turn.forms.find(candidate => cellsOf(candidate) <= room)
+  if (form === undefined) return own
+  const line = joinItems([base, form, failures])
+  return cellsOf(line) <= input.columns ? { lines: [line], isTurnTaken: true } : own
 }

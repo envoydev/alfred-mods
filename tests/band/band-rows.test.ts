@@ -647,10 +647,10 @@ const labelOf = (l: string): string => l.slice(0, l.indexOf(':'))
 
 test("the full band's rows in the user's order", () => {
   const lines = texts(bandLines(USER_ORDER))
-  expect(lines[0]).toBe('CC 2.1.322')
-  expect(lines.findIndex(l => l.startsWith('Sonnet 5.5'))).toBe(2)
-  expect(lines[3]?.startsWith('ctx ')).toBe(true)
-  expect(lines.slice(4)).toEqual([
+  expect(lines[0]).toBe('CC 2.1.322 │ ⟳ 1 agent │ alfred-code:web-angular-verifier')
+  expect(lines.findIndex(l => l.startsWith('Sonnet 5.5'))).toBe(1)
+  expect(lines[2]?.startsWith('ctx ')).toBe(true)
+  expect(lines.slice(3)).toEqual([
     'project: my-app │ git:(develop) │ folder: .claude',
     'plan:    Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update interceptor',
     'usage:   [ 45 tools · 2 skills · 4 agents (1 ◐) · 5 rules ]',
@@ -662,7 +662,7 @@ test("the full band's rows in the user's order", () => {
 })
 
 test('the info line ends with the session time, and the version, the place and the toggle have left it', () => {
-  const info = texts(bandLines(USER_ORDER))[2] ?? ''
+  const info = texts(bandLines(USER_ORDER))[1] ?? ''
   expect(info.endsWith(' │ 59m')).toBe(true)
   expect(info).not.toContain('CC ')
   expect(info).not.toContain('my-app')
@@ -704,28 +704,28 @@ test('the detail rows draw however short usage: gets', () => {
   expect([...new Set(labelsOf(lines))]).toEqual(['tools', 'skills', 'agents', 'rules'])
 })
 
-test('5 rows free with a plan keep the identity, line 1, the info line, the gauges and plan:', () => {
-  const lines = texts(bandLines({ ...USER_ORDER, maxRows: 5 }))
-  expect(lines).toHaveLength(5)
-  expect(lines[0]).toBe('CC 2.1.322')
-  expect(lines[2]?.endsWith(' │ 59m')).toBe(true)
-  expect(lines[3]?.startsWith('ctx ')).toBe(true)
-  expect(lines[4]).toBe('plan:    Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update interceptor')
+test('4 rows free with a plan keep line 1 with the turn, the info line, the gauges and plan:', () => {
+  const lines = texts(bandLines({ ...USER_ORDER, maxRows: 4 }))
+  expect(lines).toHaveLength(4)
+  expect(lines[0]).toBe('CC 2.1.322 │ ⟳ 1 agent │ alfred-code:web-angular-verifier')
+  expect(lines[1]?.endsWith(' │ 59m')).toBe(true)
+  expect(lines[2]?.startsWith('ctx ')).toBe(true)
+  expect(lines[3]).toBe('plan:    Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update interceptor')
 })
 
-test('short of rows, the project row goes first, then the detail rows from the last, then usage:, then plan:', () => {
-  const at = (maxRows: number): string[] => texts(bandLines({ ...USER_ORDER, maxRows })).slice(4).map(labelOf)
-  expect(at(11)).toEqual(['project', 'plan', 'usage', 'tools', 'skills', 'agents', 'rules'])
-  expect(at(10)).toEqual(['plan', 'usage', 'tools', 'skills', 'agents', 'rules'])
-  expect(at(7)).toEqual(['plan', 'usage', 'tools'])
-  expect(at(6)).toEqual(['plan', 'usage'])
-  expect(at(5)).toEqual(['plan'])
-  expect(texts(bandLines({ ...USER_ORDER, maxRows: 4 }))).toHaveLength(4)
+test('short of rows, the project row goes first, then the detail rows from the last, then usage:, then plan: (line 1 holds the turn)', () => {
+  const at = (maxRows: number): string[] => texts(bandLines({ ...USER_ORDER, maxRows })).slice(3).map(labelOf)
+  expect(at(10)).toEqual(['project', 'plan', 'usage', 'tools', 'skills', 'agents', 'rules'])
+  expect(at(9)).toEqual(['plan', 'usage', 'tools', 'skills', 'agents', 'rules'])
+  expect(at(6)).toEqual(['plan', 'usage', 'tools'])
+  expect(at(5)).toEqual(['plan', 'usage'])
+  expect(at(4)).toEqual(['plan'])
+  expect(texts(bandLines({ ...USER_ORDER, maxRows: 3 }))).toHaveLength(3)
 })
 
 test('the calm band draws none of rows 2 to 6', () => {
   const lines = texts(bandLines({ ...USER_ORDER, mode: 'calm' }))
-  expect(lines[0]).toBe('CC 2.1.322')
+  expect(lines[0]).toMatch(/^CC 2\.1\.322/)
   expect(lines.length).toBeLessThanOrEqual(3)
   expect(lines.slice(1).some(l => /^(project|plan|usage|tools|skills|agents|rules):/.test(l) || l.includes('CC 2.1.322') || l.startsWith('Sonnet'))).toBe(false)
 })

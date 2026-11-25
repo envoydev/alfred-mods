@@ -29,13 +29,13 @@ test('the calm band leads with it too', () => {
 
 test('a working band leads with it', () => {
   const live = { turnId: 't2', startedAt: NOW - 5000, toolCalls: 1, toolFailures: 0, runningCalls: [], promptAt: NOW - 5000 }
-  expect(first({ isWorking: true, live })).toBe('Personal')
+  expect(first({ isWorking: true, live })).toBe('Personal │ ⟳ Turn 2 · 0:05 · 1 tool')
 })
 
 test('under the input the account leads line 1 and the new failures end it', () => {
   const lines = bandLines(input({ under: { buttons: 'click' }, newFailures: 1 }))
   expect(texts(lines).filter(line => line.includes('Personal'))).toHaveLength(1)
-  expect(text(lines[0] ?? []).startsWith('Personal │ ✗ 1 new')).toBe(true)
+  expect(text(lines[0] ?? []).startsWith('Personal │ ✓ Turn 1 · 3s · 19 tools │ ✗ 1 new')).toBe(true)
   expect(texts(lines).filter(line => line.includes('✗ 1 new'))).toHaveLength(1)
 })
 

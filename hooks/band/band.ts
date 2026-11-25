@@ -4,14 +4,14 @@ import { isLive } from '../agents/agents'
 import type { BandInput, ModesKeep } from './types'
 import type { RecLevel } from '../rec/types'
 import type { Line, Seg } from '../core/types'
-import { ROW_JOIN } from './constants'
+import { FAILURES_RESERVE_COUNT, ROW_JOIN } from './constants'
 import { leadLines, sourceLines } from './lines'
 import { fiveHourPace, gauges, narrowGauges, percentText } from './gauges'
 import { cellsOf } from './wrap'
 import { toolRows } from './detail'
 import { placeRow, planRow, usageRow } from './project'
 import { infoRows } from './info'
-import { cacheWarning, handoffAsk, lastTurn, skipAsk, underButton, withPlanTail, withTimes, withToday, workingLine } from './working'
+import { cacheWarning, handoffAsk, lastTurn, skipAsk, turnForms, underButton, withPlanTail, withTimes, withToday, workingLine } from './working'
 
 export { REC_MARK } from './lines'
 
@@ -72,7 +72,13 @@ export function bandLines(input: BandInput): Line[] {
 // What the band is, in order: the action row where it sits under the input, the identity and modes lines, then the body
 function bandRows(input: BandInput, keep: Keep): Line[] {
   const body = bandBody(input, input.columns < 100, keep)
-  return [...body.before, ...leadLines(input, failuresItem(input)), ...body.rows]
+  const lead = leadLines(input, failuresItem(input), { forms: body.turnForms, reserveCells: failuresReserve(input) })
+  return [...body.before, ...lead.lines, ...(lead.isTurnTaken || body.turn.length === 0 ? [] : [body.turn]), ...body.rows]
+}
+
+// The cells line 1 holds back for the new failures: ' │ ' and the item at its widest count, buttons counted
+function failuresReserve(band: BandInput): number {
+  return cellsOf([{ text: ROW_JOIN }, ...failuresItem({ ...band, newFailures: FAILURES_RESERVE_COUNT, isWorking: false })])
 }
 
 // The new failures with their button, on line 1 once Claude has answered (asks wait for the turn to end); none before
@@ -82,14 +88,14 @@ function failuresItem(band: BandInput): Line {
 }
 
 // The body's rows, and the ones that come before the leading lines: under the input the action row, nearest the input
-type Body = { before: Line[]; rows: Line[] }
+type Body = { before: Line[]; turn: Line; turnForms: Line[]; rows: Line[] }
 
 function bandBody(band: BandInput, isNarrow: boolean, keep: Keep): Body {
   const usage = band.usage
   // Before the first reading the calm band waits; the full band draws once the model or a stored window is known
   const isFullKnown = band.mode === 'full' && (band.session.model !== null || usage.rateWindows.length > 0)
   const sources = sourceLines(band, keep.modes)
-  if (band.turns.length === 0 && usage.contextPercent === null && !isFullKnown) return { before: [], rows: sources }
+  if (band.turns.length === 0 && usage.contextPercent === null && !isFullKnown) return { before: [], turn: [], turnForms: [], rows: sources }
   const invalid: Line = band.isPlanInvalid ? [{ text: ROW_JOIN, tone: 'dim' }, { text: 'plan file invalid', tone: 'warn' }] : []
   const gaugeLine = isNarrow ? narrowGauges(usage, band.runway) : withToday(band, gauges(band), invalid)
   const line2 = [...gaugeLine, ...invalid]
@@ -113,19 +119,22 @@ function bandBody(band: BandInput, isNarrow: boolean, keep: Keep): Body {
     // not only when active work'); the calm band stays one dim line until something needs you. The identity and modes
     // lines are no part of that line: the account mark, like the red REC mark, keeps its own tones so the account check
     // reads easily (the owner, 2026-11-21)
-    if (band.mode === 'full') return { before: [], rows: [...head, [...gaugeLine, ...invalid], ...sources, ...info] }
+    if (band.mode === 'full') return { before: [], turn: [], turnForms: [], rows: [...head, [...gaugeLine, ...invalid], ...sources, ...info] }
     const calm = isNarrow ? gaugeLine : withTimes(band, gaugeLine)
     const dim = (line: Line): Line => line.map(seg => ('text' in seg ? { text: seg.text, tone: 'dim' as const } : seg))
-    return { before: [], rows: [[...dim(calm), ...invalid], ...sources.map(dim), ...info.map(dim)] }
+    return { before: [], turn: [], turnForms: [], rows: [[...dim(calm), ...invalid], ...sources.map(dim), ...info.map(dim)] }
   }
-  if (band.isWorking) return { before: [], rows: [workingLine(band, isNarrow), ...head, line2, ...sources, ...info] }
+  const isPlanRowDrawn = head.length > 0 && keep.isPlanKept
+  const isFailuresShown = failuresItem(band).length > 0
+  if (band.isWorking) return { before: [], turn: workingLine(band, isNarrow), turnForms: turnForms(band, isNarrow, isPlanRowDrawn, isFailuresShown), rows: [...head, line2, ...sources, ...info] }
   const items = [warning, ask, skip].filter((item): item is Line => item !== null && item.length > 0)
   const joined: Line = items.flatMap((item, i) => (i === 0 ? item : [{ text: '    ' }, ...item]))
   // Under the input the action row comes first, nearest the input as above it is the last (the user, 2026-11-12, over
   // band-under U2's place after the gauges), so a cut at the screen's edge takes the detail rows first; its commands are
   // longer than the digits above, so the items take a row each when one row cannot hold them
   const action: Line[] = items.length === 0 ? [] : band.under !== undefined && cellsOf(joined) > band.columns ? items : [joined]
-  const first = agentsRun ? workingLine(band, isNarrow) : withPlanTail(band, lastTurn(band, isNarrow), head.length > 0 && keep.isPlanKept)
+  const first = agentsRun ? workingLine(band, isNarrow) : withPlanTail(band, lastTurn(band, isNarrow), isPlanRowDrawn)
   const nonEmpty = (rows: Line[]): Line[] => rows.filter(segs => segs.length > 0)
-  return band.under === undefined ? { before: [], rows: nonEmpty([first, ...head, line2, ...sources, ...info, ...action]) } : { before: action, rows: nonEmpty([first, ...head, line2, ...sources, ...info]) }
+  const turn = { turn: first, turnForms: turnForms(band, isNarrow, isPlanRowDrawn, isFailuresShown) }
+  return band.under === undefined ? { before: [], ...turn, rows: nonEmpty([...head, line2, ...sources, ...info, ...action]) } : { before: action, ...turn, rows: nonEmpty([...head, line2, ...sources, ...info]) }
 }
