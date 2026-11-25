@@ -63,12 +63,13 @@ test('a turn no form of which fits the room keeps its own row', () => {
   expect(lines[1]).toBe('✓ Turn 123456789 · 59m 59s')
 })
 test('the idle healthy band and a cache warning with no turn yet lose no row', () => {
-  expect(texts(bandLines(acme()))).toEqual([
-    'Acme | Team | CC 2.1.330 │ mcp ✓ 10',
-    'Sonnet 5.5 ◑ medium │ Claude 15:58 · you 14:47 │ 59m',
-    'ctx ▰▱▱▱▱ 30% │ 5h ▱▱▱▱▱ 15% (28.10 19:00) │ $1.29 · today $10.46',
-    'project: Example │ git:(develop) ↑1 ↓2 +12 −3 │ folder: Frontend/src/app',
-  ])
+  // The clocks are local times, so CI's time zone moves them: only their shape is pinned
+  const idle = texts(bandLines(acme()))
+  expect(idle.length).toBe(4)
+  expect(idle[0]).toBe('Acme | Team | CC 2.1.330 │ mcp ✓ 10')
+  expect(idle[1]).toMatch(/^Sonnet 5\.5 ◑ medium │ Claude \d\d:\d\d · you \d\d:\d\d │ 59m$/)
+  expect(idle[2]).toMatch(/^ctx ▰▱▱▱▱ 30% │ 5h ▱▱▱▱▱ 15% \(\d\d\.\d\d \d\d:\d\d\) │ \$1\.29 · today \$10\.46$/)
+  expect(idle[3]).toBe('project: Example │ git:(develop) ↑1 ↓2 +12 −3 │ folder: Frontend/src/app')
   const warned = texts(bandLines(acme({ turns: [], cache: closing })))
   expect(warned.some(line => line.startsWith('⚠ cache cold in 4m'))).toBe(true)
   expect(warned[0]).toBe('Acme | Team | CC 2.1.330 │ mcp ✓ 10')
