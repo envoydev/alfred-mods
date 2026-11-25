@@ -51,7 +51,7 @@ export async function keepMcp($: EngineInterface): Promise<void> {
 }
 
 // The engine's raise for a server about to join: it is loading from now, and a refusal answer marks it failed. Any other
-// answer leaves it loading, as the dial only follows; its state read, the tool list or the time settles it. The answer
+// answer leaves it loading, as the dial only follows; its state read, the tool list or the time decides it. The answer
 // goes on untouched.
 // Another plugin's `$.mcp.connect` goes through as it came: it spells a server as its manifest key, which no tool matches.
 export async function trackMcpConnect($: EngineInterface, e: HookInput<'mcp.connect'>, next: HookNext<'mcp.connect'>) {
@@ -65,7 +65,7 @@ export async function trackMcpConnect($: EngineInterface, e: HookInput<'mcp.conn
   return answer
 }
 
-// One read of the tool list at `now`: a list that cannot be read leaves the servers to settle by time alone
+// One read of the tool list at `now`: a list that cannot be read leaves time alone to decide the unread servers
 async function refreshMcp($: EngineInterface, now: number): Promise<void> {
   mcpMemory.lastReadAt = now
   const names = await $.tool.list().then(toolServers, () => [])

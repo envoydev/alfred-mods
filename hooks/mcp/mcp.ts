@@ -28,22 +28,23 @@ export function toolServers(tools: readonly ListedTool[]): string[] {
 // A server's name matches a tool server by its last `:`-part or by the whole name, either spelled as a tool's name is
 const isShownBy = (server: McpServer, toolServer: string): boolean => toolServer === shortName(server.name) || toolServer === spelled(server.name)
 
-// Whether a loading server settles by time: one whose state is never read (no read runs, its raise not yet passed the
+// Whether time decides a loading server: one whose state is never read (no read runs, its raise not yet passed the
 // hooks beneath, or its read refused for this raise). `unreadable` is null where no state is read at all.
 const isTimed = (server: McpServer, unreadable: Unreadable | null): boolean =>
   unreadable === null || server.isPassed !== true || unreadable.get(server.name) === server.since
 
-// The servers after a read of the tool list at `now`: a loading or failed one whose tools show is connected, a loading
-// one that settles by time and has loaded for SETTLE_MS too; a failed one with no tools stays so; a tool server no
-// server names is added as connected
+// The servers after a read of the tool list at `now`: a loading or failed one whose tools show is connected; a loading
+// one that time decides and has loaded for SETTLE_MS with none is of unknown state and leaves the list; a failed one
+// with no tools stays so; a tool server no server names is added as connected
 export function settle(servers: readonly McpServer[], fromTools: readonly string[], now: number, unreadable: Unreadable | null): McpServer[] {
   const named = new Set<string>()
-  const settled = servers.map((server): McpServer => {
+  const settled = servers.flatMap((server): McpServer[] => {
     const shown = fromTools.filter(toolServer => isShownBy(server, toolServer))
     for (const toolServer of shown) named.add(toolServer)
-    if (server.state === 'connected') return server
-    const isSettled = shown.length > 0 || (server.state === 'loading' && isTimed(server, unreadable) && now - server.since >= SETTLE_MS)
-    return isSettled ? { name: server.name, state: 'connected', since: server.since, ...(server.isSeeded === true ? { isSeeded: true } : {}) } : server
+    if (server.state === 'connected') return [server]
+    if (shown.length > 0) return [{ name: server.name, state: 'connected', since: server.since, ...(server.isSeeded === true ? { isSeeded: true } : {}) }]
+    const isUnknown = server.state === 'loading' && isTimed(server, unreadable) && now - server.since >= SETTLE_MS
+    return isUnknown ? [] : [server]
   })
   const added = fromTools.filter(toolServer => !named.has(toolServer)).map((toolServer): McpServer => ({ name: toolServer, state: 'connected', since: now, isSeeded: true }))
   return [...settled, ...added]

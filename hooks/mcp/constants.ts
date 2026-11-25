@@ -1,8 +1,8 @@
 // The MCP state's named values (spec 2026-11-23, D5)
 
-// A server still loading this long after its event, with no tools seen and its state read refused (a build or a hook that
-// answers no read), reads connected: with tool search its tools may never show in the tool list, and a false red on a
-// working server is worse than a late green
+// A server still loading this long after its event, with no tools seen and no state to read (the read refused, a build
+// with none, a raise a hook holds), leaves the count: nothing tells whether it is connected, off or failed, and it is
+// counted again when its tools show (the user, 2026-11-25)
 export const SETTLE_MS = 60_000
 
 // The reasons a state read answers that tell the server's own state; any other is a refusal of the read itself, which

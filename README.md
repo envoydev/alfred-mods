@@ -671,11 +671,12 @@ rules:   alfred-interaction │ alfred-git │ web:typescript │ 3 always-on ·
   the mod asks Claude Code once for its state (`$.mcp.connect`, which never starts a server the session already lists):
   the answer, when the server is up or has failed, settles it (measured on 2.1.331). It asks only about a server whose
   connect the hooks beneath the mod's have answered unrefused, so never one another plugin holds back. A server also
-  reads connected when its tools show in the session's tool list. Where the question is refused or fails, a server whose
-  tools never show, as with tool search, reads connected after 60 seconds. With `leave_out_skipped_hooks` on, only the
-  tool list feeds the item: it reads `mcp ✓ <n>`, has no loading or failed state, and asks nothing, so a server turned
-  off whose connect answered connected counts after 60 seconds. Claude Code adds connectors of its own, such as
-  `claude-artifacts`, which count like any server: one that fails reads `✗` though `claude mcp list` does not list it.
+  reads connected when its tools show in the session's tool list. Where the question is refused or fails, or another
+  plugin holds the server back, and its tools do not show, the mod cannot tell its state: after 60 seconds it leaves the
+  count, so a working server whose tools never show, as with tool search, is not counted either. It is counted once its
+  tools show. With `leave_out_skipped_hooks` on, only the tool list feeds the item: it reads `mcp ✓ <n>`, has no loading
+  or failed state, and asks nothing. Claude Code adds connectors of its own, such as `claude-artifacts`, which count
+  like any server: one that fails reads `✗` though `claude mcp list` does not list it.
 - **The info line:** the model and effort, the cache, the average output speed, the times of Claude's
   last reply and your last prompt, and the session's time. While a turn runs, the turn line above it counts the turn's
   tool calls, and the gauges add today's cost. Today's cost is the mod's own count on this machine: sessions it did not

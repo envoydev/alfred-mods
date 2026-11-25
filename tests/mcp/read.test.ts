@@ -57,15 +57,23 @@ test('a seeded, connected or failed server is never read', async ($, on) => {
   expect(beneath.reads).toBe(0)
 })
 
-test('a read the engine refuses leaves the server loading, to settle by tools or by 60 s', LONG, async ($, on) => {
+test('a read the engine refuses leaves the server loading, to settle by tools or to leave the count at 60 s', LONG, async ($, on) => {
   const { kit, beneath, servers } = await begin($, on, { stored: [passed('plugin:p:files')], read: 'refused' })
   await kit.clock.advance(POLL)
   await kit.clock.settle()
   expect(servers()).toEqual([passed('plugin:p:files')])
   await kit.clock.advance(SETTLE_MS)
   await kit.clock.settle()
-  expect(servers()).toEqual([connected('plugin:p:files')])
+  expect(servers()).toEqual([])
   expect(beneath.reads).toBe(1)
+})
+
+test('a server the read answers unlisted, with no tools, is not counted beside the connected ones', LONG, async ($, on) => {
+  const unlisted: McpConnectResult = { isConnected: false, reason: 'unlisted', message: 'No server of that name is listed.' }
+  const { kit, servers } = await begin($, on, { stored: [passed('computer-use'), connected('admtools'), connected('easel')], read: unlisted })
+  await kit.clock.advance(SETTLE_MS * 2)
+  await kit.clock.settle()
+  expect(text(servers())).toBe('mcp ✓ 2')
 })
 
 test('readOutcome takes only the reasons that tell the server\'s own state; a refusal of the read tells nothing', () => {
@@ -85,12 +93,14 @@ test('markRead marks only the server still loading from the raise the read began
   expect(markRead([loading('a', 10), loading('b', 10)], 'b', 10, { state: 'connected' })).toEqual([loading('a', 10), connected('b', 10)])
 })
 
-test('settle times out a loading server never read: refused under its own raise, or not yet passed the hooks beneath', () => {
+test('settle drops a loading server never read once its time is up: refused under its own raise, or not yet passed the hooks beneath', () => {
   const late = NOW + SETTLE_MS
-  expect(settle([passed('a'), passed('b')], [], late, new Map([['b', NOW]]))).toEqual([passed('a'), connected('b')])
+  expect(settle([passed('a'), passed('b')], [], late, new Map([['b', NOW]]))).toEqual([passed('a')])
   expect(settle([passed('a')], [], late, new Map([['a', NOW - 1]]))).toEqual([passed('a')])
-  expect(settle([loading('c')], [], late, NONE)).toEqual([connected('c')])
-  expect(settle([passed('d')], [], late, null)).toEqual([connected('d')])
+  expect(settle([loading('c')], [], late, NONE)).toEqual([])
+  expect(settle([passed('d')], [], late, null)).toEqual([])
+  expect(settle([loading('c')], [], late - 1, NONE)).toEqual([loading('c')])
+  expect(settle([loading('c')], ['c'], late, NONE)).toEqual([connected('c')])
 })
 
 test('a loading server whose raise the hooks beneath have not answered is never read', async ($, on) => {
@@ -101,7 +111,7 @@ test('a loading server whose raise the hooks beneath have not answered is never 
   expect(servers()).toEqual([loading('plugin:p:files')])
 })
 
-test('with leave_out_skipped_hooks on, no state is read, and a passed server left loading settles by time', { ...LONG, options: { leave_out_skipped_hooks: true } }, async ($, on) => {
+test('with leave_out_skipped_hooks on, no state is read, and a passed server left loading is dropped by time', { ...LONG, options: { leave_out_skipped_hooks: true } }, async ($, on) => {
   const { kit, beneath, servers } = await begin($, on, { stored: [passed('plugin:p:files')], read: UP })
   await kit.clock.advance(POLL * 3)
   await kit.clock.settle()
@@ -109,7 +119,7 @@ test('with leave_out_skipped_hooks on, no state is read, and a passed server lef
   expect(servers()).toEqual([passed('plugin:p:files')])
   await kit.clock.advance(SETTLE_MS)
   await kit.clock.settle()
-  expect(servers()).toEqual([connected('plugin:p:files')])
+  expect(servers()).toEqual([])
 })
 
 test('serversToRead takes passed loading servers only, and a refusal under an older raise does not stop a newer one', () => {
