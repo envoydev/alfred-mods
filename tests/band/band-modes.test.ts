@@ -1,10 +1,11 @@
-// The modes line (the user, 2026-11-24: 'auto-run · auto-compact 400k · scoring 90 3'), from Alfred Code's status file
-// and claude-kit's settings file, and where the band draws it
+// The modes lines (the user, 2026-11-25): 'alfred-code: auto-run · auto-compact 400k · scoring 90 3' from Alfred Code's
+// status file and 'claude-kit: auto-run · scoring 90 3 · plan opus | ...' from claude-kit's settings file, each on its own
+// line under the context gauges, and where the band draws them short of rows
 import { expect, test } from 'claude-code/testing'
 
 import { bandLines } from '../../hooks/band/band'
-import { modelsLine, modesLine } from '../../hooks/band/modes'
-import { input, text, texts } from './band-input'
+import { alfredModesLine, kitModesLine, modelsLine } from '../../hooks/band/modes'
+import { NO_READING, input, text, texts } from './band-input'
 import type { BandInput } from '../../hooks/band/types'
 import type { Stack } from '../../hooks/stack/types'
 
@@ -16,74 +17,45 @@ const STACK: Stack = {
 const NONE: Stack = { ...STACK, state: 'none', autoRun: null, scorer: null, autoCompact: null }
 const KIT = { values: { auto_run: 'on', scoring: 'on', pass_score: 90, auto_approve: 'on' } }
 const WIDE = 150
+const ALFRED = 'alfred-code: auto-run · auto-compact 400k · scoring 90 3'
+const MODELS = 'plan opus | audit opus | review opus | implement sonnet | search haiku'
+const WITH_MODELS = { values: { ...KIT.values, plan_model: 'opus', audit_model: 'opus', review_model: 'opus', implement_model: 'sonnet', search_model: 'haiku' } }
 
 test("Alfred Code's modes read auto-run · auto-compact 400k · scoring 90 3, auto-run in warn", () => {
-  const line = modesLine(STACK, null, WIDE)
+  const line = alfredModesLine(STACK, WIDE)
   expect(text(line)).toBe('auto-run · auto-compact 400k · scoring 90 3')
   expect(line[0]).toEqual({ text: 'auto-run', tone: 'warn' })
 })
 
-test("claude-kit alone gives auto-run and scoring with its pass score and its loop's 3 rounds", () => {
-  expect(text(modesLine(null, KIT, WIDE))).toBe('auto-run · scoring 90 3')
-  expect(text(modesLine(NONE, KIT, WIDE))).toBe('auto-run · scoring 90 3')
+test("Alfred Code's scoring shows the rounds its status file gives, as alfred-code:mode:scoring sets them", () => {
+  expect(text(alfredModesLine({ ...STACK, scorer: { on: true, level: 85, rounds: 5 } }, WIDE))).toBe('auto-run · auto-compact 400k · scoring 85 5')
+  expect(text(alfredModesLine({ ...STACK, scorer: { on: false, level: 90, rounds: 3 } }, WIDE))).toBe('auto-run · auto-compact 400k')
 })
 
-test("with both, Alfred Code's scoring level and rounds win, and auto-run shows once", () => {
-  const stack = { ...STACK, autoRun: false, scorer: { on: true, level: 80, rounds: 2 } }
-  expect(text(modesLine(stack, KIT, WIDE))).toBe('auto-run · auto-compact 400k · scoring 80 2')
+test("claude-kit's scoring gives its pass score and the rounds its loop runs: 6 under its auto-run, else 3", () => {
+  expect(text(kitModesLine(KIT, WIDE))).toBe('auto-run · scoring 90 6')
+  expect(text(kitModesLine({ values: { ...KIT.values, auto_run: 'off' } }, WIDE))).toBe('scoring 90 3')
+  expect(kitModesLine({ values: { auto_run: 'off', scoring: 'off' } }, WIDE)).toEqual([])
+  expect(kitModesLine({ values: null }, WIDE)).toEqual([])
+  expect(kitModesLine(null, WIDE)).toEqual([])
 })
 
-test("Alfred Code's scoring off leaves claude-kit's in force", () => {
-  expect(text(modesLine({ ...STACK, scorer: { on: false, level: 90, rounds: 3 } }, KIT, WIDE))).toBe('auto-run · auto-compact 400k · scoring 90 3')
+test('each source keeps its own modes: neither borrows the other', () => {
+  expect(text(alfredModesLine({ ...STACK, autoRun: false }, WIDE))).toBe('auto-compact 400k · scoring 90 3')
+  expect(alfredModesLine(NONE, WIDE)).toEqual([])
+  expect(alfredModesLine(null, WIDE)).toEqual([])
+  expect(alfredModesLine({ ...STACK, state: 'ignored', reason: 'another session' }, WIDE)).toEqual([])
 })
 
-test('auto-compact with no known point reads alone; modes off draw nothing', () => {
-  expect(text(modesLine({ ...STACK, autoRun: false, scorer: null, autoCompact: { on: true, at: null } }, null, WIDE))).toBe('auto-compact')
-  expect(modesLine({ ...STACK, autoRun: false, scorer: null, autoCompact: { on: false, at: null } }, null, WIDE)).toEqual([])
-  expect(modesLine(null, { values: { auto_run: 'off', scoring: 'off' } }, WIDE)).toEqual([])
-  expect(modesLine(null, { values: null }, WIDE)).toEqual([])
-  expect(modesLine(null, null, WIDE)).toEqual([])
-})
-
-test('an ignored status file gives nothing of its own', () => {
-  expect(text(modesLine({ ...STACK, state: 'ignored', reason: 'another session' }, null, WIDE))).toBe('')
+test('auto-compact with no known point reads alone', () => {
+  expect(text(alfredModesLine({ ...STACK, autoRun: false, scorer: null, autoCompact: { on: true, at: null } }, WIDE))).toBe('auto-compact')
 })
 
 test('short of width the last mode goes first', () => {
-  expect(text(modesLine(STACK, null, 30))).toBe('auto-run · auto-compact 400k')
-  expect(text(modesLine(STACK, null, 10))).toBe('auto-run')
-  expect(modesLine(STACK, null, 5)).toEqual([])
+  expect(text(alfredModesLine(STACK, 30))).toBe('auto-run · auto-compact 400k')
+  expect(text(alfredModesLine(STACK, 10))).toBe('auto-run')
+  expect(alfredModesLine(STACK, 5)).toEqual([])
 })
-
-const withModes = (o: Partial<BandInput> = {}): BandInput => input({ account: { org: 'Acme', kind: 'Team' }, modes: modesLine(STACK, null, WIDE), ...o })
-
-test('the modes take line 2, under the identity and above the info line', () => {
-  const lines = texts(bandLines(withModes()))
-  expect(lines[0]).toBe('Acme | Team')
-  expect(lines[1]).toBe('auto-run · auto-compact 400k · scoring 90 3')
-  expect(lines[2]?.startsWith('Sonnet 5.5')).toBe(true)
-})
-
-test('with no mode on there is no modes line', () => {
-  const lines = texts(bandLines(withModes({ modes: [] })))
-  expect(lines[1]?.startsWith('Sonnet 5.5')).toBe(true)
-})
-
-test('short of rows the modes join line 1 after the project row goes, and the identity stays', () => {
-  const all = bandLines(withModes()).length
-  const lines = texts(bandLines(withModes({ maxRows: all - 2 })))
-  expect(lines[0]).toBe('Acme | Team │ auto-run · auto-compact 400k · scoring 90 3')
-  expect(lines.some(line => line.startsWith('project:'))).toBe(false)
-  expect(texts(bandLines(withModes({ maxRows: 1 })))[0]).toContain('Acme | Team')
-})
-
-test('joined, the modes give way where line 1 cannot hold them', () => {
-  const lines = texts(bandLines(withModes({ maxRows: 1, columns: 30 })))
-  expect(lines[0]).toBe('Acme | Team')
-})
-
-const MODELS = 'plan opus | audit opus | review opus | implement sonnet | search haiku'
-const WITH_MODELS = { values: { ...KIT.values, plan_model: 'opus', audit_model: 'opus', review_model: 'opus', implement_model: 'sonnet', search_model: 'haiku' } }
 
 test("claude-kit's five models read in its roles' order, dim; a role the file does not set is left out", () => {
   const line = modelsLine(WITH_MODELS, WIDE)
@@ -91,32 +63,79 @@ test("claude-kit's five models read in its roles' order, dim; a role the file do
   expect(line.every(seg => 'text' in seg && seg.tone === 'dim')).toBe(true)
   expect(text(modelsLine({ values: { plan_model: 'opus', search_model: 'haiku' } }, WIDE))).toBe('plan opus | search haiku')
   expect(modelsLine(KIT, WIDE)).toEqual([])
-  expect(modelsLine({ values: null }, WIDE)).toEqual([])
   expect(modelsLine(null, WIDE)).toEqual([])
 })
 
-test('short of width the last role goes first', () => {
-  expect(text(modelsLine(WITH_MODELS, 30))).toBe('plan opus | audit opus')
-  expect(modelsLine(WITH_MODELS, 5)).toEqual([])
+const both = (o: Partial<BandInput> = {}): BandInput => input({
+  account: { org: 'Acme', kind: 'Team' }, alfredModes: alfredModesLine(STACK, WIDE), kitModes: kitModesLine(WITH_MODELS, WIDE),
+  models: modelsLine(WITH_MODELS, WIDE), ...o,
 })
 
-const withKit = (o: Partial<BandInput> = {}): BandInput =>
-  input({ account: { org: 'Acme', kind: 'Team' }, modes: modesLine(null, WITH_MODELS, WIDE), models: modelsLine(WITH_MODELS, WIDE), ...o })
-
-test('the models sit beside the modes on line 2 where the two fit, else on the line under them', () => {
-  expect(texts(bandLines(withKit({ columns: WIDE })))[1]).toBe(`auto-run · scoring 90 3 · ${MODELS}`)
-  const narrow = texts(bandLines(withKit({ columns: 80 })))
-  expect(narrow[1]).toBe('auto-run · scoring 90 3')
-  expect(narrow[2]).toBe(MODELS)
+test('the two lines sit under the context gauges and above the project row, as the user laid the band out', () => {
+  const lines = texts(bandLines(both({ columns: WIDE })))
+  const at = lines.indexOf(ALFRED)
+  expect(at).toBeGreaterThan(1)
+  expect(lines[at - 1]?.startsWith('ctx')).toBe(true)
+  expect(lines[at + 1]).toBe(`claude-kit: auto-run · scoring 90 6 · ${MODELS}`)
+  expect(lines[at + 2]?.startsWith('project:')).toBe(true)
+  expect(lines[1]?.startsWith('Sonnet 5.5')).toBe(true)
 })
 
-test('models with no mode on take line 2 alone', () => {
-  expect(texts(bandLines(withKit({ modes: [] })))[1]).toBe(MODELS)
+test('a source with nothing on draws no line', () => {
+  const lines = texts(bandLines(both({ alfredModes: [] })))
+  expect(lines.some(line => line.startsWith('alfred-code:'))).toBe(false)
+  expect(lines.some(line => line.startsWith('claude-kit:'))).toBe(true)
 })
 
-test('short of rows the models go when the modes join line 1', () => {
-  const all = bandLines(withKit({ columns: 80 })).length
-  const lines = texts(bandLines(withKit({ columns: 80, maxRows: all - 2 })))
-  expect(lines[0]).toBe('Acme | Team │ auto-run · scoring 90 3')
+test("claude-kit's models alone still take its line", () => {
+  expect(texts(bandLines(both({ kitModes: [] })))).toContain(`claude-kit: ${MODELS}`)
+})
+
+test("short of width claude-kit's models go on the line under its modes", () => {
+  const lines = texts(bandLines(both({ columns: 90 })))
+  const at = lines.indexOf('claude-kit: auto-run · scoring 90 6')
+  expect(at).toBeGreaterThan(-1)
+  expect(lines[at + 1]?.trim()).toBe(MODELS)
+})
+
+test('short of rows the project row goes first, then the two lines become one with no models, and the identity stays', () => {
+  const all = bandLines(both({ columns: WIDE })).length
+  const lines = texts(bandLines(both({ columns: WIDE, maxRows: all - 2 })))
+  expect(lines).toContain('alfred-code: auto-run · auto-compact 400k · scoring 90 3 │ claude-kit: auto-run · scoring 90 6')
+  expect(lines.some(line => line.startsWith('project:') || line.includes('plan opus'))).toBe(false)
+  expect(texts(bandLines(both({ maxRows: 1 })))[0]).toContain('Acme | Team')
+})
+
+test('before the first reading the lines still show under the identity', () => {
+  const lines = texts(bandLines(both({ columns: WIDE, ...NO_READING, mode: 'calm' })))
+  expect(lines).toEqual(['Acme | Team', ALFRED, `claude-kit: auto-run · scoring 90 6 · ${MODELS}`])
+})
+
+test('short of rows, the joined line after the models line under them also goes', () => {
+  const all = bandLines(both({ columns: 100 })).length
+  const lines = texts(bandLines(both({ columns: 100, maxRows: all - 3 })))
   expect(lines.some(line => line.includes('plan opus'))).toBe(false)
+  expect(lines.filter(line => line.includes('claude-kit:'))).toHaveLength(1)
+})
+
+test('joined, a line too wide for both keeps alfred-code alone', () => {
+  const all = bandLines(both({ columns: 70 })).length
+  const lines = texts(bandLines(both({ columns: 70, maxRows: all - 3 })))
+  expect(lines).toContain('alfred-code: auto-run · auto-compact 400k · scoring 90 3')
+  expect(lines.some(line => line.startsWith('claude-kit:'))).toBe(false)
+})
+
+test('short of rows past the usage and plan rows the modes lines go before the info line', () => {
+  expect(texts(bandLines(both({ columns: WIDE, maxRows: 4 })))[3]).toContain('│ claude-kit:')
+  const lines = texts(bandLines(both({ columns: WIDE, maxRows: 3 })))
+  expect(lines).toHaveLength(3)
+  expect(lines[0]).toContain('Acme | Team')
+  expect(lines.some(line => line.startsWith('alfred-code:') || line.startsWith('claude-kit:'))).toBe(false)
+  expect(lines.some(line => line.startsWith('Sonnet 5.5'))).toBe(true)
+})
+
+test('the calm band draws the modes lines dim', () => {
+  const lines = bandLines(both({ columns: WIDE, mode: 'calm' }))
+  const alfred = lines.find(line => text(line).startsWith('alfred-code:'))
+  expect(alfred?.every(seg => !('tone' in seg) || seg.tone === 'dim')).toBe(true)
 })

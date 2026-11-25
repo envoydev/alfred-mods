@@ -622,18 +622,19 @@ gives up its Show and Copy buttons. A narrow pane, down to 24 columns, keeps the
 tool's column to keep its counts, and the Timeline leaves out the prompt's time to keep how long each turn took and
 its tokens.
 
-By default the band is the identity line, the turn while one runs, an info line, the gauges, and rows under them.
-Line 1 is the identity: `● REC` while recording mode is on, the account the session is signed in to, Claude Code's
-version, the MCP item, and the new tool failures with their Inspect button once Claude has answered. Line 2 is the modes
-on, from Alfred Code and claude-kit, with claude-kit's models. A line with nothing on it is not drawn.
+By default the band is the identity line, the turn while one runs, an info line, the gauges, the modes lines and rows
+under them. Line 1 is the identity: `● REC` while recording mode is on, the account the session is signed in to,
+Claude Code's version, the MCP item, and the new tool failures with their Inspect button once Claude has answered. Under
+the gauges, `alfred-code:` and `claude-kit:` each show the modes that source has on, claude-kit's with its models. A line
+with nothing on it is not drawn.
 
 ```text
 Acme | Team | CC 2.1.331 │ mcp ✗ 1 · ✓ 10 │ ✗ 6 new 1: Inspect
-auto-run · auto-compact 400k · scoring 90 3
-plan opus | audit opus | review opus | implement sonnet | search haiku
 ✓ Turn 47 · 5m 1s · 19 tools · 6 ✗
 Sonnet 5.5 ◑ high │ cache warm ≈60m │ ≈119 tok/s avg │ Claude 17:13 · you 17:15 │ 9m
 ctx ▰▰▰▱▱ 30% │ 5h ▰▱▱▱▱ 15% (19:00) │ 7d 40% (11:00)
+alfred-code: auto-run · auto-compact 400k · scoring 90 3
+claude-kit: auto-run · scoring 90 6 · plan opus | audit opus | review opus | implement sonnet | search haiku
 project: my-app │ git:(develop) +12 −3 │ folder: .claude
 plan:    Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update interceptor
 usage:   [ 45 tools · 2 skills · 4 agents (1 ◐) · 4 rules ]
@@ -655,18 +656,19 @@ rules:   alfred-interaction │ alfred-git │ web:typescript │ 3 always-on ·
   the stronger source. Under [REC](#recording-mode) `strict` a company name reads `‹org›`; `Personal` and `unknown`
   stay. Claude Code's version follows the account, `| CC 2.1.331`, and goes where the line would pass the band's
   width.
-- **Line 2, the modes,** shows the modes the session runs under, joined by ` · `: `auto-run` (amber) while Alfred
-  Code's status file or claude-kit's `.claude/kit/settings.json` turns it on; `auto-compact 400k` while Alfred Code
-  compacts for you, with Claude Code's compaction point when the status file names it; and `scoring <level> <rounds>`
-  while scoring is on - Alfred Code's level and rounds, else claude-kit's pass score and the 3 rounds its grading loop
-  runs (claude-kit's file names no rounds). claude-kit alone gives no `auto-compact`, which only Alfred Code reports.
-  The line is left out while no mode is on, and short of width it drops from the end. Short of rows, after the project
-  row, it joins line 1 (`Acme | Team │ auto-run · scoring 90 3`) where the two fit, else line 1 stands alone. The Now
-  tab's ALFRED CODE and CLAUDE-KIT sections keep the details: auto-approve, the models, where each value comes from.
-- **The models** are the ones claude-kit's settings file names, `plan opus | audit opus | review opus | implement
-  sonnet | search haiku`, a role the file leaves out omitted. They follow the modes on line 2 where the band is wide
-  enough, else take the line under them, and drop from the end where short of width. Short of rows, once the modes
-  join line 1, the models are left out.
+- **The modes lines** sit under the context gauges and above the project row, one per source, each with the source's own
+  values: `alfred-code: auto-run · auto-compact 400k · scoring 90 3` from Alfred Code's status file and `claude-kit:
+  auto-run · scoring 90 6 · plan opus | audit opus | review opus | implement sonnet | search haiku` from claude-kit's
+  `.claude/kit/settings.json`. `auto-run` (amber) shows while that source turns it on; `auto-compact 400k` while Alfred
+  Code compacts for you, with Claude Code's compaction point when the status file names it; and `scoring <level>
+  <rounds>` while that source's scoring is on. Alfred Code's rounds are the ones its status file gives, as
+  `/alfred-code:mode:scoring on 90 3` sets them; claude-kit's are the rounds its grading loop runs, 3, or 6 while its
+  auto-run is on, since its file names no rounds and cannot change them. claude-kit's models follow its modes where the
+  band is wide enough, else take the line under them; a role the file leaves out is omitted. A source with nothing on
+  draws no line, and short of width each line drops from the end. Short of rows, after the project row, the two share
+  one line with no models (`alfred-code: ... │ claude-kit: ...`), or alfred-code's alone where both do not fit; after
+  the plan row they are left out, before the info line. The calm band draws them dim. The Now tab's ALFRED CODE and
+  CLAUDE-KIT sections keep the details: auto-approve and where each value comes from.
 - **The new failures,** `✗ <n> new` with the Inspect button (`1`, or a click; `/inspect` as text under the input), end
   line 1 once Claude has answered, and wait while a turn runs. Short of width line 1 gives up Claude Code's version
   first, then the MCP item; REC, the account and the failures stay.

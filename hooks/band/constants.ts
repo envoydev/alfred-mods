@@ -31,5 +31,8 @@ export const TRANSCRIPT_NOTE = { unread: 'transcript unread', 'not-found': 'tran
 // word, and the join between them
 export const MODE_WORDS = { autoRun: 'auto-run', autoCompact: 'auto-compact', scoring: 'scoring' } as const
 export const MODES_JOIN = ' · '
+// Each modes line's label, and the cells a line's values get less than the band's width
+export const SOURCE_LABELS = { alfredCode: 'alfred-code:', kit: 'claude-kit:' } as const
+export const SOURCE_LABEL_CELLS = Math.max(SOURCE_LABELS.alfredCode.length, SOURCE_LABELS.kit.length) + 1
 // claude-kit's models, written as its status line writes them (the user, 2026-11-25)
 export const MODELS_JOIN = ' | '

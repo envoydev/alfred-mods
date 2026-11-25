@@ -1,29 +1,41 @@
-// The band's modes line (the user, 2026-11-24): 'auto-run · auto-compact 400k · scoring 90 3', from what the session uses
-// now - Alfred Code's status file and claude-kit's settings file. Pure: values in, lines out.
+// The band's modes lines (the user, 2026-11-25): 'alfred-code: auto-run · auto-compact 400k · scoring 90 3' from Alfred
+// Code's status file and 'claude-kit: auto-run · scoring 90 3' from claude-kit's settings file, each with its own values.
+// Pure: values in, lines out.
 import { tokensText, widthOf } from '../core/format'
 import type { Line, Seg } from '../core/types'
 import { isKitOn, kitPassScore } from '../kit/kit'
-import { KIT_MODEL_ROLES, KIT_NAMES, KIT_SCORING_ROUNDS } from '../kit/constants'
+import { KIT_AUTO_RUN_ROUNDS, KIT_MODEL_ROLES, KIT_NAMES, KIT_SCORING_ROUNDS } from '../kit/constants'
 import type { KitState } from '../kit/types'
 import type { Stack } from '../stack/types'
 import { MODE_WORDS, MODELS_JOIN, MODES_JOIN } from './constants'
 
-// Each mode on, in its order. auto-run shows while either source runs it; auto-compact is Alfred Code's alone, with
-// Claude Code's compaction point where the status file names it; scoring takes Alfred Code's level and rounds while
-// its scoring is on, else claude-kit's pass score and the rounds its loop runs.
-function modeItems(stack: Stack | null, kit: KitState | null): Seg[] {
+// Alfred Code's modes on, in their order, from its status file alone: auto-run, auto-compact with Claude Code's
+// compaction point where the file names it, and scoring with its level and the rounds `alfred-code:mode:scoring` set
+function alfredItems(stack: Stack | null): Seg[] {
   const used = stack !== null && stack.state === 'used' ? stack : null
-  const values = kit?.values ?? null
+  if (used === null) return []
   const items: Seg[] = []
-  if (used?.autoRun === true || (values !== null && isKitOn(values, KIT_NAMES.autoRun))) items.push({ text: MODE_WORDS.autoRun, tone: 'warn' })
-  if (used?.autoCompact?.on === true) {
+  if (used.autoRun === true) items.push({ text: MODE_WORDS.autoRun, tone: 'warn' })
+  if (used.autoCompact?.on === true) {
     const at = used.autoCompact.at
     items.push({ text: at === null ? MODE_WORDS.autoCompact : `${MODE_WORDS.autoCompact} ${tokensText(at)}` })
   }
-  if (used?.scorer?.on === true) items.push({ text: `${MODE_WORDS.scoring} ${used.scorer.level} ${used.scorer.rounds}` })
-  else if (values !== null && isKitOn(values, KIT_NAMES.scoring)) {
+  if (used.scorer?.on === true) items.push({ text: `${MODE_WORDS.scoring} ${used.scorer.level} ${used.scorer.rounds}` })
+  return items
+}
+
+// claude-kit's modes on, from its settings file alone: auto-run, and scoring with its pass score and the rounds its
+// grading loop runs, which the file does not carry: more under its auto-run
+function kitItems(kit: KitState | null): Seg[] {
+  const values = kit?.values ?? null
+  if (values === null) return []
+  const items: Seg[] = []
+  const isAutoRun = isKitOn(values, KIT_NAMES.autoRun)
+  if (isAutoRun) items.push({ text: MODE_WORDS.autoRun, tone: 'warn' })
+  if (isKitOn(values, KIT_NAMES.scoring)) {
     const pass = kitPassScore(values)
-    items.push({ text: pass === null ? MODE_WORDS.scoring : `${MODE_WORDS.scoring} ${pass} ${KIT_SCORING_ROUNDS}` })
+    const rounds = isAutoRun ? KIT_AUTO_RUN_ROUNDS : KIT_SCORING_ROUNDS
+    items.push({ text: pass === null ? MODE_WORDS.scoring : `${MODE_WORDS.scoring} ${pass} ${rounds}` })
   }
   return items
 }
@@ -38,9 +50,14 @@ function fittingLine(items: Seg[], separator: string, columns: number): Line {
   return []
 }
 
-// The modes on, within the band's width
-export function modesLine(stack: Stack | null, kit: KitState | null, columns: number): Line {
-  return fittingLine(modeItems(stack, kit), MODES_JOIN, columns)
+// Alfred Code's modes on, within the band's width
+export function alfredModesLine(stack: Stack | null, columns: number): Line {
+  return fittingLine(alfredItems(stack), MODES_JOIN, columns)
+}
+
+// claude-kit's modes on, within the band's width
+export function kitModesLine(kit: KitState | null, columns: number): Line {
+  return fittingLine(kitItems(kit), MODES_JOIN, columns)
 }
 
 // The model claude-kit's settings file names for each role, within the band's width

@@ -53,14 +53,16 @@ export type BandInput = {
   account?: { org: string | null; kind?: AccountKind | null }
   // The MCP item (spec 2026-11-23, D5), on line 1 after the identity (the user, 2026-11-24); absent or empty, none
   mcp?: Seg[]
-  // The modes line under the identity (the user, 2026-11-24): Alfred Code's and claude-kit's modes on; absent or empty, none
-  modes?: Line
-  // claude-kit's models (the user, 2026-11-25), beside the modes or under them; absent or empty, none
+  // The modes on, each source on its own line (the user, 2026-11-25): Alfred Code's and claude-kit's; absent or empty, none
+  alfredModes?: Line
+  kitModes?: Line
+  // claude-kit's models (the user, 2026-11-25), on its line after its modes or under them; absent or empty, none
   models?: Line
 }
 
-// Where the modes line goes: a line of its own under the identity, or after it on line 1 where the two fit (short of rows)
-export type ModesKeep = 'own' | 'joined'
+// How the modes lines draw: a line each with claude-kit's models ('own'), one line for both with no models short of rows
+// ('joined'), or none where even that cannot stay
+export type ModesKeep = 'own' | 'joined' | 'none'
 
 // `isSinceResume` false where the transcript counts the by-path rules from before a resume; absent, as true
 export type RulesInput = { always: RuleEntry[]; byPath: RuleEntry[]; isTracked: boolean; note?: 'unread' | 'not-found'; isSinceResume?: boolean }
