@@ -120,7 +120,7 @@ test('an empty identity is dropped', () => {
 test('the calm band and a working band lead with the identity line', () => {
   for (const o of [{ mode: 'calm' as const }, { isWorking: true, live }]) {
     const lines = texts(bandLines(withVersion({ ...o, account: TEAM, mcp: MCP })))
-    expect(lines[0]).toMatch(/^Acme \| Team \| CC 2\.1\.331 │ mcp ✓ 3/)
+    expect(lines[0]?.startsWith(`Acme | Team | CC ${VERSION} │ mcp ✓ 3`)).toBe(true)
     expect(lines.length).toBeGreaterThan(1)
   }
 })

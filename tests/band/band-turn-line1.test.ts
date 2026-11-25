@@ -29,6 +29,8 @@ test('the finished turn joins line 1 after the MCP item and before the new failu
 test('with no new failures the merged turn keeps its own failure count', () => {
   const lines = texts(bandLines(acme({ columns: 150, turns: failed.turns, usage: { ...USAGE, contextPercent: 70 } })))
   expect(lines[0]).toBe('Acme | Team | CC 2.1.330 │ mcp ✓ 10 │ ✓ Turn 1 · 3s · 19 tools · 1 ✗')
+  const own = bandLines(acme({ columns: 150, turns: failed.turns, usage: { ...USAGE, contextPercent: 70 } }))[0]?.find(seg => 'text' in seg && seg.text === ' · 1 ✗')
+  expect(own).toMatchObject({ tone: 'fail' })
 })
 test('the running turn joins line 1 too', () => {
   expect(texts(bandLines(acme({ columns: 150, ...running })))[0]).toBe('Acme | Team | CC 2.1.330 │ mcp ✓ 10 │ ⟳ Turn 2 · 0:12 · 3 tools')
@@ -82,7 +84,20 @@ test('with no identity the turn stays its own row; under the input the action ro
   const bare = texts(bandLines(input({ account: undefined, ...failed })))
   expect(bare[0]).toBe('✗ 1 new ') // today's line 1 with no identity: the failures item alone
   expect(bare[1]).toMatch(/^✓ Turn 1/)
+  const merged = bandLines(acme({ columns: 150, ...failed })).length
+  expect(bare.length).toBe(merged + 1)
   const under = texts(bandLines(acme({ columns: 150, ...failed, cache: closing, under: { buttons: 'text' } })))
   expect(under[0]).toMatch(/^⚠ cache cold/)
   expect(under[1]).toContain('✓ Turn 1')
+})
+test('a calm band whose plan runs keeps the whole step-less plan line on line 1, the title never cut', () => {
+  const long = 'Update the interceptor and every caller of the refresh endpoint'
+  const longPlan = planView(planOf({ S4: { title: long } }), FIVE_TIMES, FIVE_OVERHEAD, {}, PLAN_NOW)
+  for (const columns of [100, 160]) {
+    const line = texts(bandLines(acme({ columns, mode: 'calm', isWorking: true, live: { ...live, runningCalls: [] }, plan: longPlan })))[0] ?? ''
+    expect(line).toContain('Token refresh')
+    expect(line).toContain('3/5 · 60%')
+    expect(line).not.toContain('…')
+    expect(line).not.toContain('⟳ S4 12m')
+  }
 })

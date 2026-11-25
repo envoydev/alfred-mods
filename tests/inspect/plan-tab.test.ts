@@ -135,7 +135,7 @@ for (const surface of SURFACES) {
     ]
     await clock.settle()
 
-    expect((await rows(await band($, surface, true, 110)))[0]).toBe(`${ACCOUNT}${PLAN_LINE} +2 agents`)
+    expect((await rows(await band($, surface, true, 126)))[0]).toBe(`${ACCOUNT}${PLAN_LINE} +2 agents │ Bash ▸ Run tests 0:00`)
     expect((await rows(await band($, surface, true, 100)))[0]).toBe(`${ACCOUNT}${PLAN_LINE} +2 agents`)
 
     const long = 'Update the interceptor and every caller of the refresh endpoint'
@@ -144,7 +144,8 @@ for (const surface of SURFACES) {
       if (s4 !== undefined) s4.title = long
     }), NOW + 1)
     await clock.advance(30_000)
-    expect((await rows(await band($, surface, true, 100)))[0]).toBe(`${ACCOUNT}⟳ S4 12m · 2 agents`)
+    // The long step gives way first: the whole step-less plan line stays, with the agents and the Bash after it
+    expect((await rows(await band($, surface, true, 100)))[0]).toBe(`${ACCOUNT}Token refresh ▰▰▰▱▱ 3/5 · 60% · 1h 12m · ≈30m left +2 agents │ Bash ▸ Run tests 0:30`)
     await finish(clock, calls)
   })
 

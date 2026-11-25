@@ -1366,6 +1366,14 @@ function planBar(percent        )       {
 // 'Token refresh ▰▰▰▱▱ 3/5 · 60% · 1h 12m · ≈30m left │ ▶ Update interceptor', or 'Token refresh ▰▰▰▰▰ done ✓ in 1h 19m'
 // once every step is finished. Past `columns` the step part goes, then the title is cut.
 function planLine(view          , columns        )       {
+  const [full, bare] = planForms(view)
+  if (widthOf(full) <= columns) return full
+  const rest = bare.slice(1)
+  return [{ text: `${cut(fitLine(view.title, 80), columns - widthOf(rest) - 1)} ` }, ...rest]
+}
+
+// The plan line's two whole forms, none cut: with the running step, then without it (the title kept whole)
+function planForms(view          )               {
   const title = fitLine(view.title, 80)
   const rest       = view.isFinished
     ? [...planBar(100), { text: ` done ✓ in ${minutesText(view.workedMs)}` }]
@@ -1376,9 +1384,8 @@ function planLine(view          , columns        )       {
   const first = view.running[0]
   const step       = first === undefined ? [] : [{ text: ` │ ▶ ${fitLine(first.step.title, 80)}` }]
   if (view.running.length > 1) step.push({ text: ` +${view.running.length - 1}`, tone: 'dim' })
-  const full       = [{ text: `${title} ` }, ...rest, ...step]
-  if (widthOf(full) <= columns) return full
-  return [{ text: `${cut(title, columns - widthOf(rest) - 1)} ` }, ...rest]
+  const bare       = [{ text: `${title} ` }, ...rest]
+  return [[...bare, ...step], bare]
 }
 
 // The full band's plan row after its label (the owner's target, 2026-11-11): 'Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update
@@ -1583,7 +1590,7 @@ function planLines(
   return out
 }
 
-return { planLine, planRowParts, narrowPlan, planSection, scoreSeg, scoresLabel, planLines };
+return { planLine, planForms, planRowParts, narrowPlan, planSection, scoreSeg, scoresLabel, planLines };
 })();
 // ---- hooks/kit/constants.ts
 __m['kit/constants.ts'] = (() => {
@@ -2173,7 +2180,7 @@ __m['band/working.ts'] = (() => {
 const { actionOf, isLive } = __m['agents/agents.ts'];
 const { billingOf, cacheView, minutesLeftText } = __m['cache/cache.ts'];
 const { durationText, elapsedText, fitLine, tokensText, usdText, widthOf } = __m['core/format.ts'];
-const { narrowPlan, planLine, scoreSeg } = __m['plan/planlines.ts'];
+const { narrowPlan, planForms, planLine, scoreSeg } = __m['plan/planlines.ts'];
                                                
                                         
                                             
@@ -2304,28 +2311,38 @@ function turnForms(input           , isNarrow         , isPlanRowDrawn         ,
       forms.push([head])
     } else {
       const head = turnHead(input, false, running)
-      const lead       = plan === null ? [head] : planLine(plan, Infinity)
       const bash = bashPart(input)
       const parts = agentParts(running)
-      for (let kept = parts.length; kept >= 0; kept--) forms.push([...lead, ...foldedParts(parts, kept), ...bash])
-      if (parts.length > 0) forms.push([...lead, ...foldedParts(parts, 0)])
-      forms.push(lead)
+      // The plan line with its running step, then without it, each whole; line 1 takes the first that fits
+      const leads         = plan === null ? [[head]] : planForms(plan)
+      for (const lead of leads) {
+        for (let kept = parts.length; kept >= 0; kept--) forms.push([...lead, ...foldedParts(parts, kept), ...bash])
+        if (parts.length > 0) forms.push([...lead, ...foldedParts(parts, 0)])
+        forms.push(lead)
+      }
       if (plan !== null) forms.push(narrowPlan(plan, running.length), narrowPlan(plan, 0))
       else if (input.isWorking) forms.push([turnHead(input, true, running)])
     }
   } else if (input.turns.length > 0) {
     const tail = planTail(input, isPlanRowDrawn)
     const full = turnPart(input, false, isFailuresShown)
-    const withTimes = input.mode === 'full' ? full : [...full, ...times(input)]
+    const timed = input.mode === 'full' ? full : [...full, ...times(input)]
     const narrow = turnPart(input, true, isFailuresShown)
     if (isNarrow) forms.push([...narrow, ...tail], narrow)
     else {
-      const wide = input.mode === 'full' ? [withTimes] : [withTimes, full]
+      const wide = input.mode === 'full' ? [timed] : [timed, full]
       for (const form of wide) forms.push([...form, ...tail], form)
       forms.push(narrow)
     }
   }
-  return forms.filter((form, i) => form.length > 0 && (i === 0 || JSON.stringify(form) !== JSON.stringify(forms[i - 1])))
+  // No empty form, and none the same as an earlier one
+  const seen = new Set        ()
+  return forms.filter(form => {
+    const key = JSON.stringify(form)
+    if (form.length === 0 || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 // What the spinner adds after the engine's suffix: an agent's action and context on that agent's spinner; on the main
@@ -2418,7 +2435,7 @@ __m['band/lines.ts'] = (() => {
 const { fitLine, widthOf } = __m['core/format.ts'];
 const { ORG_STRICT, PERSONAL } = __m['account/constants.ts'];
                                               
-const { CC_LABEL, TURN_ROOM_MIN, ORG_JOIN, ORG_LABEL, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN, MODES_JOIN, SOURCE_LABELS, SOURCE_LABEL_CELLS } = __m['band/constants.ts'];
+const { CC_LABEL, MODES_JOIN, ORG_JOIN, ORG_LABEL, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN, SOURCE_LABEL_CELLS, SOURCE_LABELS, TURN_ROOM_MIN } = __m['band/constants.ts'];
                                                               
 const { cellsOf } = __m['band/wrap.ts'];
 
@@ -2552,7 +2569,7 @@ function underRows(viewport                                          , chrome   
 const KEEP_ALL       = { modes: 'own', infoUpTo: 2, isPlaceKept: true, toolRowsKept: Infinity, isUsageKept: true, isPlanKept: true }
 
 // Line 1 is the identity ('● REC' while REC is on, the signed-in account and Claude Code's version), left out when it holds
-// nothing; then the body: the turn line, the info line, the gauges, the modes lines (alfred-code's, then claude-kit's)
+// nothing; the turn joins it where the width holds both, else leads the body. Then the body: the info line, the gauges, the modes lines (alfred-code's, then claude-kit's)
 // and the rows under them (the user's order, 2026-11-25).
 // The identity is never dropped for rows or width.
 function bandLines(input           )         {
@@ -5076,7 +5093,7 @@ const BAND_PRESETS = [
   ['Recording', 'A red ● REC leads line 1. The pinned line under the prompt leaves REC and ctx out while the band shows them.', { running: true }, null, { user: { rec: 'on' } }],
   ['REC from a project file', 'A committed .claude/settings.json says "on" over a user file saying "off": the order holds for REC as for every field. Mid-session REC never falls because a file went quiet - a typo drops the whole file - so it holds until that file says a lower level or the next claude run.', { running: true }, null, { user: { rec: 'off' }, project: { rec: 'on' } }],
   ['Band collapsed', 'Ctrl+X Ctrl+A hides the band above the input. The pinned line then carries REC, and ctx from 60%, since nothing else shows them.', { collapsed: true }, d => ({ ctxUsed: Math.ceil(Number(d.window) * 0.7), agents: noRun(d.agents) }), { user: { rec: 'on' } }],
-  ['Tool failures', 'Between turns, ✗ 2 new and its Inspect button end line 1, after the MCP item, and the pinned line says it too. 1, or a click, opens /inspect with the reasons.', {}, d => ({ failures: 2, agents: noRun(d.agents) })],
+  ['Tool failures', 'Between turns, ✗ 2 new and its Inspect button end line 1 (the turn may sit between the MCP item and them), and the pinned line says it too. 1, or a click, opens /inspect with the reasons.', {}, d => ({ failures: 2, agents: noRun(d.agents) })],
   ['Claude works in another folder', "The project row follows Claude's last cd or the last file it edited: the project, the branch of the repository holding the folder with ↑ commits ahead of and ↓ behind its upstream as of the last fetch and the uncommitted +added −removed lines, then the folder; at the project's root the folder is left out.", { running: true }, () => ({ folder: 'src/app/auth' })],
   ['A branch never pushed', 'A local branch has no upstream, so the project row draws no arrows; its uncommitted changes still show. git push -u origin <branch> gives it one.', { running: true, upstream: false }],
   ['Terminal 100 columns wide', 'Under 100 columns the gauges take their narrow form and line 1 shortens. The info line breaks between items onto a second row; past two rows Claude\'s reply time gives way first, then your prompt\'s. The project row shortens its folder.', { running: true, cols: 100 }],

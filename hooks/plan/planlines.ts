@@ -34,6 +34,14 @@ function planBar(percent: number): Line {
 // 'Token refresh ▰▰▰▱▱ 3/5 · 60% · 1h 12m · ≈30m left │ ▶ Update interceptor', or 'Token refresh ▰▰▰▰▰ done ✓ in 1h 19m'
 // once every step is finished. Past `columns` the step part goes, then the title is cut.
 export function planLine(view: PlanView, columns: number): Line {
+  const [full, bare] = planForms(view)
+  if (widthOf(full) <= columns) return full
+  const rest = bare.slice(1)
+  return [{ text: `${cut(fitLine(view.title, 80), columns - widthOf(rest) - 1)} ` }, ...rest]
+}
+
+// The plan line's two whole forms, none cut: with the running step, then without it (the title kept whole)
+export function planForms(view: PlanView): [Line, Line] {
   const title = fitLine(view.title, 80)
   const rest: Line = view.isFinished
     ? [...planBar(100), { text: ` done ✓ in ${minutesText(view.workedMs)}` }]
@@ -44,9 +52,8 @@ export function planLine(view: PlanView, columns: number): Line {
   const first = view.running[0]
   const step: Line = first === undefined ? [] : [{ text: ` │ ▶ ${fitLine(first.step.title, 80)}` }]
   if (view.running.length > 1) step.push({ text: ` +${view.running.length - 1}`, tone: 'dim' })
-  const full: Line = [{ text: `${title} ` }, ...rest, ...step]
-  if (widthOf(full) <= columns) return full
-  return [{ text: `${cut(title, columns - widthOf(rest) - 1)} ` }, ...rest]
+  const bare: Line = [{ text: `${title} ` }, ...rest]
+  return [[...bare, ...step], bare]
 }
 
 // The full band's plan row after its label (the owner's target, 2026-11-11): 'Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update

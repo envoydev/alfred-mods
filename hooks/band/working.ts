@@ -2,7 +2,7 @@
 import { actionOf, isLive } from '../agents/agents'
 import { billingOf, cacheView, minutesLeftText } from '../cache/cache'
 import { durationText, elapsedText, fitLine, tokensText, usdText, widthOf } from '../core/format'
-import { narrowPlan, planLine, scoreSeg } from '../plan/planlines'
+import { narrowPlan, planForms, planLine, scoreSeg } from '../plan/planlines'
 import type { AgentRow } from '../agents/types'
 import type { BandInput } from './types'
 import type { Live } from '../session/types'
@@ -133,28 +133,38 @@ export function turnForms(input: BandInput, isNarrow: boolean, isPlanRowDrawn: b
       forms.push([head])
     } else {
       const head = turnHead(input, false, running)
-      const lead: Line = plan === null ? [head] : planLine(plan, Infinity)
       const bash = bashPart(input)
       const parts = agentParts(running)
-      for (let kept = parts.length; kept >= 0; kept--) forms.push([...lead, ...foldedParts(parts, kept), ...bash])
-      if (parts.length > 0) forms.push([...lead, ...foldedParts(parts, 0)])
-      forms.push(lead)
+      // The plan line with its running step, then without it, each whole; line 1 takes the first that fits
+      const leads: Line[] = plan === null ? [[head]] : planForms(plan)
+      for (const lead of leads) {
+        for (let kept = parts.length; kept >= 0; kept--) forms.push([...lead, ...foldedParts(parts, kept), ...bash])
+        if (parts.length > 0) forms.push([...lead, ...foldedParts(parts, 0)])
+        forms.push(lead)
+      }
       if (plan !== null) forms.push(narrowPlan(plan, running.length), narrowPlan(plan, 0))
       else if (input.isWorking) forms.push([turnHead(input, true, running)])
     }
   } else if (input.turns.length > 0) {
     const tail = planTail(input, isPlanRowDrawn)
     const full = turnPart(input, false, isFailuresShown)
-    const withTimes = input.mode === 'full' ? full : [...full, ...times(input)]
+    const timed = input.mode === 'full' ? full : [...full, ...times(input)]
     const narrow = turnPart(input, true, isFailuresShown)
     if (isNarrow) forms.push([...narrow, ...tail], narrow)
     else {
-      const wide = input.mode === 'full' ? [withTimes] : [withTimes, full]
+      const wide = input.mode === 'full' ? [timed] : [timed, full]
       for (const form of wide) forms.push([...form, ...tail], form)
       forms.push(narrow)
     }
   }
-  return forms.filter((form, i) => form.length > 0 && (i === 0 || JSON.stringify(form) !== JSON.stringify(forms[i - 1])))
+  // No empty form, and none the same as an earlier one
+  const seen = new Set<string>()
+  return forms.filter(form => {
+    const key = JSON.stringify(form)
+    if (form.length === 0 || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 // What the spinner adds after the engine's suffix: an agent's action and context on that agent's spinner; on the main

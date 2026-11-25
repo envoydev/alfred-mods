@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { parseScores, planView, scoresView } from '../../hooks/plan/plan'
-import { planLine, planLines, scoresLabel } from '../../hooks/plan/planlines'
+import { planForms, planLine, planLines, scoresLabel } from '../../hooks/plan/planlines'
 import { widthOf } from '../../hooks/core/format'
 import { FIVE, FIVE_OVERHEAD, FIVE_TIMES, MIN, NOW, SCORES_JSON, planOf } from '../plans'
 import type { Line } from '../../hooks/core/types'
@@ -90,4 +90,13 @@ test('in a narrow pane the titles are cut so each step keeps its time and estima
   expect(steps[1]).toBe('✓ S2 Rotate tokens ✎ done in 24m est 20m')
   expect(steps[2]).toMatch(/^✓ S3 Migration with r… done in 12m est 10m$/)
   expect(steps[3]).toMatch(/^⟳ S4 .* 12m of ≈24m est 20m$/)
+})
+
+test('planForms gives the whole line with its step, then the whole step-less line, the title never cut', () => {
+  const v = planView(planOf({ S4: { title: 'Update the interceptor and every caller of the refresh endpoint' } }), FIVE_TIMES, FIVE_OVERHEAD, {}, NOW)
+  const [full, bare] = planForms(v)
+  expect(text(full)).toBe('Token refresh ▰▰▰▱▱ 3/5 · 60% · 1h 12m · ≈30m left │ ▶ Update the interceptor and every caller of the refresh endpoint')
+  expect(text(bare)).toBe('Token refresh ▰▰▰▱▱ 3/5 · 60% · 1h 12m · ≈30m left')
+  expect(planLine(v, widthOf(bare))).toEqual(bare.map((seg, i) => (i === 0 ? { text: 'Token refresh ' } : seg)))
+  expect(planLine(v, Infinity)).toEqual(full)
 })
