@@ -151,10 +151,11 @@ test("REC's mark takes a line of its own: the lines under it keep the band's wid
   for (const o of [{ newFailures: 1 }, {}]) {
     const plain = bandLines(input({ columns: 128, ...o }))
     const marked = bandLines(input({ columns: 128, ...o, ...marks }))
-    // With new failures line 1 holds them, and REC leads it
+    // With new failures REC leads line 1 and the turn joins it before them; the plain band has no identity, so its turn row
+    // (after its failures row) is the row that moved up. The idle healthy band has no turn row, so REC stands alone
     const isFailed = 'newFailures' in o
-    expect(text(marked[0] ?? [])).toBe(isFailed ? '● REC │ ✗ 1 new [ Inspect ]' : '● REC')
-    expect(texts(marked.slice(1))).toEqual(texts(isFailed ? plain.slice(1) : plain))
+    expect(text(marked[0] ?? [])).toBe(isFailed ? '● REC │ ✓ Turn 1 · 3s · 19 tools │ ✗ 1 new [ Inspect ]' : '● REC')
+    expect(texts(marked.slice(1))).toEqual(texts(isFailed ? plain.slice(2) : plain))
     expect(texts(marked).includes(FULL)).toBe(true)
   }
 })
@@ -350,13 +351,13 @@ test('short of rows, the project row goes first, then the second info row, befor
   const at = (maxRows: number) => texts(bandLines(input({ ...FOUR, columns: 79, session: meta, isToolsOpen: true, newFailures: 1, maxRows })))
   const second = `${TIMES} │ 59m`
   const open = 4
-  // Line 1 with the account and the new failures, the turn line, two info rows, the gauges, the project row, usage:, four rows
-  expect(at(7 + open)).toContain('project: alfred-mods │ git:(develop)')
-  expect(at(6 + open).some(l => l.startsWith('project:'))).toBe(false)
-  expect(at(6 + open)).toContain(second)
-  expect(at(5 + open)).not.toContain(second)
-  expect(at(5 + open)).toContain(`${HEAD} │ you ${clockText(P)} │ 59m`)
-  for (const n of [7 + open, 6 + open, 5 + open]) {
+  // Line 1 with the account, the turn and the new failures, two info rows, the gauges, the project row, usage:, four rows
+  expect(at(6 + open)).toContain('project: alfred-mods │ git:(develop)')
+  expect(at(5 + open).some(l => l.startsWith('project:'))).toBe(false)
+  expect(at(5 + open)).toContain(second)
+  expect(at(4 + open)).not.toContain(second)
+  expect(at(4 + open)).toContain(`${HEAD} │ you ${clockText(P)} │ 59m`)
+  for (const n of [6 + open, 5 + open, 4 + open]) {
     expect(at(n)).toHaveLength(n)
     expect(at(n).filter(l => /^(tools|skills|agents|rules):/.test(l))).toHaveLength(open)
   }

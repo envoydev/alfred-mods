@@ -1,10 +1,15 @@
 // The plan's types: plans, scores, step times and the drawn plan
+import type { EngineInterface } from 'claude-code'
 import type { Outcome } from '../tools/types'
 import type { Credit, Finding, Plan, PlanChange, PlanStep, Plans, ScoreRound, Scores, Severity, Slice, StepStatus, StepTime, TaskItem, Watched } from '../../types'
 export type { Credit, Finding, Plan, PlanChange, PlanStep, Plans, ScoreRound, Scores, Severity, Slice, StepStatus, StepTime, TaskItem, Watched }
 
 // Where the plan and score files live: the value of the `plansFolder` setting
 export type PlansFolder = 'default' | '.alfred' | '.alfred-mods'
+
+// Where the plan row reads plans from: the plan and score files' roots, every plan folder of Alfred Code's, and the one
+// its status file names
+export type PlanSources = { fileRoots: readonly string[]; isEveryAlfredPlan: boolean; isAlfredNamed: boolean }
 
 // A file `/alfred-mods:update` copied: the source's mtimeMs, and the copy's own mtimeMs and size as the update saw them
 export type Moved = { path: string; mtimeMs: number; copyMtimeMs: number; copySize: number }
@@ -51,6 +56,9 @@ export type PlanDrawing = {
   shown: PlanView | null; band: PlanView | null; invalid: boolean; scores: ScoresView | null; score: ScoresView | null
   isPlanScore: boolean; others: string[]; otherScores: string[]; updatedAt: number | null
 }
+
+// What `$.fs.list` answers for one folder
+export type FolderEntries = Awaited<ReturnType<EngineInterface['fs']['list']>>
 
 // One `*.json` file a plan or scores folder lists
 export type Listed = { name: string; mtimeMs: number; size: number; path: string }

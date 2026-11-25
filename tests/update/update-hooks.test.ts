@@ -154,13 +154,13 @@ test('51 files print the cap line and move 50', async ($, on) => {
   expect(rm.calls[0]).toHaveLength(3 + 50)
 })
 
-test('the files of every other root move, whichever root is chosen', async ($, on) => {
+test('the files of both other roots move into claude-kit\'s .alfred-mods', async ($, on) => {
   const { rm } = await start($, on, {
-    sources: { project: mod({ plansFolder: '.alfred' }) },
-    files: { [`${OLD_PLANS}/a.json`]: stub(DONE), '.alfred-mods/plans/b.json': stub(DONE) },
+    sources: { project: mod({ plansFolder: '.alfred-mods' }) },
+    files: { [`${OLD_PLANS}/a.json`]: stub(DONE), '.alfred/alfred-mods/plans/b.json': stub(DONE) },
   })
-  expect((await alfred($, 'update'))[0]).toBe('moved 2 plan and scores files to .alfred/alfred-mods/')
-  expect(rm.calls[0]?.slice(3).sort()).toEqual([`${OLD_PLANS}/a.json`, '.alfred-mods/plans/b.json'].sort())
+  expect((await alfred($, 'update'))[0]).toBe('moved 2 plan and scores files to .alfred-mods/')
+  expect(rm.calls[0]?.slice(3).sort()).toEqual([`${OLD_PLANS}/a.json`, '.alfred/alfred-mods/plans/b.json'].sort())
 })
 
 test('a .gitignore without a line for the root gets one, and the line prints', async ($, on) => {
@@ -406,15 +406,15 @@ test('an earlier choice from before 0.8 is written to the user file', async ($, 
   expect(JSON.parse(fileAt(files, '/home/u/.claude/settings.json') ?? '{}')).toEqual({ 'alfred-mods': { rec: 'on' } })
 })
 
-test('init .alfred moves into the folder just written and adds that root to .gitignore, whatever the settings in force say', async ($, on) => {
+test('init .alfred-mods moves into the folder just written and adds it to .gitignore, whatever the settings in force say', async ($, on) => {
   const { files, rm } = await start($, on, {
     sources: { project: mod({ plansFolder: 'default' }) }, files: { [`${OLD_PLANS}/p.json`]: stub(DONE), '.gitignore': stub('x\n') },
   })
-  const lines = await alfred($, 'init', '.alfred')
-  expect(lines).toContain('moved 1 plan or scores file to .alfred/alfred-mods/')
-  expect(lines).toContain('added .alfred/alfred-mods/ to .gitignore')
-  expect(fileAt(files, '.alfred/alfred-mods/plans/p.json')).toBe(DONE)
-  expect(fileAt(files, '.gitignore')).toBe('x\n.alfred/alfred-mods/\n')
+  const lines = await alfred($, 'init', '.alfred-mods')
+  expect(lines).toContain('moved 1 plan or scores file to .alfred-mods/')
+  expect(lines).toContain('added .alfred-mods/ to .gitignore')
+  expect(fileAt(files, '.alfred-mods/plans/p.json')).toBe(DONE)
+  expect(fileAt(files, '.gitignore')).toBe('x\n.alfred-mods/\n')
   expect(rm.calls).toHaveLength(1)
 })
 

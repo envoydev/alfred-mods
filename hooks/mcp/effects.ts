@@ -6,7 +6,10 @@ import type { EngineInterface } from 'claude-code'
 import type { HookInput, HookNext } from '../core/types'
 import { EARLY_MS, INITIAL_SERVERS, IDLE_POLL_MS, POLL_MS } from './constants'
 import { isEngineRaise, isSameServers, markFailed, markLoading, markPassed, markRead, readOutcome, refusalOf, serversToRead, settle, toolServers } from './mcp'
+import { offServerNames, withoutOff } from './off'
 import type { McpServer, ReadOutcome } from './types'
+import { readConfigTextCached } from '../account/effects'
+import { readSettingsLayers } from '../settings/effects'
 
 const mcpAtom = atom({ plugin: 'alfred-mods', key: 'mcp' } as const, INITIAL_SERVERS as McpServer[], { shape: 'mcp-3' })
 
@@ -51,7 +54,7 @@ export async function keepMcp($: EngineInterface): Promise<void> {
 }
 
 // The engine's raise for a server about to join: it is loading from now, and a refusal answer marks it failed. Any other
-// answer leaves it loading, as the dial only follows; its state read, the tool list or the time settles it. The answer
+// answer leaves it loading, as the dial only follows; its state read, the tool list or the time decides it. The answer
 // goes on untouched.
 // Another plugin's `$.mcp.connect` goes through as it came: it spells a server as its manifest key, which no tool matches.
 export async function trackMcpConnect($: EngineInterface, e: HookInput<'mcp.connect'>, next: HookNext<'mcp.connect'>) {
@@ -65,11 +68,20 @@ export async function trackMcpConnect($: EngineInterface, e: HookInput<'mcp.conn
   return answer
 }
 
-// One read of the tool list at `now`: a list that cannot be read leaves the servers to settle by time alone
+// The servers Claude Code's records turn off for this project, read on each poll: a switch-off mid-session shows at the
+// next one. A file that cannot be read turns off only what its absence does.
+async function readOffServers($: EngineInterface): Promise<Set<string>> {
+  const root = await $.session.root().catch(() => $.session.cwd()).catch(() => '')
+  return offServerNames({ configText: await readConfigTextCached($), root, layers: await readSettingsLayers($) })
+}
+
+// One read of the tool list at `now`: a list that cannot be read leaves time alone to decide the unread servers. A server
+// the records turn off is no part of the count (the user, 2026-11-25).
 async function refreshMcp($: EngineInterface, now: number): Promise<void> {
   mcpMemory.lastReadAt = now
   const names = await $.tool.list().then(toolServers, () => [])
-  await updateMcp($, servers => settle(servers, names, now, mcpMemory.isReadOff ? null : mcpMemory.unreadable))
+  const off = await readOffServers($)
+  await updateMcp($, servers => withoutOff(settle(servers, names, now, mcpMemory.isReadOff ? null : mcpMemory.unreadable), off, names))
   readServerStates($, baseOf(await read($, mcpAtom)))
 }
 

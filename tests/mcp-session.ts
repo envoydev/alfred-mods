@@ -42,8 +42,8 @@ export type Beneath = { answer: McpConnectResult; reads: number }
 
 // A session whose atom `mcp` holds `stored` before it starts, as a run that stored it left it: `servers` reads the mod's
 // last written list; `tools` is the tool list, changed mid-test
-export async function begin($: Engine, on: On, o: { tools?: string[]; stored?: McpServer[] } & Read = {}) {
-  const kit = stubAll(on, { root: '/work/app', cwd: '/work/app', now: NOW })
+export async function begin($: Engine, on: On, o: { tools?: string[]; stored?: McpServer[]; kit?: Parameters<typeof stubAll>[1] } & Read = {}) {
+  const kit = stubAll(on, { root: '/work/app', cwd: '/work/app', now: NOW, ...o.kit })
   const tools = stubTools(on, o.tools ?? [])
   const state = emptyState(on, ['mcp'], o.stored === undefined ? {} : { mcp: { shape: SHAPE, value: o.stored } })
   const beneath: Beneath = { answer: PASSED, reads: 0 }

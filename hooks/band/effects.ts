@@ -14,7 +14,8 @@ import { readRec } from '../rec/effects'
 import { readFailures, readStats } from '../tools/effects'
 import { runwayOf } from '../stack/stack'
 import { readKit, readKitScoreLevel } from '../kit/effects'
-import { modesLine } from './modes'
+import { alfredModesLine, kitModesLine, modelsLine } from './modes'
+import { SOURCE_LABEL_CELLS } from './constants'
 import { readHandoff, saveNow } from '../handoff/effects'
 import { recSummary } from '../rec/rec'
 import { openInspectFromBand } from '../inspect/effects'
@@ -107,6 +108,7 @@ async function readBandInput(
   const setting = await readBandSetting($)
   const parts = await readParts($)
   const account = await readAccount($)
+  const kit = await readKit($)
   const transcript = transcriptState()
   return {
     now, columns: at.columns, ...(at.maxRows === undefined ? {} : { maxRows: at.maxRows }), isWorking: at.isWorking,
@@ -114,7 +116,7 @@ async function readBandInput(
     newFailures: (await readFailures($)).filter(failure => failure.isNew).length, pace: await readPace($), agents: await readAgents($),
     cache: await readCache($), plan: drawing.band, isPlanInvalid: drawing.invalid, score: drawing.score, isPlanScore: drawing.isPlanScore, scoreLevel: (await readScoreLevel($)) ?? (await readKitScoreLevel($)), rec: recSummary(await readRec($)),
     forecast: forecastTargetOf(handoff, usage, runway), handoffAskStep: handoff.isAskUp ? handoff.handledStep : null, isSkipAskUp: (await readSkipAsk($)).isAskUp, runway,
-    account: { org: account.org, kind: account.kind }, mcp: mcpItem(await readMcp($)), modes: modesLine(st, await readKit($), at.columns),
+    account: { org: account.org, kind: account.kind }, mcp: mcpItem(await readMcp($)), alfredModes: alfredModesLine(st, at.columns - SOURCE_LABEL_CELLS), kitModes: kitModesLine(kit, at.columns - SOURCE_LABEL_CELLS), models: modelsLine(kit, at.columns - SOURCE_LABEL_CELLS),
     mode: setting.mode, totals: await readTotals($), stats: await readStats($),
     isToolsOpen: setting.isToolsOpen === true, skillListing: parts.skills ?? null,
     rules: {

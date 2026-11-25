@@ -7,6 +7,7 @@ import type { Cache, CacheConfig } from './types'
 import { TOAST_HOP_MS } from './constants'
 import { addRequest, afterCompact, billingOf, cacheView, idleOf, isIdleSurfaceOf, minutesLeftText, pinOf, takeRate, takeSwitch, toastAt } from './cache'
 import { noteCompaction, readLive, readUsage, setModel } from '../session/effects'
+import { guessEffort } from '../effort/effects'
 import type { Pending, HookInput, HookNext } from '../core/types'
 import { toast } from '../core/effects'
 import { retellRecNote } from '../rec/effects'
@@ -136,6 +137,7 @@ export async function trackModelSwitch($: EngineInterface, e: HookInput<'classic
   const done = await next(e)
   // The band names the model before the first step does (the review, 2026-11-11)
   await setModel($, e.to_model)
+  await guessEffort($)
   await takeSwitchReport($, e, true, pending)
   return done
 }

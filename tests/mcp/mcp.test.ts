@@ -1,5 +1,6 @@
 // The MCP state (spec 2026-11-23, D5): the mcp.connect hook marks a server loading, a refusal marks it failed, the tools
-// the engine lists settle it connected, and 60 s with none settle a loading one whose state read was refused. The read
+// the engine lists settle it connected, and after 60 s with none a loading one whose state read was refused leaves the
+// count: nothing tells its state (the user, 2026-11-25). The read
 // itself is tests/mcp/read.test.ts; here it is refused, as on a build with no read.
 // The kit's `$` carries no `mcp` noun, and a stand-in plugin cannot take the engine's name, so no session test raises the
 // engine's own mcp.connect: its hook, trackMcpConnect, is called directly with a `next` that carries the engine as
@@ -10,7 +11,7 @@ import type { EngineInterface, McpConnectResult } from 'claude-code'
 
 import { register } from '../../hooks/register'
 import { trackMcpConnect } from '../../hooks/mcp/effects'
-import { isEngineRaise, markFailed, markLoading, mcpItem, refusalOf, settle, shortName, toolServers } from '../../hooks/mcp/mcp'
+import { isEngineRaise, markFailed, markLoading, markRead, mcpItem, refusalOf, settle, shortName, toolServers } from '../../hooks/mcp/mcp'
 import { EARLY_MS, POLL_MS, SETTLE_MS } from '../../hooks/mcp/constants'
 import type { McpServer } from '../../hooks/mcp/types'
 import { NOW, OPTIONS, PASSED, REFUSED, SHAPE, begin, connected, dial, loading, seeded, text } from '../mcp-session'
@@ -121,18 +122,18 @@ test('tools showing settle connected', async ($, on) => {
   expect(text(servers())).toBe('mcp ✓ 1')
 })
 
-test('60 s with no tools settles a loading server whose state read is refused connected', async ($, on) => {
+test('60 s with no tools takes a loading server whose state read is refused out of the count', async ($, on) => {
   const { kit, servers } = await begin($, on, { stored: [loading('plugin:p:files')] })
   await kit.clock.advance(SETTLE_MS - 10_000)
   await kit.clock.settle()
   expect(servers().map(s => s.state)).toEqual(['loading'])
   await kit.clock.advance(SETTLE_MS)
   await kit.clock.settle()
-  expect(servers().map(s => s.state)).toEqual(['connected'])
-  expect(text(servers())).toBe('mcp ✓ 1')
+  expect(servers()).toEqual([])
+  expect(text(servers())).toBe('')
 })
 
-test('a tool list that refuses leaves the server loading until it settles by time, its state read refused too', async ($, on) => {
+test('a tool list that refuses leaves the server loading until it is dropped by time, its state read refused too', async ($, on) => {
   const { kit, tools, servers } = await begin($, on, { stored: [loading('plugin:p:files')] })
   tools.refuse = true
   await kit.clock.advance(POLL_MS * 2)
@@ -140,7 +141,7 @@ test('a tool list that refuses leaves the server loading until it settles by tim
   expect(servers().map(s => s.state)).toEqual(['loading'])
   await kit.clock.advance(SETTLE_MS)
   await kit.clock.settle()
-  expect(servers().map(s => s.state)).toEqual(['connected'])
+  expect(servers()).toEqual([])
 })
 
 test('a failed server recovers once its tools show, and time alone never settles it', async ($, on) => {
@@ -282,4 +283,18 @@ test('mcpItem is none for an empty list, and a loading server wins over a failed
     { name: 'a', state: 'failed', reason: 'auth', since: 0 }, { name: 'b', state: 'loading', since: 0 }, { name: 'c', state: 'connected', since: 0 },
   ]
   expect(mcpItem(servers)).toEqual([{ text: 'mcp ◐ 1/3', tone: 'warn' }])
+})
+
+test('a server turned off leaves the list, whether its raise or its state read says so', () => {
+  const two = markLoading(markLoading([], 'files', NOW), 'off', NOW)
+  expect(markFailed(two, 'off', 'disabled')).toEqual([loading('files')])
+  expect(markRead(two, 'off', NOW, { state: 'failed', reason: 'disabled' })).toEqual([loading('files')])
+  expect(markRead(two, 'off', NOW - 1, { state: 'failed', reason: 'disabled' })).toEqual(two)
+})
+
+test('the engine\'s raise answered disabled drops the server', async () => {
+  const { $, servers } = stateEngine([connected('unit-files')])
+  const off: McpConnectResult = { isConnected: false, reason: 'disabled', message: 'm' }
+  await trackMcpConnect($, connect('unit-off'), raisedBy(ENGINE, { value: off }))
+  expect(servers().map(s => s.name)).not.toContain('unit-off')
 })

@@ -193,7 +193,7 @@ table.steps { min-width: 720px; }
   <section class="tabpanel" role="tabpanel" id="panel-box" aria-labelledby="tab-box">
     <section class="panel" aria-label="The band">
       <div><h2>The band - the session at a glance</h2>
-        <p class="muted">The band sits right above the box you type in. It shows where the session stands without a command: how full the context is, your limits, the cost, and what Claude is using. When something needs you, it adds a row that says what, and which key to press. Line 1 is the account you are signed in to and Claude Code's version: <code>Acme | Team | CC 2.1.331</code> for a company's plan, <code>org | Personal</code> for a free, Pro or Max plan, <code>org | unknown</code> for a token login. It is a quick check, not proof. Line 1 then counts the MCP servers and, once Claude has answered, the new tool failures with their Inspect button: <code>Acme | Team | CC 2.1.330 │ mcp ✗ 1 · ✓ 10 │ ✗ 6 new 1: Inspect</code>. Line 2 is the modes on, from Alfred Code and claude-kit: <code>auto-run · auto-compact 400k · scoring 90 3</code>. Then the turn while one runs, the info line, the gauges and the rows under them. Pick a situation to see it react.</p></div>
+        <p class="muted">The band sits right above the box you type in. It shows where the session stands without a command: how full the context is, your limits, the cost, and what Claude is using. When something needs you, it adds a row that says what, and which key to press. Line 1 is the account you are signed in to and Claude Code's version: <code>Acme | Team | CC 2.1.331</code> for a company's plan, <code>Personal</code> for a free, Pro or Max plan, <code>org | unknown</code> for a token login. It is a quick check, not proof. Line 1 then counts the MCP servers and, once Claude has answered, the new tool failures with their Inspect button: <code>Acme | Team | CC 2.1.330 │ mcp ✗ 1 · ✓ 10 │ ✗ 6 new 1: Inspect</code>. A server you turned off in <code>/mcp</code> or in a settings file is not counted, and one whose state cannot be read leaves the count after 60 seconds with no tools. Then the turn, running or finished, joins line 1 where the width holds both, and keeps its own row where it does not; then the info line and the gauges. Under them each source has its own modes line: <code>alfred-code: auto-run · auto-compact 400k · scoring 90 3</code> from Alfred Code's status file, its rounds as <code>/alfred-code:mode:scoring</code> sets them, and <code>claude-kit: auto-run · scoring 90 6 · plan opus | audit opus | review opus | implement sonnet | search haiku</code> from claude-kit's settings file, its rounds the ones its grading loop runs - 3, or 6 under its auto-run. Then the rows under them. Pick a situation to see it react.</p></div>
       <div class="live-tools">
         <label for="preset">Situation <select id="preset"></select></label>
         <label class="width" for="cols">Terminal width <output id="colsOut"></output><input type="range" id="cols" min="24" max="270" step="1"></label>
@@ -364,7 +364,7 @@ table.steps { min-width: 720px; }
 </div>
 
 <script>
-// alfred-mods band code, bundled from hooks/ (core/constants.ts, core/format.ts, agents/agents.ts, cache/constants.ts, cache/cache.ts, core/forecast.ts, session/windows.ts, place/place.ts, context/constants.ts, context/rules.ts, context/parts.ts, plan/planlines.ts, kit/constants.ts, band/constants.ts, band/gauges.ts, band/wrap.ts, band/detail.ts, band/project.ts, band/info.ts, skip/constants.ts, band/working.ts, account/constants.ts, band/lines.ts, band/band.ts, mcp/constants.ts, mcp/mcp.ts, core/guards.ts, kit/kit.ts, kit/kitlines.ts, band/modes.ts, handoff/handoff.ts, stack/constants.ts, stack/stack.ts, tools/constants.ts, tools/compact.ts, plan/constants.ts, plan/plan.ts)
+// alfred-mods band code, bundled from hooks/ (core/constants.ts, core/format.ts, agents/agents.ts, cache/constants.ts, cache/cache.ts, core/forecast.ts, session/windows.ts, place/place.ts, context/constants.ts, context/rules.ts, context/parts.ts, plan/constants.ts, plan/planlines.ts, kit/constants.ts, band/constants.ts, band/gauges.ts, band/wrap.ts, band/detail.ts, band/project.ts, band/info.ts, skip/constants.ts, band/working.ts, account/constants.ts, band/lines.ts, band/band.ts, mcp/constants.ts, mcp/mcp.ts, core/guards.ts, kit/kit.ts, kit/kitlines.ts, band/modes.ts, handoff/handoff.ts, stack/constants.ts, stack/stack.ts, tools/constants.ts, tools/compact.ts, plan/plan.ts, rec/samples.ts, rec/rec.ts, settings/settings.ts, core/folders.ts, plugins/constants.ts, plugins/plugins.ts)
 const BandCore = (() => {
 const __m = {};
 // ---- hooks/core/constants.ts
@@ -380,13 +380,15 @@ const MODEL_ID = new RegExp(`(${FAMILIES.join('|')})(?:-(\\d+)(?:-(\\d+))?)?`)
 // A hotkey of one digit, which also answers from the empty prompt
 const DIGIT_HOTKEY = /^\d$/
 
+// What marks an effort level as worked out here, not yet carried by a request
+const EFFORT_GUESS_MARK = '≈'
 
-return { FAMILIES, MODEL_ID, DIGIT_HOTKEY };
+return { FAMILIES, MODEL_ID, DIGIT_HOTKEY, EFFORT_GUESS_MARK };
 })();
 // ---- hooks/core/format.ts
 __m['core/format.ts'] = (() => {
 // Plain values to the strings the band and the pane draw: bars, token counts, times, money, one-line cuts.
-const { DIGIT_HOTKEY, FAMILIES, MODEL_ID } = __m['core/constants.ts'];
+const { DIGIT_HOTKEY, EFFORT_GUESS_MARK, FAMILIES, MODEL_ID } = __m['core/constants.ts'];
                                      
 
 // The one bar, in the band and the pane: 5 cells of 20%, ▰ filled and ▱ empty; a cell fills only when its share is
@@ -517,6 +519,12 @@ function buttonCells(labelCells        , hotkey                    , isPlain    
   return isPlain ? (hotkey === undefined ? 0 : hotkey.length + 2) + labelCells : labelCells + 4
 }
 
+// The effort level as the band and the pane draw it, a guess marked; null with none
+function effortText(shown                                                          )                {
+  if (shown.effort === null) return null
+  return shown.effortFrom === 'guess' ? `${EFFORT_GUESS_MARK}${shown.effort}` : shown.effort
+}
+
 // A model id's family and version: 'claude-opus-5-5' is opus 5.5; an id with no known family has none
 function modelParts(model        )                                                    {
   const match = MODEL_ID.exec(model)
@@ -534,7 +542,7 @@ function modelText(model        , title = false)         {
   return parts.version === null ? name : `${name} ${parts.version}`
 }
 
-return { barText, toneOf, tokensText, durationText, minutesText, elapsedText, clockText, whenText, usdText, printable, fingerprint, setMasker, oneLine, fitLine, cutMasked, maskedText, widthOf, isPlainButton, buttonCells, modelParts, modelText };
+return { barText, toneOf, tokensText, durationText, minutesText, elapsedText, clockText, whenText, usdText, printable, fingerprint, setMasker, oneLine, fitLine, cutMasked, maskedText, widthOf, isPlainButton, buttonCells, effortText, modelParts, modelText };
 })();
 // ---- hooks/agents/agents.ts
 __m['agents/agents.ts'] = (() => {
@@ -1279,12 +1287,54 @@ const loadedTexts = (skills                                    )           =>
 
 return { NO_PARTS, memoryName, partsOf, PARTS_LABEL, partsLines, listedText, loadedTexts };
 })();
+// ---- hooks/plan/constants.ts
+__m['plan/constants.ts'] = (() => {
+// The plan folder's named values: where a plan skill writes plans and scores, and where the mod reads them
+                                          
+
+// The values of the `plansFolder` setting in the order the reader falls back through them; `.alfred/` holds Alfred
+// Code's state, so the mod's files go one level down in it
+const PLANS_FOLDERS                         = ['.alfred-mods', 'default', '.alfred']
+
+// The root folder each value of `plansFolder` named before each value read its own plans (the user, 2026-11-25): read
+// all three while the field is unset, and the folders `/alfred-mods:update` moves files out of. Plans sit under
+// `<root>/plans`, scores under `<root>/scores`
+const PLANS_ROOTS                                        = {
+  default: '.claude/session-inspector', '.alfred': '.alfred/alfred-mods', '.alfred-mods': '.alfred-mods'
+}
+
+// The value in force while the field is unset
+const UNSET_PLANS_FOLDER              = '.alfred-mods'
+
+// claude-kit's choice: the one value whose plans are plan and score files, so the one root the update moves files into
+// and adds to .gitignore. `.alfred` reads Alfred Code's own plan folders, and `default` reads no plan file.
+const FILE_PLANS_FOLDER              = '.alfred-mods'
+
+// The 'no plan' texts' words for `default`, which reads no plan file
+const NO_PLAN_FILES_READ = 'plansFolder "default" reads no plan file.'
+
+const PLANS_SUBFOLDER = 'plans'
+const SCORES_SUBFOLDER = 'scores'
+
+// Alfred Code's plan folders (its plan folder contract), one `<id>/` per plan: read with `plansFolder` `.alfred` (the
+// user, 2026-11-25), the newest ALFRED_PLANS_READ of them
+const ALFRED_PLANS_DIR = '.alfred/docs/work/plans'
+const ALFRED_STATUS_FILE = 'status.json'
+const ALFRED_SCORING_FILE = 'scoring.json'
+const ALFRED_PLANS_READ = 20
+
+// The largest plan or scores file the reader reads: `$.fs.read` refuses a file over 4 MiB
+const MAX_PLAN_BYTES = 4 * 1024 * 1024
+
+return { PLANS_FOLDERS, PLANS_ROOTS, UNSET_PLANS_FOLDER, FILE_PLANS_FOLDER, NO_PLAN_FILES_READ, PLANS_SUBFOLDER, SCORES_SUBFOLDER, ALFRED_PLANS_DIR, ALFRED_STATUS_FILE, ALFRED_SCORING_FILE, ALFRED_PLANS_READ, MAX_PLAN_BYTES };
+})();
 // ---- hooks/plan/planlines.ts
 __m['plan/planlines.ts'] = (() => {
 // The Plan tab, the Now tab's PLAN section and the band's plan line, from the plan and scores views to lines of
 // styled segments. Every title, note and finding is file content: draw.tsx makes each printable and masks it.
 const { barText, fitLine, minutesText, widthOf } = __m['core/format.ts'];
                                               
+const { NO_PLAN_FILES_READ } = __m['plan/constants.ts'];
                                                                                          
 
 const MIN = 60_000
@@ -1316,6 +1366,14 @@ function planBar(percent        )       {
 // 'Token refresh ▰▰▰▱▱ 3/5 · 60% · 1h 12m · ≈30m left │ ▶ Update interceptor', or 'Token refresh ▰▰▰▰▰ done ✓ in 1h 19m'
 // once every step is finished. Past `columns` the step part goes, then the title is cut.
 function planLine(view          , columns        )       {
+  const [full, bare] = planForms(view)
+  if (widthOf(full) <= columns) return full
+  const rest = bare.slice(1)
+  return [{ text: `${cut(fitLine(view.title, 80), columns - widthOf(rest) - 1)} ` }, ...rest]
+}
+
+// The plan line's two whole forms, none cut: with the running step, then without it (the title kept whole)
+function planForms(view          )               {
   const title = fitLine(view.title, 80)
   const rest       = view.isFinished
     ? [...planBar(100), { text: ` done ✓ in ${minutesText(view.workedMs)}` }]
@@ -1326,9 +1384,8 @@ function planLine(view          , columns        )       {
   const first = view.running[0]
   const step       = first === undefined ? [] : [{ text: ` │ ▶ ${fitLine(first.step.title, 80)}` }]
   if (view.running.length > 1) step.push({ text: ` +${view.running.length - 1}`, tone: 'dim' })
-  const full       = [{ text: `${title} ` }, ...rest, ...step]
-  if (widthOf(full) <= columns) return full
-  return [{ text: `${cut(title, columns - widthOf(rest) - 1)} ` }, ...rest]
+  const bare       = [{ text: `${title} ` }, ...rest]
+  return [[...bare, ...step], bare]
 }
 
 // The full band's plan row after its label (the owner's target, 2026-11-11): 'Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update
@@ -1505,10 +1562,11 @@ function scoreLines(scoresView            )         {
 function planLines(
   view                 , scoresView                   ,
   options                                                                                                                       ,
-  plansDir        ,
+  plansDir               ,
 )         {
   const out         = []
-  if (view === null) out.push([{ text: `No plan file in ${plansDir}/, and no task list this session.`, tone: 'dim' }])
+  const empty = plansDir === null ? `No task list this session - ${NO_PLAN_FILES_READ}` : `No plan file in ${plansDir}/, and no task list this session.`
+  if (view === null) out.push([{ text: empty, tone: 'dim' }])
   else {
     const head       = [{ text: 'Plan', bold: true, tone: 'plan' }, { text: ` · ${fitLine(view.title, 60)}`, bold: true }, { text: `   ${view.finished}/${view.total}` }]
     if (view.isFinished) head.push({ text: ` · done in ${minutesText(view.workedMs)}` })
@@ -1532,7 +1590,7 @@ function planLines(
   return out
 }
 
-return { planLine, planRowParts, narrowPlan, planSection, scoreSeg, scoresLabel, planLines };
+return { planLine, planForms, planRowParts, narrowPlan, planSection, scoreSeg, scoresLabel, planLines };
 })();
 // ---- hooks/kit/constants.ts
 __m['kit/constants.ts'] = (() => {
@@ -1569,11 +1627,13 @@ const KIT_MODEL_ROLES = [
 const KIT_SECTION_HEAD = 'CLAUDE-KIT'
 const KIT_SETTING_ROWS = [['auto-run', KIT_NAMES.autoRun], ['scoring', KIT_NAMES.scoring], ['auto-approve', KIT_NAMES.autoApprove]]         
 
-// The rounds claude-kit's grading loop runs, which its settings file does not carry: round 0 grades, rounds 1-3 revise
-// (claude-kit's refining-plans skill, 'The loop')
+// The rounds claude-kit's grading loop runs, which its settings file does not carry: round 0 grades, rounds 1-3 revise,
+// and under its auto-run the loop goes on to round 6 (claude-kit's refining-plans skill, 'The loop' and 'Under
+// auto-run', claude-kit 0fcc919)
 const KIT_SCORING_ROUNDS = 3
+const KIT_AUTO_RUN_ROUNDS = 6
 
-return { KIT_FILE, KIT_FILE_MAX_CHARS, KIT_HOOK_EVENT, WHOLE_NUMBER, KIT_ON, KIT_OFF, PASS_SCORE_MIN, PASS_SCORE_MAX, KIT_NAMES, KIT_SWITCH_NAMES, KIT_MODEL_NAMES, KIT_MODEL_ROLES, KIT_SECTION_HEAD, KIT_SETTING_ROWS, KIT_SCORING_ROUNDS };
+return { KIT_FILE, KIT_FILE_MAX_CHARS, KIT_HOOK_EVENT, WHOLE_NUMBER, KIT_ON, KIT_OFF, PASS_SCORE_MIN, PASS_SCORE_MAX, KIT_NAMES, KIT_SWITCH_NAMES, KIT_MODEL_NAMES, KIT_MODEL_ROLES, KIT_SECTION_HEAD, KIT_SETTING_ROWS, KIT_SCORING_ROUNDS, KIT_AUTO_RUN_ROUNDS };
 })();
 // ---- hooks/band/constants.ts
 __m['band/constants.ts'] = (() => {
@@ -1610,8 +1670,17 @@ const TRANSCRIPT_NOTE = { unread: 'transcript unread', 'not-found': 'transcript 
 // word, and the join between them
 const MODE_WORDS = { autoRun: 'auto-run', autoCompact: 'auto-compact', scoring: 'scoring' }         
 const MODES_JOIN = ' · '
+// Each modes line's label, and the cells a line's values get less than the band's width
+const SOURCE_LABELS = { alfredCode: 'alfred-code:', kit: 'claude-kit:' }         
+const SOURCE_LABEL_CELLS = Math.max(SOURCE_LABELS.alfredCode.length, SOURCE_LABELS.kit.length) + 1
+// claude-kit's models, written as its status line writes them (the user, 2026-11-25)
+const MODELS_JOIN = ' | '
 
-return { ROW_LABEL, ORG_LABEL, ORG_JOIN, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN, WINDOW_LABEL, CC_LABEL, TIMES_JOIN, TRANSCRIPT_NOTE, MODE_WORDS, MODES_JOIN };
+// The cells line 1 keeps for the turn when it merges the turn in, and the failures count line 1 reserves room for
+const TURN_ROOM_MIN = 24
+const FAILURES_RESERVE_COUNT = 99
+
+return { ROW_LABEL, ORG_LABEL, ORG_JOIN, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN, WINDOW_LABEL, CC_LABEL, TIMES_JOIN, TRANSCRIPT_NOTE, MODE_WORDS, MODES_JOIN, SOURCE_LABELS, SOURCE_LABEL_CELLS, MODELS_JOIN, TURN_ROOM_MIN, FAILURES_RESERVE_COUNT };
 })();
 // ---- hooks/band/gauges.ts
 __m['band/gauges.ts'] = (() => {
@@ -2010,7 +2079,7 @@ return { planRow, placeRow, usageRow };
 __m['band/info.ts'] = (() => {
 // The full band's info line: model, effort, cache, MCP, speed, times and the session's time
 const { billingOf, cacheView, minutesLeftText } = __m['cache/cache.ts'];
-const { minutesText, modelParts, modelText } = __m['core/format.ts'];
+const { effortText, minutesText, modelParts, modelText } = __m['core/format.ts'];
                                         
                                               
 const { TIMES_JOIN } = __m['band/constants.ts'];
@@ -2030,7 +2099,8 @@ function infoItems(input           )         {
   if (model !== null) {
     const family = modelParts(model)?.family
     const name      = family === undefined ? { text: modelText(model, true) } : { text: modelText(model, true), tone: family }
-    items.push({ keep: 6, forms: [input.session.effort === null ? [name] : [name, { text: ` ◑ ${input.session.effort}`, tone: 'dim' }]] })
+    const effort = effortText(input.session)
+    items.push({ keep: 6, forms: [effort === null ? [name] : [name, { text: ` ◑ ${effort}`, tone: 'dim' }]] })
   }
   if (input.cache.sessionCounts.read + input.cache.sessionCounts.write > 0) {
     const cacheState = cacheView(input.cache, billingOf(input.usage.rateWindows), input.now, input.usage.contextTokens)
@@ -2110,7 +2180,7 @@ __m['band/working.ts'] = (() => {
 const { actionOf, isLive } = __m['agents/agents.ts'];
 const { billingOf, cacheView, minutesLeftText } = __m['cache/cache.ts'];
 const { durationText, elapsedText, fitLine, tokensText, usdText, widthOf } = __m['core/format.ts'];
-const { narrowPlan, planLine, scoreSeg } = __m['plan/planlines.ts'];
+const { narrowPlan, planForms, planLine, scoreSeg } = __m['plan/planlines.ts'];
                                                
                                         
                                             
@@ -2148,16 +2218,22 @@ function withTimes(input           , line      )       {
   return line
 }
 
-function lastTurn(input           , isNarrow         )       {
+// The last turn's own part, with its failure count unless the line shows the failures item
+function turnPart(input           , isNarrow         , isFailuresShown         )       {
   const turn = input.turns[input.turns.length - 1]
   if (turn === undefined) return []
   const ok = turn.endReason === 'answer'
   const line       = [{ text: ok ? '✓' : '✗', tone: ok ? 'ok' : 'fail' }, { text: ` Turn ${turn.turnNumber} · ${durationText(turn.durationMs)}` }]
   if (isNarrow) return line
   line.push({ text: ` · ${turn.toolCalls} ${turn.toolCalls === 1 ? 'tool' : 'tools'}` })
-  if (turn.toolFailures > 0) line.push({ text: ` · ${turn.toolFailures} ✗`, tone: 'fail' })
+  if (turn.toolFailures > 0 && !isFailuresShown) line.push({ text: ` · ${turn.toolFailures} ✗`, tone: 'fail' })
+  return line
+}
+
+function lastTurn(input           , isNarrow         )       {
+  const line = turnPart(input, isNarrow, false)
   // In full mode the times are the info line's
-  return input.mode === 'full' ? line : [...line, ...times(input)]
+  return isNarrow || input.mode === 'full' ? line : [...line, ...times(input)]
 }
 
 const agentCount = (count        )         => `${count} ${count === 1 ? 'agent' : 'agents'}`
@@ -2173,6 +2249,34 @@ function planTail(input           , isRowDrawn         )       {
   return [{ text: ROW_JOIN, tone: 'dim' }, ...parts.flatMap((line, i) => (i === 0 ? line : [{ text: ' · ' }, ...line]))]
 }
 
+function bashPart(input           )       {
+  const bash       = []
+  const calls = input.live.runningCalls.filter(call => call.tool === 'Bash')
+  const newest = calls[calls.length - 1]
+  if (newest !== undefined) {
+    bash.push({ text: ` │ Bash ▸ ${newest.label} ${elapsedText(input.now - newest.startedAt)}` })
+    if (calls.length > 1) bash.push({ text: ` +${calls.length - 1}`, tone: 'dim' })
+  }
+  return bash
+}
+
+const agentParts = (running            )       => running.map(agent => ({ text: agent.action === null ? ` │ ${agent.type}` : ` │ ${agent.type} ▸ ${agent.action}` }))
+
+// The first `kept` agent parts, the rest as ' +N agents'
+function foldedParts(parts      , kept        )       {
+  const rest = parts.length - kept
+  return [...parts.slice(0, kept), ...(rest > 0 ? [{ text: ` +${agentCount(rest)}`, tone: 'dim'          }] : [])]
+}
+
+function turnHead(input           , isNarrow         , running            )      {
+  const took = elapsedText(input.now - (input.live.startedAt ?? input.now))
+  const count = input.mode === 'full' ? ` · ${input.live.toolCalls} ${input.live.toolCalls === 1 ? 'tool' : 'tools'}` : ''
+  const turnNumber = input.session.turnCount + 1
+  return input.isWorking
+    ? { text: isNarrow ? `⟳ Turn ${turnNumber} ${took}` : `⟳ Turn ${turnNumber} · ${took}${count}`, bold: true }
+    : { text: `⟳ ${agentCount(running.length)}`, bold: true }
+}
+
 // The turn, or the agents while only they run, or the plan line while a plan runs; then each live agent's action and
 // the running Bash. Past the width the agent parts fold into ' +N agents', then the Bash part goes, then the plan's
 // step, then its title is cut.
@@ -2181,32 +2285,64 @@ function workingLine(input           , isNarrow         )       {
   // The full band's plan has its own row, so line 1 keeps the turn there
   const plan = input.mode === 'full' ? null : input.plan
   if (plan !== null && isNarrow) return narrowPlan(plan, running.length)
-  const turnNumber = input.session.turnCount + 1
-  const took = elapsedText(input.now - (input.live.startedAt ?? input.now))
-  const count = input.mode === 'full' ? ` · ${input.live.toolCalls} ${input.live.toolCalls === 1 ? 'tool' : 'tools'}` : ''
-  const head      = input.isWorking
-    ? { text: isNarrow ? `⟳ Turn ${turnNumber} ${took}` : `⟳ Turn ${turnNumber} · ${took}${count}`, bold: true }
-    : { text: `⟳ ${agentCount(running.length)}`, bold: true }
+  const head = turnHead(input, isNarrow, running)
   if (isNarrow) return input.isWorking && running.length > 0 ? [head, { text: ` · ${agentCount(running.length)}` }] : [head]
-  const bash       = []
-  const calls = input.live.runningCalls.filter(call => call.tool === 'Bash')
-  const newest = calls[calls.length - 1]
-  if (newest !== undefined) {
-    bash.push({ text: ` │ Bash ▸ ${newest.label} ${elapsedText(input.now - newest.startedAt)}` })
-    if (calls.length > 1) bash.push({ text: ` +${calls.length - 1}`, tone: 'dim' })
-  }
-  const parts       = running.map(agent => ({ text: agent.action === null ? ` │ ${agent.type}` : ` │ ${agent.type} ▸ ${agent.action}` }))
-  const folded = (kept        )       => {
-    const rest = parts.length - kept
-    return [...parts.slice(0, kept), ...(rest > 0 ? [{ text: ` +${agentCount(rest)}`, tone: 'dim'          }] : [])]
-  }
+  const bash = bashPart(input)
+  const parts = agentParts(running)
   const lead       = plan === null ? [head] : planLine(plan, Infinity)
   for (let kept = parts.length; kept >= 0; kept--) {
-    const line       = [...lead, ...folded(kept), ...bash]
+    const line       = [...lead, ...foldedParts(parts, kept), ...bash]
     if (widthOf(line) <= input.columns) return line
   }
-  if (plan === null) return [head, ...folded(0), ...bash]
-  return [...planLine(plan, input.columns - widthOf(folded(0))), ...folded(0)]
+  if (plan === null) return [head, ...foldedParts(parts, 0), ...bash]
+  return [...planLine(plan, input.columns - widthOf(foldedParts(parts, 0))), ...foldedParts(parts, 0)]
+}
+
+// The turn's whole forms, widest first, none cut: the running turn's or the last turn's. Empty with no turn to draw.
+function turnForms(input           , isNarrow         , isPlanRowDrawn         , isFailuresShown         )         {
+  const running = input.agents.filter(agent => isLive(agent.status))
+  const forms         = []
+  if (input.isWorking || running.length > 0) {
+    const plan = input.mode === 'full' ? null : input.plan
+    if (plan !== null && isNarrow) forms.push(narrowPlan(plan, running.length), narrowPlan(plan, 0))
+    else if (isNarrow) {
+      const head = turnHead(input, true, running)
+      if (input.isWorking && running.length > 0) forms.push([head, { text: ` · ${agentCount(running.length)}` }])
+      forms.push([head])
+    } else {
+      const head = turnHead(input, false, running)
+      const bash = bashPart(input)
+      const parts = agentParts(running)
+      // The plan line with its running step, then without it, each whole; line 1 takes the first that fits
+      const leads         = plan === null ? [[head]] : planForms(plan)
+      for (const lead of leads) {
+        for (let kept = parts.length; kept >= 0; kept--) forms.push([...lead, ...foldedParts(parts, kept), ...bash])
+        if (parts.length > 0) forms.push([...lead, ...foldedParts(parts, 0)])
+        forms.push(lead)
+      }
+      if (plan !== null) forms.push(narrowPlan(plan, running.length), narrowPlan(plan, 0))
+      else if (input.isWorking) forms.push([turnHead(input, true, running)])
+    }
+  } else if (input.turns.length > 0) {
+    const tail = planTail(input, isPlanRowDrawn)
+    const full = turnPart(input, false, isFailuresShown)
+    const timed = input.mode === 'full' ? full : [...full, ...times(input)]
+    const narrow = turnPart(input, true, isFailuresShown)
+    if (isNarrow) forms.push([...narrow, ...tail], narrow)
+    else {
+      const wide = input.mode === 'full' ? [timed] : [timed, full]
+      for (const form of wide) forms.push([...form, ...tail], form)
+      forms.push(narrow)
+    }
+  }
+  // No empty form, and none the same as an earlier one
+  const seen = new Set        ()
+  return forms.filter(form => {
+    const key = JSON.stringify(form)
+    if (form.length === 0 || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 // What the spinner adds after the engine's suffix: an agent's action and context on that agent's spinner; on the main
@@ -2263,7 +2399,7 @@ function withPlanTail(input           , line      , isRowDrawn         )       {
   return line.length > 0 && widthOf(full) <= input.columns ? full : line
 }
 
-return { underButton, withToday, withTimes, lastTurn, workingLine, spinnerSuffix, cacheWarning, handoffAsk, skipAsk, withPlanTail };
+return { underButton, withToday, withTimes, lastTurn, workingLine, turnForms, spinnerSuffix, cacheWarning, handoffAsk, skipAsk, withPlanTail };
 })();
 // ---- hooks/account/constants.ts
 __m['account/constants.ts'] = (() => {
@@ -2293,13 +2429,15 @@ return { CONFIG_FILE_NAME, READ_EVERY_MS, PERSONAL, PERSONAL_ORG_TYPES, TEAM_TYP
 })();
 // ---- hooks/band/lines.ts
 __m['band/lines.ts'] = (() => {
-// The band's leading lines (spec 2026-11-23, D4, as the user arranged them on 2026-11-24): `● REC`, the signed-in account,
-// Claude Code's version, the MCP item and the new failures, then the modes on. Pure: values in, lines out.
+// The band's identity line (spec 2026-11-23, D4, as the user arranged it on 2026-11-24): `● REC`, the signed-in account,
+// Claude Code's version, the MCP item and the new failures; and the modes lines, one per source (the user, 2026-11-25).
+// Pure: values in, lines out.
 const { fitLine, widthOf } = __m['core/format.ts'];
 const { ORG_STRICT, PERSONAL } = __m['account/constants.ts'];
                                               
-const { CC_LABEL, ORG_JOIN, ORG_LABEL, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN } = __m['band/constants.ts'];
-                                                   
+const { CC_LABEL, MODES_JOIN, ORG_JOIN, ORG_LABEL, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN, SOURCE_LABEL_CELLS, SOURCE_LABELS, TURN_ROOM_MIN } = __m['band/constants.ts'];
+                                                              
+const { cellsOf } = __m['band/wrap.ts'];
 
 const REC_MARK      = { text: '● REC', tone: 'fail', bold: true }
 
@@ -2307,43 +2445,83 @@ const MARK_SEP      = { text: ROW_JOIN, tone: 'dim' }
 const DIM_JOIN      = { text: ORG_JOIN, tone: 'dim' }
 const joinItems = (items        )       => items.filter(item => item.length > 0).flatMap((item, i) => (i === 0 ? item : [MARK_SEP, ...item]))
 
-// The signed-in account's mark, as the Claude mobile app names it: '<company name> | Team' (or Enterprise), 'org | Personal'
-// or 'org | unknown'. A company name is cut to 40 cells and draws '‹org›' under REC strict; one with no known kind
-// reads its name alone. None without an account. The name is plain; the label, the bar and the kind are dim.
+// The signed-in account's mark: '<company name> | Team' (or Enterprise), 'Personal' with no label where there is no
+// organization (the user, 2026-11-25), or 'org | unknown'. A company name is cut to 40 cells and draws '‹org›' under REC
+// strict; one with no known kind reads its name alone. None without an account. A company name is plain; the rest is dim.
 function orgMark(input           )       {
   const account = input.account
   if (account === undefined) return []
   const dim = (text        )      => ({ text, tone: 'dim' })
   if (account.org === null) return [dim(ORG_LABEL), dim(ORG_JOIN), dim(ORG_UNKNOWN)]
-  if (account.kind === PERSONAL || ((account.kind === undefined || account.kind === null) && account.org === PERSONAL)) return [dim(ORG_LABEL), dim(ORG_JOIN), dim(PERSONAL)]
+  if (account.kind === PERSONAL || ((account.kind === undefined || account.kind === null) && account.org === PERSONAL)) return [dim(PERSONAL)]
   const name = input.rec?.level === 'strict' ? ORG_STRICT : fitLine(account.org, ORG_MAX_CELLS)
   return account.kind === undefined || account.kind === null ? [{ text: name }] : [{ text: name }, dim(ORG_JOIN), dim(account.kind)]
+}
+
+// The three forms of line 1, widest first: with the version, without it, and without the MCP item as well
+function identityForms(input           , failures       = [])         {
+  const rec = input.rec !== undefined && input.rec.level !== 'off' ? [REC_MARK] : []
+  const org = orgMark(input)
+  const version = input.session.version
+  const withVersion = version === undefined ? org : [...org, ...(org.length === 0 ? [] : [DIM_JOIN]), { text: `${CC_LABEL} ${version}`, tone: 'dim'          }]
+  const mcp = input.mcp ?? []
+  return [joinItems([rec, withVersion, mcp, failures]), joinItems([rec, org, mcp, failures]), joinItems([rec, org, failures])]
 }
 
 // Line 1: REC while it is on, the account and Claude Code's version, the MCP item, then the new failures with their
 // button ('Acme | Team | CC 2.1.330 │ mcp ✗ 1 · ✓ 10 │ ✗ 6 new 1: Inspect', the user, 2026-11-24). Where it would pass
 // the band's width the version goes first, then the MCP item; REC, the account and the failures always stay.
 function identityLine(input           , failures       = [])       {
-  const rec = input.rec !== undefined && input.rec.level !== 'off' ? [REC_MARK] : []
-  const org = orgMark(input)
-  const version = input.session.version
-  const withVersion = version === undefined ? org : [...org, ...(org.length === 0 ? [] : [DIM_JOIN]), { text: `${CC_LABEL} ${version}`, tone: 'dim'          }]
-  const mcp = input.mcp ?? []
-  const forms = [joinItems([rec, withVersion, mcp, failures]), joinItems([rec, org, mcp, failures]), joinItems([rec, org, failures])]
-  return forms.find(form => widthOf(form) <= input.columns) ?? forms[forms.length - 1] ?? []
+  const forms = identityForms(input, failures)
+  return forms.find(form => cellsOf(form) <= input.columns) ?? forms[forms.length - 1] ?? []
 }
 
-// The lines that lead the band, each only when it holds something: the identity, then the modes on a line of their own
-// ('own'), or after the identity on line 1 where the two fit the width, else the identity alone ('joined')
-function leadLines(input           , modesKeep           , failures       = [])         {
+const labelled = (label        , line      )       => [{ text: `${label} `, tone: 'dim' }, ...line]
+
+// claude-kit's line: its modes, then its models where the two fit the width, else the models on a line under them
+function kitLines(input           )         {
+  const modes = input.kitModes ?? []
+  const models = input.models ?? []
+  if (modes.length === 0) return models.length === 0 ? [] : [labelled(SOURCE_LABELS.kit, models)]
+  if (models.length === 0) return [labelled(SOURCE_LABELS.kit, modes)]
+  const beside = labelled(SOURCE_LABELS.kit, [...modes, { text: MODES_JOIN, tone: 'dim' }, ...models])
+  return widthOf(beside) <= input.columns ? [beside] : [labelled(SOURCE_LABELS.kit, modes), [{ text: ' '.repeat(SOURCE_LABEL_CELLS - 1) }, ...models]]
+}
+
+// The modes lines (the user, 2026-11-25): 'alfred-code: <its modes>' and 'claude-kit: <its modes> · <its models>', each
+// only when it holds something. Short of rows ('joined') the two share one line with no models, or the first that fits.
+function sourceLines(input           , keep           )         {
+  if (keep === 'none') return []
+  const alfred = input.alfredModes ?? []
+  const alfredLine = alfred.length === 0 ? [] : labelled(SOURCE_LABELS.alfredCode, alfred)
+  if (keep === 'own') return [alfredLine, ...kitLines(input)].filter(line => line.length > 0)
+  const kit = input.kitModes ?? []
+  const kitLine = kit.length === 0 ? [] : labelled(SOURCE_LABELS.kit, kit)
+  const form = [joinItems([alfredLine, kitLine]), alfredLine, kitLine].find(line => line.length > 0 && widthOf(line) <= input.columns)
+  return form === undefined ? [] : [form]
+}
+
+// The line that leads the band: the identity, when it holds something. Where the width holds the identity, the turn's
+// least form and the widest failures item, the turn joins it after the MCP item (spec 2026-11-25): the first base - with
+// the version, else without - whose room holds TURN_ROOM_MIN, then the turn's widest form that fits. The rule reads only
+// the width and the identity, so a running and a finished turn merge at the same widths. Else the turn keeps its row.
+function leadLines(input           , failures      , turn           )                                          {
   const identity = identityLine(input, failures)
-  const modes = input.modes ?? []
-  if (modesKeep === 'own') return [identity, modes].filter(line => line.length > 0)
-  const joined = joinItems([identity, modes])
-  return joined.length === 0 ? [] : [widthOf(joined) <= input.columns ? joined : identity].filter(line => line.length > 0)
+  const own = { lines: identity.length === 0 ? [] : [identity], isTurnTaken: false }
+  if (turn.forms.length === 0) return own
+  const join = cellsOf([{ text: ROW_JOIN }])
+  const bases = identityForms(input).slice(0, 2)
+  const base = bases.find(form => form.length > 0 && input.columns - cellsOf(form) - join - turn.reserveCells >= TURN_ROOM_MIN)
+  if (base === undefined) return own
+  const failuresCells = failures.length === 0 ? 0 : join + cellsOf(failures)
+  const room = input.columns - cellsOf(base) - join - failuresCells
+  const form = turn.forms.find(candidate => cellsOf(candidate) <= room)
+  if (form === undefined) return own
+  const line = joinItems([base, form, failures])
+  return cellsOf(line) <= input.columns ? { lines: [line], isTurnTaken: true } : own
 }
 
-return { REC_MARK, identityLine, leadLines };
+return { REC_MARK, identityForms, identityLine, sourceLines, leadLines };
 })();
 // ---- hooks/band/band.ts
 __m['band/band.ts'] = (() => {
@@ -2353,14 +2531,14 @@ const { isLive } = __m['agents/agents.ts'];
                                                    
                                             
                                               
-const { ROW_JOIN } = __m['band/constants.ts'];
-const { leadLines } = __m['band/lines.ts'];
+const { FAILURES_RESERVE_COUNT, ROW_JOIN } = __m['band/constants.ts'];
+const { leadLines, sourceLines } = __m['band/lines.ts'];
 const { fiveHourPace, gauges, narrowGauges, percentText } = __m['band/gauges.ts'];
 const { cellsOf } = __m['band/wrap.ts'];
 const { toolRows } = __m['band/detail.ts'];
 const { placeRow, planRow, usageRow } = __m['band/project.ts'];
 const { infoRows } = __m['band/info.ts'];
-const { cacheWarning, handoffAsk, lastTurn, skipAsk, underButton, withPlanTail, withTimes, withToday, workingLine } = __m['band/working.ts'];
+const { cacheWarning, handoffAsk, lastTurn, skipAsk, turnForms, underButton, withPlanTail, withTimes, withToday, workingLine } = __m['band/working.ts'];
 
 const { REC_MARK } = __m['band/lines.ts'];
 
@@ -2390,17 +2568,18 @@ function underRows(viewport                                          , chrome   
 
 const KEEP_ALL       = { modes: 'own', infoUpTo: 2, isPlaceKept: true, toolRowsKept: Infinity, isUsageKept: true, isPlanKept: true }
 
-// Line 1 is the identity ('● REC' while REC is on, the signed-in account and Claude Code's version), left out when it holds
-// nothing, and line 2 the modes on (Alfred Code's and claude-kit's); then the body: the turn line, the info line, the gauges and the rows under them (the user's order, 2026-11-24).
+// Line 1 is the identity ('● REC' while REC is on, the signed-in account and Claude Code's version), left out when it
+// holds nothing; the turn joins it where the width holds both, else leads the body. Then the body: the info line, the
+// gauges, the modes lines (alfred-code's, then claude-kit's) and the rows under them (the user's order, 2026-11-25).
 // The identity is never dropped for rows or width.
 function bandLines(input           )         {
   // "band": "off" draws none, above or under, and the pinned line counts it as out of view
   if (input.mode === 'off') return []
   const max = input.maxRows
   if (max === undefined) return bandRows(input, KEEP_ALL)
-  // Short of rows, the project row gives way first, then the modes join line 1, then the info line's second row, then the
-  // open detail rows from the last, then the usage row, then the plan row, then the info line: the line under them holds
-  // the buttons, and a digit arms only those in view
+  // Short of rows, the project row gives way first, then the modes lines share one line with no models, then the info
+  // line's second row, then the open detail rows from the last, then the usage row, then the plan row, then the modes
+  // lines, then the info line: the line under them holds the buttons, and a digit arms only those in view
   const noPlace       = { ...KEEP_ALL, isPlaceKept: false }
   const joined       = { ...noPlace, modes: 'joined' }
   for (const keep of [KEEP_ALL, noPlace, joined, { ...joined, infoUpTo: 1 }]                 ) {
@@ -2410,17 +2589,23 @@ function bandLines(input           )         {
   const core       = { modes: 'joined', infoUpTo: 1, isPlaceKept: false, toolRowsKept: 0, isUsageKept: true, isPlanKept: true }
   const coreLines = bandRows(input, core)
   if (coreLines.length <= max) return bandRows(input, { ...core, toolRowsKept: max - coreLines.length })
-  for (const keep of [{ ...core, isUsageKept: false }, { ...core, isUsageKept: false, isPlanKept: false }]) {
+  for (const keep of [{ ...core, isUsageKept: false }, { ...core, isUsageKept: false, isPlanKept: false }, { ...core, modes: 'none', isUsageKept: false, isPlanKept: false }]                 ) {
     const lines = bandRows(input, keep)
     if (lines.length <= max) return lines
   }
-  return bandRows(input, { modes: 'joined', infoUpTo: 0, isPlaceKept: false, toolRowsKept: 0, isUsageKept: false, isPlanKept: false })
+  return bandRows(input, { modes: 'none', infoUpTo: 0, isPlaceKept: false, toolRowsKept: 0, isUsageKept: false, isPlanKept: false })
 }
 
 // What the band is, in order: the action row where it sits under the input, the identity and modes lines, then the body
 function bandRows(input           , keep      )         {
   const body = bandBody(input, input.columns < 100, keep)
-  return [...body.before, ...leadLines(input, keep.modes, failuresItem(input)), ...body.rows]
+  const lead = leadLines(input, failuresItem(input), { forms: body.turnForms, reserveCells: failuresReserve(input) })
+  return [...body.before, ...lead.lines, ...(lead.isTurnTaken || body.turn.length === 0 ? [] : [body.turn]), ...body.rows]
+}
+
+// The cells line 1 holds back for the new failures: ' │ ' and the item at its widest count, buttons counted
+function failuresReserve(band           )         {
+  return cellsOf([{ text: ROW_JOIN }, ...failuresItem({ ...band, newFailures: FAILURES_RESERVE_COUNT, isWorking: false })])
 }
 
 // The new failures with their button, on line 1 once Claude has answered (asks wait for the turn to end); none before
@@ -2430,13 +2615,14 @@ function failuresItem(band           )       {
 }
 
 // The body's rows, and the ones that come before the leading lines: under the input the action row, nearest the input
-                                            
+                                                                           
 
 function bandBody(band           , isNarrow         , keep      )       {
   const usage = band.usage
   // Before the first reading the calm band waits; the full band draws once the model or a stored window is known
   const isFullKnown = band.mode === 'full' && (band.session.model !== null || usage.rateWindows.length > 0)
-  if (band.turns.length === 0 && usage.contextPercent === null && !isFullKnown) return { before: [], rows: [] }
+  const sources = sourceLines(band, keep.modes)
+  if (band.turns.length === 0 && usage.contextPercent === null && !isFullKnown) return { before: [], turn: [], turnForms: [], rows: sources }
   const invalid       = band.isPlanInvalid ? [{ text: ROW_JOIN, tone: 'dim' }, { text: 'plan file invalid', tone: 'warn' }] : []
   const gaugeLine = isNarrow ? narrowGauges(usage, band.runway) : withToday(band, gauges(band), invalid)
   const line2 = [...gaugeLine, ...invalid]
@@ -2460,21 +2646,24 @@ function bandBody(band           , isNarrow         , keep      )       {
     // not only when active work'); the calm band stays one dim line until something needs you. The identity and modes
     // lines are no part of that line: the account mark, like the red REC mark, keeps its own tones so the account check
     // reads easily (the owner, 2026-11-21)
-    if (band.mode === 'full') return { before: [], rows: [...head, [...gaugeLine, ...invalid], ...info] }
+    if (band.mode === 'full') return { before: [], turn: [], turnForms: [], rows: [...head, [...gaugeLine, ...invalid], ...sources, ...info] }
     const calm = isNarrow ? gaugeLine : withTimes(band, gaugeLine)
     const dim = (line      )       => line.map(seg => ('text' in seg ? { text: seg.text, tone: 'dim'          } : seg))
-    return { before: [], rows: [[...dim(calm), ...invalid], ...info.map(dim)] }
+    return { before: [], turn: [], turnForms: [], rows: [[...dim(calm), ...invalid], ...sources.map(dim), ...info.map(dim)] }
   }
-  if (band.isWorking) return { before: [], rows: [workingLine(band, isNarrow), ...head, line2, ...info] }
+  const isPlanRowDrawn = head.length > 0 && keep.isPlanKept
+  const isFailuresShown = failuresItem(band).length > 0
+  if (band.isWorking) return { before: [], turn: workingLine(band, isNarrow), turnForms: turnForms(band, isNarrow, isPlanRowDrawn, isFailuresShown), rows: [...head, line2, ...sources, ...info] }
   const items = [warning, ask, skip].filter((item)               => item !== null && item.length > 0)
   const joined       = items.flatMap((item, i) => (i === 0 ? item : [{ text: '    ' }, ...item]))
   // Under the input the action row comes first, nearest the input as above it is the last (the user, 2026-11-12, over
   // band-under U2's place after the gauges), so a cut at the screen's edge takes the detail rows first; its commands are
   // longer than the digits above, so the items take a row each when one row cannot hold them
   const action         = items.length === 0 ? [] : band.under !== undefined && cellsOf(joined) > band.columns ? items : [joined]
-  const first = agentsRun ? workingLine(band, isNarrow) : withPlanTail(band, lastTurn(band, isNarrow), head.length > 0 && keep.isPlanKept)
+  const first = agentsRun ? workingLine(band, isNarrow) : withPlanTail(band, lastTurn(band, isNarrow), isPlanRowDrawn)
   const nonEmpty = (rows        )         => rows.filter(segs => segs.length > 0)
-  return band.under === undefined ? { before: [], rows: nonEmpty([first, ...head, line2, ...info, ...action]) } : { before: action, rows: nonEmpty([first, ...head, line2, ...info]) }
+  const turn = { turn: first, turnForms: turnForms(band, isNarrow, isPlanRowDrawn, isFailuresShown) }
+  return band.under === undefined ? { before: [], ...turn, rows: nonEmpty([...head, line2, ...sources, ...info, ...action]) } : { before: action, ...turn, rows: nonEmpty([...head, line2, ...sources, ...info]) }
 }
 
 return { REC_MARK, statusText, underRows, bandLines };
@@ -2483,14 +2672,16 @@ return { REC_MARK, statusText, underRows, bandLines };
 __m['mcp/constants.ts'] = (() => {
 // The MCP state's named values (spec 2026-11-23, D5)
 
-// A server still loading this long after its event, with no tools seen and its state read refused (a build or a hook that
-// answers no read), reads connected: with tool search its tools may never show in the tool list, and a false red on a
-// working server is worse than a late green
+// A server still loading this long after its event, with no tools seen and no state to read (the read refused, a build
+// with none, a raise a hook holds), leaves the count: nothing tells whether it is connected, off or failed, and it is
+// counted again when its tools show (the user, 2026-11-25)
 const SETTLE_MS = 60_000
 
 // The reasons a state read answers that tell the server's own state; any other is a refusal of the read itself, which
 // tells nothing of the server
 const SERVER_STATE_REASONS                      = new Set(['failed', 'auth', 'disabled'])
+// A server turned off is no part of the count (the user, 2026-11-25)
+const SERVER_OFF_REASON = 'disabled'
 // The tool list is read this often while a server loads and for EARLY_MS after the session starts, else every IDLE_POLL_MS
 const POLL_MS = 5_000
 const EARLY_MS = 120_000
@@ -2516,7 +2707,20 @@ const DENIED_REASON = 'denied'
 // `next.origin.plugin` of the engine's own raise: another plugin's `$.mcp.connect` carries its own name
 const ENGINE_ORIGIN = 'engine'
 
-return { SETTLE_MS, SERVER_STATE_REASONS, POLL_MS, EARLY_MS, IDLE_POLL_MS, INITIAL_SERVERS, TOOL_PREFIX, TOOL_SEPARATOR, NAME_UNSAFE, PLUGIN_SEPARATOR, ITEM_LABEL, GLYPH, ITEM_JOIN, DENIED_REASON, ENGINE_ORIGIN };
+// Where Claude Code records the servers turned off (code.claude.com/docs/en/mcp, 'Disable a server without removing it',
+// and settings-reference, read 2026-11-25): per project in the global config, `disabledMcpServers` for a server that
+// is on by default and `enabledMcpServers` for a built-in that is off by default; in any settings file,
+// `disabledMcpjsonServers` for a rejected .mcp.json server and `deniedMcpServers` entries that name one
+const CONFIG_PROJECTS_KEY = 'projects'
+const PROJECT_OFF_KEY = 'disabledMcpServers'
+const PROJECT_ON_KEY = 'enabledMcpServers'
+const SETTINGS_OFF_KEY = 'disabledMcpjsonServers'
+const SETTINGS_DENIED_KEY = 'deniedMcpServers'
+const DENIED_NAME_FIELD = 'serverName'
+// The built-in servers that are off until the project opts in; the docs name `computer-use`
+const DEFAULT_OFF_SERVERS                    = ['computer-use']
+
+return { SETTLE_MS, SERVER_STATE_REASONS, SERVER_OFF_REASON, POLL_MS, EARLY_MS, IDLE_POLL_MS, INITIAL_SERVERS, TOOL_PREFIX, TOOL_SEPARATOR, NAME_UNSAFE, PLUGIN_SEPARATOR, ITEM_LABEL, GLYPH, ITEM_JOIN, DENIED_REASON, ENGINE_ORIGIN, CONFIG_PROJECTS_KEY, PROJECT_OFF_KEY, PROJECT_ON_KEY, SETTINGS_OFF_KEY, SETTINGS_DENIED_KEY, DENIED_NAME_FIELD, DEFAULT_OFF_SERVERS };
 })();
 // ---- hooks/mcp/mcp.ts
 __m['mcp/mcp.ts'] = (() => {
@@ -2524,10 +2728,12 @@ __m['mcp/mcp.ts'] = (() => {
 // item. Pure: effects.ts reads the tool list and keeps the atom.
                                         
                                                    
-const { DENIED_REASON, ENGINE_ORIGIN, GLYPH, ITEM_JOIN, ITEM_LABEL, NAME_UNSAFE, PLUGIN_SEPARATOR, SERVER_STATE_REASONS, SETTLE_MS, TOOL_PREFIX, TOOL_SEPARATOR } = __m['mcp/constants.ts'];
+const { DENIED_REASON, ENGINE_ORIGIN, GLYPH, ITEM_JOIN, ITEM_LABEL, NAME_UNSAFE, PLUGIN_SEPARATOR, SERVER_OFF_REASON, SERVER_STATE_REASONS, SETTLE_MS, TOOL_PREFIX, TOOL_SEPARATOR } = __m['mcp/constants.ts'];
                                                                                             
 
 const spelled = (name        )         => name.replace(NAME_UNSAFE, '_')
+// A server's name as a tool's name spells it
+const spelledName = spelled
 
 // A server's name as a tool's name spells it: the last `:`-part, characters outside [A-Za-z0-9_-] read `_`
 function shortName(name        )         {
@@ -2550,22 +2756,23 @@ function toolServers(tools                       )           {
 // A server's name matches a tool server by its last `:`-part or by the whole name, either spelled as a tool's name is
 const isShownBy = (server           , toolServer        )          => toolServer === shortName(server.name) || toolServer === spelled(server.name)
 
-// Whether a loading server settles by time: one whose state is never read (no read runs, its raise not yet passed the
+// Whether time decides a loading server: one whose state is never read (no read runs, its raise not yet passed the
 // hooks beneath, or its read refused for this raise). `unreadable` is null where no state is read at all.
 const isTimed = (server           , unreadable                   )          =>
   unreadable === null || server.isPassed !== true || unreadable.get(server.name) === server.since
 
-// The servers after a read of the tool list at `now`: a loading or failed one whose tools show is connected, a loading
-// one that settles by time and has loaded for SETTLE_MS too; a failed one with no tools stays so; a tool server no
-// server names is added as connected
+// The servers after a read of the tool list at `now`: a loading or failed one whose tools show is connected; a loading
+// one that time decides and has loaded for SETTLE_MS with none is of unknown state and leaves the list; a failed one
+// with no tools stays so; a tool server no server names is added as connected
 function settle(servers                      , fromTools                   , now        , unreadable                   )              {
   const named = new Set        ()
-  const settled = servers.map((server)            => {
+  const settled = servers.flatMap((server)              => {
     const shown = fromTools.filter(toolServer => isShownBy(server, toolServer))
     for (const toolServer of shown) named.add(toolServer)
-    if (server.state === 'connected') return server
-    const isSettled = shown.length > 0 || (server.state === 'loading' && isTimed(server, unreadable) && now - server.since >= SETTLE_MS)
-    return isSettled ? { name: server.name, state: 'connected', since: server.since, ...(server.isSeeded === true ? { isSeeded: true } : {}) } : server
+    if (server.state === 'connected') return [server]
+    if (shown.length > 0) return [{ name: server.name, state: 'connected', since: server.since, ...(server.isSeeded === true ? { isSeeded: true } : {}) }]
+    const isUnknown = server.state === 'loading' && isTimed(server, unreadable) && now - server.since >= SETTLE_MS
+    return isUnknown ? [] : [server]
   })
   const added = fromTools.filter(toolServer => !named.has(toolServer)).map((toolServer)            => ({ name: toolServer, state: 'connected', since: now, isSeeded: true }))
   return [...settled, ...added]
@@ -2592,7 +2799,9 @@ function markLoading(servers                      , name        , now        )  
   return servers.map((server, index) => (index === place ? loading : server))
 }
 
+// A server turned off leaves the list: `markLoading` adds it again when an event raises it
 function markFailed(servers                      , name        , reason        )              {
+  if (reason === SERVER_OFF_REASON) return servers.filter(server => server.name !== name)
   return servers.map(server => (server.name === name ? { name, state: 'failed', reason, since: server.since } : server))
 }
 
@@ -2634,13 +2843,15 @@ function readOutcome(result                  )                     {
 // The servers after a state read of `name` begun while it loaded since `since`: a server a later event marked loading
 // again, or one already settled, is left as it is
 function markRead(servers                      , name        , since        , outcome             )              {
+  const isRead = (server           )          => server.name === name && server.state === 'loading' && server.since === since
+  if (outcome.state === 'failed' && outcome.reason === SERVER_OFF_REASON) return servers.filter(server => !isRead(server))
   return servers.map((server)            => {
-    if (server.name !== name || server.state !== 'loading' || server.since !== since) return server
+    if (!isRead(server)) return server
     return outcome.state === 'connected' ? { name, state: 'connected', since } : { name, state: 'failed', reason: outcome.reason, since }
   })
 }
 
-return { shortName, toolServers, settle, isEngineRaise, refusalOf, markLoading, markFailed, isSameServers, mcpItem, serversToRead, markPassed, readOutcome, markRead };
+return { spelledName, shortName, toolServers, isShownBy, settle, isEngineRaise, refusalOf, markLoading, markFailed, isSameServers, mcpItem, serversToRead, markPassed, readOutcome, markRead };
 })();
 // ---- hooks/core/guards.ts
 __m['core/guards.ts'] = (() => {
@@ -2745,41 +2956,51 @@ return { kitLines };
 })();
 // ---- hooks/band/modes.ts
 __m['band/modes.ts'] = (() => {
-// The band's modes line (the user, 2026-11-24): 'auto-run · auto-compact 400k · scoring 90 3', from what the session uses
-// now - Alfred Code's status file and claude-kit's settings file. Pure: values in, lines out.
+// The band's modes lines (the user, 2026-11-25): 'alfred-code: auto-run · auto-compact 400k · scoring 90 3' from Alfred
+// Code's status file and 'claude-kit: auto-run · scoring 90 3' from claude-kit's settings file, each with its own values.
+// Pure: values in, lines out.
 const { tokensText, widthOf } = __m['core/format.ts'];
                                               
 const { isKitOn, kitPassScore } = __m['kit/kit.ts'];
-const { KIT_NAMES, KIT_SCORING_ROUNDS } = __m['kit/constants.ts'];
+const { KIT_AUTO_RUN_ROUNDS, KIT_MODEL_ROLES, KIT_NAMES, KIT_SCORING_ROUNDS } = __m['kit/constants.ts'];
                                             
                                            
-const { MODE_WORDS, MODES_JOIN } = __m['band/constants.ts'];
+const { MODE_WORDS, MODELS_JOIN, MODES_JOIN } = __m['band/constants.ts'];
 
-// Each mode on, in its order. auto-run shows while either source runs it; auto-compact is Alfred Code's alone, with
-// Claude Code's compaction point where the status file names it; scoring takes Alfred Code's level and rounds while
-// its scoring is on, else claude-kit's pass score and the rounds its loop runs.
-function modeItems(stack              , kit                 )        {
+// Alfred Code's modes on, in their order, from its status file alone: auto-run, auto-compact with Claude Code's
+// compaction point where the file names it, and scoring with its level and the rounds `alfred-code:mode:scoring` set
+function alfredItems(stack              )        {
   const used = stack !== null && stack.state === 'used' ? stack : null
-  const values = kit?.values ?? null
+  if (used === null) return []
   const items        = []
-  if (used?.autoRun === true || (values !== null && isKitOn(values, KIT_NAMES.autoRun))) items.push({ text: MODE_WORDS.autoRun, tone: 'warn' })
-  if (used?.autoCompact?.on === true) {
+  if (used.autoRun === true) items.push({ text: MODE_WORDS.autoRun, tone: 'warn' })
+  if (used.autoCompact?.on === true) {
     const at = used.autoCompact.at
     items.push({ text: at === null ? MODE_WORDS.autoCompact : `${MODE_WORDS.autoCompact} ${tokensText(at)}` })
   }
-  if (used?.scorer?.on === true) items.push({ text: `${MODE_WORDS.scoring} ${used.scorer.level} ${used.scorer.rounds}` })
-  else if (values !== null && isKitOn(values, KIT_NAMES.scoring)) {
+  if (used.scorer?.on === true) items.push({ text: `${MODE_WORDS.scoring} ${used.scorer.level} ${used.scorer.rounds}` })
+  return items
+}
+
+// claude-kit's modes on, from its settings file alone: auto-run, and scoring with its pass score and the rounds its
+// grading loop runs, which the file does not carry: more under its auto-run
+function kitItems(kit                 )        {
+  const values = kit?.values ?? null
+  if (values === null) return []
+  const items        = []
+  const isAutoRun = isKitOn(values, KIT_NAMES.autoRun)
+  if (isAutoRun) items.push({ text: MODE_WORDS.autoRun, tone: 'warn' })
+  if (isKitOn(values, KIT_NAMES.scoring)) {
     const pass = kitPassScore(values)
-    items.push({ text: pass === null ? MODE_WORDS.scoring : `${MODE_WORDS.scoring} ${pass} ${KIT_SCORING_ROUNDS}` })
+    const rounds = isAutoRun ? KIT_AUTO_RUN_ROUNDS : KIT_SCORING_ROUNDS
+    items.push({ text: pass === null ? MODE_WORDS.scoring : `${MODE_WORDS.scoring} ${pass} ${rounds}` })
   }
   return items
 }
 
-// The modes on, joined, within the band's width: the last mode goes first where the line would pass it. Empty with
-// none on.
-function modesLine(stack              , kit                 , columns        )       {
-  const items = modeItems(stack, kit)
-  const join = (count        )       => items.slice(0, count).flatMap((item, i) => (i === 0 ? [item] : [{ text: MODES_JOIN, tone: 'dim'          }, item]))
+// The items joined, within the width: the last goes first where the line would pass it. Empty with none.
+function fittingLine(items       , separator        , columns        )       {
+  const join = (count        )       => items.slice(0, count).flatMap((item, i) => (i === 0 ? [item] : [{ text: separator, tone: 'dim'          }, item]))
   for (let count = items.length; count > 0; count--) {
     const line = join(count)
     if (widthOf(line) <= columns) return line
@@ -2787,7 +3008,27 @@ function modesLine(stack              , kit                 , columns        )  
   return []
 }
 
-return { modesLine };
+// Alfred Code's modes on, within the band's width
+function alfredModesLine(stack              , columns        )       {
+  return fittingLine(alfredItems(stack), MODES_JOIN, columns)
+}
+
+// claude-kit's modes on, within the band's width
+function kitModesLine(kit                 , columns        )       {
+  return fittingLine(kitItems(kit), MODES_JOIN, columns)
+}
+
+// The model claude-kit's settings file names for each role, within the band's width
+function modelsLine(kit                 , columns        )       {
+  const values = kit?.values ?? null
+  const items = values === null ? [] : KIT_MODEL_ROLES.flatMap(([role, name])        => {
+    const model = values[name]
+    return model === undefined ? [] : [{ text: `${role} ${model}`, tone: 'dim' }]
+  })
+  return fittingLine(items, MODELS_JOIN, columns)
+}
+
+return { alfredModesLine, kitModesLine, modelsLine };
 })();
 // ---- hooks/handoff/handoff.ts
 __m['handoff/handoff.ts'] = (() => {
@@ -3272,7 +3513,10 @@ const RUNNING_STATUS = 'running…'
 const WAITING_STATUS = 'waiting…'
 
 
-return { DEFAULT_COLUMNS, EDIT_TOOLS, RUNNING_STATUS, WAITING_STATUS };
+// `next.origin.plugin` of a call the mod raises itself, such as the question `$.ui.ask` puts: no call of the session's
+const OWN_PLUGIN = 'alfred-mods'
+
+return { DEFAULT_COLUMNS, EDIT_TOOLS, RUNNING_STATUS, WAITING_STATUS, OWN_PLUGIN };
 })();
 // ---- hooks/tools/compact.ts
 __m['tools/compact.ts'] = (() => {
@@ -3568,39 +3812,14 @@ function groupLines(calls               , columns        , at             = {}) 
 
 return { DROPS_RESULT, callLine, groupLines };
 })();
-// ---- hooks/plan/constants.ts
-__m['plan/constants.ts'] = (() => {
-// The plan folder's named values: where a plan skill writes plans and scores, and where the mod reads them
-                                          
-
-// The values of the `plansFolder` setting in the order the reader falls back through them; `.alfred/` holds Alfred
-// Code's state, so the mod's files go one level down in it
-const PLANS_FOLDERS                         = ['.alfred-mods', 'default', '.alfred']
-
-// The root folder each value of `plansFolder` names; plans sit under `<root>/plans`, scores under `<root>/scores`
-const PLANS_ROOTS                                        = {
-  default: '.claude/session-inspector', '.alfred': '.alfred/alfred-mods', '.alfred-mods': '.alfred-mods'
-}
-
-// The value in force while the field is unset
-const UNSET_PLANS_FOLDER              = '.alfred-mods'
-
-const PLANS_SUBFOLDER = 'plans'
-const SCORES_SUBFOLDER = 'scores'
-
-// The largest plan or scores file the reader reads: `$.fs.read` refuses a file over 4 MiB
-const MAX_PLAN_BYTES = 4 * 1024 * 1024
-
-return { PLANS_FOLDERS, PLANS_ROOTS, UNSET_PLANS_FOLDER, PLANS_SUBFOLDER, SCORES_SUBFOLDER, MAX_PLAN_BYTES };
-})();
 // ---- hooks/plan/plan.ts
 __m['plan/plan.ts'] = (() => {
 // Plan and scores files: their parse, the plan view and the scores view. The contract is the README's 'Plan and score
 // files', from the brief's 'Data contracts for the plan and scorer skills'. What a file requires makes it invalid when
 // missing; an optional field that does not fit is dropped.
 const { isRecord } = __m['core/guards.ts'];
-const { PLANS_FOLDERS, PLANS_ROOTS, PLANS_SUBFOLDER, SCORES_SUBFOLDER } = __m['plan/constants.ts'];
-                                                                                                                                                                                            
+const { FILE_PLANS_FOLDER, NO_PLAN_FILES_READ, PLANS_FOLDERS, PLANS_ROOTS, PLANS_SUBFOLDER, SCORES_SUBFOLDER, ALFRED_PLANS_DIR, ALFRED_STATUS_FILE } = __m['plan/constants.ts'];
+                                                                                                                                                                                                         
 
 const STATUSES                    = ['pending', 'in_progress', 'done', 'failed', 'blocked', 'skipped']
 const KINDS                    = ['created', 'step_added', 'step_changed', 'step_removed', 'integrated']
@@ -3695,6 +3914,14 @@ const STALE_MS = 20 * MIN
 const isFinishedStep = (step          )          => step.status === 'done' || step.status === 'skipped'
 // A plan is done when every step is, or when Alfred Code closed it
 const isPlanDone = (plan      )          => typeof plan.completedAt === 'number' || plan.steps.every(isFinishedStep)
+
+// A file of one of Alfred Code's plan folders, which the folder names: `<name>/status.json`
+const isAlfredFile = (file                  )          => file.path?.endsWith(`/${file.name}/${ALFRED_STATUS_FILE}`) === true
+
+// Whether two reads of one name are of one plan: each Alfred Code folder holds its own, and the files of the mod's
+// folders are one plan wherever a writer puts it
+const isSamePlan = (before                  , after                  )          =>
+  before.path === after.path || (!isAlfredFile(before) && !isAlfredFile(after))
 
 // A plan runs while it is begun and not done, and its file was written since this session began: a plan an earlier
 // session left with a step in progress neither takes the band's line 1 nor this session's time. Alfred Code's named
@@ -3877,9 +4104,31 @@ function plansRoots(chosen             )           {
 // The folder the chosen value names for plans, the one a plan skill writes to
 const chosenPlansDir = (chosen             )         => `${PLANS_ROOTS[chosen]}/${PLANS_SUBFOLDER}`
 
-const plansDirs = (chosen             )           => plansRoots(chosen).map(root => `${root}/${PLANS_SUBFOLDER}`)
+// What each chosen value reads (the user, 2026-11-25): `.alfred` Alfred Code's plan folders only, `.alfred-mods`
+// claude-kit's plan and score files only, `default` none, so the plan row is Claude Code's own task list. Unset, every
+// root and the folder Alfred Code's status file names, as before: Alfred Code sets no plansFolder.
+function planSources(chosen             , isSet         )              {
+  if (!isSet) return { fileRoots: plansRoots(chosen), isEveryAlfredPlan: false, isAlfredNamed: true }
+  const isAlfred = chosen === '.alfred'
+  return { fileRoots: chosen === FILE_PLANS_FOLDER ? [PLANS_ROOTS[chosen]] : [], isEveryAlfredPlan: isAlfred, isAlfredNamed: isAlfred }
+}
 
-const scoresDirs = (chosen             )           => plansRoots(chosen).map(root => `${root}/${SCORES_SUBFOLDER}`)
+// Where the plans are looked for, as the 'no plan file' texts name it; null where no plan file is read
+function plansPlaces(sources             )                {
+  if (sources.isEveryAlfredPlan) return ALFRED_PLANS_DIR
+  const first = sources.fileRoots[0]
+  return first === undefined ? null : `${first}/${PLANS_SUBFOLDER}`
+}
+
+// The sentence `/inspect plan <name>` ends on when no plan file holds the name
+function noPlanFileText(sources             )         {
+  const places = plansPlaces(sources)
+  return places === null ? NO_PLAN_FILES_READ : `No plan file in ${places}/.`
+}
+
+const plansDirs = (roots                   )           => roots.map(root => `${root}/${PLANS_SUBFOLDER}`)
+
+const scoresDirs = (roots                   )           => roots.map(root => `${root}/${SCORES_SUBFOLDER}`)
 
 // The files of one name across the folders' lists: a group per name, the greatest `mtimeMs` first, a tie in folder order
 function candidatesByName                                             (byFolder       )        {
@@ -3888,9 +4137,635 @@ function candidatesByName                                             (byFolder 
   return [...groups.values()].map(group => group.sort((first, second) => second.mtimeMs - first.mtimeMs))
 }
 
-return { time, json, parsePlan, parseScores, isFinishedStep, isPlanDone, isPlanRunning, shownPlan, creditedPlan, planView, scoresView, tasksAfter, taskView, taskStatusKey, stepStatusKey, FINISH_SHOWN_MS, newUserNotes, plansRoots, chosenPlansDir, plansDirs, scoresDirs, candidatesByName };
+return { time, json, parsePlan, parseScores, isFinishedStep, isPlanDone, isSamePlan, isPlanRunning, shownPlan, creditedPlan, planView, scoresView, tasksAfter, taskView, taskStatusKey, stepStatusKey, FINISH_SHOWN_MS, newUserNotes, plansRoots, chosenPlansDir, planSources, plansPlaces, noPlanFileText, plansDirs, scoresDirs, candidatesByName };
 })();
-return { bandLines: __m['band/band.ts'].bandLines, statusText: __m['band/band.ts'].statusText, underRows: __m['band/band.ts'].underRows, cellsOf: __m['band/wrap.ts'].cellsOf, groupLines: __m['tools/compact.ts'].groupLines, mcpItem: __m['mcp/mcp.ts'].mcpItem, kitLines: __m['kit/kitlines.ts'].kitLines, modesLine: __m['band/modes.ts'].modesLine, stackLines: __m['stack/stack.ts'].stackLines, planView: __m['plan/plan.ts'].planView, newRow: __m['agents/agents.ts'].newRow };
+// ---- hooks/rec/samples.ts
+__m['rec/samples.ts'] = (() => {
+                                     
+
+const whole = (text        , token        )         => ({ text, masked: token })
+const key = (text        )         => whole(text, '‹key›')
+
+const KEYS           = [
+  key('sk-' + 'ant-api03-' + 'Ab3d'.repeat(10)),
+  key('sk-' + 'proj-' + 'Qx7z'.repeat(10)),
+  key('gh' + 'p_' + 'aB3'.repeat(12)),
+  key('github' + '_pat_' + '11' + 'AbC4'.repeat(15)),
+  key('xo' + 'xb-' + '1234567890' + '-' + '0987654321' + '-' + 'aBcD'.repeat(6)),
+  // AWS's own documented example key id
+  key('AK' + 'IA' + 'IOSFODNN7' + 'EXAMPLE'),
+  key('AI' + 'za' + 'Sy' + 'B'.repeat(33)),
+  key('sk' + '_live_' + 'Ab12'.repeat(6)),
+  key('ey' + 'JhbGciOiJIUzI1NiJ9' + '.' + 'ey' + 'JzdWIiOiIxMjM0In0' + '.' + 'abcDEF123_-xyzXYZ789'),
+  key('-----BEGIN ' + 'OPENSSH PRIV' + 'ATE KEY-----\n' + 'b3BlbnNzaC1rZXktdjEAAAAABG5vbmU=\n' + '-----END ' + 'OPENSSH PRIV' + 'ATE KEY-----'),
+  { text: 'Authorization: ' + 'Bearer ' + 'abcdefghijklmnop1234', masked: 'Authorization: Bearer ‹key›' },
+  { text: 'API_KEY=' + 'hunter2hunter2', masked: 'API_KEY=‹key›' },
+  { text: '"password": "' + 'correct-horse"', masked: '"password": "‹key›"' },
+  // The short named form, a secret flag, an Authorization header of any scheme, and credentials in a URL
+  { text: 'password=' + 'hunter2', masked: 'password=‹key›' },
+  { text: '--password ' + 'hunter2', masked: '--password ‹key›' },
+  { text: '--token=' + 'abcd1234', masked: '--token=‹key›' },
+  { text: 'Authorization: ' + 'Basic ' + 'dXNlcjpwYXNz', masked: 'Authorization: Basic ‹key›' },
+  { text: 'authorization=' + 'Token ' + 'abcd', masked: 'authorization=Token ‹key›' },
+  { text: 'postgres://admin:' + 'hunter2' + '@localhost', masked: 'postgres://admin:‹key›@localhost' },
+]
+
+const EMAILS           = ['jane.doe@example.com', 'a+b@sub.example.co.uk', 'ops@example.io'].map(address => whole(address, '‹email›'))
+
+const PHONES           = [
+  '+1 415 555 0132', '+44 20 7946 0958', '(415) 555-0132', '415-555-0132', '+380 44 123 4567', '+4915123456789',
+].map(number => whole(number, '‹phone›'))
+
+// Shown at every level; the last, an amount, only below strict
+const LEFT_ALONE           = [
+  'c50c7aa', 'c50c7aa' + '0123456789abcdef0123456789abcdef0', '14:05', '2026-10-28', '(28.10 16:15)', '2.1.312',
+  '180k cached', '1,234,567 tokens', 'localhost:8080', 'src/auth/refresh.ts', 'https://example.com/a?b=1',
+  '123e4567-e89b-12d3-a456-426614174000', '12345678901', '10.100.200.150',
+  // Near misses of the key forms
+  'Basic usage', '$ pwd', 'key: id', 'password: null', 'secret: true', '--token-file ./t', 'https://example.com/a:b@c',
+  '$3.12',
+]
+
+const AMOUNTS           = [
+  { text: '$3.12', masked: '$•.••' }, { text: '≈ $1.44', masked: '≈ $•.••' }, { text: '$1,204.50', masked: '$•,•••.••' },
+]
+
+// Strict's home paths and account, from the home folder: the prefix with either separator, and the name alone
+function strictSamples(home        )           {
+  const name = home.split(/[\\/]/).filter(segment => segment !== '').pop() ?? ''
+  return [
+    { text: `${home.replace(/\\/g, '/')}/src`, masked: '~/src' },
+    { text: `${home.replace(/\//g, '\\')}\\src`, masked: '~\\src' },
+    ...(name.length >= 3 ? [{ text: `by ${name} today`, masked: 'by ‹user› today' }] : []),
+  ]
+}
+
+return { KEYS, EMAILS, PHONES, LEFT_ALONE, AMOUNTS, strictSamples };
+})();
+// ---- hooks/rec/rec.ts
+__m['rec/rec.ts'] = (() => {
+// REC's masker: the classes of what a recording hides, compiled once per level and word list, and the one pass over a
+// text that replaces each match with its token (spec 'What each class hides').
+const { AMOUNTS, EMAILS, KEYS, LEFT_ALONE, PHONES, strictSamples } = __m['rec/samples.ts'];
+                                         
+                                                                       
+
+const whole = (token        ) => (match                 )      => ({ start: match.index, end: match.index + match[0].length, text: token })
+
+// The tokens REC draws, kept as they are, so a masked string masks to itself
+const TOKENS        = { re: /‹(?:key|email|phone|private|user)(?: \d+)?›/g, hit: match => whole(match[0])(match) }
+
+// Each letter of a word either case, as one class of the key regex is case-sensitive and another is not
+const either = (word        )         => [...word].map(char => `[${char.toUpperCase()}${char.toLowerCase()}]`).join('')
+const NAMES = ['key', 'token', 'secret', 'passwd', 'password', 'pwd'].map(either).join('|')
+const VALUE = String.raw`[^\s"'` + '`' + ']{8,}'
+// The names whose value hides from 4 characters, and the whole values that are no secret
+const SHORT_NAMES = ['secret', 'passwd', 'password', 'pwd'].map(either).join('|')
+const NOT_SECRET = ['null', 'true', 'false', 'none'].map(either).join('|')
+const SHORT_VALUE = String.raw`(?!(?:${NOT_SECRET})(?![^\s"'` + '`' + String.raw`]))[^\s"'` + '`' + String.raw`]{4,7}(?![^\s"'` + '`' + '])'
+const VALUE4 = String.raw`[^\s"'` + '`' + ']{4,}'
+const FLAGS = ['password', 'passwd', 'token', 'secret', 'api-key', 'apikey', 'auth-token'].join('|')
+const VALUE1 = String.raw`[^\s"'` + '`' + ']{1,}'
+
+// One regex for every key form. A named, flag, header or bearer value hides the value alone, the group that ends the
+// match; URL credentials hide the password from its ':' on, a start before the email class's, so a password that
+// reads as an email's start stays one key. A name is at most 64 characters, so no part backtracks over more.
+const KEY = new RegExp([
+  String.raw`(?<![\w-])(?:sk-[\w-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|xox[abposr]-[A-Za-z0-9-]{10,}|(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{10,}|AIza[\w-]{35,}|eyJ[\w-]{4,}\.[\w-]{4,}\.[\w-]{4,})`,
+  String.raw`(?<![A-Z0-9])(?:AKIA|ASIA)[A-Z0-9]{16}(?![A-Z0-9])`,
+  // A block with no end hides to the end of the text, as its body would show otherwise
+  String.raw`-----BEGIN[A-Z ]{0,40}PRIVATE KEY-----(?:[\s\S]*?-----END[A-Z ]{0,40}PRIVATE KEY-----|[\s\S]*)`,
+  String.raw`\b[Bb]earer +(?<bearer>${VALUE})`,
+  String.raw`(?<![\w.-])(?=[\w.-]{0,64}?(?:${NAMES}))[\w.-]{1,64}["']?[ \t]{0,4}[:=][ \t]{0,4}["']?(?<named>${VALUE})`,
+  String.raw`(?<![\w.-])(?=[\w.-]{0,64}?(?:${SHORT_NAMES}))[\w.-]{1,64}["']?[ \t]{0,4}[:=][ \t]{0,4}["']?(?<short>${SHORT_VALUE})`,
+  String.raw`(?<![\w-])--(?:${FLAGS})(?:[ \t]{1,4}|=)["']?(?!-)(?<flag>${VALUE4})`,
+  // A scheme is one word of letters (Basic, Bearer, Bot, ApiKey, SSWS); its credential hides at any length, and a value
+  // with no scheme from 4 characters
+  String.raw`(?<![\w-])(?:${either('proxy')}-)?${either('authorization')}["']?[ \t]{0,4}[:=][ \t]{0,4}["']?(?:[A-Za-z][A-Za-z-]{1,30}[ \t]{1,4}(?<auth>${VALUE1})|(?<authBare>${VALUE4}))`,
+  // From the ':' alone, so a token as the user still matches as a token; the user may be empty (redis://:pw@host), and
+  // the password runs to the last '@' before the host, so one holding '@' hides whole
+  String.raw`:(?<=[A-Za-z][A-Za-z0-9+.-]{1,20}:\/\/[^\s:@\/]{0,64}:)(?<url>[^\s\/?#]{1,128})(?=@)`,
+].join('|'), 'g')
+
+const keyHit = (match                 )      => {
+  const groups = match.groups ?? {}
+  const end = match.index + match[0].length
+  if (groups['url'] !== undefined) return { start: match.index, end, text: ':‹key›' }
+  const value = groups['bearer'] ?? groups['named'] ?? groups['short'] ?? groups['flag'] ?? groups['auth'] ?? groups['authBare']
+  return { start: value === undefined ? match.index : end - value.length, end, text: '‹key›' }
+}
+
+const EMAIL = /(?<![\w.%+-])[\w.%+-]{1,64}@[A-Za-z0-9.-]{1,253}\.[A-Za-z]{2,24}(?![A-Za-z0-9-])/g
+
+// A + and 8 to 15 digits; or 10 or 11 digits in two to four groups, its last of 4. An IPv4 address's last group has at
+// most 3 digits, so it never matches.
+const PHONE = new RegExp(String.raw`(?<![\w+.-])(?:(?<intl>\+\d(?:[ .()-]{0,2}\d){7,14})|(?<national>(?:\(\d{1,4}\) ?\d{1,4}[ .-]|\d{1,4}[ .-]\d{1,4}[ .-]\d{1,4}[ .-]|\d{1,7}[ .-]\d{1,7}[ .-]|\d{6,7}[ .-])\d{4}))(?!\w|[.-]\d)`, 'g')
+
+const phoneHit = (match                 )             => {
+  const national = match.groups?.['national']
+  if (national !== undefined && ![10, 11].includes(national.replace(/\D/g, '').length)) return null
+  return whole('‹phone›')(match)
+}
+
+const AMOUNT        = {
+  re: /\$\d[\d,]{0,20}(?:\.\d{1,6})?/g,
+  hit: match => ({ start: match.index, end: match.index + match[0].length, text: match[0].replace(/\d/g, '•') }),
+}
+
+// What a u-flag regex escapes outside a class
+const escape = (text        )         => text.replace(/[\\^$.*+?()[\]{}|\/]/g, '\\$&')
+const WORD_EDGE = String.raw`[\p{L}\p{N}_]`
+
+// A home and its other spelling on Windows: Git Bash's HOME /c/Users/jane is C:\Users\jane to Claude Code and Windows
+// tools, and a Windows home is /c/Users/jane inside Git Bash
+function homeForms(home        )           {
+  // Each pattern's two groups are required, so a match holds both
+  const bash = /^\/([A-Za-z])(\/.+)$/.exec(home)
+  if (bash !== null) return [home, `${bash[1] }:${bash[2] }`]
+  const drive = /^([A-Za-z]):([\\/].+)$/.exec(home)
+  if (drive !== null) return [home, `/${drive[1] .toLowerCase()}${drive[2] .replace(/\\/g, '/')}`]
+  return [home]
+}
+
+function homeClasses(home        )          {
+  const forms = homeForms(home)
+  const isWindows = forms.length > 1 || /^[A-Za-z]:/.test(home) || home.includes('\\')
+  const out          = []
+  let name = ''
+  for (const form of forms) {
+    const parts = form.split(/[\\/]+/)
+    while (parts.length > 0 && parts[parts.length - 1] === '') parts.pop()
+    if (parts.filter(part => part !== '').length === 0) continue
+    out.push({ re: new RegExp(`${parts.map(escape).join('[\\\\/]')}(?![\\p{L}\\p{N}_.-])`, isWindows ? 'giu' : 'gu'), hit: whole('~') })
+    // The empty parts at the end are gone and one that is not empty is left, so a last part is there
+    name = parts[parts.length - 1] 
+  }
+  if (name.length >= 3) out.push({ re: new RegExp(`(?<!${WORD_EDGE})${escape(name)}(?!${WORD_EDGE})`, 'giu'), hit: whole('‹user›') })
+  return out
+}
+
+function compile(level          , words          , home               )           {
+  if (level === 'off') return { level, classes: [] }
+  const classes          = [TOKENS, { re: KEY, hit: keyHit }, { re: EMAIL, hit: whole('‹email›') }, { re: PHONE, hit: phoneHit }]
+  // The longest word first, so the longest at a start wins
+  const sorted = [...words].sort((left, right) => right.length - left.length).map(escape)
+  if (sorted.length > 0) classes.push({ re: new RegExp(sorted.join('|'), 'giu'), hit: whole('‹private›') })
+  if (level === 'strict') {
+    if (home !== null) classes.push(...homeClasses(home))
+    classes.push(AMOUNT)
+  }
+  return { level, classes }
+}
+
+// One pass: every class finds its matches in the original text, the overlaps go to the earliest start and then the
+// longest, and no match is scanned again.
+function maskText(compiled          , text        )         {
+  const hits = maskHits(compiled, text)
+  if (hits.length === 0) return text
+  let out = ''
+  let at = 0
+  for (const hit of hits) {
+    out += text.slice(at, hit.start) + hit.text
+    at = hit.end
+  }
+  return out + text.slice(at)
+}
+
+// The matches the one pass keeps, in order and apart: by start, the longest first where two start together
+function maskHits(compiled          , text        )        {
+  if (compiled.classes.length === 0 || text === '') return []
+  const hits        = []
+  for (const matcher of compiled.classes) {
+    matcher.re.lastIndex = 0
+    for (let found = matcher.re.exec(text); found !== null; found = matcher.re.exec(text)) {
+      const hit = matcher.hit(found)
+      if (hit !== null) hits.push(hit)
+      // A refused match, or an empty one, lets the next start one character on
+      if (hit === null || found[0] === '') matcher.re.lastIndex = found.index + 1
+    }
+  }
+  hits.sort((left, right) => left.start - right.start || (right.end - right.start) - (left.end - left.start))
+  const kept        = []
+  let at = 0
+  for (const hit of hits) {
+    if (hit.start < at) continue
+    kept.push(hit)
+    at = hit.end
+  }
+  return kept
+}
+
+const LEVELS             = ['off', 'on', 'strict']
+
+// The stored words, anything else read as none
+function parseWords(value         )           {
+  return Array.isArray(value) ? value.filter((item)                 => typeof item === 'string') : []
+}
+
+const countText = (wordCount        )         => `${wordCount} private ${wordCount === 1 ? 'word' : 'words'}`
+
+// '● REC on · hiding keys · emails · phones · 3 private words', strict adding what it hides; off is 'REC off'
+function recStatus(level          , count        )         {
+  if (level === 'off') return 'REC off'
+  const parts = ['keys', 'emails', 'phones', ...(count > 0 ? [countText(count)] : [])]
+  if (level === 'strict') parts.push('account', 'home paths', '$ amounts')
+  return `● REC ${level} · hiding ${parts.join(' · ')}`
+}
+
+const REC_USAGE = 'Usage: /rec [on|strict|off|test|words [close]]'
+
+// The model's note for a level, which rides the person's next prompt (spec 'The model's note')
+const NOTE_ON = 'Screen recording is on (alfred-mods REC). Until told it is off, do not write secret values, API keys, tokens, passwords, email addresses or phone numbers in replies; refer to them by name, such as "the token in .env". Work on the task as usual.'
+const NOTE_STRICT = 'Also leave out account names, home folder paths and dollar amounts.'
+const NOTE_OFF = 'Screen recording is off (alfred-mods REC); the earlier limit on secret values no longer applies.'
+
+function recNote(level          )         {
+  return level === 'off' ? NOTE_OFF : level === 'strict' ? `${NOTE_ON} ${NOTE_STRICT}` : NOTE_ON
+}
+
+// The /rec help text: the usage and what REC cannot hide (spec 'What REC cannot hide')
+const REC_HELP = [
+  REC_USAGE,
+  'The level is the "rec" field of "alfred-mods" in a settings file: "off", "on" or "strict". /rec on, strict and off set it in ~/.claude/settings.json, /rec test checks it, /rec words opens the private-words pane and /rec words close closes it.',
+  'REC cannot hide:',
+  "- what you type in the prompt box",
+  '- a prompt the mod fills into the prompt box',
+  "- Claude Code's own screens and dialogs: the permission dialog, /context, /usage, /config, the status line and the welcome header",
+  "- other plugins' bands and panes",
+  '- the option labels of a question Claude asks: Claude Code draws them as asked',
+  "- a private key's middle lines in a diff that does not show its BEGIN line",
+  '- other open sessions, for up to 30 seconds after a change: run /rec in each one on screen',
+  '- rows drawn before REC went on: turn it on before recording, then clear the terminal or start a new session',
+  '- files on disk and the transcript: HANDOFF.md gets only its key, email and phone masking',
+  '- anything the model reads',
+].join('\n')
+
+// A word added in the pane: trimmed, 3 to 64 characters, at most 100 words, none twice ignoring case
+function addWord(words          , raw        )                                           {
+  const word = raw.trim()
+  if (word.length < 3 || word.length > 64) return { reason: 'A word needs 3 to 64 characters.' }
+  if (words.some(listed => listed.toLowerCase() === word.toLowerCase())) return { reason: 'That word is already in the list.' }
+  if (words.length >= 100) return { reason: 'The list holds 100 words at most.' }
+  return { words: [...words, word] }
+}
+
+// The rec pane's lines above its field: with REC off the words, each with its remove button; with REC on the count
+function recPaneLines(level          , words          )         {
+  if (level !== 'off') return [[{ text: 'Private words', bold: true }], [{ text: `${countText(words.length)} · turn REC off to see or remove them` }]]
+  const out         = [[{ text: 'Private words', bold: true }, { text: `  ${words.length} of 100`, tone: 'dim' }]]
+  if (words.length === 0) out.push([{ text: 'No private words yet.', tone: 'dim' }])
+  words.forEach((listed, i) => out.push([{ text: `${listed}  ` }, { button: { key: `remove-${i}`, label: 'remove' } }]))
+  out.push([{ text: 'The field shows what you type: add words before recording starts.', tone: 'dim' }])
+  return out
+}
+
+const row = (ok         , label        , hidden        , total        , tail        )         =>
+  `${ok ? '✓' : '✗'} ${label.padEnd(14)} ${`${hidden}/${total}`.padStart(5)} ${tail}`
+
+// /rec test: the masker over the fake samples, one set per class, and the person's words, at the level that applies.
+// A failed sample prints its class and the fake sample; a failed private word, its position only.
+function recTest(level          , words          , home               )         {
+  const compiled = compile(level, words, home)
+  const out = [`/rec test · level ${level}`]
+  const failed           = []
+  const check = (label        , samples                                    )       => {
+    const bad = samples.filter(sample => maskText(compiled, sample.text) !== sample.masked)
+    out.push(row(bad.length === 0, label, samples.length - bad.length, samples.length, 'hidden'))
+    for (const sample of bad) failed.push(`  ✗ ${label}: ${sample.text}`)
+  }
+  check('keys', KEYS)
+  check('emails', EMAILS)
+  check('phones', PHONES)
+  if (words.length > 0) {
+    const bad = words.flatMap((listed, i) => (maskText(compiled, listed) === listed ? [i + 1] : []))
+    out.push(row(bad.length === 0, 'private words', words.length - bad.length, words.length, 'hidden (not shown)'))
+    for (const i of bad) failed.push(`  ✗ private word ${i} shown`)
+  }
+  const alone = LEFT_ALONE.filter(sample => level !== 'strict' || !sample.startsWith('$'))
+  const moved = alone.filter(sample => maskText(compiled, sample) !== sample)
+  out.push(row(moved.length === 0, 'left alone', alone.length - moved.length, alone.length, 'shown (SHA, time, date, version, token count, port, path, URL, UUID, digits, IP, key near misses, $ off strict)'))
+  for (const sample of moved) failed.push(`  ✗ left alone: ${sample}`)
+  const strict = compile('strict', words, home)
+  const part = (label        , samples                                    )         => {
+    const ok = samples.filter(sample => maskText(strict, sample.text) === sample.masked).length
+    return `${ok === samples.length ? '✓' : '✗'} ${label} ${ok}/${samples.length}`
+  }
+  const homeSamples = home === null ? [] : strictSamples(home)
+  const homes = homeSamples.filter(sample => sample.masked !== 'by ‹user› today')
+  const account = homeSamples.filter(sample => sample.masked === 'by ‹user› today')
+  out.push(`strict: ${[
+    home === null ? 'home path skipped (no home folder)' : part('home path', homes),
+    home === null ? 'account skipped' : account.length === 0 ? 'account skipped (name under 3 characters)' : part('account', account),
+    part('$ amounts', AMOUNTS),
+  ].join(' · ')}`)
+  return [...out, ...failed].join('\n')
+}
+
+const recSummary = (rec          )                                              => ({ level: rec.level, words: rec.wordCount })
+
+return { compile, maskText, maskHits, LEVELS, parseWords, recStatus, recNote, REC_HELP, addWord, recPaneLines, recTest, recSummary };
+})();
+// ---- hooks/settings/settings.ts
+__m['settings/settings.ts'] = (() => {
+// The mod's switches as values under one "alfred-mods" key in Claude Code's settings files (spec 2026-11-11
+// settings-values, S1-S3): each field read per file, the first valid value in the order policy, flag, local, project,
+// user, then an earlier command's choice, then the default. Pure: settings/effects.ts reads the files and the store.
+const { MODES, isThreshold } = __m['handoff/handoff.ts'];
+const { isRecord } = __m['core/guards.ts'];
+const { LEVELS } = __m['rec/rec.ts'];
+const { PLANS_FOLDERS, UNSET_PLANS_FOLDER } = __m['plan/constants.ts'];
+                                             
+                                            
+                                                                                          
+
+const FIELDS                   = ['band', 'bandPlace', 'bandRows', 'quiet', 'rec', 'handoff', 'handoffAt', 'plansFolder']
+const SOURCES                    = ['policy', 'flag', 'local', 'project', 'user']
+const DEFAULTS                 = { band: 'full', bandPlace: 'above', bandRows: true, quiet: true, rec: 'off', handoff: 'ask', handoffAt: 80, plansFolder: UNSET_PLANS_FOLDER }
+
+// "off" draws no band, above or under (the user, 2026-11-12: '/inspect band off' hides it where nothing takes a key)
+const BAND_MODES                      = ['full', 'calm', 'off']
+
+const isBool = (value         )                   => typeof value === 'boolean'
+
+// Each field's test and the words its toast uses for the values it takes
+const RULES                                                                         = {
+  band: { isValid: value => BAND_MODES.some(mode => mode === value), takes: '"full", "calm" or "off"' },
+  bandPlace: { isValid: value => value === 'above' || value === 'under', takes: '"above" or "under"' },
+  bandRows: { isValid: isBool, takes: 'true or false' },
+  quiet: { isValid: isBool, takes: 'true or false' },
+  rec: { isValid: value => LEVELS.some(level => level === value), takes: '"off", "on" or "strict"' },
+  handoff: { isValid: value => MODES.some(mode => mode === value), takes: '"ask", "auto" or "off"' },
+  handoffAt: { isValid: isThreshold, takes: 'a whole number from 10 to 95' },
+  plansFolder: { isValid: value => PLANS_FOLDERS.some(folder => folder === value), takes: '"default", ".alfred" or ".alfred-mods"' }
+}
+
+const NAMES                       = {
+  user: '~/.claude/settings.json', project: '.claude/settings.json', local: '.claude/settings.local.json',
+  flag: '--settings', policy: 'managed settings', legacy: 'an earlier command', default: 'the default'
+}
+
+function sourceFileName(from      )         {
+  return NAMES[from]
+}
+
+// Each field walks the order down to its first valid value; a bad value on the way is skipped and listed, one under
+// the value in use is not. A key that is not an object, or a file that did not parse (absent), gives no fields.
+function resolveSettings(layers                                  , legacy                         )                   {
+  const values = { ...DEFAULTS }                          
+  const from = {}                       
+  const skipped         = []
+  const userFields          = []
+  for (const field of FIELDS) {
+    const rule = RULES[field]
+    from[field] = 'default'
+    let isSet = false
+    for (const source of SOURCES) {
+      const layer = layers[source]
+      if (!isRecord(layer) || !Object.prototype.hasOwnProperty.call(layer, field)) continue
+      const value = layer[field]
+      if (!rule.isValid(value)) {
+        if (!isSet) skipped.push({ field, source })
+        continue
+      }
+      if (source === 'user') userFields.push(field)
+      if (isSet) continue
+      values[field] = value
+      from[field] = source
+      isSet = true
+    }
+    if (!isSet && legacy[field] !== undefined && rule.isValid(legacy[field])) {
+      values[field] = legacy[field]
+      from[field] = 'legacy'
+    }
+  }
+  return { values: values                  , from, skipped, userFields }
+}
+
+// S3's toast for a skipped value: it names the file, the values the field takes and the value in use, never the bad one
+function skippedToast(skip      , resolved                  )         {
+  const using = JSON.stringify(resolved.values[skip.field])
+  return `"${skip.field}" in ${sourceFileName(skip.source)} takes ${RULES[skip.field].takes} - using ${using} from ${sourceFileName(resolved.from[skip.field])}`
+}
+
+// The old commands' store keys as an earlier command's choices (S7): only the values those commands wrote, so a fresh
+// store, or anything another version or a hand wrote, gives no field
+function legacyOf(raw                                                                                                   )                          {
+  const out                          = {}
+  if (raw.band === 'calm' || raw.band === 'full') out.band = raw.band
+  if (raw.place === 'under') out.bandPlace = 'under'
+  if (raw.tools === 'open' || raw.tools === 'closed') out.bandRows = raw.tools === 'open'
+  if (isBool(raw.quiet)) out.quiet = raw.quiet
+  const level = LEVELS.find(known => known === raw.rec)
+  if (level !== undefined) out.rec = level
+  if (isRecord(raw.handoff)) {
+    const mode = MODES.find(known => known === (raw.handoff                           ).mode)
+    if (mode !== undefined) out.handoff = mode
+    if (isThreshold(raw.handoff.threshold)) out.handoffAt = raw.handoff.threshold
+  }
+  return out
+}
+
+// The order a hold compares sources in, highest first
+const ORDER                  = ['policy', 'flag', 'local', 'project', 'user', 'legacy', 'default']
+
+// S3's one departure, REC's hold: after the session's first read, a lower level lowers REC only when it comes from the
+// source that set the level in force, or one above it. From a lower source - the file that set it gives no valid "rec"
+// any more, which a typo that drops the whole file also does - the level in force holds.
+function holdRec(inForce                                        , next                                 )                                                   {
+  if (inForce === null || LEVELS.indexOf(next.level) >= LEVELS.indexOf(inForce.level) || ORDER.indexOf(next.from) <= ORDER.indexOf(inForce.from)) {
+    return { ...next, isHeld: false }
+  }
+  return { ...inForce, isHeld: true }
+}
+
+// S3's toast for a hold, once per hold. The toast box carries the mod's name and shows three 40-cell lines, so no
+// prefix and under 120 characters (the review's #1, Claude Code 2.1.322)
+function holdToast(level          , from      )         {
+  return `REC stays ${level}: ${sourceFileName(from)} no longer gives "rec" - fix the file, or set "rec": "off" in it`
+}
+
+// S7's toast, once per machine: the earlier commands' choices still in force, as the line to paste, in S2's order. The
+// line comes first, so the box's three lines show it before the why (the review's #1)
+function movedToast(kept                         )         {
+  const fields = FIELDS.filter(name => kept[name] !== undefined).map(field => `"${field}": ${JSON.stringify(kept[field])}`).join(', ')
+  return `Add "alfred-mods": { ${fields} } to ~/.claude/settings.json - the choices your earlier commands made`
+}
+
+// One field of "alfred-mods" set in a settings file's text, for /rec on|strict|off, /auto-handoff ask|auto|off|at and
+// /inspect band (the user's rulings, 2026-11-12): every other key kept in its order, in the file's own indent, line ends and last
+// newline; null or blank text makes the file. A file that is not one JSON object, or whose "alfred-mods" is not an
+// object, is never rewritten: 'parse' or 'key' says which.
+function writeField                 (text               , field   , value                   )                                              {
+  const isBlank = text === null || text.trim() === ''
+  let parsed          = {}
+  if (!isBlank) {
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      return { why: 'parse' }
+    }
+  }
+  if (!isRecord(parsed)) return { why: 'parse' }
+  const block = parsed['alfred-mods']
+  if (block !== undefined && !isRecord(block)) return { why: 'key' }
+  const indent = isBlank ? '  ' : (/\n([ \t]+)\S/.exec(text)?.[1] ?? '  ')
+  const out = JSON.stringify({ ...parsed, 'alfred-mods': { ...block, [field]: value } }, null, indent)
+  const isCrlf = !isBlank && text.includes('\r\n')
+  const last = isBlank || /\n$/.test(text) ? '\n' : ''
+  return { text: (out + last).replace(/\n/g, isCrlf ? '\r\n' : '\n') }
+}
+
+// The old commands' store keys, by the field each held (S7); `settings:handoff` holds two, retired field by field
+const LEGACY_KEYS                                 = {
+  band: 'settings:band', bandPlace: 'settings:band-place', bandRows: 'settings:band-tools', quiet: 'settings:quiet', rec: 'settings:rec',
+}
+
+// A source's name in the commands' answers: an earlier command's choice is named for its command (S7)
+const sourceLabel = (from      , command                                    )         => (from === 'legacy' ? `an earlier ${command}` : sourceFileName(from))
+
+return { FIELDS, SOURCES, DEFAULTS, BAND_MODES, sourceFileName, resolveSettings, skippedToast, legacyOf, holdRec, holdToast, movedToast, writeField, LEGACY_KEYS, sourceLabel };
+})();
+// ---- hooks/core/folders.ts
+__m['core/folders.ts'] = (() => {
+// Folders as Claude Code keys a project in its records. Pure.
+
+// A folder spelled one way: forward slashes, no trailing one
+const folderKey = (folder        )         => folder.replace(/\\/g, '/').replace(/\/+$/, '')
+
+// Whether `folder` is `root` or a folder above it: a session started in a subfolder belongs to the project above
+function isFolderOf(folder        , root        )          {
+  const key = folderKey(folder)
+  const at = folderKey(root)
+  return key === at || (key !== '' && at.startsWith(`${key}/`))
+}
+
+return { folderKey, isFolderOf };
+})();
+// ---- hooks/plugins/constants.ts
+__m['plugins/constants.ts'] = (() => {
+// The plugins folder's named values. Precedence, the install record and the origins are from
+// code.claude.com/docs/en/plugins/loading, 'Find where a plugin is enabled' and 'Find where a plugin came from', read
+// 2026-11-25.
+
+// The settings key that turns a plugin on or off, keyed `<name>@<origin>`
+const ENABLED_KEY = 'enabledPlugins'
+
+// The install record: `<CLAUDE_CONFIG_DIR>/plugins/installed_plugins.json`, else `~/.claude/plugins/...`
+const CLAUDE_FOLDER = '.claude'
+const INSTALLED_FILE = 'plugins/installed_plugins.json'
+const INSTALLED_PLUGINS_KEY = 'plugins'
+const PROJECT_PATH_FIELD = 'projectPath'
+const SCOPE_FIELD = 'scope'
+// The install scopes that reach every project; `project` and `local` reach the one at their projectPath
+const EVERY_PROJECT_SCOPES                    = ['user', 'managed']
+
+// The origins no marketplace install stands behind, so the record cannot tell whether one is there
+const ORIGIN_SEPARATOR = '@'
+const UNRECORDED_ORIGINS                    = ['inline', 'skills-dir', 'synced']
+
+// The envoydev stack, shown first in this order
+const STACK_IDS                    = ['alfred-code@envoydev', 'alfred-tools@envoydev', 'alfred-mods@envoydev']
+
+// The Now tab's section
+const PLUGINS_HEAD = 'PLUGINS'
+const PLUGINS_NOTE = 'Set in settings files; a plugin with no entry follows its default, and --plugin-dir copies are not listed'
+const SHOWN_ROWS = 12
+const ON_WORD = 'on'
+const OFF_WORD = 'off'
+const NOT_INSTALLED = 'not installed here'
+const ROW_JOIN = ' · '
+
+// The rows are read again at most this often while the pane draws
+const READ_EVERY_MS = 5_000
+
+return { ENABLED_KEY, CLAUDE_FOLDER, INSTALLED_FILE, INSTALLED_PLUGINS_KEY, PROJECT_PATH_FIELD, SCOPE_FIELD, EVERY_PROJECT_SCOPES, ORIGIN_SEPARATOR, UNRECORDED_ORIGINS, STACK_IDS, PLUGINS_HEAD, PLUGINS_NOTE, SHOWN_ROWS, ON_WORD, OFF_WORD, NOT_INSTALLED, ROW_JOIN, READ_EVERY_MS };
+})();
+// ---- hooks/plugins/plugins.ts
+__m['plugins/plugins.ts'] = (() => {
+// The plugins the settings files turn on or off, with the file that decides each and whether it is installed here.
+// Pure: effects.ts reads the files.
+const { isFolderOf } = __m['core/folders.ts'];
+const { fitLine, printable } = __m['core/format.ts'];
+const { isRecord } = __m['core/guards.ts'];
+                                         
+const { SOURCES, sourceFileName } = __m['settings/settings.ts'];
+const { CLAUDE_FOLDER, ENABLED_KEY, EVERY_PROJECT_SCOPES, INSTALLED_FILE, INSTALLED_PLUGINS_KEY, NOT_INSTALLED, OFF_WORD, ON_WORD, ORIGIN_SEPARATOR, PLUGINS_HEAD, PLUGINS_NOTE, PROJECT_PATH_FIELD, ROW_JOIN, SCOPE_FIELD, SHOWN_ROWS, STACK_IDS, UNRECORDED_ORIGINS } = __m['plugins/constants.ts'];
+                                                                              
+
+const withoutTrailingSeparators = (folder        )         => folder.replace(/[\\/]+$/, '')
+
+// The install record's path: in CLAUDE_CONFIG_DIR when set, else in the home folder's .claude; null with neither
+function installedPathOf(location                )                {
+  if (location.configDir !== '') return `${withoutTrailingSeparators(location.configDir)}/${INSTALLED_FILE}`
+  return location.home === '' ? null : `${withoutTrailingSeparators(location.home)}/${CLAUDE_FOLDER}/${INSTALLED_FILE}`
+}
+
+// Per plugin id, the value and source of the highest source that names it with true or false
+function decided(layers                        )                                               {
+  const out = new Map                                         ()
+  for (const source of SOURCES) {
+    const layer = layers[source]
+    const enabled = isRecord(layer) ? layer[ENABLED_KEY] : undefined
+    if (!isRecord(enabled)) continue
+    for (const [id, value] of Object.entries(enabled)) if (typeof value === 'boolean' && !out.has(id)) out.set(id, { isOn: value, from: source })
+  }
+  return out
+}
+
+// The install record's plugins, or null for text that is no JSON object or holds none
+function installedPlugins(text               )                                 {
+  if (text === null) return null
+  try {
+    const parsed          = JSON.parse(text)
+    return isRecord(parsed) && isRecord(parsed[INSTALLED_PLUGINS_KEY]) ? parsed[INSTALLED_PLUGINS_KEY] : null
+  } catch {
+    return null
+  }
+}
+
+// Installed for the project at `root`: an install of a scope that reaches every project, or one made for this project or
+// a project above it, as a session started in a subfolder belongs to that one
+function isInstalledHere(entries         , root        )          {
+  if (!Array.isArray(entries)) return false
+  return entries.some(entry => isRecord(entry) && typeof entry[SCOPE_FIELD] === 'string' && (EVERY_PROJECT_SCOPES.includes(entry[SCOPE_FIELD])
+    || (typeof entry[PROJECT_PATH_FIELD] === 'string' && isFolderOf(entry[PROJECT_PATH_FIELD], root))))
+}
+
+const originOf = (id        )         => id.slice(id.lastIndexOf(ORIGIN_SEPARATOR) + 1)
+
+const stackRank = (id        )         => {
+  const at = STACK_IDS.indexOf(id)
+  return at === -1 ? STACK_IDS.length : at
+}
+
+// Every plugin a settings file names, the envoydev stack first in its order, then the rest by id
+function pluginRows(input              )              {
+  const record = installedPlugins(input.installedText)
+  const rows = [...decided(input.layers)].map(([id, { isOn, from }])            => ({
+    id, isOn, from,
+    isInstalled: record === null || UNRECORDED_ORIGINS.includes(originOf(id)) ? null : isInstalledHere(record[id], input.root),
+  }))
+  return rows.sort((a, b) => stackRank(a.id) - stackRank(b.id) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+}
+
+// The Now tab's PLUGINS section: what the rows mean, then each plugin with its value and the file that decides it; one
+// turned on that the record shows is not installed here says so. Past SHOWN_ROWS the rest are counted.
+function pluginLines(rows                      , columns        )         {
+  if (rows.length === 0) return []
+  const shown = rows.slice(0, SHOWN_ROWS).map((row)       => {
+    const parts = [`${printable(row.id)} ${row.isOn ? ON_WORD : OFF_WORD}`, sourceFileName(row.from), ...(row.isOn && row.isInstalled === false ? [NOT_INSTALLED] : [])]
+    return [{ text: fitLine(parts.join(ROW_JOIN), columns), ...(row.isOn && row.isInstalled === false ? { tone: 'warn'          } : {}) }]
+  })
+  const rest = rows.length - shown.length
+  return [
+    [{ text: PLUGINS_HEAD, bold: true }], [{ text: fitLine(PLUGINS_NOTE, columns), tone: 'dim' }], ...shown,
+    ...(rest > 0 ? [[{ text: `${rest} more`, tone: 'dim'          }]] : []),
+  ]
+}
+
+return { installedPathOf, pluginRows, pluginLines };
+})();
+return { bandLines: __m['band/band.ts'].bandLines, statusText: __m['band/band.ts'].statusText, underRows: __m['band/band.ts'].underRows, cellsOf: __m['band/wrap.ts'].cellsOf, groupLines: __m['tools/compact.ts'].groupLines, mcpItem: __m['mcp/mcp.ts'].mcpItem, kitLines: __m['kit/kitlines.ts'].kitLines, alfredModesLine: __m['band/modes.ts'].alfredModesLine, kitModesLine: __m['band/modes.ts'].kitModesLine, modelsLine: __m['band/modes.ts'].modelsLine, pluginRows: __m['plugins/plugins.ts'].pluginRows, pluginLines: __m['plugins/plugins.ts'].pluginLines, SOURCE_LABEL_CELLS: __m['band/constants.ts'].SOURCE_LABEL_CELLS, stackLines: __m['stack/stack.ts'].stackLines, planView: __m['plan/plan.ts'].planView, newRow: __m['agents/agents.ts'].newRow };
 })();
 
 // The explorer's numbers and switches as the band's input, the way hooks/band/effects.ts' readBandInput builds it, and the
@@ -3934,6 +4809,8 @@ const BandAdapter = (() => {
     const v = { columns: m.cols, rows: m.termRows, isFullscreen: !!m.fullscreen }
     return { columns: Math.max(20, m.cols - 5), maxRows: BandCore.underRows(v, { hasStatusLine: !!m.statusLine, isPinned }) }
   }
+
+  const KIT_MODELS = { plan_model: 'opus', audit_model: 'opus', review_model: 'opus', implement_model: 'sonnet', search_model: 'haiku' }
 
   function toInput(d, m, isPinned) {
     const youAt = at(Date.UTC(2026, 10, 11, 12), d.youAt) ?? Date.UTC(2026, 10, 11, 16, 0)
@@ -4010,7 +4887,7 @@ const BandAdapter = (() => {
         costUsd: m.fresh ? 0 : num(d.cost), todayUsd: num(d.today), readingAt: now, ...(m.fresh ? { rateWindowsAt: now - 60 * MIN } : {}),
       },
       session: {
-        model: modelId(d.model), effort: m.fresh ? null : String(d.effort || '') || null, compactions: m.fresh ? 0 : num(d.compactions), lastCompactAt: null,
+        model: modelId(d.model), effort: String(d.effort || '') || null, ...(m.fresh ? { effortFrom: 'guess' } : {}), compactions: m.fresh ? 0 : num(d.compactions), lastCompactAt: null,
         lastPromptAt: m.fresh ? null : youAt, lastReplyAt: m.fresh ? null : lastReply, turnCount: m.fresh ? 0 : m.running ? turnN - 1 : turnN, waitingPrompts: [],
         mainToolCalls: tools.reduce((n, t) => n + t.n, 0), loadedSkills: Object.fromEntries(skills.map(s => [s.name, s.n])),
         ...(place ? { place } : {}), ...(String(d.cc || '') ? { version: String(d.cc) } : {}),
@@ -4018,11 +4895,14 @@ const BandAdapter = (() => {
       },
       turns, newFailures: num(d.failures), pace: {}, agents,
       // The login record's reading: 'unknown' (or a blank) is no known org
-      modes: BandCore.modesLine(
+      models: BandCore.modelsLine(
+        m.kit ? { values: KIT_MODELS } : null, g.columns - BandCore.SOURCE_LABEL_CELLS),
+      alfredModes: BandCore.alfredModesLine(
         m.alfred ? { state: 'used', reason: null, fullContext: m.runway ? 'fresh-session' : 'compact', model: null, window: null, resumeAt: null, hasNoOffer: false,
           autoRun: !!m.autoRun, scorer: { on: !!m.scorer, level: num(d.scorerVal), rounds: Math.max(1, num(d.scorerRounds)) },
-          autoCompact: { on: !!m.autoCompact, at: num(d.compactAt) > 0 ? num(d.compactAt) * 1000 : null }, hasPrompt: false, plan: null, updatedAt: null, readAt: null, ignoredFields: [] } : null,
-        m.kit ? { values: { auto_run: m.kitAutoRun ? 'on' : 'off', scoring: m.kitScoring ? 'on' : 'off', pass_score: num(d.kitPass) || 90 } } : null, g.columns),
+          autoCompact: { on: !!m.autoCompact, at: num(d.compactAt) > 0 ? num(d.compactAt) * 1000 : null }, hasPrompt: false, plan: null, updatedAt: null, readAt: null, ignoredFields: [] } : null, g.columns - BandCore.SOURCE_LABEL_CELLS),
+      kitModes: BandCore.kitModesLine(
+        m.kit ? { values: { auto_run: m.kitAutoRun ? 'on' : 'off', scoring: m.kitScoring ? 'on' : 'off', pass_score: num(d.kitPass) || 90 } } : null, g.columns - BandCore.SOURCE_LABEL_CELLS),
       account: { org: ['', 'unknown'].includes(String(d.org ?? 'Personal').trim()) ? null : String(d.org ?? 'Personal').trim(),
         kind: ['Team', 'Enterprise', 'Personal'].includes(String(d.orgKind || '').trim()) ? String(d.orgKind).trim() : null },
       mcp,
@@ -4103,7 +4983,7 @@ const BandSettings = (() => {
     { key: 'rec', values: ['off', 'on', 'strict'], def: 'off', bad: 'yes', what: 'mask the screen for a recording' },
     { key: 'handoff', values: ['ask', 'auto', 'off'], def: 'ask', bad: 'never', what: 'save a handoff before the context fills' },
     { key: 'handoffAt', values: steps, def: 80, bad: 100, what: 'the context percent the handoff starts at' },
-    { key: 'plansFolder', values: ['default', '.alfred', '.alfred-mods'], def: '.alfred-mods', bad: 'elsewhere', isNoLegacy: true, what: 'where plan and score files live: .claude/session-inspector, .alfred/alfred-mods or .alfred-mods' },
+    { key: 'plansFolder', values: ['default', '.alfred', '.alfred-mods'], def: '.alfred-mods', bad: 'elsewhere', isNoLegacy: true, what: 'whose plans show: .alfred-mods claude-kit\'s plan files, .alfred Alfred Code\'s plan folders, default none (Claude\'s task list); unset reads every root' },
   ]
   // Highest first; the page leaves out --settings and managed settings, which sit above local
   const FILES = ['local', 'project', 'user']
@@ -4198,12 +5078,12 @@ const noRun = s => String(s || '').split('\n').map(l => l.replace(/\s+running(\s
 // [name, what it shows, the situation, the data, the settings files]
 const BAND_PRESETS = [
   ['Between turns, nothing to act on', 'Claude has answered and nothing needs you, so the band leads with the gauges, in their colours as while a turn runs (the calm band dims instead). No file sets anything, so every field takes its default: above the input, full, detail rows open.', {}, d => ({ agents: noRun(d.agents) })],
-  ['A turn is running', 'Line 1 counts the turn: ⟳, its time and its tool calls, with an agent at work beside it. Asks and their buttons wait for the turn to end.', { running: true }, withRun],
+  ['A turn is running', 'The turn - ⟳, its time and its tool calls - joins line 1 after the MCP item where the width holds both, and keeps its own row where it does not. An agent at work shows beside it. Asks and their buttons wait for the turn to end.', { running: true }, withRun],
   ['Detail rows closed', 'Set in this project\'s local file. The usage: row keeps the counts - not a button, no arrow, no t: the rows under it open and close only by the value.', { running: true }, null, { local: { bandRows: false } }],
   ['A local file over the user\'s', 'The user file puts the band under the input with its rows closed in every project; this project\'s local file opens the rows again. Each other field falls through to the user file, then the default.', { running: true, fullscreen: true }, null, { user: { bandPlace: 'under', bandRows: false }, local: { bandRows: true } }],
   ['A bad value falls through', 'The local file says "compact", which "band" does not take, so the user file\'s "calm" applies, and the mod says so once in a toast that never quotes the bad value.', { running: true }, null, { user: { band: 'calm' }, local: { band: 'compact' } }],
-  ['With Alfred Code: auto-run, auto-compact, scoring and the runway', "Line 2 reads the modes from Alfred Code's status file: auto-run, auto-compact with where Claude Code compacts for the session's model, and scoring with its level and rounds. Scoring also colours the plan's score: green at or above the bar, amber under it, so 85 is amber against 90. With the runway, ctx is measured against Alfred Code's trigger, not the window. The /inspect Now tab's ALFRED CODE section has the details.", { running: true, alfred: true, autoRun: true, autoCompact: true, scorer: true, runway: true, plan: true }],
-  ['With claude-kit only', "Line 2 reads claude-kit's .claude/kit/settings.json: auto-run, and scoring with its pass score and the 3 rounds its grading loop runs. The kit's file says nothing of auto-compact, so that mode shows only with Alfred Code. Auto-approve and the models are in the /inspect Now tab's CLAUDE-KIT section.", { running: true, kit: true, kitAutoRun: true, kitScoring: true }],
+  ['With Alfred Code: auto-run, auto-compact, scoring and the runway', "The alfred-code: line under the gauges reads Alfred Code's status file: auto-run, auto-compact with where Claude Code compacts for the session's model, and scoring with its level and rounds. Scoring also colours the plan's score: green at or above the bar, amber under it, so 85 is amber against 90. With the runway, ctx is measured against Alfred Code's trigger, not the window. The /inspect Now tab's ALFRED CODE section has the details.", { running: true, alfred: true, autoRun: true, autoCompact: true, scorer: true, runway: true, plan: true }],
+  ['With claude-kit only', "The claude-kit: line under the gauges reads .claude/kit/settings.json: auto-run, and scoring with its pass score and the rounds its grading loop runs - 3, or 6 under its auto-run - then its models. The kit's file says nothing of auto-compact, so that mode shows only with Alfred Code. Auto-approve is in the /inspect Now tab's CLAUDE-KIT section.", { running: true, kit: true, kitAutoRun: true, kitScoring: true }],
   ['A plan in progress', 'The plan row sits under the project row, above usage: - the title, the steps done, the step in progress and the plan\'s score with its change from the round before.', { running: true, plan: true }],
   ['An Alfred Code plan and its score', "Alfred Code's status file names the plan's folder; the plan row reads its status.json and ends with the score from its scoring.json: the kept round's total, ▲ against the round before, green at or above the scoring bar and amber under it. While grading still runs, the newest total shows, marked grading; a plan Alfred Code withheld shows it marked withheld.", { running: true, alfred: true, scorer: true, plan: true }, () => ({ planTitle: 'Waste bin (plannings)', planDone: 1, planTotal: 4, planStep: '3 Restore deleted plan books', planScore: 85, planPrevScore: 72 })],
   ['An Alfred Code plan awaiting approval', 'Before you approve it, the plan row says awaiting approval in place of a step; its score shows once it was graded, amber here as 76 is under the scoring bar of 80.', { alfred: true, scorer: true, plan: true, planAwaiting: true }, d => ({ planTitle: 'Waste bin (plannings)', planDone: 0, planTotal: 4, planStep: '', planScore: 76, planPrevScore: 64, agents: noRun(d.agents) })],
@@ -4213,20 +5093,20 @@ const BAND_PRESETS = [
   ['Recording', 'A red ● REC leads line 1. The pinned line under the prompt leaves REC and ctx out while the band shows them.', { running: true }, null, { user: { rec: 'on' } }],
   ['REC from a project file', 'A committed .claude/settings.json says "on" over a user file saying "off": the order holds for REC as for every field. Mid-session REC never falls because a file went quiet - a typo drops the whole file - so it holds until that file says a lower level or the next claude run.', { running: true }, null, { user: { rec: 'off' }, project: { rec: 'on' } }],
   ['Band collapsed', 'Ctrl+X Ctrl+A hides the band above the input. The pinned line then carries REC, and ctx from 60%, since nothing else shows them.', { collapsed: true }, d => ({ ctxUsed: Math.ceil(Number(d.window) * 0.7), agents: noRun(d.agents) }), { user: { rec: 'on' } }],
-  ['Tool failures', 'Between turns, ✗ 2 new and its Inspect button end line 1, after the MCP item, and the pinned line says it too. 1, or a click, opens /inspect with the reasons.', {}, d => ({ failures: 2, agents: noRun(d.agents) })],
+  ['Tool failures', 'Between turns, ✗ 2 new and its Inspect button end line 1 (the turn may sit between the MCP item and them), and the pinned line says it too. 1, or a click, opens /inspect with the reasons.', {}, d => ({ failures: 2, agents: noRun(d.agents) })],
   ['Claude works in another folder', "The project row follows Claude's last cd or the last file it edited: the project, the branch of the repository holding the folder with ↑ commits ahead of and ↓ behind its upstream as of the last fetch and the uncommitted +added −removed lines, then the folder; at the project's root the folder is left out.", { running: true }, () => ({ folder: 'src/app/auth' })],
   ['A branch never pushed', 'A local branch has no upstream, so the project row draws no arrows; its uncommitted changes still show. git push -u origin <branch> gives it one.', { running: true, upstream: false }],
   ['Terminal 100 columns wide', 'Under 100 columns the gauges take their narrow form and line 1 shortens. The info line breaks between items onto a second row; past two rows Claude\'s reply time gives way first, then your prompt\'s. The project row shortens its folder.', { running: true, cols: 100 }],
   ['Terminal 48 columns wide', 'Each detail row wraps under its first item. Short of rows, the info line keeps one row and the detail rows go from the last.', { running: true, cols: 48 }],
-  ['Short on rows (a tall draft)', "With 4 rows free: the project row goes first, then the info line's second row, then the detail rows from the last (rules:, agents:, skills:, tools:), then usage:, then the plan row, then the info line.", { running: true, rows: 4, plan: true }],
-  ['MCP servers still loading', 'While a server starts, the info line counts ◐ connected/total; once each is up or has failed it reads ✓ or ✗ with the counts. Claude Code\'s own connectors, such as claude-artifacts, count like any server.', { running: true }, () => ({ mcpOk: 3, mcpFailed: 0, mcpLoading: 2 })],
+  ['Short on rows (a tall draft)', "With 4 rows free: the project row goes first, then the modes lines share one line with no models, then the info line's second row, then the detail rows from the last (rules:, agents:, skills:, tools:), then usage:, then the plan row, then the modes lines, then the info line.", { running: true, rows: 4, plan: true }],
+  ['MCP servers still loading', 'While a server starts, line 1 counts ◐ connected/total; once each is up or has failed it reads ✓ or ✗ with the counts. A server turned off - in /mcp, disabledMcpjsonServers or deniedMcpServers, or computer-use while the project has not turned it on - is not counted, and one whose state cannot be read leaves the count after 60 seconds with no tools. Claude Code\'s own connectors, such as claude-artifacts, count like any server.', { running: true }, () => ({ mcpOk: 3, mcpFailed: 0, mcpLoading: 2 })],
   ['Calm band', "Two lines: no tool count, no today's cost, no info line and no detail rows.", { running: true }, null, { user: { band: 'calm' } }],
   ['Full tool rows', 'Each tool call draws its own rows in the transcript above, with its output preview; the band does not change.', { running: true }, null, { user: { quiet: false } }],
   ['Under the input, fullscreen', "On the terminal only. Claude Code's own mode line stays the footer's first row - it draws it first whatever order a mod gives - and the band follows it, the action row first, right under the input; each button names its command and is pressed by a click.", { fullscreen: true }, d => ({ failures: 1, agents: noRun(d.agents) }), { user: { bandPlace: 'under' } }],
   ['Under the input, main screen', 'The main screen takes no clicks, so each button is its command as text to type.', {}, d => ({ failures: 1, agents: noRun(d.agents) }), { user: { bandPlace: 'under' } }],
   ['Under, fullscreen, a 24-row window', 'Fullscreen gives everything under the input about half the window. Less the prompt and Claude Code\'s own footer line, 6 band rows remain here; the rest give way in the band\'s order, the project row first.', { fullscreen: true, termRows: 24, running: true }, null, { user: { bandPlace: 'under' } }],
   ['Choices from the old commands', 'Someone who ran /rec strict and /band rows off on 0.7 keeps both after the update. One toast gives the line to paste, and each old choice retires once the user file sets that field.', { running: true }, null, { legacy: { rec: 'strict', bandRows: false } }],
-  ['First second of a session', 'Before the first reply: ctx waits (ctx —), and 5h and 7d carry the values an earlier session stored, marked ≈.', { fresh: true }, () => ({ agents: '', h5: 54, h5Reset: '24.11 16:00' })]
+  ['First second of a session', 'Before the first reply: ctx waits (ctx —), the effort is worked out from your settings, and 5h and 7d carry the values an earlier session stored, both marked ≈.', { fresh: true }, () => ({ agents: '', h5: 54, h5Reset: '24.11 16:00' })]
 ]
 
 </script>
@@ -4709,11 +5589,8 @@ function buildMap() {
 // shows, how it works]. The example is the mod's own lines for that situation, at 150 columns.
 const BAND_PARTS = [
   ['The identity line', 'line 1, always', {}, d => ({ failures: 6, agents: noRun(d.agents) }), { user: { rec: 'on' } }, (t, i) => i === 0,
-    'A red ● REC while Recording mode masks the screen, the account you are signed in to with its plan kind, Claude Code\'s version, the MCP servers (◐ loading, ✓ connected, ✗ failed), and the new tool failures with their Inspect button.',
+    'A red ● REC while Recording mode masks the screen, the account you are signed in to with its plan kind, Claude Code\'s version, the MCP servers (◐ loading, ✓ connected, ✗ failed; one turned off is not counted), and the new tool failures with their Inspect button.',
     'It leads the band in every mode but off and is never dropped for rows. Short of width the version goes first, then the MCP item; REC, the account and the failures stay. The failures wait while a turn runs; 1, or a click, opens /inspect on them, and under the message box the button is the command /inspect. The account comes from the login record on disk.'],
-  ['The modes line', 'line 2, while a mode is on', { running: true, alfred: true, autoRun: true, autoCompact: true, scorer: true }, null, null, t => /^auto-run|^auto-compact|^scoring/.test(t),
-    'The modes the session runs under: auto-run, auto-compact with where Claude Code compacts, and scoring with its level and rounds.',
-    "From Alfred Code's status file and claude-kit's .claude/kit/settings.json: auto-run shows while either turns it on, auto-compact is Alfred Code's alone, and scoring takes Alfred Code's level and rounds, else the kit's pass score and its loop's 3 rounds. Short of rows it joins line 1, and short of width it drops from the end."],
   ['The turn', 'while Claude works', { running: true }, withRun, null, t => /Turn \d/.test(t),
     'The turn Claude is on, how long it has run and its tool calls so far, then the agent at work and what it does now.',
     'Counted from the session\'s own events as they happen. Once Claude has answered, the line stays only while something needs you, as ✓ with the turn\'s total.'],
@@ -4723,12 +5600,15 @@ const BAND_PARTS = [
   ['The gauges', 'always', {}, null, null, t => /^ctx /.test(t),
     'How full the context is, how much of your 5-hour and weekly limits is used and when each resets, then the session\'s cost and today\'s.',
     'From the numbers Claude Code reports with each reply; nothing is fetched. Green under 60%, amber to 85%, red past it. Today\'s cost is the mod\'s own count on this machine.'],
+  ['The modes lines', 'under the gauges, one line per source', { running: true, alfred: true, autoRun: true, autoCompact: true, scorer: true }, null, null, t => /^(alfred-code|claude-kit):/.test(t),
+    'The modes each source runs: alfred-code: auto-run, auto-compact with where Claude Code compacts, and scoring with its level and rounds; claude-kit: auto-run, scoring and its models.',
+    "alfred-code: reads Alfred Code's status file, its rounds as /alfred-code:mode:scoring sets them. claude-kit: reads .claude/kit/settings.json, its rounds the ones its grading loop runs - 3, or 6 under its auto-run. Short of rows the two share one line with no models, then go before the info line; short of width each drops from the end."],
   ['project:', 'full band', {}, null, null, t => /^project:/.test(t),
     'The project, the git branch with ↑ commits ahead of and ↓ behind its upstream, the uncommitted lines added and removed, and the folder Claude works in now.',
     'Follows Claude: its last cd, or the last file it edited. Read from git after each Bash call, edit and write, and every 30 seconds. The mod never fetches, so the arrows are as of your last fetch.'],
   ['plan:', 'while a plan runs', { running: true, plan: true }, null, null, t => /^plan:/.test(t),
     'The plan\'s title, the steps done, the step in progress, and the plan\'s score with its change from the round before.',
-    'Read from a plan file in <root>/plans/, where the "plansFolder" field names the root (.alfred-mods, .alfred/alfred-mods or .claude/session-inspector; .alfred-mods when unset; the other two are read too, the newest file of a name wins), else Claude\'s task list. With Alfred Code, the plan its status file names comes first.'],
+    'The "plansFolder" field picks whose plans show: .alfred-mods reads claude-kit\'s plan files in .alfred-mods/plans/, .alfred reads Alfred Code\'s plan folders (the plan its status file names first), default reads none. Unset, every root and the named plan are read, the newest file of a name winning. With no plan, Claude\'s task list.'],
   ['usage:', 'once something is counted', { running: true }, null, null, t => /^usage:/.test(t),
     'The session\'s counts: tool calls, skills loaded, agents dispatched with how many run now, rules in the context, and compactions.',
     'It counts what the four rows under it list, so it stays when "bandRows": false closes them.'],
@@ -4877,6 +5757,12 @@ function tabNow(d, m, p, w) {
   // claude-kit's switches and models, as the mod draws them from .claude/kit/settings.json (hooks/kit/kitlines.ts)
   BandCore.kitLines({ values: p.kit && typeof p.kit === 'object' ? p.kit : null }, w).forEach((line, i) =>
     L.push(line.map(seg => S(i === 0 ? seg.text : '  ' + seg.text, seg.bold ? 'bold' : ''))));
+  // The plugins the settings files turn on or off, as the mod draws them (hooks/plugins/plugins.ts) from this sample's files
+  const enabled = { user: { enabledPlugins: { 'alfred-mods@envoydev': true, 'alfred-tools@envoydev': true } },
+    project: { enabledPlugins: m.alfred ? { 'alfred-code@envoydev': true } : {} } };
+  const record = JSON.stringify({ version: 2, plugins: { 'alfred-mods@envoydev': [{ scope: 'user' }], 'alfred-tools@envoydev': [{ scope: 'user' }], 'alfred-code@envoydev': [{ scope: 'user' }] } });
+  BandCore.pluginLines(BandCore.pluginRows({ layers: enabled, installedText: record, root: '/work/app' }), w).forEach((line, i) =>
+    L.push(line.map(seg => S(i === 0 ? seg.text : '  ' + seg.text, seg.bold ? 'bold' : seg.tone === 'dim' ? 'dim' : seg.tone === 'warn' ? 'warn' : ''))));
   const run = (p.agents || []).filter(a => a.state === 'running');
   L.push([S('AGENTS ', 'f-agents bold'), S(run.length ? `${run.length} running` : 'none running', run.length ? '' : 'dim')]);
   run.forEach(a => L.push([S('  ⟳ ', 'bold'), S(a.type + ' ', 'bold'), S(`[${a.model}${a.effort ? ' ◑ ' + a.effort : ''}]`, modelCls(a.model)),

@@ -2,6 +2,7 @@
 // styled segments. Every title, note and finding is file content: draw.tsx makes each printable and masks it.
 import { barText, fitLine, minutesText, widthOf } from '../core/format'
 import type { Line, Seg } from '../core/types'
+import { NO_PLAN_FILES_READ } from './constants'
 import type { Finding, PlanView, Scores, ScoresView, StepRow, StepStatus } from './types'
 
 const MIN = 60_000
@@ -33,6 +34,14 @@ function planBar(percent: number): Line {
 // 'Token refresh ▰▰▰▱▱ 3/5 · 60% · 1h 12m · ≈30m left │ ▶ Update interceptor', or 'Token refresh ▰▰▰▰▰ done ✓ in 1h 19m'
 // once every step is finished. Past `columns` the step part goes, then the title is cut.
 export function planLine(view: PlanView, columns: number): Line {
+  const [full, bare] = planForms(view)
+  if (widthOf(full) <= columns) return full
+  const rest = bare.slice(1)
+  return [{ text: `${cut(fitLine(view.title, 80), columns - widthOf(rest) - 1)} ` }, ...rest]
+}
+
+// The plan line's two whole forms, none cut: with the running step, then without it (the title kept whole)
+export function planForms(view: PlanView): [Line, Line] {
   const title = fitLine(view.title, 80)
   const rest: Line = view.isFinished
     ? [...planBar(100), { text: ` done ✓ in ${minutesText(view.workedMs)}` }]
@@ -43,9 +52,8 @@ export function planLine(view: PlanView, columns: number): Line {
   const first = view.running[0]
   const step: Line = first === undefined ? [] : [{ text: ` │ ▶ ${fitLine(first.step.title, 80)}` }]
   if (view.running.length > 1) step.push({ text: ` +${view.running.length - 1}`, tone: 'dim' })
-  const full: Line = [{ text: `${title} ` }, ...rest, ...step]
-  if (widthOf(full) <= columns) return full
-  return [{ text: `${cut(title, columns - widthOf(rest) - 1)} ` }, ...rest]
+  const bare: Line = [{ text: `${title} ` }, ...rest]
+  return [[...bare, ...step], bare]
 }
 
 // The full band's plan row after its label (the owner's target, 2026-11-11): 'Token refresh ▰▰▰▱▱ 3/5 · ▸ S4 Update
@@ -222,10 +230,11 @@ function scoreLines(scoresView: ScoresView): Line[] {
 export function planLines(
   view: PlanView | null, scoresView: ScoresView | null,
   options: { invalid: boolean; others: string[]; otherScores: string[]; updatedAt: number | null; now: number; columns: number },
-  plansDir: string,
+  plansDir: string | null,
 ): Line[] {
   const out: Line[] = []
-  if (view === null) out.push([{ text: `No plan file in ${plansDir}/, and no task list this session.`, tone: 'dim' }])
+  const empty = plansDir === null ? `No task list this session - ${NO_PLAN_FILES_READ}` : `No plan file in ${plansDir}/, and no task list this session.`
+  if (view === null) out.push([{ text: empty, tone: 'dim' }])
   else {
     const head: Line = [{ text: 'Plan', bold: true, tone: 'plan' }, { text: ` · ${fitLine(view.title, 60)}`, bold: true }, { text: `   ${view.finished}/${view.total}` }]
     if (view.isFinished) head.push({ text: ` · done in ${minutesText(view.workedMs)}` })

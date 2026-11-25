@@ -151,11 +151,13 @@ test('a CRLF .gitignore gets its line with CRLF', async ($, on) => {
 
 test('two moves in one session never report the first move\'s copy as live', async ($, on) => {
   const { files } = await start($, on, { files: { [`${OLD_PLANS}/p.json`]: stub(PENDING) } })
-  expect(await alfred($, 'init', '.alfred')).toContain('moved 1 plan or scores file to .alfred/alfred-mods/')
-  expect(fileAt(files, '.alfred/alfred-mods/plans/p.json')).toBe(PENDING)
-  const second = (await alfred($, 'init', '.alfred-mods')).join('\n')
+  expect(await alfred($, 'update')).toContain(MOVED_ONE)
+  expect(fileAt(files, '.alfred-mods/plans/p.json')).toBe(PENDING)
+  files.current['.alfred/alfred-mods/plans/q.json'] = stub(PENDING)
+  // The rm stub removes nothing, so the second update counts the first file's equal copy as moved too
+  const second = (await alfred($, 'update')).join('\n')
   expect(second).not.toContain('left in place')
-  expect(second).toContain(MOVED_ONE)
+  expect(second).toContain('moved 2 plan and scores files to .alfred-mods/')
 })
 
 const SAME = (root: string, kind: string): string => `not moved: ${root}/${kind}/ is the same folder as .alfred-mods/${kind}/`

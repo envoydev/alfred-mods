@@ -3,18 +3,17 @@
 // stored, which outlives a reload.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
-import type { SliceClose, Credit, Listed, Moved, Plan, PlanDrawing, PlanView, Plans, Scores, TaskItem, Watched } from './types'
-import { MAX_PLAN_BYTES } from './constants'
+import type { SliceClose, Credit, Plan, PlanDrawing, PlanSources, PlanView, Plans, Scores, TaskItem, Watched } from './types'
 import type { Pending } from '../core/types'
-import { FINISH_SHOWN_MS, creditedPlan, isPlanDone, newUserNotes, parsePlan, parseScores, candidatesByName, planView, plansDirs, isPlanRunning, scoresDirs, scoresView, shownPlan, stepStatusKey, taskStatusKey, taskView, tasksAfter } from './plan'
+import { FINISH_SHOWN_MS, creditedPlan, isPlanDone, newUserNotes, parsePlan, parseScores, planSources, planView, plansDirs, isPlanRunning, scoresDirs, scoresView, shownPlan, stepStatusKey, taskStatusKey, taskView, tasksAfter, isSamePlan } from './plan'
 import { closeTargetOf, closeSlices, closeWait, creditRunningTasks, liveSpans, sessionTimesOf, openWait, shownStepTimes, sliceMs, storedTimeOf, sumTimes, taskListMs } from './steptime'
 import { parseAlfredScoring, parseAlfredStatus } from './alfredplan'
 import { minutesText, oneLine } from '../core/format'
 import { scoresLabel } from './planlines'
-import { standInMtime } from './moved'
 import { toast } from '../core/effects'
 import { isLive, stepMarkOf } from '../agents/agents'
 import { readStack } from '../stack/effects'
+import { readAlfredFolder, readEveryAlfredPlan, readJsonFolders } from '../planfiles/effects'
 import { readView } from '../inspect/effects'
 import { readAgents } from '../agents/effects'
 import { plansFolderInForce } from '../settings/effects'
@@ -213,22 +212,33 @@ export async function seedSessionTimes($: EngineInterface): Promise<void> {
   if (Object.keys(mine).length > 0) await updateCredit($, credit => ({ ...credit, sessionTimes: { ...mine, ...credit.sessionTimes } }))
 }
 
+// What the plan row reads under the plansFolder in force; 'default' as its source means the field is unset
+export function planSourcesInForce(): PlanSources {
+  const inForce = plansFolderInForce()
+  return planSources(inForce.folder, inForce.from !== 'default')
+}
+
 // The plan and scores folders read again. A step whose status changed closes and reopens the open slices first, so
 // the time before the change goes to the steps that were running then. A note the file's previous good parse this
 // session lacks, and a plan that finishes this session (its previous good parse unfinished), raise their toasts once.
 async function reloadPlanFiles($: EngineInterface, pending: Pending): Promise<void> {
   const before = await readPlans($)
   const now = await $.clock.now()
-  const { folder: plansFolder } = plansFolderInForce()
-  const ownPlans = await readJsonFolders($, plansDirs(plansFolder), before.planFiles, parsePlan)
-  const ownScores = await readJsonFolders($, scoresDirs(plansFolder), before.scoreFiles, parseScores)
+  const sources = planSourcesInForce()
+  const folderPlans = await readJsonFolders($, plansDirs(sources.fileRoots), before.planFiles, parsePlan)
+  const folderScores = await readJsonFolders($, scoresDirs(sources.fileRoots), before.scoreFiles, parseScores)
+  // With `.alfred`, Alfred Code's plan folders: each stands in for a same-named file of the mod's own folders
+  const everyAlfred = sources.isEveryAlfredPlan ? await readEveryAlfredPlan($, before) : { plans: [], scores: [] }
+  const ownPlans = [...without(folderPlans, everyAlfred.plans), ...everyAlfred.plans]
+  const ownScores = [...without(folderScores, everyAlfred.scores), ...everyAlfred.scores]
   // Alfred Code's plan folder: the one its status file names, else the one it let go, read once more to see it
   // finished, then kept 10 minutes after it finished
   // A status file that will not read, or whose `plan` will not, says nothing: the plan it named stays named
   const stack = await readStack($)
+  // A choice that does not read Alfred Code's plans reads neither the named folder nor one it let go
   const isPlanNamed = stack.state === 'used' && !stack.ignoredFields.includes('plan')
-  const named = isPlanNamed ? stack.plan : before.alfredFolder?.folder ?? null
-  const lingering = named === null ? before.alfredFolder : null
+  const named = !sources.isAlfredNamed ? null : isPlanNamed ? stack.plan : before.alfredFolder?.folder ?? null
+  const lingering = sources.isAlfredNamed && named === null ? before.alfredFolder : null
   const folder = named ?? lingering?.folder ?? null
   // The last read is this folder's only when the folder is the same, so a new folder never shows the old plan
   const isSame = before.alfredFolder !== null && before.alfredFolder !== undefined && before.alfredFolder.folder === folder
@@ -239,9 +249,10 @@ async function reloadPlanFiles($: EngineInterface, pending: Pending): Promise<vo
   // The folder's files stand in for a same-named plan or scores file of the project's own folder while they exist
   const alfredPlan = alfredRead?.plan ? { ...alfredRead.plan, isNamed: named !== null } : null
   const alfredScores = alfredRead?.scores ?? null
-  const without = <T>(list: Watched<T>[], over: Watched<unknown> | null): Watched<T>[] => (over === null ? list : list.filter(file => file.name !== over.name))
-  const planFiles = [...without(ownPlans, alfredPlan), ...(alfredPlan === null ? [] : [alfredPlan])]
-  const scoreFiles = [...without(ownScores, alfredScores), ...(alfredScores === null ? [] : [alfredScores])]
+  const namedPlans = alfredPlan === null ? [] : [alfredPlan]
+  const namedScores = alfredScores === null ? [] : [alfredScores]
+  const planFiles = [...without(ownPlans, namedPlans), ...namedPlans]
+  const scoreFiles = [...without(ownScores, namedScores), ...namedScores]
   if (stepStatusKey(before.planFiles) !== stepStatusKey(planFiles)) await closeLoopSlices($, pending, null, now, true, before)
   const { stepTimes, overheadMs } = await planTimesOf($, planFiles)
   const seen = new Set(before.toastedKeys)
@@ -250,8 +261,8 @@ async function reloadPlanFiles($: EngineInterface, pending: Pending): Promise<vo
   for (const planFile of planFiles) {
     const plan = planFile.value
     if (plan === null || planFile.isInvalid) continue
-    // A folder read for the first time has no last state, whatever plan shared its name before
-    const had = planFile === alfredPlan && !isSame ? null : before.planFiles.find(beforeFile => beforeFile.name === planFile.name)?.value ?? null
+    // A plan read for the first time has no last state, whatever plan shared its name before
+    const had = before.planFiles.find(beforeFile => beforeFile.name === planFile.name && isSamePlan(beforeFile, planFile))?.value ?? null
     if (had !== null) {
       for (const change of newUserNotes(had.changes, plan.changes)) due.push(`✎ Note folded into ${change.step ?? 'the plan'}: '${oneLine(change.note ?? '', 60)}'`)
     }
@@ -275,6 +286,11 @@ async function reloadPlanFiles($: EngineInterface, pending: Pending): Promise<vo
   for (const text of due) toast($, text)
 }
 
+// The files of `list` that none of `over` shares a name with
+function without<T>(list: Watched<T>[], over: readonly Watched<unknown>[]): Watched<T>[] {
+  return list.filter(file => !over.some(other => other.name === file.name))
+}
+
 // Reads run one at a time, so two never raise the same toast
 export function queuePlanReload($: EngineInterface, pending: Pending): void {
   pending.planRead = pending.planRead.then(() => reloadPlanFiles($, pending)).catch(() => undefined)
@@ -287,109 +303,6 @@ export function schedulePlanReload($: EngineInterface, pending: Pending): void {
     pending.planReload = null
     queuePlanReload($, pending)
   })
-}
-
-// The plan and scores folders: listed, and each new or changed `*.json` file read, never written. A file that does not
-// parse keeps its last good parse, marked invalid; one over 4 MiB is invalid unread, as `$.fs.read` refuses it.
-
-// One listed file: its last read while unchanged since a good one, else read again; one that will not read or parse
-// keeps its last good parse, marked invalid
-async function readWatched<T>(
-  $: EngineInterface, path: string, name: string, entry: { mtimeMs: number; size: number }, had: Watched<T> | undefined, parse: (text: string) => T | null,
-): Promise<Watched<T>> {
-  const { mtimeMs, size } = entry
-  if (had !== undefined && !had.isInvalid && had.path === path && had.mtimeMs === mtimeMs && had.size === size) return had
-  let value: T | null = null
-  if (size <= MAX_PLAN_BYTES) {
-    try {
-      value = parse(await $.fs.read(path))
-    } catch {
-      value = null
-    }
-  }
-  return value === null ? { name, mtimeMs, size, value: had?.value ?? null, isInvalid: true, path } : { name, mtimeMs, size, value, isInvalid: false, path }
-}
-
-// The files `/alfred-mods:update` copied, by path. A copy is written now, but it is as old as its source: a fresh
-// mtimeMs would make an old plan look written this session. A write after the copy changes the listed mtimeMs or size,
-// which ends the stand-in. A new claude run starts over.
-const movedFiles = new Map<string, Moved>()
-
-export function noteMovedFiles(moves: readonly Moved[]): void {
-  for (const move of moves) movedFiles.set(move.path, move)
-}
-
-// The time a file counts as written: its source's while it is a copy the update left as it is, else the listed one.
-// It changes nothing, so a second update lists the same time the plan view does.
-export function originalMtime(path: string, listedMs: number, listedSize: number): number {
-  return standInMtime(movedFiles.get(path), listedMs, listedSize) ?? listedMs
-}
-
-function effectiveMtime(path: string, listedMs: number, listedSize: number): number {
-  const standIn = standInMtime(movedFiles.get(path), listedMs, listedSize)
-  if (standIn !== null) return standIn
-  movedFiles.delete(path)
-  return listedMs
-}
-
-// A missing folder is empty; only `.json` files count
-async function listJsonFolder($: EngineInterface, dir: string): Promise<Listed[]> {
-  try {
-    return (await $.fs.list(dir)).filter(entry => entry.kind === 'file' && entry.name.endsWith('.json')).map(entry => {
-      const path = `${dir}/${entry.name}`
-      return { name: entry.name.slice(0, -'.json'.length), mtimeMs: effectiveMtime(path, entry.mtimeMs, entry.size), size: entry.size, path }
-    })
-  } catch {
-    return []
-  }
-}
-
-// Every folder listed, then per name only the newest file read (a tie goes to the earlier folder): the losers are never
-// read. A newest file with no good parse of its own, one that will not parse or is too large, gives way to the next
-// newest; a name with no good file keeps its newest, invalid. A last read counts for a file only when it came from the
-// same path, so a name in two folders never takes the other's parse. Never rejects.
-async function readJsonFolders<T>($: EngineInterface, dirs: string[], known: Watched<T>[], parse: (text: string) => T | null): Promise<Watched<T>[]> {
-  const byFolder: Listed[][] = []
-  for (const dir of dirs) byFolder.push(await listJsonFolder($, dir))
-  const out: Watched<T>[] = []
-  for (const candidates of candidatesByName(byFolder)) {
-    let first: Watched<T> | null = null
-    for (const candidate of candidates) {
-      const read = await readWatched($, candidate.path, candidate.name, candidate, known.find(knownFile => knownFile.path === candidate.path), parse)
-      first ??= read
-      if (!read.isInvalid || read.value !== null) {
-        first = read
-        break
-      }
-    }
-    if (first !== null) out.push(first)
-  }
-  return out
-}
-
-// Alfred Code's plan folder, the one the status file names (alfred-code's plan folder contract): its `status.json`
-// and `scoring.json`, each named by the folder, as the plans folder's files are by theirs. A missing file is null; one
-// unchanged since its last good read keeps it; one that will not parse keeps its last good parse, marked invalid.
-async function readAlfredFolder<P, S>(
-  $: EngineInterface, folder: string, known: { plan?: Watched<P>; scores?: Watched<S> },
-  parsePlan: (text: string) => P | null, parseScores: (text: string, name: string) => S | null,
-): Promise<{ name: string; plan: Watched<P> | null; scores: Watched<S> | null }> {
-  const name = folder.slice(folder.lastIndexOf('/') + 1)
-  let entries: Awaited<ReturnType<EngineInterface['fs']['list']>>
-  try {
-    entries = await $.fs.list(folder)
-  } catch {
-    return { name, plan: null, scores: null }
-  }
-  async function one<T>(file: string, had: Watched<T> | undefined, parse: (text: string) => T | null): Promise<Watched<T> | null> {
-    const entry = entries.find(listed => listed.kind === 'file' && listed.name === file)
-    return entry === undefined ? null : readWatched($, `${folder}/${file}`, name, entry, had, parse)
-  }
-  return {
-    name,
-    plan: await one('status.json', known.plan, parsePlan),
-    scores: await one('scoring.json', known.scores, text => parseScores(text, name)),
-  }
 }
 
 // A waiting call's time opened on its loop

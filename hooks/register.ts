@@ -135,8 +135,8 @@ export const register: Register = (on, options) => {
   // project setting written only here, and the files moved to it. The plugin's commands/ folder names each command; the
   // hook answers it, and init and configure offer the same choices as buttons in a pane that closes only when the
   // person closes it
-  on('command.run', { command: 'alfred-mods:init' }, ($, e) => runInitCommand($, e)).catch(($, e, next) => ({ text: commandFailed('/alfred-mods:init', next.error.kind) }))
-  on('command.run', { command: 'alfred-mods:configure' }, ($, e) => runConfigureCommand($, e)).catch(($, e, next) => ({ text: commandFailed('/alfred-mods:configure', next.error.kind) }))
+  on('command.run', { command: 'alfred-mods:init' }, ($, e) => runInitCommand($, e, pending)).catch(($, e, next) => ({ text: commandFailed('/alfred-mods:init', next.error.kind) }))
+  on('command.run', { command: 'alfred-mods:configure' }, ($, e) => runConfigureCommand($, e, pending)).catch(($, e, next) => ({ text: commandFailed('/alfred-mods:configure', next.error.kind) }))
   on('command.run', { command: 'alfred-mods:update' }, ($, e) => runUpdateCommand($, e)).catch(($, e, next) => ({ text: commandFailed('/alfred-mods:update', next.error.kind) }))
 
   // '/auto-handoff [ask|auto|off|at <percent>|now]': the mode and the first ask are settings values (S5) that ask, auto,
@@ -187,5 +187,5 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'Pane', requestId: 'rec' }, ($, e) => drawRecPane($, e)).catch(($, e, next) => drawNote($.ui.resolve(e), paneFailed(next.error.kind, next.error.message, recLevel() !== 'off')))
 
   // The plans folder pane: one button per choice, the last update's report under them
-  on('ui.render', { component: 'Pane', requestId: 'alfred-mods-setup' }, ($, e) => drawSetupPane($, e)).catch(($, e, next) => drawNote($.ui.resolve(e), paneFailed(next.error.kind, next.error.message, recLevel() !== 'off')))
+  on('ui.render', { component: 'Pane', requestId: 'alfred-mods-setup' }, ($, e) => drawSetupPane($, e, pending)).catch(($, e, next) => drawNote($.ui.resolve(e), paneFailed(next.error.kind, next.error.message, recLevel() !== 'off')))
 }

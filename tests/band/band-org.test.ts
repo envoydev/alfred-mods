@@ -1,4 +1,4 @@
-// The signed-in account on the band's first line (spec 2026-11-23, D4): '<company name> | Team', 'org | Personal' or
+// The signed-in account on the band's first line (spec 2026-11-23, D4): '<company name> | Team', 'Personal' or
 // 'org | unknown' after REC, on a line of its own that leads in every state and mode but "off" and is never dropped for
 // width; '‹org›' under REC strict for a company name
 import { expect, test } from 'claude-code/testing'
@@ -16,32 +16,32 @@ const TEAM = { org: 'Acme Inc', kind: 'Team' as const }
 
 test('the full band leads with the account on its own line', () => {
   const lines = bandLines(input())
-  expect(text(lines[0] ?? [])).toBe('org | Personal')
+  expect(text(lines[0] ?? [])).toBe('Personal')
   expect(text(lines[1] ?? []).startsWith('Sonnet 5.5')).toBe(true)
   expect(text(lines[2] ?? []).startsWith('ctx ')).toBe(true)
 })
 
 test('the calm band leads with it too', () => {
   const lines = texts(bandLines(input({ mode: 'calm' })))
-  expect(lines[0]).toBe('org | Personal')
+  expect(lines[0]).toBe('Personal')
   expect(lines[1]?.startsWith('ctx ')).toBe(true)
 })
 
 test('a working band leads with it', () => {
   const live = { turnId: 't2', startedAt: NOW - 5000, toolCalls: 1, toolFailures: 0, runningCalls: [], promptAt: NOW - 5000 }
-  expect(first({ isWorking: true, live })).toBe('org | Personal')
+  expect(first({ isWorking: true, live })).toBe('Personal │ ⟳ Turn 2 · 0:05 · 1 tool')
 })
 
 test('under the input the account leads line 1 and the new failures end it', () => {
   const lines = bandLines(input({ under: { buttons: 'click' }, newFailures: 1 }))
-  expect(texts(lines).filter(line => line.includes('org | Personal'))).toHaveLength(1)
-  expect(text(lines[0] ?? []).startsWith('org | Personal │ ✗ 1 new')).toBe(true)
+  expect(texts(lines).filter(line => line.includes('Personal'))).toHaveLength(1)
+  expect(text(lines[0] ?? []).startsWith('Personal │ ✓ Turn 1 · 3s · 19 tools │ ✗ 1 new')).toBe(true)
   expect(texts(lines).filter(line => line.includes('✗ 1 new'))).toHaveLength(1)
 })
 
 test('before any reading the account draws alone, so it shows from the start', () => {
-  expect(texts(bandLines(input(NO_READING)))).toEqual(['org | Personal'])
-  expect(texts(bandLines(input({ ...NO_READING, mode: 'calm' })))).toEqual(['org | Personal'])
+  expect(texts(bandLines(input(NO_READING)))).toEqual(['Personal'])
+  expect(texts(bandLines(input({ ...NO_READING, mode: 'calm' })))).toEqual(['Personal'])
 })
 
 test('"off" draws nothing', () => {
@@ -58,7 +58,7 @@ test('with no account in the input the band is the body alone', () => {
 
 test('a company name, Personal and unknown draw by their kind', () => {
   expect(first({ account: TEAM })).toBe('Acme Inc | Team')
-  expect(first({ account: { org: 'Personal', kind: 'Personal' } })).toBe('org | Personal')
+  expect(first({ account: { org: 'Personal', kind: 'Personal' } })).toBe('Personal')
   expect(first({ account: { org: null } })).toBe('org | unknown')
 })
 
@@ -78,17 +78,17 @@ test('REC strict draws a company name as ‹org›, and leaves Personal and unkn
   const company = first({ rec: STRICT, account: TEAM })
   expect(company).toBe('● REC │ ‹org› | Team')
   expect(company).not.toContain('Acme')
-  expect(first({ rec: STRICT, account: { org: 'Personal', kind: 'Personal' } })).toBe('● REC │ org | Personal')
+  expect(first({ rec: STRICT, account: { org: 'Personal', kind: 'Personal' } })).toBe('● REC │ Personal')
   expect(first({ rec: STRICT, account: { org: null } })).toBe('● REC │ org | unknown')
 })
 
 test('the order is REC, then the account, on line 1', () => {
-  expect(texts(bandLines(input({ rec: REC })))[0]).toBe('● REC │ org | Personal')
+  expect(texts(bandLines(input({ rec: REC })))[0]).toBe('● REC │ Personal')
 })
 
 test('narrow, the identity line keeps its row and the body keeps the whole width', () => {
   const lines = bandLines(input({ columns: 36, rec: REC }))
-  expect(text(lines[0] ?? [])).toBe('● REC │ org | Personal')
+  expect(text(lines[0] ?? [])).toBe('● REC │ Personal')
   const plain = input({ columns: 36 })
   delete plain.account
   expect(texts(lines.slice(1))).toEqual(texts(bandLines(plain)))

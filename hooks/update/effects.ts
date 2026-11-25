@@ -1,8 +1,8 @@
 // The update's effects: '/alfred-mods:update' lists, copies and deletes the files its pure parts decide on, and reports
 import type { EngineInterface } from 'claude-code'
 import { oneLine } from '../core/format'
-import { PLANS_ROOTS, PLANS_SUBFOLDER, SCORES_SUBFOLDER } from '../plan/constants'
-import { noteMovedFiles, originalMtime } from '../plan/effects'
+import { FILE_PLANS_FOLDER, PLANS_FOLDERS, PLANS_ROOTS, PLANS_SUBFOLDER, SCORES_SUBFOLDER } from '../plan/constants'
+import { noteMovedFiles, originalMtime } from '../planfiles/effects'
 import { parsePlan, plansRoots } from '../plan/plan'
 import type { PlansFolder } from '../plan/types'
 import { resolvedSettings, userSettingsPath, writeUserFieldResult } from '../settings/effects'
@@ -15,7 +15,7 @@ import {
 import { switchOffPlugin } from './enabled'
 import type { Copy, CopyResult, ListedFile, LiveReason } from './types'
 import {
-  changedLine, closeReport, copiedLine, copyFailureLine, copyPath, coversRoot, earlierChoicesLine, failureLine, folderPathOf, folderRelation, gitignoreAppend,
+  changedLine, closeReport, ignoredLine, copiedLine, copyFailureLine, copyPath, coversRoot, earlierChoicesLine, failureLine, folderPathOf, folderRelation, gitignoreAppend,
   gitignoreByHandLine, gitignoreLine, isSeparateCopy, isUtf8Text, keptBothLine, leftLine, liveReason, movedLine, moveQueue, notUtf8Line, oldInstallKeys,
   oldInstallLine, probeLeftLine, probeName, sameFolderLine, statusHeldLines, statusLines, statusPlan, statusResultLines, turnedOffLine, unknownFolderLine,
 } from './update'
@@ -172,12 +172,38 @@ async function isSeparate($: EngineInterface, source: ListedFile, destination: s
   return isSeparateCopy(sourceStat.realPath, destinationStat.realPath, destinationStat.size, source.size)
 }
 
+// Under `.alfred` or `default`, each old root that still holds plan or scores files the choice does not show; claude-kit's
+// `.alfred-mods/` is left unnamed, as claude-kit writes there whatever the choice. A folder that is one already counted,
+// or claude-kit's, under another name (a link) counts once, under its first name.
+async function ignoredRoots($: EngineInterface, folder: PlansFolder): Promise<string[]> {
+  const seen = new Set<string>()
+  const isSeen = async (path: string): Promise<boolean> => {
+    const { real } = await realFolder($, path)
+    if (real === undefined) return false
+    const isKnown = seen.has(real)
+    seen.add(real)
+    return isKnown
+  }
+  for (const kind of [PLANS_SUBFOLDER, SCORES_SUBFOLDER]) await isSeen(`${PLANS_ROOTS[FILE_PLANS_FOLDER]}/${kind}`)
+  const lines: string[] = []
+  for (const old of PLANS_FOLDERS.filter(value => value !== FILE_PLANS_FOLDER)) {
+    const root = PLANS_ROOTS[old]
+    let count = 0
+    for (const kind of [PLANS_SUBFOLDER, SCORES_SUBFOLDER]) if (!(await isSeen(`${root}/${kind}`))) count += (await listKind($, root, kind)).length
+    if (count > 0) lines.push(ignoredLine(count, root, folder))
+  }
+  return lines
+}
+
 // Spec D4 step 1: the plans and scores of the other roots copied into the chosen one, oldest first, then one rm of the
 // sources. A plan whose writer still uses it stays, and so do the scores beside it in its own root; scores also stay
 // with a plan that did not move; a name the chosen root holds stays unless its copy there is a separate, byte-equal
 // file; only a file that would be copied counts toward the cap, past which the rest wait.
 async function moveFiles($: EngineInterface, folder: PlansFolder, extras: readonly string[], canRm: () => Promise<boolean>): Promise<string[]> {
   const chosenRoot = PLANS_ROOTS[folder]
+  // Only claude-kit's choice reads plan files (the user, 2026-11-25): `.alfred` and `default` make no folder and move
+  // nothing, and the one rm takes the old status files alone
+  if (folder !== FILE_PLANS_FOLDER) return [...(await ignoredRoots($, folder)), ...(await removeSources($, chosenRoot, [], [], extras))]
   const others = plansRoots(folder).slice(1)
   const now = await $.clock.now()
   const { queue: plans, skipped: skippedPlans, lines: planFolderLines } = await queueOf($, PLANS_SUBFOLDER, chosenRoot, others)
@@ -285,10 +311,10 @@ async function moveFiles($: EngineInterface, folder: PlansFolder, extras: readon
   return [...left, ...shown.map(keptBothLine), ...notMoved, ...removed, ...(hasMore ? [MORE_LINE] : [])]
 }
 
-// Spec D4 step 2: the chosen root in the .gitignore, when there is one and no line covers it; `default` is the
-// project's own .claude/ and gets none. A refused check ends the run (runUpdate); a failed read or write is named.
+// Spec D4 step 2: claude-kit's root in the .gitignore, when there is one and no line covers it; `.alfred` and `default`
+// read no plan file and get none. A refused check ends the run (runUpdate); a failed read or write is named.
 async function ignoreRoot($: EngineInterface, folder: PlansFolder): Promise<string[]> {
-  if (folder === 'default' || !(await $.fs.exists(GITIGNORE_FILE))) return []
+  if (folder !== FILE_PLANS_FOLDER || !(await $.fs.exists(GITIGNORE_FILE))) return []
   const root = PLANS_ROOTS[folder]
   const text = await $.fs.read(GITIGNORE_FILE).catch(() => null)
   if (text === null) return [gitignoreByHandLine(root)]

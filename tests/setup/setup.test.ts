@@ -1,12 +1,12 @@
 import { expect, test } from 'claude-code/testing'
 
-import { choiceLines, parseFolderValue, writerNote } from '../../hooks/setup/setup'
+import { choiceLines, parseFolderValue } from '../../hooks/setup/setup'
 import { SETUP_USAGE } from '../../hooks/setup/constants'
 
 const CHOICES = [
-  '/alfred-mods:init .alfred-mods (recommended - no permission asks)',
-  "/alfred-mods:init .alfred (beside Alfred Code's state)",
-  '/alfred-mods:init default (.claude/session-inspector - Claude Code asks before each write)',
+  "/alfred-mods:init .alfred-mods (claude-kit's plan files - recommended)",
+  "/alfred-mods:init .alfred (Alfred Code's plans in .alfred/docs/work/plans/)",
+  "/alfred-mods:init default (Claude Code's own task list - no plan files)",
 ]
 
 test('parseFolderValue reads a folder, or nothing', () => {
@@ -35,11 +35,4 @@ test('choiceLines gives the three choices, the recommended one first', () => {
 test('choiceLines marks the current choice', () => {
   expect(choiceLines('.alfred')).toEqual([CHOICES[0], `${CHOICES[1]} (now)`, CHOICES[2]])
   expect(choiceLines('default')[2]).toBe(`${CHOICES[2]} (now)`)
-})
-
-test('writerNote is null for .alfred-mods and names the writers for the others', () => {
-  expect(writerNote('.alfred-mods')).toBeNull()
-  const note = 'new plans land there once each writer reads plansFolder - claude-kit does from its 0b09406 sync'
-  expect(writerNote('.alfred')).toBe(note)
-  expect(writerNote('default')).toBe(note)
 })

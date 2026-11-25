@@ -1,5 +1,5 @@
 // Plain values to the strings the band and the pane draw: bars, token counts, times, money, one-line cuts.
-import { DIGIT_HOTKEY, FAMILIES, MODEL_ID } from './constants'
+import { DIGIT_HOTKEY, EFFORT_GUESS_MARK, FAMILIES, MODEL_ID } from './constants'
 import type { Family } from './types'
 
 // The one bar, in the band and the pane: 5 cells of 20%, ▰ filled and ▱ empty; a cell fills only when its share is
@@ -128,6 +128,12 @@ export function isPlainButton(button: { hotkey?: string; plain?: boolean }): boo
 // A button's cells as the terminal draws it: '<hotkey>: <label>' when plain, '[ <label> ]' otherwise
 export function buttonCells(labelCells: number, hotkey: string | undefined, isPlain: boolean): number {
   return isPlain ? (hotkey === undefined ? 0 : hotkey.length + 2) + labelCells : labelCells + 4
+}
+
+// The effort level as the band and the pane draw it, a guess marked; null with none
+export function effortText(shown: { effort: string | null; effortFrom?: 'guess' | 'step' }): string | null {
+  if (shown.effort === null) return null
+  return shown.effortFrom === 'guess' ? `${EFFORT_GUESS_MARK}${shown.effort}` : shown.effort
 }
 
 // A model id's family and version: 'claude-opus-5-5' is opus 5.5; an id with no known family has none

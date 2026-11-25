@@ -168,13 +168,14 @@ for (const surface of SURFACES) {
     expect((await rows(ui)).join('\n')).not.toContain(email)
   })
 
-  // The modes line under the identity (the user, 2026-11-24)
+  // Alfred Code's modes line under the gauges (the user, 2026-11-25)
   test(`the band draws REC, the modes and the runway under /rec strict (${surface})`, async ($, on) => {
     await now($, on, surface, { files: { [STATUS]: status() }, store: { 'settings:rec': 'strict' } })
     const lines = await rows(await band($, surface))
     expect(lines[0]).toBe('● REC │ org | unknown')
-    expect(lines[1]).toBe('auto-run · scoring 80 3')
-    expect(lines.some(line => line.startsWith('ctx ▰▰▰▱▱ 62% of 150k'))).toBe(true)
+    const ctx = lines.findIndex(line => line.startsWith('ctx ▰▰▰▱▱ 62% of 150k'))
+    expect(ctx).toBeGreaterThan(0)
+    expect(lines[ctx + 1]).toBe('alfred-code: auto-run · scoring 80 3')
   })
 }
 

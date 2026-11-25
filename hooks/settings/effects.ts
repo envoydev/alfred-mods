@@ -7,25 +7,30 @@ import { applyQuiet } from '../tools/effects'
 import { recStatus } from '../rec/rec'
 import { applyRec, recWordCount } from '../rec/effects'
 import { applyBandSetting } from '../band/effects'
+import { guessEffort } from '../effort/effects'
 import type { EngineInterface } from 'claude-code'
 import { applyHandoffSetting } from '../handoff/effects'
 import type { HookInput, HookNext } from '../core/types'
 import type { PlansFolder } from '../plan/types'
-import { UNSET_PLANS_FOLDER } from '../plan/constants'
+import { PLANS_FOLDERS, UNSET_PLANS_FOLDER } from '../plan/constants'
 
 // The mod's switches, from the "alfred-mods" key of each settings file and the old commands' store keys (spec
 // 2026-11-11 settings-values, S1-S4 and S7): read at the start, on the poll, after a /clear and after each change, one
 // run at a time as the status file's reads are. `rec`, the level in force and the source that set it; `skippedKey`,
-// the skipped values last told; `isHoldTold`, whether REC's hold was told. A new claude run starts them over.
+// the skipped values last told; `isHoldTold`, whether REC's hold was told; `held`, a plansFolder the mod wrote into the
+// project file and nothing shadowed, in force while each read of the settings still shows the field as it was before
+// the write (`stale`): Claude Code's settings read back stale until it loads the file again. A new claude run starts
+// them over.
 const settingsMemory = {
   resolved: null as ResolvedSettings | null, rec: null as { level: RecLevel; from: From } | null, skippedKey: '', isHoldTold: false,
-  reading: Promise.resolve() as Promise<void>,
+  reading: Promise.resolve() as Promise<void>, held: null as { folder: PlansFolder; stale: { folder: PlansFolder; from: From } } | null,
 }
 
 export const settingsInForce = (): SettingsValues => settingsMemory.resolved?.values ?? DEFAULTS
 
 // The folder the plan and score files live in, and the source that chose it: 'default' means the field is unset
 export function plansFolderInForce(): { folder: PlansFolder; from: From } {
+  if (settingsMemory.held !== null) return { folder: settingsMemory.held.folder, from: 'project' }
   const resolved = settingsMemory.resolved
   return resolved === null ? { folder: UNSET_PLANS_FOLDER, from: 'default' } : { folder: resolved.values.plansFolder, from: resolved.from.plansFolder }
 }
@@ -62,6 +67,10 @@ async function readSettingsNow($: EngineInterface, isStart: boolean): Promise<vo
   })
   const resolved = resolveSettings(layers, legacy)
   settingsMemory.resolved = resolved
+  // A read that shows the field otherwise than before the write - the value written, a hand edit, a higher file - ends
+  // the hold, so the files speak again
+  const stale = settingsMemory.held?.stale
+  if (stale !== undefined && (resolved.values.plansFolder !== stale.folder || resolved.from.plansFolder !== stale.from)) settingsMemory.held = null
   await retireLegacyKeys($, resolved, legacy, rawHandoff)
   if (isStart) await toastMovedOnce($, resolved)
   const before = settingsMemory.rec
@@ -87,6 +96,8 @@ async function readSettingsNow($: EngineInterface, isStart: boolean): Promise<vo
   await applyQuiet($)
   await applyBandSetting($)
   await applyHandoffSetting($)
+  // A /effort or /model that saved a level before the first request moves the guess
+  await guessEffort($)
 }
 
 // S7: a field the user's own file sets, machine-wide as the store is, drops its old value; a project or local value
@@ -172,7 +183,16 @@ export async function writeProjectField<F extends Field>($: EngineInterface, fie
   const next = writeField(text, field, value)
   if ('why' in next) return { ok: false, why: next.why === 'parse' ? `${name} does not parse - ${field} not written` : `"alfred-mods" in ${name} is not an object - ${field} not written` }
   const isWritten = await $.fs.write(name, next.text).then(() => true, () => false)
-  return isWritten ? { ok: true, shadow } : { ok: false, why: `${name} refused the write - ${field} not written` }
+  if (!isWritten) return { ok: false, why: `${name} refused the write - ${field} not written` }
+  // A plansFolder nothing shadows is in force at once, held against the field as this write found it; a shadowed one
+  // ends any hold, as the higher file decides
+  if (field === 'plansFolder') {
+    const folder = PLANS_FOLDERS.find(known => known === value)
+    settingsMemory.held = shadow === null && folder !== undefined
+      ? { folder, stale: { folder: settingsMemory.resolved?.values.plansFolder ?? UNSET_PLANS_FOLDER, from } }
+      : null
+  }
+  return { ok: true, shadow }
 }
 
 export function reloadSettingsSoon($: EngineInterface, e: HookInput<'classic.ConfigChange'>, next: HookNext<'classic.ConfigChange'>) {
@@ -180,6 +200,13 @@ export function reloadSettingsSoon($: EngineInterface, e: HookInput<'classic.Con
     loadSettings($).catch(() => undefined)
   })
   return next(e)
+}
+
+// Every settings source as loaded, each a whole file's object: a refused read or a source with no file is absent
+export async function readSettingsLayers($: EngineInterface): Promise<Partial<Record<Source, unknown>>> {
+  const layers: Partial<Record<Source, unknown>> = {}
+  for (const source of SOURCES) layers[source] = await $.settings.read({ source }).catch(() => undefined)
+  return layers
 }
 
 // The settings as last resolved, with each value's source; null before the first read

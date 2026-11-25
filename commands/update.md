@@ -1,5 +1,5 @@
 ---
-description: Move plan and score files into the folder plansFolder names, and fix what older versions left
+description: Under plansFolder .alfred-mods move old plan and score files into .alfred-mods, and fix what older versions left
 disable-model-invocation: true
 ---
 

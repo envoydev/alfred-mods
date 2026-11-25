@@ -357,8 +357,8 @@ test('HANDOFF.md names the plan file where the plan was read: the .alfred-mods f
 
 test('HANDOFF.md names the chosen root for a plan read with no path', async ($, on) => {
   const kit = stubAll(on, {
-    files: { '.alfred/alfred-mods/plans/token-refresh.json': { text: PLAN_JSON, mtimeMs: 1 } },
-    sources: { project: { 'alfred-mods': { plansFolder: '.alfred' } } },
+    files: { '.alfred-mods/plans/token-refresh.json': { text: PLAN_JSON, mtimeMs: 1 } },
+    sources: { project: { 'alfred-mods': { plansFolder: '.alfred-mods' } } },
   })
   const state = watchState(on, (key, value) => {
     const stored = value as { value?: { planFiles?: { path?: string }[] } }
@@ -369,7 +369,7 @@ test('HANDOFF.md names the chosen root for a plan read with no path', async ($, 
   await kit.clock.advance(300)
   await handoff($, 'now')
   await saved(kit.clock, () => state.get('handoff') as Handoff)
-  expect(written(kit.files)).toContain('From .alfred/alfred-mods/plans/token-refresh.json.')
+  expect(written(kit.files)).toContain('From .alfred-mods/plans/token-refresh.json.')
 })
 
 test('HANDOFF.md holds no failure reason, task subject, agent description or note text', async ($, on) => {

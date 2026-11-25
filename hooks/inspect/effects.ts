@@ -7,7 +7,7 @@ import type { Tab, View } from './types'
 import { BAND_HELP, INSPECT_HELP, TAB_NAMES, copyWhy, ordinalOf, outOfRange } from './commands'
 import { oneLine, printable } from '../core/format'
 import { failureNumberOf } from '../tools/outcome'
-import { loadSettings, plansFolderInForce, resolvedSettings, writeUserField } from '../settings/effects'
+import { loadSettings, resolvedSettings, writeUserField } from '../settings/effects'
 import { closePane, isNoColor, toast } from '../core/effects'
 import { isBreakdownStale, readBreakdownSoon, readParts } from '../context/effects'
 import { readAgents, readLoops } from '../agents/effects'
@@ -19,11 +19,11 @@ import { readLive, readSession, readPace, readTick, readTotals, readTurns, readU
 import { recSummary } from '../rec/rec'
 import { readRec } from '../rec/effects'
 import { dismissAsk, readHandoff, saveNow, saveThenCompact } from '../handoff/effects'
-import { readPlanDrawing, readPlans } from '../plan/effects'
+import { planSourcesInForce, readPlanDrawing, readPlans } from '../plan/effects'
 import { fillStackPrompt, readStack, readScoreLevel, stackPrompt } from '../stack/effects'
 import { forecastTargetOf, handoffViewOf } from '../handoff/handoff'
 import { compactNow, readCache } from '../cache/effects'
-import { chosenPlansDir } from '../plan/plan'
+import { noPlanFileText, plansPlaces } from '../plan/plan'
 import { drawLines } from '../core/draw'
 import { planLines } from '../plan/planlines'
 import { promptLines } from '../prompt/promptlines'
@@ -31,6 +31,7 @@ import { readPrompt } from '../prompt/effects'
 import { mask } from '../rec/mask'
 import { runwayOf } from '../stack/stack'
 import { readKit } from '../kit/effects'
+import { readPluginRows } from '../plugins/effects'
 import { kitPassScore } from '../kit/kit'
 import { leaveOutSkipped, neverAskSkip } from '../skip/effects'
 import { SKIP_USAGE, SKIP_WORDS } from '../skip/constants'
@@ -160,7 +161,7 @@ export async function runInspectCommand($: EngineInterface, e: MatchedInput<'com
     const good = (await readPlans($)).planFiles.filter(planFile => planFile.value !== null).map(planFile => planFile.name).sort()
     if (name !== null && !good.includes(name)) {
       const asked = oneLine(printable(name), 40)
-      return { text: good.length === 0 ? `No plan named ${asked}. No plan file in ${chosenPlansDir(plansFolderInForce().folder)}/.` : `No plan named ${asked}. Plans: ${good.join(', ')}.` }
+      return { text: good.length === 0 ? `No plan named ${asked}. ${noPlanFileText(planSourcesInForce())}` : `No plan named ${asked}. Plans: ${good.join(', ')}.` }
     }
     await updateView($, view => (view.pinnedPlan === name ? view : { ...view, pinnedPlan: name }))
   }
@@ -191,6 +192,7 @@ export async function drawInspectPane($: EngineInterface, e: MatchedInput<'ui.re
     handoff: handoffViewOf(handoff, usage, counts.turnId !== null, runway),
     stack: { view: st, prompt: stackPrompt(), runway, sessionModel: session.model },
     kit,
+    plugins: shown.tab === 'now' ? await readPluginRows($) : undefined,
   }
   const bar = tabBar(shown.tab, counts.turnId !== null, e.props.bodyColumns)
   const body = shown.tab === 'usage' ? usageLines(input)
@@ -198,7 +200,7 @@ export async function drawInspectPane($: EngineInterface, e: MatchedInput<'ui.re
     : shown.tab === 'cache' ? cacheLines(input)
     : shown.tab === 'tools' ? toolsLines(input)
     : shown.tab === 'timeline' ? timelineLines(input.turns, Math.max(3, e.props.scroll.bodyRows - 1 - bar.length), usage.rateWindows.length > 0, e.props.bodyColumns)
-    : shown.tab === 'plan' ? planLines(drawing.shown, drawing.scores, { invalid: drawing.invalid, others: drawing.others, otherScores: drawing.otherScores, updatedAt: drawing.updatedAt, now, columns: e.props.bodyColumns }, chosenPlansDir(plansFolderInForce().folder))
+    : shown.tab === 'plan' ? planLines(drawing.shown, drawing.scores, { invalid: drawing.invalid, others: drawing.others, otherScores: drawing.otherScores, updatedAt: drawing.updatedAt, now, columns: e.props.bodyColumns }, plansPlaces(planSourcesInForce()))
     : shown.tab === 'prompt' ? promptLines(await readPrompt($), e.props.bodyColumns)
     : nowLines(input)
   const press: Record<string, () => unknown> = {

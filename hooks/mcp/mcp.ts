@@ -2,10 +2,12 @@
 // item. Pure: effects.ts reads the tool list and keeps the atom.
 import type { Seg } from '../core/types'
 import type { McpConnectResult } from 'claude-code'
-import { DENIED_REASON, ENGINE_ORIGIN, GLYPH, ITEM_JOIN, ITEM_LABEL, NAME_UNSAFE, PLUGIN_SEPARATOR, SERVER_STATE_REASONS, SETTLE_MS, TOOL_PREFIX, TOOL_SEPARATOR } from './constants'
+import { DENIED_REASON, ENGINE_ORIGIN, GLYPH, ITEM_JOIN, ITEM_LABEL, NAME_UNSAFE, PLUGIN_SEPARATOR, SERVER_OFF_REASON, SERVER_STATE_REASONS, SETTLE_MS, TOOL_PREFIX, TOOL_SEPARATOR } from './constants'
 import type { ConnectAnswer, ListedTool, McpServer, ReadOutcome, Unreadable } from './types'
 
 const spelled = (name: string): string => name.replace(NAME_UNSAFE, '_')
+// A server's name as a tool's name spells it
+export const spelledName = spelled
 
 // A server's name as a tool's name spells it: the last `:`-part, characters outside [A-Za-z0-9_-] read `_`
 export function shortName(name: string): string {
@@ -26,24 +28,25 @@ export function toolServers(tools: readonly ListedTool[]): string[] {
 }
 
 // A server's name matches a tool server by its last `:`-part or by the whole name, either spelled as a tool's name is
-const isShownBy = (server: McpServer, toolServer: string): boolean => toolServer === shortName(server.name) || toolServer === spelled(server.name)
+export const isShownBy = (server: McpServer, toolServer: string): boolean => toolServer === shortName(server.name) || toolServer === spelled(server.name)
 
-// Whether a loading server settles by time: one whose state is never read (no read runs, its raise not yet passed the
+// Whether time decides a loading server: one whose state is never read (no read runs, its raise not yet passed the
 // hooks beneath, or its read refused for this raise). `unreadable` is null where no state is read at all.
 const isTimed = (server: McpServer, unreadable: Unreadable | null): boolean =>
   unreadable === null || server.isPassed !== true || unreadable.get(server.name) === server.since
 
-// The servers after a read of the tool list at `now`: a loading or failed one whose tools show is connected, a loading
-// one that settles by time and has loaded for SETTLE_MS too; a failed one with no tools stays so; a tool server no
-// server names is added as connected
+// The servers after a read of the tool list at `now`: a loading or failed one whose tools show is connected; a loading
+// one that time decides and has loaded for SETTLE_MS with none is of unknown state and leaves the list; a failed one
+// with no tools stays so; a tool server no server names is added as connected
 export function settle(servers: readonly McpServer[], fromTools: readonly string[], now: number, unreadable: Unreadable | null): McpServer[] {
   const named = new Set<string>()
-  const settled = servers.map((server): McpServer => {
+  const settled = servers.flatMap((server): McpServer[] => {
     const shown = fromTools.filter(toolServer => isShownBy(server, toolServer))
     for (const toolServer of shown) named.add(toolServer)
-    if (server.state === 'connected') return server
-    const isSettled = shown.length > 0 || (server.state === 'loading' && isTimed(server, unreadable) && now - server.since >= SETTLE_MS)
-    return isSettled ? { name: server.name, state: 'connected', since: server.since, ...(server.isSeeded === true ? { isSeeded: true } : {}) } : server
+    if (server.state === 'connected') return [server]
+    if (shown.length > 0) return [{ name: server.name, state: 'connected', since: server.since, ...(server.isSeeded === true ? { isSeeded: true } : {}) }]
+    const isUnknown = server.state === 'loading' && isTimed(server, unreadable) && now - server.since >= SETTLE_MS
+    return isUnknown ? [] : [server]
   })
   const added = fromTools.filter(toolServer => !named.has(toolServer)).map((toolServer): McpServer => ({ name: toolServer, state: 'connected', since: now, isSeeded: true }))
   return [...settled, ...added]
@@ -70,7 +73,9 @@ export function markLoading(servers: readonly McpServer[], name: string, now: nu
   return servers.map((server, index) => (index === place ? loading : server))
 }
 
+// A server turned off leaves the list: `markLoading` adds it again when an event raises it
 export function markFailed(servers: readonly McpServer[], name: string, reason: string): McpServer[] {
+  if (reason === SERVER_OFF_REASON) return servers.filter(server => server.name !== name)
   return servers.map(server => (server.name === name ? { name, state: 'failed', reason, since: server.since } : server))
 }
 
@@ -112,8 +117,10 @@ export function readOutcome(result: McpConnectResult): ReadOutcome | null {
 // The servers after a state read of `name` begun while it loaded since `since`: a server a later event marked loading
 // again, or one already settled, is left as it is
 export function markRead(servers: readonly McpServer[], name: string, since: number, outcome: ReadOutcome): McpServer[] {
+  const isRead = (server: McpServer): boolean => server.name === name && server.state === 'loading' && server.since === since
+  if (outcome.state === 'failed' && outcome.reason === SERVER_OFF_REASON) return servers.filter(server => !isRead(server))
   return servers.map((server): McpServer => {
-    if (server.name !== name || server.state !== 'loading' || server.since !== since) return server
+    if (!isRead(server)) return server
     return outcome.state === 'connected' ? { name, state: 'connected', since } : { name, state: 'failed', reason: outcome.reason, since }
   })
 }

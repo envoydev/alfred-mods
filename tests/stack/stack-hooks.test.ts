@@ -210,13 +210,15 @@ async function turnAt($: Engine, usage: { current: SessionUsage }, n: number, to
 }
 
 for (const surface of SURFACES) {
-  // The modes line under the identity (the user, 2026-11-24): 'auto-run · scoring 80 3' from the status file
+  // Alfred Code's modes line under the gauges (the user, 2026-11-25): 'alfred-code: auto-run · scoring 80 3' from the
+  // status file, its rounds included
   test(`the band draws the runway at 120 and 90 columns, and the modes line (${surface})`, async ($, on) => {
     await start($, on, { files: { [STATUS]: status() }, usage: reading(93_000) })
     for (const columns of [120, 90]) {
       const lines = await rows(await band($, surface, columns))
-      expect(lines[0]).toBe('auto-run · scoring 80 3')
-      expect(lines[1]!.startsWith('ctx ▰▰▰▱▱ 62% of 150k')).toBe(true)
+      const ctx = lines.findIndex(line => line.startsWith('ctx ▰▰▰▱▱ 62% of 150k'))
+      expect(ctx).toBeGreaterThan(-1)
+      expect(lines[ctx + 1]).toBe('alfred-code: auto-run · scoring 80 3')
     }
   })
 
@@ -234,7 +236,7 @@ for (const surface of SURFACES) {
   test(`a fresh session's first file draws the modes before any prompt (${surface})`, async ($, on) => {
     await start($, on, { files: { [STATUS]: status({ autoCompact: { on: true, at: 490_000 } }) } })
     const lines = await rows(await band($, surface))
-    expect(lines).toContain('auto-run · auto-compact 490k · scoring 80 3')
+    expect(lines).toContain('alfred-code: auto-run · auto-compact 490k · scoring 80 3')
   })
 
   test(`an ignored file draws no runway and no banner (${surface})`, async ($, on) => {

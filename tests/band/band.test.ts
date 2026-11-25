@@ -158,7 +158,7 @@ for (const surface of SURFACES) {
     const boxes = await ui.findAll({ type: 'Box' })
     const pieces = boxes.filter(b => String(b.props.key ?? '').startsWith('line-')).flatMap(b => (b.children ?? []) as { type: string; props: Record<string, unknown> }[])
 
-    expect(lines.some(l => /^✓ Turn 1 · 3s · 1 tool · 1 ✗ │ you /.test(l))).toBe(true)
+    expect(lines.some(l => /^org \| unknown │ ✓ Turn 1 · 3s · 1 tool │ you \d\d:\d\d · Claude \d\d:\d\d │ ✗ 1 new /.test(l))).toBe(true)
     expect(lines.some(l => /^ctx .* │ 5h .* │ 7d 30% \(\d\d\.\d\d \d\d:\d\d\)$/.test(l))).toBe(true)
     expect(pieces.filter(p => p.type === 'Box').length > 3).toBe(true)
     expect(pieces.filter(p => p.type === 'Box').every(p => p.props.flexShrink === 0)).toBe(true)
@@ -235,7 +235,7 @@ for (const surface of SURFACES) {
 
     const texts = await (await mount($, surface, band(false))).findAll({ type: 'Text' })
 
-    expect(texts.find(t => t.text === '· 1 ✗')?.props.color).toBe('error')
+    expect(texts.find(t => t.text === '✗ 1 new')?.props.color).toBe('error')
     expect(texts.find(t => t.text === '82%')?.props.color).toBe('warning')
     expect(texts.find(t => t.text === '20%')?.props.color).toBe('success')
     expect(texts.find(t => t.text === 'ctx')?.props.color).toBe('#60a5fa')
@@ -277,7 +277,7 @@ for (const surface of SURFACES) {
     await clock.settle()
 
     const lines = await rows(await mount($, surface, band(true)))
-    expect(lines.some(l => /^⟳ Turn 1 · \d:\d\d │ Explore ▸ Grep AuthService │ Plan ▸ Read src\/auth\/token\.ts$/.test(l))).toBe(true)
+    expect(lines.some(l => /^org \| unknown │ ⟳ Turn 1 · \d:\d\d │ Explore ▸ Grep AuthService │ Plan ▸ Read src\/auth\/token\.ts$/.test(l))).toBe(true)
   })
 
   test(`agents running while the main loop is idle keep line 1 working (${surface})`, async ($, on) => {
@@ -288,7 +288,7 @@ for (const surface of SURFACES) {
     held($.tool.call(grep({ agentId: 'a1' })))
     await clock.settle()
 
-    expect((await rows(await mount($, surface, band(false))))[0]).toBe('⟳ 1 agent │ Explore ▸ Grep AuthService')
+    expect((await rows(await mount($, surface, band(false))))[0]).toBe('org | unknown │ ⟳ 1 agent │ Explore ▸ Grep AuthService')
   })
 
   test(`agent parts past the width fold into +N agents (${surface})`, async ($, on) => {
@@ -315,7 +315,7 @@ for (const surface of SURFACES) {
     await $.agent.spawn({ ...SPAWN, description: 'one' })
     await $.agent.spawn({ ...SPAWN, description: 'two' })
 
-    expect((await rows(await mount($, surface, band(true, 90)))).some(l => /^⟳ Turn 1 0:\d\d · 2 agents$/.test(l))).toBe(true)
+    expect((await rows(await mount($, surface, band(true, 90)))).some(l => /^org \| unknown │ ⟳ Turn 1 0:\d\d · 2 agents$/.test(l))).toBe(true)
   })
 
   test(`a finished agent leaves line 1 (${surface})`, async ($, on) => {

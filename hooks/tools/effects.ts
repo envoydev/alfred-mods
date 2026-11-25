@@ -23,7 +23,7 @@ import { isNoColor } from '../core/effects'
 import { rememberCall } from './calls'
 import { addWaitTime, closeCallWait, followTaskTools, openCallWait, schedulePlanReload } from '../plan/effects'
 import { isRecOn } from '../rec/effects'
-import { DEFAULT_COLUMNS, EDIT_TOOLS } from './constants'
+import { DEFAULT_COLUMNS, EDIT_TOOLS, OWN_PLUGIN } from './constants'
 
 const INITIAL_STATS: Record<string, ToolStat> = {}
 const statsAtom = atom({ plugin: 'alfred-mods', key: 'stats' } as const, INITIAL_STATS, { shape: 'stats-1' })
@@ -189,7 +189,7 @@ export async function applyQuiet($: EngineInterface): Promise<boolean> {
 }
 
 export async function trackToolCall($: EngineInterface, e: HookInput<'tool.call'>, next: HookNext<'tool.call'>, calls: Map<string, ToolCall>, pending: Pending) {
-  if (!(await isTrackedLoop($, e.agentId))) return next(e)
+  if (next.origin.plugin === OWN_PLUGIN || !(await isTrackedLoop($, e.agentId))) return next(e)
   const input: Record<string, unknown> = e
   const call = rememberCall(calls, e.tool_use_id, e.tool)
   call.key = toolKey(e.tool, input)
