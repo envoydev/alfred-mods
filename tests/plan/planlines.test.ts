@@ -24,6 +24,10 @@ test('the empty line names the plans folder it is given', () => {
   expect(text(planLines(null, null, O, '.alfred/alfred-mods/plans')[0] ?? [])).toBe('No plan file in .alfred/alfred-mods/plans/, and no task list this session.')
 })
 
+test('under plansFolder default the empty line says no plan file is read', () => {
+  expect(text(planLines(null, null, O, null)[0] ?? [])).toBe('No task list this session - plansFolder "default" reads no plan file.')
+})
+
 test('a failed, a blocked and a skipped step draw their own glyphs, and a shared step says so', () => {
   const plan = planOf({ S3: 'skipped', S4: 'failed', S5: 'blocked' })
   const v = planView(plan, { ...FIVE_TIMES, S4: { ms: 12 * MIN, isShared: true } }, 0, {}, NOW)

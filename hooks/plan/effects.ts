@@ -3,9 +3,9 @@
 // stored, which outlives a reload.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
-import type { SliceClose, Credit, Plan, PlanDrawing, PlanView, Plans, Scores, TaskItem, Watched } from './types'
+import type { SliceClose, Credit, Plan, PlanDrawing, PlanSources, PlanView, Plans, Scores, TaskItem, Watched } from './types'
 import type { Pending } from '../core/types'
-import { FINISH_SHOWN_MS, creditedPlan, isPlanDone, newUserNotes, parsePlan, parseScores, planView, plansDirs, isPlanRunning, scoresDirs, scoresView, shownPlan, stepStatusKey, taskStatusKey, taskView, tasksAfter, isSamePlan } from './plan'
+import { FINISH_SHOWN_MS, creditedPlan, isPlanDone, newUserNotes, parsePlan, parseScores, planSources, planView, plansDirs, isPlanRunning, scoresDirs, scoresView, shownPlan, stepStatusKey, taskStatusKey, taskView, tasksAfter, isSamePlan } from './plan'
 import { closeTargetOf, closeSlices, closeWait, creditRunningTasks, liveSpans, sessionTimesOf, openWait, shownStepTimes, sliceMs, storedTimeOf, sumTimes, taskListMs } from './steptime'
 import { parseAlfredScoring, parseAlfredStatus } from './alfredplan'
 import { minutesText, oneLine } from '../core/format'
@@ -212,26 +212,33 @@ export async function seedSessionTimes($: EngineInterface): Promise<void> {
   if (Object.keys(mine).length > 0) await updateCredit($, credit => ({ ...credit, sessionTimes: { ...mine, ...credit.sessionTimes } }))
 }
 
+// What the plan row reads under the plansFolder in force; 'default' as its source means the field is unset
+export function planSourcesInForce(): PlanSources {
+  const inForce = plansFolderInForce()
+  return planSources(inForce.folder, inForce.from !== 'default')
+}
+
 // The plan and scores folders read again. A step whose status changed closes and reopens the open slices first, so
 // the time before the change goes to the steps that were running then. A note the file's previous good parse this
 // session lacks, and a plan that finishes this session (its previous good parse unfinished), raise their toasts once.
 async function reloadPlanFiles($: EngineInterface, pending: Pending): Promise<void> {
   const before = await readPlans($)
   const now = await $.clock.now()
-  const { folder: plansFolder } = plansFolderInForce()
-  const folderPlans = await readJsonFolders($, plansDirs(plansFolder), before.planFiles, parsePlan)
-  const folderScores = await readJsonFolders($, scoresDirs(plansFolder), before.scoreFiles, parseScores)
-  // With `.alfred`, Alfred Code's plan folders too: each stands in for a same-named file of the mod's own folders
-  const everyAlfred = plansFolder === '.alfred' ? await readEveryAlfredPlan($, before) : { plans: [], scores: [] }
+  const sources = planSourcesInForce()
+  const folderPlans = await readJsonFolders($, plansDirs(sources.fileRoots), before.planFiles, parsePlan)
+  const folderScores = await readJsonFolders($, scoresDirs(sources.fileRoots), before.scoreFiles, parseScores)
+  // With `.alfred`, Alfred Code's plan folders: each stands in for a same-named file of the mod's own folders
+  const everyAlfred = sources.isEveryAlfredPlan ? await readEveryAlfredPlan($, before) : { plans: [], scores: [] }
   const ownPlans = [...without(folderPlans, everyAlfred.plans), ...everyAlfred.plans]
   const ownScores = [...without(folderScores, everyAlfred.scores), ...everyAlfred.scores]
   // Alfred Code's plan folder: the one its status file names, else the one it let go, read once more to see it
   // finished, then kept 10 minutes after it finished
   // A status file that will not read, or whose `plan` will not, says nothing: the plan it named stays named
   const stack = await readStack($)
+  // A choice that does not read Alfred Code's plans reads neither the named folder nor one it let go
   const isPlanNamed = stack.state === 'used' && !stack.ignoredFields.includes('plan')
-  const named = isPlanNamed ? stack.plan : before.alfredFolder?.folder ?? null
-  const lingering = named === null ? before.alfredFolder : null
+  const named = !sources.isAlfredNamed ? null : isPlanNamed ? stack.plan : before.alfredFolder?.folder ?? null
+  const lingering = sources.isAlfredNamed && named === null ? before.alfredFolder : null
   const folder = named ?? lingering?.folder ?? null
   // The last read is this folder's only when the folder is the same, so a new folder never shows the old plan
   const isSame = before.alfredFolder !== null && before.alfredFolder !== undefined && before.alfredFolder.folder === folder

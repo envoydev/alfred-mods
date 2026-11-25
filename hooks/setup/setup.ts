@@ -1,9 +1,9 @@
 // The setup commands' pure parts: their values, the choice lines and the confirm lines. setup/effects.ts reads and
 // writes the files.
-import { ALFRED_PLANS_DIR, PLANS_FOLDERS, PLANS_ROOTS } from '../plan/constants'
+import { FILE_PLANS_FOLDER, PLANS_FOLDERS } from '../plan/constants'
 import type { PlansFolder } from '../plan/types'
 import type { Line } from '../core/types'
-import { ASK_LABELS, BUTTON_KEY_PREFIX, CHOICE_NOTES, CHOICE_ORDER, NOW_MARK, PANE_HEADING, PANE_HELP, PANE_HELP_TYPED, SLASH, WRITER_NOTE } from './constants'
+import { ASK_LABELS, BUTTON_KEY_PREFIX, CHOICE_NOTES, CHOICE_ORDER, LIVES, MOVES_NOTE, NOW_MARK, PANE_HEADING, PANE_HELP, PANE_HELP_TYPED, SLASH } from './constants'
 import type { FolderValue } from './types'
 
 // The words typed after /alfred-mods:init or /alfred-mods:configure: none, or one folder. Anything else is not ok, and
@@ -24,11 +24,6 @@ export function choiceLines(now: PlansFolder | null): string[] {
   return CHOICE_ORDER.map(folder => `${SLASH.init} ${folder} (${CHOICE_NOTES[folder]})${folder === now ? NOW_MARK : ''}`)
 }
 
-// A choice other than .alfred-mods lands only where a writer follows the field
-export function writerNote(folder: PlansFolder): string | null {
-  return folder === '.alfred-mods' ? null : WRITER_NOTE
-}
-
 // The dialog's options in the choices' order, the folder in force marked
 export function askLabels(now: PlansFolder | null): string[] {
   return CHOICE_ORDER.map(folder => `${ASK_LABELS[folder]}${folder === now ? NOW_MARK : ''}`)
@@ -42,11 +37,9 @@ export function answeredFolder(answer: string, now: PlansFolder | null): PlansFo
   return typed.ok ? typed.folder : null
 }
 
-// Where plans live, and the file that says so; `isHint` adds how to change it. With `.alfred` the plans are Alfred
-// Code's own, read from its plan folders (the user, 2026-11-25).
+// Whose plans the folder reads, and the file that says so; `isHint` adds how to change it (the user, 2026-11-25)
 export function livesLine(folder: PlansFolder, file: string, isHint: boolean): string {
-  const places = folder === '.alfred' ? `Plans are read from ${ALFRED_PLANS_DIR}/ (Alfred Code) and ${PLANS_ROOTS[folder]}/` : `Plans live in ${PLANS_ROOTS[folder]}/`
-  return `${places} (plansFolder "${folder}" in ${file})${isHint ? ` - ${SLASH.configure} changes it` : ''}`
+  return `${LIVES[folder]} (plansFolder "${folder}" in ${file})${isHint ? ` - ${SLASH.configure} changes it` : ''}`
 }
 
 // A higher file gives the field a value that wins over the one written
@@ -54,8 +47,9 @@ export function shadowLine(inForce: PlansFolder, file: string): string {
   return `plansFolder is "${inForce}" in ${file}, which wins over the value written`
 }
 
+// Only claude-kit's folder has plan files for the update to move in
 export function configuredLine(folder: PlansFolder): string {
-  return `plansFolder is "${folder}" - ${SLASH.update} moves the files`
+  return `plansFolder is "${folder}"${folder === FILE_PLANS_FOLDER ? MOVES_NOTE : ''}`
 }
 
 // The pane: a heading, one button per choice with its note, then the last update's report. Where nothing takes a press

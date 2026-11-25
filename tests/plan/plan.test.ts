@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { candidatesByName, chosenPlansDir, parsePlan, parseScores, planView, plansDirs, plansRoots, scoresDirs, scoresView, taskView, tasksAfter } from '../../hooks/plan/plan'
+import { candidatesByName, chosenPlansDir, parsePlan, parseScores, planSources, planView, plansDirs, plansPlaces, plansRoots, scoresDirs, scoresView, taskView, tasksAfter } from '../../hooks/plan/plan'
 import { FIVE, FIVE_OVERHEAD, FIVE_TIMES, MIN, NOW, PLAN_JSON, SCORES_JSON, planOf } from '../plans'
 import type { Scores, TaskItem } from '../../hooks/plan/types'
 
@@ -211,9 +211,28 @@ test('the plans roots read the chosen folder first, then the others in the fallb
   expect(chosenPlansDir('.alfred')).toBe('.alfred/alfred-mods/plans')
 })
 
-test('the plans and scores folders sit under each root', () => {
-  expect(plansDirs('.alfred')[0]).toBe('.alfred/alfred-mods/plans')
-  expect(scoresDirs('.alfred')).toEqual(['.alfred/alfred-mods/scores', '.alfred-mods/scores', '.claude/session-inspector/scores'])
+test('the plans and scores folders sit under each root read', () => {
+  expect(plansDirs(['.alfred-mods', '.claude/session-inspector'])).toEqual(['.alfred-mods/plans', '.claude/session-inspector/plans'])
+  expect(scoresDirs(['.alfred-mods'])).toEqual(['.alfred-mods/scores'])
+})
+
+test('each chosen plansFolder reads its own plans only: Alfred Code\'s, claude-kit\'s or none (the user, 2026-11-25)', () => {
+  expect(planSources('.alfred', true)).toEqual({ fileRoots: [], isEveryAlfredPlan: true, isAlfredNamed: true })
+  expect(planSources('.alfred-mods', true)).toEqual({ fileRoots: ['.alfred-mods'], isEveryAlfredPlan: false, isAlfredNamed: false })
+  expect(planSources('default', true)).toEqual({ fileRoots: [], isEveryAlfredPlan: false, isAlfredNamed: false })
+})
+
+test('with the field unset every root and the folder Alfred Code names are read, as before', () => {
+  expect(planSources('.alfred-mods', false)).toEqual({
+    fileRoots: ['.alfred-mods', '.claude/session-inspector', '.alfred/alfred-mods'], isEveryAlfredPlan: false, isAlfredNamed: true,
+  })
+})
+
+test('the no-plan texts name where the plans are looked for, and none for default', () => {
+  expect(plansPlaces(planSources('.alfred', true))).toBe('.alfred/docs/work/plans')
+  expect(plansPlaces(planSources('.alfred-mods', true))).toBe('.alfred-mods/plans')
+  expect(plansPlaces(planSources('.alfred-mods', false))).toBe('.alfred-mods/plans')
+  expect(plansPlaces(planSources('default', true))).toBeNull()
 })
 
 test('candidatesByName groups a name across folders, newest first, a tie in folder order', () => {

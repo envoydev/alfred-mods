@@ -2,8 +2,8 @@
 // files', from the brief's 'Data contracts for the plan and scorer skills'. What a file requires makes it invalid when
 // missing; an optional field that does not fit is dropped.
 import { isRecord } from '../core/guards'
-import { PLANS_FOLDERS, PLANS_ROOTS, PLANS_SUBFOLDER, SCORES_SUBFOLDER, ALFRED_PLANS_DIR, ALFRED_STATUS_FILE } from './constants'
-import type { Finding, Plan, PlanChange, PlanStep, PlanView, PlansFolder, Plans, ScoreRound, Scores, ScoresView, Severity, StepRow, StepStatus, StepTime, TaskItem, Watched } from './types'
+import { FILE_PLANS_FOLDER, NO_PLAN_FILES_READ, PLANS_FOLDERS, PLANS_ROOTS, PLANS_SUBFOLDER, SCORES_SUBFOLDER, ALFRED_PLANS_DIR, ALFRED_STATUS_FILE } from './constants'
+import type { Finding, Plan, PlanChange, PlanSources, PlanStep, PlanView, PlansFolder, Plans, ScoreRound, Scores, ScoresView, Severity, StepRow, StepStatus, StepTime, TaskItem, Watched } from './types'
 
 const STATUSES: readonly string[] = ['pending', 'in_progress', 'done', 'failed', 'blocked', 'skipped']
 const KINDS: readonly string[] = ['created', 'step_added', 'step_changed', 'step_removed', 'integrated']
@@ -288,12 +288,31 @@ export function plansRoots(chosen: PlansFolder): string[] {
 // The folder the chosen value names for plans, the one a plan skill writes to
 export const chosenPlansDir = (chosen: PlansFolder): string => `${PLANS_ROOTS[chosen]}/${PLANS_SUBFOLDER}`
 
-// Where the chosen value's plans are looked for, as the 'no plan file' texts name it
-export const plansPlaces = (chosen: PlansFolder): string => (chosen === '.alfred' ? `${ALFRED_PLANS_DIR}/ or ${chosenPlansDir(chosen)}` : chosenPlansDir(chosen))
+// What each chosen value reads (the user, 2026-11-25): `.alfred` Alfred Code's plan folders only, `.alfred-mods`
+// claude-kit's plan and score files only, `default` none, so the plan row is Claude Code's own task list. Unset, every
+// root and the folder Alfred Code's status file names, as before: Alfred Code sets no plansFolder.
+export function planSources(chosen: PlansFolder, isSet: boolean): PlanSources {
+  if (!isSet) return { fileRoots: plansRoots(chosen), isEveryAlfredPlan: false, isAlfredNamed: true }
+  const isAlfred = chosen === '.alfred'
+  return { fileRoots: chosen === FILE_PLANS_FOLDER ? [PLANS_ROOTS[chosen]] : [], isEveryAlfredPlan: isAlfred, isAlfredNamed: isAlfred }
+}
 
-export const plansDirs = (chosen: PlansFolder): string[] => plansRoots(chosen).map(root => `${root}/${PLANS_SUBFOLDER}`)
+// Where the plans are looked for, as the 'no plan file' texts name it; null where no plan file is read
+export function plansPlaces(sources: PlanSources): string | null {
+  if (sources.isEveryAlfredPlan) return ALFRED_PLANS_DIR
+  const first = sources.fileRoots[0]
+  return first === undefined ? null : `${first}/${PLANS_SUBFOLDER}`
+}
 
-export const scoresDirs = (chosen: PlansFolder): string[] => plansRoots(chosen).map(root => `${root}/${SCORES_SUBFOLDER}`)
+// The sentence `/inspect plan <name>` ends on when no plan file holds the name
+export function noPlanFileText(sources: PlanSources): string {
+  const places = plansPlaces(sources)
+  return places === null ? NO_PLAN_FILES_READ : `No plan file in ${places}/.`
+}
+
+export const plansDirs = (roots: readonly string[]): string[] => roots.map(root => `${root}/${PLANS_SUBFOLDER}`)
+
+export const scoresDirs = (roots: readonly string[]): string[] => roots.map(root => `${root}/${SCORES_SUBFOLDER}`)
 
 // The files of one name across the folders' lists: a group per name, the greatest `mtimeMs` first, a tie in folder order
 export function candidatesByName<T extends { name: string; mtimeMs: number }>(byFolder: T[][]): T[][] {

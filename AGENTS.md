@@ -69,14 +69,16 @@ its tests to the run or takes it past `claude plugin test`'s limit of 1000 test 
   claude-kit is a second source that adds data (the user's ruling, 2026-11-21, replacing 2026-11-19's line-only ruling):
   the mod reads it from `.claude/kit/settings.json` in the project and from the public plan and score files, and from no
   other file of the kit's. The
-  plan and score files are `<root>/plans/<slug>.json` and `<root>/scores/<slug>.json`, the root named by the
-  `plansFolder` field (the user's ruling, 2026-11-19): `default` is `.claude/session-inspector`, `.alfred` is
-  `.alfred/alfred-mods`, `.alfred-mods` is `.alfred-mods`, and unset means `.alfred-mods`. Claude Code asks before each
-  write under `.claude/`, so a skill writes them outside it unless the project chose `default`. The mod reads all three
-  roots, the chosen one first, and a name held in more than one shows its newest file (the earlier root on a tie); a
-  writer that has not caught up still shows. The writers' rule is in the README, 'Plan and score files'.
-  `/alfred-mods:update` is the one writer of plan and score files in the mod: it copies one into the chosen root,
-  reads it back, and only then removes the source. No line leaves the core view as it is.
+  `plansFolder` field picks whose plans show, one source each (the user's ruling, 2026-11-25: 'when selecting alfred
+  we must follow and track alfreds plans structure, if claude kit the claude kit plans and structure, if default the
+  default behaviour'): `.alfred-mods` reads claude-kit's `.alfred-mods/plans/<slug>.json` and
+  `.alfred-mods/scores/<slug>.json`; `.alfred` reads Alfred Code's plan folders and the one its status file names, and
+  the mod makes no folder in `.alfred/`; `default` reads no plan file, so the plan row is Claude Code's task list.
+  Unset, the mod reads as before: the roots `.alfred-mods`, `.claude/session-inspector` and `.alfred/alfred-mods`
+  (newest file per name, the earlier root on a tie) and the plan the status file names, since Alfred Code sets no
+  `plansFolder`. The writers' rule is in the README, 'Plan and score files'. `/alfred-mods:update` is the one writer
+  of plan and score files in the mod, under `.alfred-mods` only: it copies a file of the other two roots in, reads it
+  back, and only then removes the source. No line leaves the core view as it is.
   Every phase is checked in both: a project without Alfred Code and one with it.
 - **Standalone.** The mod does not depend on, require, install or remove Alfred Code or any other plugin; the manifest
   declares no `dependencies`. The one exception: `/alfred-mods:update` switches off the mod's own former id

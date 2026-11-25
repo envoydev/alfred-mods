@@ -190,33 +190,36 @@ code.
   as the ask's `c` does; **`/auto-handoff later`** takes the ask down until its next step, as `r` does.
   **`/auto-handoff`** reads the settings files again and
   prints the mode, the first ask and the file each comes from.
-- **`/alfred-mods:init`**, **`/alfred-mods:configure`** and **`/alfred-mods:update`** choose the folder plan and score
-  files live in, the `"plansFolder"` field ([Plan and score files](#plan-and-score-files)), and move the files there.
+- **`/alfred-mods:init`**, **`/alfred-mods:configure`** and **`/alfred-mods:update`** choose whose plans the mod
+  shows, the `"plansFolder"` field ([Plan and score files](#plan-and-score-files)): `.alfred-mods` claude-kit's plan
+  files, `.alfred` Alfred Code's plan folders, `default` neither, leaving Claude Code's own task list.
   They are the mod's `commands/` files, so Claude Code lists them under the plugin's name, and the mod answers each
   one in place of the model. `init` and `configure` take one value, `default`, `.alfred` or `.alfred-mods`. They write
   the field into the project's `.claude/settings.json`, not your user file, as the folder is the project's layout:
-  - **With no value**, `init` and `configure` ask `Where should plan and score files live?` in Claude Code's question
-    dialog: `.alfred-mods (recommended)`, `.alfred (Alfred Code's folder)` and `default (.claude)`, the folder a file
+  - **With no value**, `init` and `configure` ask `Which plans should alfred-mods show?` in Claude Code's question
+    dialog: `claude-kit (.alfred-mods, recommended)`, `Alfred Code (.alfred)` and `default (Claude Code's task list)`, the folder a file
     sets marked `(now)`. The answer then acts as the value of that command; one of the three values typed as your own
     answer counts too, and any other text prints the usage line. Picking the folder a file already sets writes
     nothing: `init` prints where plans live and runs `update`, `configure` prints where plans live.
   - **Dismissed**, or with nobody to ask (`claude -p`), a set field makes `init` do the same. Otherwise the command
-    prints the three choices, the recommended one first - `/alfred-mods:init .alfred-mods (recommended - no permission
-    asks)`, `/alfred-mods:init .alfred (reads Alfred Code's plans too)`, `/alfred-mods:init default
-    (.claude/session-inspector - Claude Code asks before each write)` - and opens a pane, `Plans folder`, with the
+    prints the three choices, the recommended one first - `/alfred-mods:init .alfred-mods (claude-kit's plan files -
+    recommended)`, `/alfred-mods:init .alfred (Alfred Code's plans in .alfred/docs/work/plans/)`, `/alfred-mods:init
+    default (Claude Code's own task list - no plan files)` - and opens a pane, `Plans folder`, with the
     same three as buttons (on the terminal's main screen, as the lines to type). A press writes the field and runs
     `update`, and the report shows in the pane, which stays open. Where no surface draws a pane, the text is the
     choices and one more line, `The pane is open but not drawn: <reason>.`.
-  - **Where plans live** reads `Plans live in <root>/ (plansFolder "<value>" in <file>)`. For `.alfred` it reads
-    `Plans are read from .alfred/docs/work/plans/ (Alfred Code) and .alfred/alfred-mods/ (...)`. `init` adds
-    `- /alfred-mods:configure changes it` where it writes nothing.
+  - **Where plans live** reads `<whose plans> (plansFolder "<value>" in <file>)`: `claude-kit's plan files are read
+    from .alfred-mods/`, `Alfred Code's plans are read from .alfred/docs/work/plans/` or `The plan row shows Claude
+    Code's own task list, and no plan file is read`. `init` adds `- /alfred-mods:configure changes it` where it
+    writes nothing.
   - **`/alfred-mods:init <value>`** writes the field, says where plans live, and runs `update`.
-  - **`/alfred-mods:configure <value>`** writes the field and moves nothing: it prints `plansFolder is "<value>" -
-    /alfred-mods:update moves the files`. When a higher file sets the field, the line says so instead -
+  - **`/alfred-mods:configure <value>`** writes the field and moves nothing: it prints `plansFolder is "<value>"`,
+    and for `.alfred-mods` adds ` - /alfred-mods:update moves the files`. When a higher file sets the field, the line says so instead -
     `plansFolder is ".alfred" in .claude/settings.local.json, which wins over the value written`.
   - **`/alfred-mods:update`** takes no value. It applies the folder in force and prints one line for each step that
     had work, then `update done` (`nothing to update` when none had). It runs on your word only, never by itself:
-    1. Plans and scores in the two other folders move into the chosen one, up to 50 files a run: each is copied, read
+    1. Under `.alfred-mods` only, plans and scores in `.claude/session-inspector/` and `.alfred/alfred-mods/` move
+       into `.alfred-mods/`, up to 50 files a run (`.alfred` and `default` move nothing): each is copied, read
        back and checked equal, and then one `rm` removes the sources that read back equal and did not change. Only a
        file that would be copied counts toward the 50. A folder that is the chosen folder under another name (a link
        to it) is never a source: `not moved: <root>/<plans|scores>/ is the same folder as <chosen
@@ -246,9 +249,8 @@ code.
        name keeps the equal copies. The line is `moved <n> plan and scores files to <root>/`, and past 50 files the
        run ends on `more to move - run /alfred-mods:update again`. Every count of one reads in the singular: `moved 1
        plan or scores file`, `copied 1 file ... remove the old copy`, `1 status file`.
-    2. `.gitignore`: when the project has one and no line covers the chosen folder (`.alfred` covers
-       `.alfred/alfred-mods`), `<root>/` is appended: `added <root>/ to .gitignore`. `default` adds none, and no
-       `.gitignore` is made.
+    2. `.gitignore`: for `.alfred-mods`, when the project has one and no line covers `.alfred-mods/`, the line is
+       appended: `added .alfred-mods/ to .gitignore`. `.alfred` and `default` add none, and no `.gitignore` is made.
     3. A choice made before 0.8 is written to your user file when no settings file sets that field and the choice
        differs from the default: `wrote your earlier choices to ~/.claude/settings.json: <fields>` (it may name
        several fields; [From 0.7](#from-07)).
@@ -271,9 +273,7 @@ code.
        file where `rm` does not run, reads `<n> status files from Alfred Code 3.12.1 or older in
        .claude/session-inspector/status/ - delete them by hand`. The folder, `HANDOFF.md` and anything else under
        `.claude/session-inspector/` stay.
-  - The confirm lines of `init <value>`, `configure <value>` and a pane press add, for a folder other than
-    `.alfred-mods`, `new plans land there once each writer reads plansFolder - claude-kit does from its 0b09406 sync`.
-    An unknown value, or a value given to `update`, prints the usage line. Nothing of a plan's text is printed.
+  - An unknown value, or a value given to `update`, prints the usage line. Nothing of a plan's text is printed.
   - Where the host runs no mod hooks, each command is only its markdown file: the model is told the mod did not
     answer, and that `"alfred-mods": { "plansFolder": "<value>" }` in `.claude/settings.json` sets the folder by hand.
 
@@ -339,7 +339,7 @@ download the file, or clone the repo, and open it.
 | `rec`         | `"off"`, `"on"`, `"strict"`                  | `"off"`          | [Recording mode](#recording-mode): what is masked on screen        |
 | `handoff`     | `"ask"`, `"auto"`, `"off"`                   | `"ask"`          | how a [handoff](#handoff) is saved before the context fills        |
 | `handoffAt`   | a whole number from 10 to 95                 | `80`             | the context percent where the handoff first asks or saves          |
-| `plansFolder` | `"default"`, `".alfred"`, `".alfred-mods"`   | `".alfred-mods"` | where [plan and score files](#plan-and-score-files) live           |
+| `plansFolder` | `"default"`, `".alfred"`, `".alfred-mods"`   | unset: every root | whose [plans](#plan-and-score-files) show: claude-kit's, Alfred Code's or none |
 
 `band`, `rec`, `handoff` and `handoffAt` can also be set by a command, which writes the field into your user file;
 `plansFolder` is set by `/alfred-mods:init` or `/alfred-mods:configure`, which write it into the project's
@@ -521,12 +521,13 @@ window. `/auto-handoff at 70` sets it.
 ⚠ ctx past 70% 4: Handoff        then again at 75%, 80%, … 95%
 ```
 
-#### `plansFolder` - where plan and score files live
+#### `plansFolder` - whose plans the mod shows
 
-`"default"` is `.claude/session-inspector/`, which Claude Code protects: it asks before each write there. `".alfred"`
-is `.alfred/alfred-mods/`, beside Alfred Code's state, and also reads Alfred Code's own plan folders
-([Alfred Code's plans](#alfred-codes-plans)). `".alfred-mods"` is `.alfred-mods/`, and is the value while the field is
-unset. `/alfred-mods:init` and `/alfred-mods:configure` set it in the project's `.claude/settings.json`;
+Each value reads one source's plans and no other (the user, 2026-11-25). `".alfred-mods"` reads claude-kit's plan and
+score files in `.alfred-mods/`. `".alfred"` reads Alfred Code's own plan folders under `.alfred/docs/work/plans/`
+([Alfred Code's plans](#alfred-codes-plans)) and makes no folder of the mod's in `.alfred/`. `"default"` reads no
+plan file: the plan row is Claude Code's own task list. Unset, the mod reads as it did before the choice: every root
+below and the plan Alfred Code's status file names. `/alfred-mods:init` and `/alfred-mods:configure` set it in the project's `.claude/settings.json`;
 [Plan and score files](#plan-and-score-files) says how a writer finds it.
 
 ```json
@@ -962,8 +963,10 @@ through alfred-code 3.12.1, which the mod still reads), the mod reads that one f
   `scoring.json`: the kept round's total, `▲` or `▼` against the round graded before it, green at or above the scoring
   level and amber under it, `grading` while the grading still runs, and `withheld` once
   Alfred Code withheld the plan (its `scoring.json` `status`, from alfred-code 3.12). A plan let go finished stays 10 minutes. No
-  folder named, or a file with another schema, and the plan row shows what it would without Alfred Code. With
-  `plansFolder` `".alfred"` the other plan folders are read too ([Alfred Code's plans](#alfred-codes-plans)).
+  folder named, or a file with another schema, and the plan row shows what it would without Alfred Code. The named
+  plan shows with `plansFolder` `".alfred"`, where the other plan folders are read too
+  ([Alfred Code's plans](#alfred-codes-plans)), and with the field unset; `".alfred-mods"` and `"default"` leave it
+  out.
 - **The resume prompt:** while the pane has the focus (Ctrl+X Tab, or a click in fullscreen), `f` fills the stack's
   prompt into an empty prompt box, never sending it. Enter in the prompt box sends it; in the terminal the focus is
   back there after the fill. `/inspect fill` does the same from the prompt. With something already typed, a toast says
@@ -1000,15 +1003,11 @@ keeps the values as they were. Neither shows a toast or an error. The mod does n
   when that is a whole number from 1 to 100.
 - **Plans and scores:** the kit's plans and scores reach the mod through the files in
   [Plan and score files](#plan-and-score-files): `solve-task` publishes the plan file and `refining-plans` the score
-  file. From claude-kit 0b09406 (the commit your `.claude/kit/lock.json` names, or a later one) both find the folder by
-  the writers' rule in that section, so they follow the `plansFolder` field. An older sync writes them to
-  `.alfred-mods/`, which the mod reads whatever the field says, and `/alfred-mods:update` moves them to the folder you
-  chose.
+  file. They show while `plansFolder` is `.alfred-mods` or unset; `.alfred` and `default` show none of them.
 
 The mod never writes the kit's settings file. Only `/alfred-mods:update` moves plan and score files: it copies each one,
-then removes the source. Add the plans folder you chose (`.alfred-mods/` unless you picked another) to a project's
-`.gitignore`, as the plan and score files the kit publishes there are not for the repository; `/alfred-mods:update`
-adds the line, except for `default`.
+then removes the source. Add `.alfred-mods/` to a project's `.gitignore`, as the plan and score files the kit publishes there are not for
+the repository; `/alfred-mods:update` adds the line under `.alfred-mods`.
 
 ### The Prompt tab
 
@@ -1031,37 +1030,31 @@ plugin can read a `$.state` value, which gives it nothing it could not read from
 
 ## Plan and score files
 
-The Plan tab and the band's plan line read JSON files from one folder of the project, the one the `plansFolder` field
-names ([The fields](#the-fields)): `<root>/plans/<slug>.json` for each plan and `<root>/scores/<slug>.json` for each
-scored output. The roots are `.claude/session-inspector` for `"default"`, `.alfred/alfred-mods` for `".alfred"` and
-`.alfred-mods` for `".alfred-mods"`, which is also the root while the field is unset. Any skill or tool can write
-the files. Claude Code asks before each write under `.claude/`, which stalls a run nobody watches, so only `"default"`
-puts them there, and `/alfred-mods:init` offers the choice ([Commands](#commands)).
+Under `plansFolder` `".alfred-mods"` ([The fields](#the-fields)) the Plan tab and the band's plan line read JSON
+files from `.alfred-mods/`: `plans/<slug>.json` for each plan and `scores/<slug>.json` for each scored output. Any
+skill or tool can write the files. `".alfred"` reads Alfred Code's plan folders instead, and `"default"` reads none.
 
-The mod reads all three roots, the chosen one first, then `.alfred-mods`, `default` and `.alfred` in that order with
-the chosen one left out. A name held in more than one root shows its newest file; on a tie, the earlier root. So a
-writer that does not follow the field yet still shows, and a file `/alfred-mods:update` moved is replaced on screen
-the moment its writer writes it again. A change of the field shows at the next read, with no restart. Only
-`/alfred-mods:update` moves a plan or scores file; the mod writes none of its own. Keep the chosen root gitignored
-(`.alfred-mods/`, `.alfred/alfred-mods/`; `update` adds the line); `.claude/` is the project's own config.
+With the field unset the mod reads three roots, `.alfred-mods`, `.claude/session-inspector` and `.alfred/alfred-mods`,
+in that order. A name held in more than one root shows its newest file; on a tie, the earlier root. A change of the
+field shows at the next read, with no restart. Under `.alfred-mods`, `/alfred-mods:update` moves the files of the
+other two roots into `.alfred-mods/`; the mod writes no plan file of its own. Keep `.alfred-mods/` gitignored
+(`update` adds the line); `.claude/` is the project's own config.
 
 **The writers' rule.** A writer finds the folder like this:
 
 1. Read `"alfred-mods".plansFolder` - the field inside the `"alfred-mods"` object - from `.claude/settings.local.json`,
    then `.claude/settings.json`, then `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`); the first
    file with a valid value wins. A value not in the map is skipped, and the next file is read.
-2. Map it: `"default"` is `.claude/session-inspector`, `".alfred"` is `.alfred/alfred-mods`, `".alfred-mods"` is
-   `.alfred-mods`.
-3. Write `plans/<slug>.json` and `scores/<slug>.json` under that root. With no valid value in any of the three files,
-   write under `.alfred-mods/`.
+2. `".alfred-mods"`, or no valid value in any of the three files: write `plans/<slug>.json` and `scores/<slug>.json`
+   under `.alfred-mods/`.
+3. `".alfred"` or `"default"`: the mod shows no plan file. A writer that keeps its files anyway writes them under
+   `.alfred-mods/`, never under `.alfred/` or `.claude/`.
 
-The mod's own order puts managed settings and `--settings` first, which a writer cannot read. A value set only there
-can split the writer's folder from the mod's first folder; the view stays right through the reading of all three
-roots, and `/alfred-mods:update` moves the files.
+The mod's own order puts managed settings and `--settings` first, which a writer cannot read, so a value set only
+there can split the writer's choice from the mod's.
 
-**Rolling back.** The mod before this field read `.alfred-mods/` and `.claude/session-inspector/` only. After a
-downgrade, files in `.alfred/alfred-mods/` no longer show: move them back by hand, or run
-`/alfred-mods:configure .alfred-mods` and `/alfred-mods:update` before downgrading.
+**Rolling back.** A mod older than 0.16 reads `.alfred/alfred-mods/` under `.alfred` and the old roots under
+`default`, and ignores the new choices' limits. Files `update` moved into `.alfred-mods/` show there too.
 
 The mod reads the folders after each Write, Edit or NotebookEdit call completes, at the end of each turn, and every
 30 seconds. It shows the plan with a step in progress written this session, else the task list, else the newest plan
@@ -1156,10 +1149,10 @@ prompts) and idle time between turns do not.
 
 ### Alfred Code's plans
 
-With `plansFolder` `".alfred"` the mod also reads Alfred Code's plan folders, `.alfred/docs/work/plans/<id>/`: each
-folder's `status.json` as the plan `<id>` and its `scoring.json` as that plan's scores. It reads the 20 whose
-`status.json` was written last, whether or not the status file names one, and such a plan stands in for a same-named
-file of the three roots. It writes nothing there, and `/alfred-mods:update` moves nothing from there.
+With `plansFolder` `".alfred"` the mod reads Alfred Code's plan folders and no plan file of its own roots:
+`.alfred/docs/work/plans/<id>/`, each folder's `status.json` as the plan `<id>` and its `scoring.json` as that plan's
+scores. It reads the 20 whose `status.json` was written last, whether or not the status file names one. It writes
+nothing under `.alfred/`, and `/alfred-mods:init` and `/alfred-mods:update` make no folder there and move nothing.
 
 ## Development
 

@@ -162,12 +162,24 @@ test('with plansFolder .alfred every plan folder under .alfred/docs/work/plans i
   expect(p().alfredFolder).toBeNull()
 })
 
-test("Alfred Code's plan stands in for a same-named file of the mod's own folder, and the others stay", async ($, on) => {
+test("with .alfred the mod's own folders are not read: only Alfred Code's plans show", async ($, on) => {
   const own = { text: PLAN_JSON, mtimeMs: 9 }
-  const { p } = await start($, on, { ...planAt('shared', 2), '.alfred/alfred-mods/plans/shared.json': own, '.alfred/alfred-mods/plans/kit.json': own }, ALFRED_CHOSEN)
-  expect(p().planFiles.map(w => w.name).sort()).toEqual(['kit', 'shared'])
-  expect(p().planFiles.find(w => w.name === 'shared')?.value?.title).toBe('shared')
+  const { p, files } = await start($, on, { ...planAt('shared', 2), '.alfred/alfred-mods/plans/shared.json': own, '.alfred-mods/plans/kit.json': own }, ALFRED_CHOSEN)
+  expect(p().planFiles.map(w => w.name)).toEqual(['shared'])
+  expect(p().planFiles[0]?.value?.title).toBe('shared')
+  expect(files.lists.some(path => path.startsWith('.alfred/alfred-mods') || path.startsWith('.alfred-mods'))).toBe(false)
 })
+
+const chosen = (plansFolder: string) => ({ sources: { project: { 'alfred-mods': { plansFolder } } } })
+
+for (const other of ['.alfred-mods', 'default']) {
+  test(`with plansFolder ${other} the folder the status file names is never read`, async ($, on) => {
+    const { p, files } = await start($, on, { [STATUS]: session(FOLDER), [PLAN_STATUS]: { text: STATUS_JSON, mtimeMs: 2 } }, chosen(other))
+    expect(p().planFiles).toEqual([])
+    expect(p().alfredFolder).toBeNull()
+    expect(files.reads).not.toContain(PLAN_STATUS)
+  })
+}
 
 test('the plan the status file names is listed once, named, beside the others', async ($, on) => {
   const { p } = await start($, on, { [STATUS]: session(FOLDER), [PLAN_STATUS]: { text: STATUS_JSON, mtimeMs: 2 }, ...planAt('first', 3) }, ALFRED_CHOSEN)
@@ -199,14 +211,4 @@ test('with .alfred, a plan the status file lets go unfinished is no longer named
   expect(p().alfredFolder).toBeNull()
   expect(letGo?.isNamed).not.toBe(true)
   expect(isPlanRunning(letGo as NonNullable<typeof letGo>, p().watchedSince)).toBe(false)
-})
-
-test("an Alfred Code plan that replaces a same-named file of the mod's folder says nothing of the old one: no toast", async ($, on) => {
-  const open = { text: PLAN_JSON, mtimeMs: 2 }
-  const { p, files, clock, toasts } = await start($, on, { '.alfred/alfred-mods/plans/login.json': open }, ALFRED_CHOSEN)
-  files.current['.alfred/docs/work/plans/login/status.json'] = statusWith({ title: 'login', completedAt: '2026-11-13T12:00Z' }, 3)
-  await clock.advance(30_000)
-  expect(p().planFiles.find(w => w.name === 'login')?.value?.title).toBe('login')
-  expect(toasts).toEqual([])
-  expect(p().finishedAt.login).toBeUndefined()
 })

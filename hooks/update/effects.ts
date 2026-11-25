@@ -1,7 +1,7 @@
 // The update's effects: '/alfred-mods:update' lists, copies and deletes the files its pure parts decide on, and reports
 import type { EngineInterface } from 'claude-code'
 import { oneLine } from '../core/format'
-import { PLANS_ROOTS, PLANS_SUBFOLDER, SCORES_SUBFOLDER } from '../plan/constants'
+import { FILE_PLANS_FOLDER, PLANS_ROOTS, PLANS_SUBFOLDER, SCORES_SUBFOLDER } from '../plan/constants'
 import { noteMovedFiles, originalMtime } from '../planfiles/effects'
 import { parsePlan, plansRoots } from '../plan/plan'
 import type { PlansFolder } from '../plan/types'
@@ -178,6 +178,9 @@ async function isSeparate($: EngineInterface, source: ListedFile, destination: s
 // file; only a file that would be copied counts toward the cap, past which the rest wait.
 async function moveFiles($: EngineInterface, folder: PlansFolder, extras: readonly string[], canRm: () => Promise<boolean>): Promise<string[]> {
   const chosenRoot = PLANS_ROOTS[folder]
+  // Only claude-kit's choice reads plan files (the user, 2026-11-25): `.alfred` and `default` make no folder and move
+  // nothing, and the one rm takes the old status files alone
+  if (folder !== FILE_PLANS_FOLDER) return removeSources($, chosenRoot, [], [], extras)
   const others = plansRoots(folder).slice(1)
   const now = await $.clock.now()
   const { queue: plans, skipped: skippedPlans, lines: planFolderLines } = await queueOf($, PLANS_SUBFOLDER, chosenRoot, others)
@@ -285,10 +288,10 @@ async function moveFiles($: EngineInterface, folder: PlansFolder, extras: readon
   return [...left, ...shown.map(keptBothLine), ...notMoved, ...removed, ...(hasMore ? [MORE_LINE] : [])]
 }
 
-// Spec D4 step 2: the chosen root in the .gitignore, when there is one and no line covers it; `default` is the
-// project's own .claude/ and gets none. A refused check ends the run (runUpdate); a failed read or write is named.
+// Spec D4 step 2: claude-kit's root in the .gitignore, when there is one and no line covers it; `.alfred` and `default`
+// read no plan file and get none. A refused check ends the run (runUpdate); a failed read or write is named.
 async function ignoreRoot($: EngineInterface, folder: PlansFolder): Promise<string[]> {
-  if (folder === 'default' || !(await $.fs.exists(GITIGNORE_FILE))) return []
+  if (folder !== FILE_PLANS_FOLDER || !(await $.fs.exists(GITIGNORE_FILE))) return []
   const root = PLANS_ROOTS[folder]
   const text = await $.fs.read(GITIGNORE_FILE).catch(() => null)
   if (text === null) return [gitignoreByHandLine(root)]

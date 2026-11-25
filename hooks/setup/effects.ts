@@ -9,13 +9,13 @@ import { loadSettings, plansFolderInForce, writeProjectField } from '../settings
 import { sourceFileName } from '../settings/settings'
 import { runUpdate } from '../update/effects'
 import { ASK_HEADER, ASK_QUESTION, BUTTON_KEY_PREFIX, CHOICE_ORDER, SETUP_PANE_ID, SETUP_PANE_TITLE, SETUP_USAGE } from './constants'
-import { answeredFolder, askLabels, choiceLines, configuredLine, livesLine, hasNoValue, parseFolderValue, setupPaneLines, shadowLine, unplacedLine, writerNote } from './setup'
+import { answeredFolder, askLabels, choiceLines, configuredLine, livesLine, hasNoValue, parseFolderValue, setupPaneLines, shadowLine, unplacedLine } from './setup'
 
 // What the pane draws: the last update's report, and the folder a press just wrote (the settings in force are stale
 // until Claude Code's ConfigChange). A new claude run starts them over.
 const setupMemory = { report: [] as string[], chosen: null as PlansFolder | null }
 
-type Written = { ok: true; folder: PlansFolder; first: string; isShadowed: boolean; note: string | null } | { ok: false; why: string }
+type Written = { ok: true; folder: PlansFolder; first: string; isShadowed: boolean } | { ok: false; why: string }
 
 // One write of the field into the project file. The settings are stale until ConfigChange, so `folder`, the one in
 // force, is the value written, else the higher file's as the settings held it before the write; `first` says which.
@@ -23,14 +23,12 @@ async function chooseFolder($: EngineInterface, written: PlansFolder): Promise<W
   const result = await writeProjectField($, 'plansFolder', written)
   if (!result.ok) return { ok: false, why: result.why }
   if (result.shadow === null) {
-    return { ok: true, folder: written, first: livesLine(written, sourceFileName('project'), false), isShadowed: false, note: writerNote(written) }
+    return { ok: true, folder: written, first: livesLine(written, sourceFileName('project'), false), isShadowed: false }
   }
-  // Under a shadow the folder in force is the one new files land in, so its writer note is the one that holds
+  // Under a shadow the folder in force is the one whose plans show, so the update runs on it
   const folder = plansFolderInForce().folder
-  return { ok: true, folder, first: shadowLine(folder, sourceFileName(result.shadow)), isShadowed: true, note: writerNote(folder) }
+  return { ok: true, folder, first: shadowLine(folder, sourceFileName(result.shadow)), isShadowed: true }
 }
-
-const confirmed = (chosen: Extract<Written, { ok: true }>): string[] => [chosen.first, ...(chosen.note === null ? [] : [chosen.note])]
 
 // A press: write, update, and keep what happened for the pane; it never closes the pane
 async function pressChoice($: EngineInterface, written: PlansFolder): Promise<void> {
@@ -38,7 +36,7 @@ async function pressChoice($: EngineInterface, written: PlansFolder): Promise<vo
   if (!chosen.ok) setupMemory.report = [chosen.why]
   else {
     setupMemory.chosen = chosen.folder
-    setupMemory.report = [...confirmed(chosen), ...(await runUpdate($, chosen.folder))]
+    setupMemory.report = [chosen.first, ...(await runUpdate($, chosen.folder))]
   }
   $.ui.invalidate('ui.render')
 }
@@ -61,10 +59,9 @@ async function offerChoices($: EngineInterface): Promise<string> {
 async function writeFolder($: EngineInterface, verb: 'init' | 'configure', folder: PlansFolder): Promise<string> {
   const chosen = await chooseFolder($, folder)
   if (!chosen.ok) return chosen.why
-  if (verb === 'init') return [...confirmed(chosen), ...(await runUpdate($, chosen.folder))].join('\n')
+  if (verb === 'init') return [chosen.first, ...(await runUpdate($, chosen.folder))].join('\n')
   // The shadow line already says which folder is in force, so it is not said again as the closing line
-  const noted = chosen.note === null ? [] : [chosen.note]
-  return (chosen.isShadowed ? [chosen.first, ...noted] : [...noted, configuredLine(chosen.folder)]).join('\n')
+  return chosen.isShadowed ? chosen.first : configuredLine(chosen.folder)
 }
 
 // The folder in force as a file sets it: init says it and runs update on it, configure only says it
