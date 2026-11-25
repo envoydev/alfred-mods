@@ -2,6 +2,7 @@
 // update/effects.ts lists, copies and deletes.
 import { candidatesByName, isPlanDone } from '../plan/plan'
 import type { Plan } from '../plan/types'
+import { FILE_PLANS_FOLDER } from '../plan/constants'
 import {
   CHANGED_REASON, DONE_LINE, FILE_NOUN, JSON_SUFFIX, LIST_SEPARATOR, LIVE_PLAN_MS, NOT_UTF8_REASON, NOTHING_LINE, OLD_COPY_NOUN, OLD_INSTALL_PREFIX, OLD_STATUS_DIR, PROBE_PREFIX, STATUS_CAP, STATUS_LIVE_MS, UNCHECKED_COPY_REASON,
   MORE_STATUS_NOUN, PLAN_FILE_NOUN, STATUS_FILE_NOUN, UNCHECKED_DESTINATION_REASON, UNREAD_NOTE, UNREADABLE_PLAN_NOTE,
@@ -92,6 +93,10 @@ const folderOf = (root: string): string => `${root}/`
 const countOf = (count: number, noun: { readonly one: string; readonly many: string }): string => `${count} ${count === 1 ? noun.one : noun.many}`
 
 export const movedLine = (count: number, root: string): string => `moved ${countOf(count, PLAN_FILE_NOUN)} to ${folderOf(root)}`
+
+// An old root's files a choice other than claude-kit's does not show, and how to bring them back into view
+export const ignoredLine = (count: number, root: string, folder: string): string =>
+  `${countOf(count, PLAN_FILE_NOUN)} in ${folderOf(root)} ${count === 1 ? 'is' : 'are'} not shown under plansFolder "${folder}" - ${SLASH.init} ${FILE_PLANS_FOLDER} moves ${count === 1 ? 'it' : 'them'}`
 
 export const copiedLine = (count: number, root: string, from: readonly string[]): string =>
   `copied ${countOf(count, FILE_NOUN)} to ${folderOf(root)} - remove the ${count === 1 ? OLD_COPY_NOUN.one : OLD_COPY_NOUN.many} in ${from.map(folderOf).join(LIST_SEPARATOR)} by hand`

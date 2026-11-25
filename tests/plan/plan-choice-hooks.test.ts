@@ -4,7 +4,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { START, engine, stubAll, watchState } from '../kit'
+import { PRESENTATION, START, engine, stubAll, watchState } from '../kit'
 import { STATUS_JSON } from '../plans'
 import { PLAN_JSON, SCORES_JSON, planText } from '../plans'
 import type { Plans } from '../../hooks/plan/types'
@@ -69,4 +69,32 @@ test('a switch from .alfred to default mid-session clears the Alfred Code plan i
   await kit.clock.advance(30_000)
   expect((state.get('plans') as Plans).planFiles).toEqual([])
   expect((state.get('plans') as Plans).alfredFolder).toBeNull()
+})
+
+test('a choice made with /alfred-mods:configure shows at once and holds until a read of the settings shows it', async ($, on) => {
+  const kit = stubAll(on, {
+    files: { [STATUS]: { text: NAMED, mtimeMs: 1 }, [`${FOLDER}/status.json`]: { text: STATUS_JSON, mtimeMs: 2 } },
+    sources: { project: { 'alfred-mods': { plansFolder: '.alfred' } } }, now: 1000,
+  })
+  const state = watchState(on)
+  const names = (): string[] => (state.get('plans') as Plans).planFiles.map(file => file.name)
+  engine(on)
+  await $.session.start(START)
+  await kit.clock.advance(300)
+  expect(names()).toEqual(['waste-bin'])
+  await $.command.run({ command: 'alfred-mods:configure', args: 'default', origin: { kind: 'composer' }, presentation: PRESENTATION })
+  await kit.clock.advance(0)
+  expect(names()).toEqual([])
+  // The poll reads settings Claude Code has not reloaded yet, and the choice holds
+  await kit.clock.advance(30_000)
+  expect(names()).toEqual([])
+  // Claude Code loads the file the command wrote, and then a hand edit back: the files speak again
+  kit.sources.project['alfred-mods'] = { plansFolder: 'default' }
+  await $.classic.ConfigChange({ source: 'project_settings' })
+  await kit.clock.advance(30_000)
+  expect(names()).toEqual([])
+  kit.sources.project['alfred-mods'] = { plansFolder: '.alfred' }
+  await $.classic.ConfigChange({ source: 'project_settings' })
+  await kit.clock.advance(30_000)
+  expect(names()).toEqual(['waste-bin'])
 })

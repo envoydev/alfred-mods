@@ -167,7 +167,9 @@ test('the verb comes from the command that ran: the same value does a different 
 
 test('update prints its report for the folder in force', async ($, on) => {
   await start($, on, { sources: { user: mod({ plansFolder: 'default' }) }, files: plan('.claude/session-inspector/plans/p.json') })
-  expect(await alfred($, 'update')).toBe('nothing to update')
+  expect(await alfred($, 'update')).toBe(
+    '1 plan or scores file in .claude/session-inspector/ is not shown under plansFolder "default" - /alfred-mods:init .alfred-mods moves it\nupdate done',
+  )
 })
 
 test('an unplaced pane is named in the text', async ($, on) => {

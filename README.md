@@ -219,7 +219,9 @@ code.
   - **`/alfred-mods:update`** takes no value. It applies the folder in force and prints one line for each step that
     had work, then `update done` (`nothing to update` when none had). It runs on your word only, never by itself:
     1. Under `.alfred-mods` only, plans and scores in `.claude/session-inspector/` and `.alfred/alfred-mods/` move
-       into `.alfred-mods/`, up to 50 files a run (`.alfred` and `default` move nothing): each is copied, read
+       into `.alfred-mods/`, up to 50 files a run. `.alfred` and `default` move nothing and name each of those two
+       folders that still holds files: `<n> plan and scores files in <root>/ are not shown under plansFolder
+       "<value>" - /alfred-mods:init .alfred-mods moves them`. Under `.alfred-mods`: each is copied, read
        back and checked equal, and then one `rm` removes the sources that read back equal and did not change. Only a
        file that would be copied counts toward the 50. A folder that is the chosen folder under another name (a link
        to it) is never a source: `not moved: <root>/<plans|scores>/ is the same folder as <chosen
@@ -1035,8 +1037,9 @@ files from `.alfred-mods/`: `plans/<slug>.json` for each plan and `scores/<slug>
 skill or tool can write the files. `".alfred"` reads Alfred Code's plan folders instead, and `"default"` reads none.
 
 With the field unset the mod reads three roots, `.alfred-mods`, `.claude/session-inspector` and `.alfred/alfred-mods`,
-in that order. A name held in more than one root shows its newest file; on a tie, the earlier root. A change of the
-field shows at the next read, with no restart. Under `.alfred-mods`, `/alfred-mods:update` moves the files of the
+in that order. A name held in more than one root shows its newest file; on a tie, the earlier root. A choice made
+with `/alfred-mods:init`, `/alfred-mods:configure` or a pane press shows at once; a change by hand shows at the next
+read, with no restart. Under `.alfred-mods`, `/alfred-mods:update` moves the files of the
 other two roots into `.alfred-mods/`; the mod writes no plan file of its own. Keep `.alfred-mods/` gitignored
 (`update` adds the line); `.claude/` is the project's own config.
 
