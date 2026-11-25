@@ -16,5 +16,12 @@ export const UNSET_PLANS_FOLDER: PlansFolder = '.alfred-mods'
 export const PLANS_SUBFOLDER = 'plans'
 export const SCORES_SUBFOLDER = 'scores'
 
+// Alfred Code's plan folders (its plan folder contract), one `<id>/` per plan: read with `plansFolder` `.alfred` (the
+// user, 2026-11-25), the newest ALFRED_PLANS_READ of them
+export const ALFRED_PLANS_DIR = '.alfred/docs/work/plans'
+export const ALFRED_STATUS_FILE = 'status.json'
+export const ALFRED_SCORING_FILE = 'scoring.json'
+export const ALFRED_PLANS_READ = 20
+
 // The largest plan or scores file the reader reads: `$.fs.read` refuses a file over 4 MiB
 export const MAX_PLAN_BYTES = 4 * 1024 * 1024

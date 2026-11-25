@@ -2,7 +2,7 @@
 // files', from the brief's 'Data contracts for the plan and scorer skills'. What a file requires makes it invalid when
 // missing; an optional field that does not fit is dropped.
 import { isRecord } from '../core/guards'
-import { PLANS_FOLDERS, PLANS_ROOTS, PLANS_SUBFOLDER, SCORES_SUBFOLDER } from './constants'
+import { PLANS_FOLDERS, PLANS_ROOTS, PLANS_SUBFOLDER, SCORES_SUBFOLDER, ALFRED_PLANS_DIR, ALFRED_STATUS_FILE } from './constants'
 import type { Finding, Plan, PlanChange, PlanStep, PlanView, PlansFolder, Plans, ScoreRound, Scores, ScoresView, Severity, StepRow, StepStatus, StepTime, TaskItem, Watched } from './types'
 
 const STATUSES: readonly string[] = ['pending', 'in_progress', 'done', 'failed', 'blocked', 'skipped']
@@ -98,6 +98,14 @@ const STALE_MS = 20 * MIN
 export const isFinishedStep = (step: PlanStep): boolean => step.status === 'done' || step.status === 'skipped'
 // A plan is done when every step is, or when Alfred Code closed it
 export const isPlanDone = (plan: Plan): boolean => typeof plan.completedAt === 'number' || plan.steps.every(isFinishedStep)
+
+// A file of one of Alfred Code's plan folders, which the folder names: `<name>/status.json`
+const isAlfredFile = (file: Watched<unknown>): boolean => file.path?.endsWith(`/${file.name}/${ALFRED_STATUS_FILE}`) === true
+
+// Whether two reads of one name are of one plan: each Alfred Code folder holds its own, and the files of the mod's
+// folders are one plan wherever a writer puts it
+export const isSamePlan = (before: Watched<unknown>, after: Watched<unknown>): boolean =>
+  before.path === after.path || (!isAlfredFile(before) && !isAlfredFile(after))
 
 // A plan runs while it is begun and not done, and its file was written since this session began: a plan an earlier
 // session left with a step in progress neither takes the band's line 1 nor this session's time. Alfred Code's named
@@ -279,6 +287,9 @@ export function plansRoots(chosen: PlansFolder): string[] {
 
 // The folder the chosen value names for plans, the one a plan skill writes to
 export const chosenPlansDir = (chosen: PlansFolder): string => `${PLANS_ROOTS[chosen]}/${PLANS_SUBFOLDER}`
+
+// Where the chosen value's plans are looked for, as the 'no plan file' texts name it
+export const plansPlaces = (chosen: PlansFolder): string => (chosen === '.alfred' ? `${ALFRED_PLANS_DIR}/ or ${chosenPlansDir(chosen)}` : chosenPlansDir(chosen))
 
 export const plansDirs = (chosen: PlansFolder): string[] => plansRoots(chosen).map(root => `${root}/${PLANS_SUBFOLDER}`)
 

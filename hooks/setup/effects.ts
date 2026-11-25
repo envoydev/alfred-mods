@@ -8,8 +8,8 @@ import type { PlansFolder } from '../plan/types'
 import { loadSettings, plansFolderInForce, writeProjectField } from '../settings/effects'
 import { sourceFileName } from '../settings/settings'
 import { runUpdate } from '../update/effects'
-import { BUTTON_KEY_PREFIX, CHOICE_ORDER, SETUP_PANE_ID, SETUP_PANE_TITLE, SETUP_USAGE } from './constants'
-import { choiceLines, configuredLine, livesLine, hasNoValue, parseFolderValue, setupPaneLines, shadowLine, unplacedLine, writerNote } from './setup'
+import { ASK_HEADER, ASK_QUESTION, BUTTON_KEY_PREFIX, CHOICE_ORDER, SETUP_PANE_ID, SETUP_PANE_TITLE, SETUP_USAGE } from './constants'
+import { answeredFolder, askLabels, choiceLines, configuredLine, livesLine, hasNoValue, parseFolderValue, setupPaneLines, shadowLine, unplacedLine, writerNote } from './setup'
 
 // What the pane draws: the last update's report, and the folder a press just wrote (the settings in force are stale
 // until Claude Code's ConfigChange). A new claude run starts them over.
@@ -67,17 +67,32 @@ async function writeFolder($: EngineInterface, verb: 'init' | 'configure', folde
   return (chosen.isShadowed ? [chosen.first, ...noted] : [...noted, configuredLine(chosen.folder)]).join('\n')
 }
 
+// The folder in force as a file sets it: init says it and runs update on it, configure only says it
+async function keepFolder($: EngineInterface, verb: 'init' | 'configure'): Promise<string | null> {
+  const inForce = plansFolderInForce()
+  if (inForce.from === 'default') return null
+  const line = livesLine(inForce.folder, sourceFileName(inForce.from), verb === 'init')
+  return verb === 'init' ? [line, ...(await runUpdate($, inForce.folder))].join('\n') : line
+}
+
+// No value given: Claude Code's question dialog asks it (the user, 2026-11-25). Dismissed, or with nobody to ask as in
+// a `-p` run, init keeps a set folder and everything else offers the choices as lines and a pane.
+async function askFolder($: EngineInterface, verb: 'init' | 'configure'): Promise<string> {
+  setupMemory.chosen = null
+  const now = currentFolder()
+  const answer = await $.ui.ask(ASK_QUESTION, { header: ASK_HEADER, options: askLabels(now) }).catch(() => null)
+  if (answer === null) return (verb === 'init' ? await keepFolder($, verb) : null) ?? offerChoices($)
+  const folder = answeredFolder(answer, now)
+  if (folder === null) return SETUP_USAGE
+  return (folder === now ? await keepFolder($, verb) : null) ?? writeFolder($, verb, folder)
+}
+
 async function runFolderCommand($: EngineInterface, verb: 'init' | 'configure', args: string): Promise<{ text: string }> {
   const value = parseFolderValue(args)
   if (!value.ok) return { text: SETUP_USAGE }
   // The files are read first, so a session that has not polled answers from what they hold now
   await loadSettings($)
-  if (value.folder !== null) return { text: await writeFolder($, verb, value.folder) }
-  const inForce = plansFolderInForce()
-  if (verb === 'init' && inForce.from !== 'default') {
-    return { text: [livesLine(inForce.folder, sourceFileName(inForce.from), true), ...(await runUpdate($, inForce.folder))].join('\n') }
-  }
-  return { text: await offerChoices($) }
+  return { text: value.folder === null ? await askFolder($, verb) : await writeFolder($, verb, value.folder) }
 }
 
 export function runInitCommand($: EngineInterface, e: MatchedInput<'command.run', { command: 'alfred-mods:init' }>): Promise<{ text: string }> {

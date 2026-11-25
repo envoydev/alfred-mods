@@ -55,6 +55,8 @@ export type BandInput = {
   mcp?: Seg[]
   // The modes line under the identity (the user, 2026-11-24): Alfred Code's and claude-kit's modes on; absent or empty, none
   modes?: Line
+  // claude-kit's models (the user, 2026-11-25), beside the modes or under them; absent or empty, none
+  models?: Line
 }
 
 // Where the modes line goes: a line of its own under the identity, or after it on line 1 where the two fit (short of rows)

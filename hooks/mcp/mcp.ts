@@ -2,7 +2,7 @@
 // item. Pure: effects.ts reads the tool list and keeps the atom.
 import type { Seg } from '../core/types'
 import type { McpConnectResult } from 'claude-code'
-import { DENIED_REASON, ENGINE_ORIGIN, GLYPH, ITEM_JOIN, ITEM_LABEL, NAME_UNSAFE, PLUGIN_SEPARATOR, SERVER_STATE_REASONS, SETTLE_MS, TOOL_PREFIX, TOOL_SEPARATOR } from './constants'
+import { DENIED_REASON, ENGINE_ORIGIN, GLYPH, ITEM_JOIN, ITEM_LABEL, NAME_UNSAFE, PLUGIN_SEPARATOR, SERVER_OFF_REASON, SERVER_STATE_REASONS, SETTLE_MS, TOOL_PREFIX, TOOL_SEPARATOR } from './constants'
 import type { ConnectAnswer, ListedTool, McpServer, ReadOutcome, Unreadable } from './types'
 
 const spelled = (name: string): string => name.replace(NAME_UNSAFE, '_')
@@ -70,7 +70,9 @@ export function markLoading(servers: readonly McpServer[], name: string, now: nu
   return servers.map((server, index) => (index === place ? loading : server))
 }
 
+// A server turned off leaves the list: `markLoading` adds it again when an event raises it
 export function markFailed(servers: readonly McpServer[], name: string, reason: string): McpServer[] {
+  if (reason === SERVER_OFF_REASON) return servers.filter(server => server.name !== name)
   return servers.map(server => (server.name === name ? { name, state: 'failed', reason, since: server.since } : server))
 }
 
@@ -112,8 +114,10 @@ export function readOutcome(result: McpConnectResult): ReadOutcome | null {
 // The servers after a state read of `name` begun while it loaded since `since`: a server a later event marked loading
 // again, or one already settled, is left as it is
 export function markRead(servers: readonly McpServer[], name: string, since: number, outcome: ReadOutcome): McpServer[] {
+  const isRead = (server: McpServer): boolean => server.name === name && server.state === 'loading' && server.since === since
+  if (outcome.state === 'failed' && outcome.reason === SERVER_OFF_REASON) return servers.filter(server => !isRead(server))
   return servers.map((server): McpServer => {
-    if (server.name !== name || server.state !== 'loading' || server.since !== since) return server
+    if (!isRead(server)) return server
     return outcome.state === 'connected' ? { name, state: 'connected', since } : { name, state: 'failed', reason: outcome.reason, since }
   })
 }

@@ -8,6 +8,8 @@ export const SETTLE_MS = 60_000
 // The reasons a state read answers that tell the server's own state; any other is a refusal of the read itself, which
 // tells nothing of the server
 export const SERVER_STATE_REASONS: ReadonlySet<string> = new Set(['failed', 'auth', 'disabled'])
+// A server turned off is no part of the count (the user, 2026-11-25)
+export const SERVER_OFF_REASON = 'disabled'
 // The tool list is read this often while a server loads and for EARLY_MS after the session starts, else every IDLE_POLL_MS
 export const POLL_MS = 5_000
 export const EARLY_MS = 120_000

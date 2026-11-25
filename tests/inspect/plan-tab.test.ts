@@ -274,7 +274,7 @@ for (const surface of SURFACES) {
 
   test(`/inspect plan <name> with no plan files names the chosen root (${surface})`, async ($, on) => {
     await begin($, on, { files: {}, sources: { project: { 'alfred-mods': { plansFolder: '.alfred' } } } })
-    expect((await inspect($, 'plan nope')).text).toBe('No plan named nope. No plan file in .alfred/alfred-mods/plans/.')
+    expect((await inspect($, 'plan nope')).text).toBe('No plan named nope. No plan file in .alfred/docs/work/plans/ or .alfred/alfred-mods/plans/.')
   })
 
   test(`the Plan tab label and the plan bar take gold, and nothing under NO_COLOR (${surface})`, async ($, on) => {

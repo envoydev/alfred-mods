@@ -10,7 +10,7 @@ import type { EngineInterface, McpConnectResult } from 'claude-code'
 
 import { register } from '../../hooks/register'
 import { trackMcpConnect } from '../../hooks/mcp/effects'
-import { isEngineRaise, markFailed, markLoading, mcpItem, refusalOf, settle, shortName, toolServers } from '../../hooks/mcp/mcp'
+import { isEngineRaise, markFailed, markLoading, markRead, mcpItem, refusalOf, settle, shortName, toolServers } from '../../hooks/mcp/mcp'
 import { EARLY_MS, POLL_MS, SETTLE_MS } from '../../hooks/mcp/constants'
 import type { McpServer } from '../../hooks/mcp/types'
 import { NOW, OPTIONS, PASSED, REFUSED, SHAPE, begin, connected, dial, loading, seeded, text } from '../mcp-session'
@@ -282,4 +282,18 @@ test('mcpItem is none for an empty list, and a loading server wins over a failed
     { name: 'a', state: 'failed', reason: 'auth', since: 0 }, { name: 'b', state: 'loading', since: 0 }, { name: 'c', state: 'connected', since: 0 },
   ]
   expect(mcpItem(servers)).toEqual([{ text: 'mcp ◐ 1/3', tone: 'warn' }])
+})
+
+test('a server turned off leaves the list, whether its raise or its state read says so', () => {
+  const two = markLoading(markLoading([], 'files', NOW), 'off', NOW)
+  expect(markFailed(two, 'off', 'disabled')).toEqual([loading('files')])
+  expect(markRead(two, 'off', NOW, { state: 'failed', reason: 'disabled' })).toEqual([loading('files')])
+  expect(markRead(two, 'off', NOW - 1, { state: 'failed', reason: 'disabled' })).toEqual(two)
+})
+
+test('the engine\'s raise answered disabled drops the server', async () => {
+  const { $, servers } = stateEngine([connected('unit-files')])
+  const off: McpConnectResult = { isConnected: false, reason: 'disabled', message: 'm' }
+  await trackMcpConnect($, connect('unit-off'), raisedBy(ENGINE, { value: off }))
+  expect(servers().map(s => s.name)).not.toContain('unit-off')
 })

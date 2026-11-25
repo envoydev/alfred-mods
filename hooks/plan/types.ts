@@ -1,4 +1,5 @@
 // The plan's types: plans, scores, step times and the drawn plan
+import type { EngineInterface } from 'claude-code'
 import type { Outcome } from '../tools/types'
 import type { Credit, Finding, Plan, PlanChange, PlanStep, Plans, ScoreRound, Scores, Severity, Slice, StepStatus, StepTime, TaskItem, Watched } from '../../types'
 export type { Credit, Finding, Plan, PlanChange, PlanStep, Plans, ScoreRound, Scores, Severity, Slice, StepStatus, StepTime, TaskItem, Watched }
@@ -51,6 +52,9 @@ export type PlanDrawing = {
   shown: PlanView | null; band: PlanView | null; invalid: boolean; scores: ScoresView | null; score: ScoresView | null
   isPlanScore: boolean; others: string[]; otherScores: string[]; updatedAt: number | null
 }
+
+// What `$.fs.list` answers for one folder
+export type FolderEntries = Awaited<ReturnType<EngineInterface['fs']['list']>>
 
 // One `*.json` file a plan or scores folder lists
 export type Listed = { name: string; mtimeMs: number; size: number; path: string }

@@ -31,3 +31,5 @@ export const TRANSCRIPT_NOTE = { unread: 'transcript unread', 'not-found': 'tran
 // word, and the join between them
 export const MODE_WORDS = { autoRun: 'auto-run', autoCompact: 'auto-compact', scoring: 'scoring' } as const
 export const MODES_JOIN = ' · '
+// claude-kit's models, written as its status line writes them (the user, 2026-11-25)
+export const MODELS_JOIN = ' | '

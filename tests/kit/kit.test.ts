@@ -146,14 +146,14 @@ test('an unchanged file writes nothing again, whatever the key order or spacing'
 })
 
 // The modes line under the identity (the user, 2026-11-24): claude-kit's auto-run, and scoring with its pass score and
-// its loop's 3 rounds; auto-approve stays in the Now tab's CLAUDE-KIT section
-test('the band draws the kit modes on line 2 from the file', async ($, on) => {
+// its loop's 3 rounds, then its models (the user, 2026-11-25); auto-approve stays in the Now tab's CLAUDE-KIT section
+test('the band draws the kit modes and models on line 2 from the file', async ($, on) => {
   await start($, on, { files: { [FILE]: kitFile(SETTINGS) } })
   const props = { hasSurvey: false, isCollapsed: false, isWorking: false, maxRows: 8, bodyColumns: 200, scroll: { offset: 0, bodyRows: 8 }, view: {} }
   const ui = await $.ui.mount({ plugin: 'alfred-mods', surface: 'terminal', component: 'AbovePrompt', props })
   const lines = await rows(ui, { keepOrg: true })
   expect(lines[0]).toBe('org | unknown')
-  expect(lines[1]).toBe('auto-run · scoring 90 3')
+  expect(lines[1]).toBe('auto-run · scoring 90 3 · plan opus | audit opus | review opus | implement sonnet | search haiku')
   expect(lines.some(line => line.includes('kit: ') || line.includes('auto-approve'))).toBe(false)
 })
 

@@ -61,7 +61,9 @@ its tests to the run or takes it past `claude plugin test`'s limit of 1000 test 
 - **Works without Alfred Code; Alfred Code adds data** (the user's ruling, 2026-10-28). The core runs on the Claude
   Code mods API alone and is built first. With Alfred Code installed, the mod shows more, read from the one versioned
   per-session status file the stack publishes and, through its `plan` field, the plan folder it names (`status.json`
-  and `scoring.json`; the user's ruling, 2026-11-13: 'alfred mods must learn Alfred's code plans'), and from nothing
+  and `scoring.json`; the user's ruling, 2026-11-13: 'alfred mods must learn Alfred's code plans'). With
+  `plansFolder` `.alfred` it also reads those two files from each plan folder under `.alfred/docs/work/plans/`, the 20
+  written last (the user's ruling, 2026-11-25: 'plans must be taken from alfred code structure'). It reads nothing
   else in the stack. An absent file, an unknown schema or another session's file leaves the core view as it is, never
   an error, with the reason in a dim diagnostics row.
   claude-kit is a second source that adds data (the user's ruling, 2026-11-21, replacing 2026-11-19's line-only ruling):

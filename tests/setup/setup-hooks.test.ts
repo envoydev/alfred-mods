@@ -5,22 +5,35 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { PRESENTATION, START, engine, fileAt, rows, stubAll } from '../kit'
+import { PRESENTATION, START, engine, fileAt, rows, stubAll, watchState } from '../kit'
 import type { FileStub } from '../kit'
 import { planText } from '../plans'
 
 const PROJECT = '.claude/settings.json'
 const PANE = { title: 'Plans folder', isFocused: false, bodyColumns: 100, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 30 }, view: {} }
+const QUESTION = 'Where should plan and score files live?'
+const LABELS = ['.alfred-mods (recommended)', ".alfred (Alfred Code's folder)", 'default (.claude)']
+const ALFRED_LINE = 'Plans are read from .alfred/docs/work/plans/ (Alfred Code) and .alfred/alfred-mods/ (plansFolder ".alfred" in .claude/settings.json)'
 const NOTE = 'new plans land there once each writer reads plansFolder - claude-kit does from its 0b09406 sync'
 const DONE = planText({ S1: 'done', S2: 'done', S3: 'done', S4: 'done', S5: 'done' })
 const plan = (path: string): Record<string, FileStub> => ({ [path]: { text: DONE, mtimeMs: 0 } })
 const mod = (fields: Record<string, unknown>): Record<string, unknown> => ({ 'alfred-mods': fields })
 
-async function start($: Engine, on: On, o: Parameters<typeof stubAll>[1] = {}) {
+type Asked = { question: string; header?: string; labels: string[] }
+
+// `answer` is what the person picks or types in the question dialog; absent, they dismiss it, as every `-p` run does
+async function start($: Engine, on: On, o: Parameters<typeof stubAll>[1] = {}, answer?: string) {
   const kit = stubAll(on, { band: 'unset', quiet: 'unset', ...o })
+  const asked: Asked[] = []
+  on('tool.call', { tool: 'AskUserQuestion' }, (_, e) => {
+    const [first] = e.questions
+    if (first === undefined) return { deny: 'test: no question' }
+    asked.push({ question: first.question, header: first.header, labels: first.options.map(option => option.label) })
+    return answer === undefined ? { deny: 'test: dismissed' } : { result: { questions: e.questions, answers: { [first.question]: answer } } }
+  })
   engine(on)
   await $.session.start(START)
-  return kit
+  return { ...kit, asked }
 }
 const alfred = async ($: Engine, verb: string, args = ''): Promise<string> =>
   (await $.command.run({ command: `alfred-mods:${verb}`, args, origin: { kind: 'composer' }, presentation: PRESENTATION })).text ?? ''
@@ -54,7 +67,7 @@ test('init with a folder writes the project file, runs update on it and prints t
   const text = await alfred($, 'init', '.alfred')
   expect(fieldIn(fileAt(files, PROJECT))).toBe('.alfred')
   expect(text.split('\n')).toEqual([
-    'Plans live in .alfred/alfred-mods/ (plansFolder ".alfred" in .claude/settings.json)', NOTE, 'nothing to update',
+    ALFRED_LINE, NOTE, 'nothing to update',
   ])
 })
 
@@ -73,7 +86,7 @@ test('init with a folder passes the folder just written to update while the sett
 
 test('init with the field set in a file prints where plans live and runs update, writing nothing', async ($, on) => {
   const { files, opened } = await start($, on, { sources: { project: mod({ plansFolder: '.alfred' }) } })
-  expect(await alfred($, 'init')).toBe('Plans live in .alfred/alfred-mods/ (plansFolder ".alfred" in .claude/settings.json) - /alfred-mods:configure changes it\nnothing to update')
+  expect(await alfred($, 'init')).toBe(`${ALFRED_LINE} - /alfred-mods:configure changes it\nnothing to update`)
   expect(files.writes).toEqual([])
   expect(opened).not.toContain('alfred-mods-setup')
 })
@@ -82,7 +95,7 @@ test('init with the field unset prints the three choices and opens the pane', as
   const { files, opened, escapes } = await start($, on)
   const text = await alfred($, 'init')
   expect(text).toContain('/alfred-mods:init .alfred-mods (recommended - no permission asks)')
-  expect(text).toContain("/alfred-mods:init .alfred (beside Alfred Code's state)")
+  expect(text).toContain("/alfred-mods:init .alfred (reads Alfred Code's plans too)")
   expect(text).toContain('/alfred-mods:init default (.claude/session-inspector - Claude Code asks before each write)')
   expect(text).not.toContain('(now)')
   expect(opened).toContain('alfred-mods-setup')
@@ -93,7 +106,7 @@ test('init with the field unset prints the three choices and opens the pane', as
 test('configure with a local value marks it (now) and opens the pane', async ($, on) => {
   const { opened } = await start($, on, { sources: { local: mod({ plansFolder: '.alfred' }) } })
   const text = await alfred($, 'configure')
-  expect(text).toContain("/alfred-mods:init .alfred (beside Alfred Code's state) (now)")
+  expect(text).toContain("/alfred-mods:init .alfred (reads Alfred Code's plans too) (now)")
   expect(text.match(/\(now\)/g)).toHaveLength(1)
   expect(opened).toContain('alfred-mods-setup')
 })
@@ -227,4 +240,60 @@ test('in fullscreen, on the Desktop and with no viewport the pane keeps its butt
     expect(lines.some(l => l.startsWith('A press writes'))).toBe(true)
     await ui.unmount()
   }
+})
+
+test('init with no value asks where plans live, the recommended folder first, and writes the answer and updates', async ($, on) => {
+  const { files, asked, opened } = await start($, on, { files: plan('.claude/session-inspector/plans/p.json') }, LABELS[0])
+  const text = await alfred($, 'init')
+  expect(asked).toEqual([{ question: QUESTION, header: 'Plans folder', labels: LABELS }])
+  expect(fieldIn(fileAt(files, PROJECT))).toBe('.alfred-mods')
+  expect(text.split('\n')).toContain('moved 1 plan or scores file to .alfred-mods/')
+  expect(opened).not.toContain('alfred-mods-setup')
+})
+
+test('init asks while the field is set too, marks that folder (now) and writes the other one picked', async ($, on) => {
+  const { files, asked } = await start($, on, { sources: { project: mod({ plansFolder: 'default' }) } }, LABELS[1])
+  await alfred($, 'init')
+  expect(asked[0]?.labels).toEqual([LABELS[0], LABELS[1], `${LABELS[2]} (now)`])
+  expect(fieldIn(fileAt(files, PROJECT))).toBe('.alfred')
+})
+
+test('picking the folder in force writes nothing: init updates it, configure only says it', async ($, on) => {
+  const { files } = await start($, on, { sources: { project: mod({ plansFolder: '.alfred' }) } }, `${LABELS[1]} (now)`)
+  expect(await alfred($, 'init')).toBe(`${ALFRED_LINE} - /alfred-mods:configure changes it\nnothing to update`)
+  expect(await alfred($, 'configure')).toBe(ALFRED_LINE)
+  expect(files.writes).toEqual([])
+})
+
+test('configure with no value asks, writes the answer and moves nothing', async ($, on) => {
+  const { files } = await start($, on, { files: plan('.alfred-mods/plans/p.json') }, LABELS[2])
+  const text = await alfred($, 'configure')
+  expect(fieldIn(fileAt(files, PROJECT))).toBe('default')
+  expect(text).not.toContain('moved')
+})
+
+test('a folder typed as the other answer is taken', async ($, on) => {
+  const { files } = await start($, on, {}, ' .alfred ')
+  await alfred($, 'configure')
+  expect(fieldIn(fileAt(files, PROJECT))).toBe('.alfred')
+})
+
+test('a typed answer that names no folder writes nothing and prints the usage line', async ($, on) => {
+  const { files } = await start($, on, {}, 'somewhere else')
+  expect(await alfred($, 'init')).toBe(USAGE)
+  expect(files.writes).toEqual([])
+})
+
+test("the mod's own question is no tool call of the session: a dismissed one counts nothing and fails nothing", async ($, on) => {
+  const state = watchState(on)
+  await start($, on)
+  await alfred($, 'init')
+  expect(state.get('stats') ?? {}).toEqual({})
+  expect(state.get('failures') ?? []).toEqual([])
+})
+
+test('a folder given with the command asks nothing', async ($, on) => {
+  const { asked } = await start($, on, {}, LABELS[0])
+  await alfred($, 'init', '.alfred')
+  expect(asked).toEqual([])
 })

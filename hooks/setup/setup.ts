@@ -1,9 +1,9 @@
 // The setup commands' pure parts: their values, the choice lines and the confirm lines. setup/effects.ts reads and
 // writes the files.
-import { PLANS_FOLDERS, PLANS_ROOTS } from '../plan/constants'
+import { ALFRED_PLANS_DIR, PLANS_FOLDERS, PLANS_ROOTS } from '../plan/constants'
 import type { PlansFolder } from '../plan/types'
 import type { Line } from '../core/types'
-import { BUTTON_KEY_PREFIX, CHOICE_NOTES, CHOICE_ORDER, NOW_MARK, PANE_HEADING, PANE_HELP, PANE_HELP_TYPED, SLASH, WRITER_NOTE } from './constants'
+import { ASK_LABELS, BUTTON_KEY_PREFIX, CHOICE_NOTES, CHOICE_ORDER, NOW_MARK, PANE_HEADING, PANE_HELP, PANE_HELP_TYPED, SLASH, WRITER_NOTE } from './constants'
 import type { FolderValue } from './types'
 
 // The words typed after /alfred-mods:init or /alfred-mods:configure: none, or one folder. Anything else is not ok, and
@@ -29,9 +29,24 @@ export function writerNote(folder: PlansFolder): string | null {
   return folder === '.alfred-mods' ? null : WRITER_NOTE
 }
 
-// Where plans live, and the file that says so; `isHint` adds how to change it
+// The dialog's options in the choices' order, the folder in force marked
+export function askLabels(now: PlansFolder | null): string[] {
+  return CHOICE_ORDER.map(folder => `${ASK_LABELS[folder]}${folder === now ? NOW_MARK : ''}`)
+}
+
+// The folder an answer names: an option's label, or a folder typed as the dialog's other answer; null for neither
+export function answeredFolder(answer: string, now: PlansFolder | null): PlansFolder | null {
+  const picked = askLabels(now).indexOf(answer)
+  if (picked >= 0) return CHOICE_ORDER[picked] ?? null
+  const typed = parseFolderValue(answer)
+  return typed.ok ? typed.folder : null
+}
+
+// Where plans live, and the file that says so; `isHint` adds how to change it. With `.alfred` the plans are Alfred
+// Code's own, read from its plan folders (the user, 2026-11-25).
 export function livesLine(folder: PlansFolder, file: string, isHint: boolean): string {
-  return `Plans live in ${PLANS_ROOTS[folder]}/ (plansFolder "${folder}" in ${file})${isHint ? ` - ${SLASH.configure} changes it` : ''}`
+  const places = folder === '.alfred' ? `Plans are read from ${ALFRED_PLANS_DIR}/ (Alfred Code) and ${PLANS_ROOTS[folder]}/` : `Plans live in ${PLANS_ROOTS[folder]}/`
+  return `${places} (plansFolder "${folder}" in ${file})${isHint ? ` - ${SLASH.configure} changes it` : ''}`
 }
 
 // A higher file gives the field a value that wins over the one written

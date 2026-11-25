@@ -3,10 +3,10 @@
 // stored, which outlives a reload.
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
-import type { SliceClose, Credit, Listed, Moved, Plan, PlanDrawing, PlanView, Plans, Scores, TaskItem, Watched } from './types'
-import { MAX_PLAN_BYTES } from './constants'
+import type { SliceClose, Credit, FolderEntries, Listed, Moved, Plan, PlanDrawing, PlanView, Plans, Scores, TaskItem, Watched } from './types'
+import { ALFRED_PLANS_DIR, ALFRED_PLANS_READ, ALFRED_SCORING_FILE, ALFRED_STATUS_FILE, MAX_PLAN_BYTES } from './constants'
 import type { Pending } from '../core/types'
-import { FINISH_SHOWN_MS, creditedPlan, isPlanDone, newUserNotes, parsePlan, parseScores, candidatesByName, planView, plansDirs, isPlanRunning, scoresDirs, scoresView, shownPlan, stepStatusKey, taskStatusKey, taskView, tasksAfter } from './plan'
+import { FINISH_SHOWN_MS, creditedPlan, isPlanDone, newUserNotes, parsePlan, parseScores, candidatesByName, planView, plansDirs, isPlanRunning, scoresDirs, scoresView, shownPlan, stepStatusKey, taskStatusKey, taskView, tasksAfter, isSamePlan } from './plan'
 import { closeTargetOf, closeSlices, closeWait, creditRunningTasks, liveSpans, sessionTimesOf, openWait, shownStepTimes, sliceMs, storedTimeOf, sumTimes, taskListMs } from './steptime'
 import { parseAlfredScoring, parseAlfredStatus } from './alfredplan'
 import { minutesText, oneLine } from '../core/format'
@@ -220,8 +220,12 @@ async function reloadPlanFiles($: EngineInterface, pending: Pending): Promise<vo
   const before = await readPlans($)
   const now = await $.clock.now()
   const { folder: plansFolder } = plansFolderInForce()
-  const ownPlans = await readJsonFolders($, plansDirs(plansFolder), before.planFiles, parsePlan)
-  const ownScores = await readJsonFolders($, scoresDirs(plansFolder), before.scoreFiles, parseScores)
+  const folderPlans = await readJsonFolders($, plansDirs(plansFolder), before.planFiles, parsePlan)
+  const folderScores = await readJsonFolders($, scoresDirs(plansFolder), before.scoreFiles, parseScores)
+  // With `.alfred`, Alfred Code's plan folders too: each stands in for a same-named file of the mod's own folders
+  const everyAlfred = plansFolder === '.alfred' ? await readEveryAlfredPlan($, before) : { plans: [], scores: [] }
+  const ownPlans = [...without(folderPlans, everyAlfred.plans), ...everyAlfred.plans]
+  const ownScores = [...without(folderScores, everyAlfred.scores), ...everyAlfred.scores]
   // Alfred Code's plan folder: the one its status file names, else the one it let go, read once more to see it
   // finished, then kept 10 minutes after it finished
   // A status file that will not read, or whose `plan` will not, says nothing: the plan it named stays named
@@ -239,9 +243,10 @@ async function reloadPlanFiles($: EngineInterface, pending: Pending): Promise<vo
   // The folder's files stand in for a same-named plan or scores file of the project's own folder while they exist
   const alfredPlan = alfredRead?.plan ? { ...alfredRead.plan, isNamed: named !== null } : null
   const alfredScores = alfredRead?.scores ?? null
-  const without = <T>(list: Watched<T>[], over: Watched<unknown> | null): Watched<T>[] => (over === null ? list : list.filter(file => file.name !== over.name))
-  const planFiles = [...without(ownPlans, alfredPlan), ...(alfredPlan === null ? [] : [alfredPlan])]
-  const scoreFiles = [...without(ownScores, alfredScores), ...(alfredScores === null ? [] : [alfredScores])]
+  const namedPlans = alfredPlan === null ? [] : [alfredPlan]
+  const namedScores = alfredScores === null ? [] : [alfredScores]
+  const planFiles = [...without(ownPlans, namedPlans), ...namedPlans]
+  const scoreFiles = [...without(ownScores, namedScores), ...namedScores]
   if (stepStatusKey(before.planFiles) !== stepStatusKey(planFiles)) await closeLoopSlices($, pending, null, now, true, before)
   const { stepTimes, overheadMs } = await planTimesOf($, planFiles)
   const seen = new Set(before.toastedKeys)
@@ -250,8 +255,8 @@ async function reloadPlanFiles($: EngineInterface, pending: Pending): Promise<vo
   for (const planFile of planFiles) {
     const plan = planFile.value
     if (plan === null || planFile.isInvalid) continue
-    // A folder read for the first time has no last state, whatever plan shared its name before
-    const had = planFile === alfredPlan && !isSame ? null : before.planFiles.find(beforeFile => beforeFile.name === planFile.name)?.value ?? null
+    // A plan read for the first time has no last state, whatever plan shared its name before
+    const had = before.planFiles.find(beforeFile => beforeFile.name === planFile.name && isSamePlan(beforeFile, planFile))?.value ?? null
     if (had !== null) {
       for (const change of newUserNotes(had.changes, plan.changes)) due.push(`✎ Note folded into ${change.step ?? 'the plan'}: '${oneLine(change.note ?? '', 60)}'`)
     }
@@ -273,6 +278,39 @@ async function reloadPlanFiles($: EngineInterface, pending: Pending): Promise<vo
     finishedAt: { ...current.finishedAt, ...finished }, toastedKeys: toasted, alfredFolder: alfred,
   }))
   for (const text of due) toast($, text)
+}
+
+// The files of `list` that none of `over` shares a name with
+function without<T>(list: Watched<T>[], over: readonly Watched<unknown>[]): Watched<T>[] {
+  return list.filter(file => !over.some(other => other.name === file.name))
+}
+
+// Every plan folder of Alfred Code's that holds a status file, the ALFRED_PLANS_READ written last: only those are read
+async function readEveryAlfredPlan($: EngineInterface, before: Plans): Promise<{ plans: Watched<Plan>[]; scores: Watched<Scores>[] }> {
+  let folders: string[]
+  try {
+    folders = (await $.fs.list(ALFRED_PLANS_DIR)).filter(entry => entry.kind === 'dir').map(entry => `${ALFRED_PLANS_DIR}/${entry.name}`)
+  } catch {
+    return { plans: [], scores: [] }
+  }
+  const listed: { folder: string; entries: FolderEntries; writtenMs: number }[] = []
+  for (const folder of folders) {
+    const entries = await $.fs.list(folder).catch((): FolderEntries => [])
+    const status = entries.find(entry => entry.kind === 'file' && entry.name === ALFRED_STATUS_FILE)
+    if (status !== undefined) listed.push({ folder, entries, writtenMs: status.mtimeMs })
+  }
+  const plans: Watched<Plan>[] = []
+  const scores: Watched<Scores>[] = []
+  for (const { folder, entries } of listed.sort((first, second) => second.writtenMs - first.writtenMs).slice(0, ALFRED_PLANS_READ)) {
+    const read = await readAlfredFiles($, folder, entries, {
+      plan: before.planFiles.find(file => file.path === `${folder}/${ALFRED_STATUS_FILE}`),
+      scores: before.scoreFiles.find(file => file.path === `${folder}/${ALFRED_SCORING_FILE}`),
+    }, parseAlfredStatus, parseAlfredScoring)
+    // Only the status file names a plan: a copy kept from while it did says so no longer
+    if (read.plan !== null) plans.push({ ...read.plan, isNamed: false })
+    if (read.scores !== null) scores.push(read.scores)
+  }
+  return { plans, scores }
 }
 
 // Reads run one at a time, so two never raise the same toast
@@ -374,21 +412,31 @@ async function readAlfredFolder<P, S>(
   $: EngineInterface, folder: string, known: { plan?: Watched<P>; scores?: Watched<S> },
   parsePlan: (text: string) => P | null, parseScores: (text: string, name: string) => S | null,
 ): Promise<{ name: string; plan: Watched<P> | null; scores: Watched<S> | null }> {
-  const name = folder.slice(folder.lastIndexOf('/') + 1)
-  let entries: Awaited<ReturnType<EngineInterface['fs']['list']>>
+  let entries: FolderEntries
   try {
     entries = await $.fs.list(folder)
   } catch {
-    return { name, plan: null, scores: null }
+    return { name: folderName(folder), plan: null, scores: null }
   }
+  return readAlfredFiles($, folder, entries, known, parsePlan, parseScores)
+}
+
+const folderName = (folder: string): string => folder.slice(folder.lastIndexOf('/') + 1)
+
+// The two files of a listed plan folder
+async function readAlfredFiles<P, S>(
+  $: EngineInterface, folder: string, entries: FolderEntries, known: { plan?: Watched<P> | undefined; scores?: Watched<S> | undefined },
+  parsePlan: (text: string) => P | null, parseScores: (text: string, name: string) => S | null,
+): Promise<{ name: string; plan: Watched<P> | null; scores: Watched<S> | null }> {
+  const name = folderName(folder)
   async function one<T>(file: string, had: Watched<T> | undefined, parse: (text: string) => T | null): Promise<Watched<T> | null> {
     const entry = entries.find(listed => listed.kind === 'file' && listed.name === file)
     return entry === undefined ? null : readWatched($, `${folder}/${file}`, name, entry, had, parse)
   }
   return {
     name,
-    plan: await one('status.json', known.plan, parsePlan),
-    scores: await one('scoring.json', known.scores, text => parseScores(text, name)),
+    plan: await one(ALFRED_STATUS_FILE, known.plan, parsePlan),
+    scores: await one(ALFRED_SCORING_FILE, known.scores, text => parseScores(text, name)),
   }
 }
 

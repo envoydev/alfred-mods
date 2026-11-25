@@ -3,10 +3,10 @@
 import { tokensText, widthOf } from '../core/format'
 import type { Line, Seg } from '../core/types'
 import { isKitOn, kitPassScore } from '../kit/kit'
-import { KIT_NAMES, KIT_SCORING_ROUNDS } from '../kit/constants'
+import { KIT_MODEL_ROLES, KIT_NAMES, KIT_SCORING_ROUNDS } from '../kit/constants'
 import type { KitState } from '../kit/types'
 import type { Stack } from '../stack/types'
-import { MODE_WORDS, MODES_JOIN } from './constants'
+import { MODE_WORDS, MODELS_JOIN, MODES_JOIN } from './constants'
 
 // Each mode on, in its order. auto-run shows while either source runs it; auto-compact is Alfred Code's alone, with
 // Claude Code's compaction point where the status file names it; scoring takes Alfred Code's level and rounds while
@@ -28,14 +28,27 @@ function modeItems(stack: Stack | null, kit: KitState | null): Seg[] {
   return items
 }
 
-// The modes on, joined, within the band's width: the last mode goes first where the line would pass it. Empty with
-// none on.
-export function modesLine(stack: Stack | null, kit: KitState | null, columns: number): Line {
-  const items = modeItems(stack, kit)
-  const join = (count: number): Line => items.slice(0, count).flatMap((item, i) => (i === 0 ? [item] : [{ text: MODES_JOIN, tone: 'dim' as const }, item]))
+// The items joined, within the width: the last goes first where the line would pass it. Empty with none.
+function fittingLine(items: Seg[], separator: string, columns: number): Line {
+  const join = (count: number): Line => items.slice(0, count).flatMap((item, i) => (i === 0 ? [item] : [{ text: separator, tone: 'dim' as const }, item]))
   for (let count = items.length; count > 0; count--) {
     const line = join(count)
     if (widthOf(line) <= columns) return line
   }
   return []
+}
+
+// The modes on, within the band's width
+export function modesLine(stack: Stack | null, kit: KitState | null, columns: number): Line {
+  return fittingLine(modeItems(stack, kit), MODES_JOIN, columns)
+}
+
+// The model claude-kit's settings file names for each role, within the band's width
+export function modelsLine(kit: KitState | null, columns: number): Line {
+  const values = kit?.values ?? null
+  const items = values === null ? [] : KIT_MODEL_ROLES.flatMap(([role, name]): Seg[] => {
+    const model = values[name]
+    return model === undefined ? [] : [{ text: `${role} ${model}`, tone: 'dim' }]
+  })
+  return fittingLine(items, MODELS_JOIN, columns)
 }

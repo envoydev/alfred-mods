@@ -23,11 +23,20 @@ export const SETUP_PANE_TITLE = 'Plans folder'
 
 export const CHOICE_NOTES: Readonly<Record<PlansFolder, string>> = {
   '.alfred-mods': 'recommended - no permission asks',
-  '.alfred': "beside Alfred Code's state",
+  '.alfred': "reads Alfred Code's plans too",
   default: '.claude/session-inspector - Claude Code asks before each write',
 }
 
 export const NOW_MARK = ' (now)'
+
+// The question a setup command with no value asks, in Claude Code's own dialog (the user, 2026-11-25)
+export const ASK_QUESTION = 'Where should plan and score files live?'
+export const ASK_HEADER = 'Plans folder'
+export const ASK_LABELS: Readonly<Record<PlansFolder, string>> = {
+  '.alfred-mods': '.alfred-mods (recommended)',
+  '.alfred': ".alfred (Alfred Code's folder)",
+  default: 'default (.claude)',
+}
 
 export const WRITER_NOTE = 'new plans land there once each writer reads plansFolder - claude-kit does from its 0b09406 sync'
 

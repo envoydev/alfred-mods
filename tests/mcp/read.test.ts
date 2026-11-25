@@ -125,3 +125,14 @@ test('markPassed marks only the server still loading from that raise', () => {
   expect(markPassed([loading('a', 20)], 'a', 10)).toEqual([loading('a', 20)])
   expect(markPassed([connected('a', 10)], 'a', 10)).toEqual([connected('a', 10)])
 })
+
+test('a server whose state read answers disabled leaves the count, and 60 s do not bring it back', LONG, async ($, on) => {
+  const off: McpConnectResult = { isConnected: false, reason: 'disabled', message: 'The MCP server is turned off.' }
+  const { kit, servers } = await begin($, on, { stored: [passed('computer-use'), connected('plugin:p:files')], read: off })
+  await kit.clock.advance(POLL)
+  await kit.clock.settle()
+  expect(text(servers())).toBe('mcp ✓ 1')
+  await kit.clock.advance(SETTLE_MS * 2)
+  await kit.clock.settle()
+  expect(servers()).toEqual([connected('plugin:p:files')])
+})

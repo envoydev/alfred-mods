@@ -23,7 +23,7 @@ import { readPlanDrawing, readPlans } from '../plan/effects'
 import { fillStackPrompt, readStack, readScoreLevel, stackPrompt } from '../stack/effects'
 import { forecastTargetOf, handoffViewOf } from '../handoff/handoff'
 import { compactNow, readCache } from '../cache/effects'
-import { chosenPlansDir } from '../plan/plan'
+import { plansPlaces } from '../plan/plan'
 import { drawLines } from '../core/draw'
 import { planLines } from '../plan/planlines'
 import { promptLines } from '../prompt/promptlines'
@@ -160,7 +160,7 @@ export async function runInspectCommand($: EngineInterface, e: MatchedInput<'com
     const good = (await readPlans($)).planFiles.filter(planFile => planFile.value !== null).map(planFile => planFile.name).sort()
     if (name !== null && !good.includes(name)) {
       const asked = oneLine(printable(name), 40)
-      return { text: good.length === 0 ? `No plan named ${asked}. No plan file in ${chosenPlansDir(plansFolderInForce().folder)}/.` : `No plan named ${asked}. Plans: ${good.join(', ')}.` }
+      return { text: good.length === 0 ? `No plan named ${asked}. No plan file in ${plansPlaces(plansFolderInForce().folder)}/.` : `No plan named ${asked}. Plans: ${good.join(', ')}.` }
     }
     await updateView($, view => (view.pinnedPlan === name ? view : { ...view, pinnedPlan: name }))
   }
@@ -198,7 +198,7 @@ export async function drawInspectPane($: EngineInterface, e: MatchedInput<'ui.re
     : shown.tab === 'cache' ? cacheLines(input)
     : shown.tab === 'tools' ? toolsLines(input)
     : shown.tab === 'timeline' ? timelineLines(input.turns, Math.max(3, e.props.scroll.bodyRows - 1 - bar.length), usage.rateWindows.length > 0, e.props.bodyColumns)
-    : shown.tab === 'plan' ? planLines(drawing.shown, drawing.scores, { invalid: drawing.invalid, others: drawing.others, otherScores: drawing.otherScores, updatedAt: drawing.updatedAt, now, columns: e.props.bodyColumns }, chosenPlansDir(plansFolderInForce().folder))
+    : shown.tab === 'plan' ? planLines(drawing.shown, drawing.scores, { invalid: drawing.invalid, others: drawing.others, otherScores: drawing.otherScores, updatedAt: drawing.updatedAt, now, columns: e.props.bodyColumns }, plansPlaces(plansFolderInForce().folder))
     : shown.tab === 'prompt' ? promptLines(await readPrompt($), e.props.bodyColumns)
     : nowLines(input)
   const press: Record<string, () => unknown> = {

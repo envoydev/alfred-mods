@@ -3,7 +3,7 @@
 import { fitLine, widthOf } from '../core/format'
 import { ORG_STRICT, PERSONAL } from '../account/constants'
 import type { Line, Seg } from '../core/types'
-import { CC_LABEL, ORG_JOIN, ORG_LABEL, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN } from './constants'
+import { CC_LABEL, ORG_JOIN, ORG_LABEL, ORG_MAX_CELLS, ORG_UNKNOWN, ROW_JOIN, MODES_JOIN } from './constants'
 import type { BandInput, ModesKeep } from './types'
 
 export const REC_MARK: Seg = { text: '● REC', tone: 'fail', bold: true }
@@ -38,12 +38,20 @@ export function identityLine(input: BandInput, failures: Line = []): Line {
   return forms.find(form => widthOf(form) <= input.columns) ?? forms[forms.length - 1] ?? []
 }
 
-// The lines that lead the band, each only when it holds something: the identity, then the modes on a line of their own
-// ('own'), or after the identity on line 1 where the two fit the width, else the identity alone ('joined')
+// The modes and claude-kit's models: on one line where the two fit the width, else the models under the modes
+function modeLines(input: BandInput): Line[] {
+  const modes = input.modes ?? []
+  const models = input.models ?? []
+  const beside: Line = modes.length === 0 || models.length === 0 ? [...modes, ...models] : [...modes, { text: MODES_JOIN, tone: 'dim' }, ...models]
+  return widthOf(beside) <= input.columns ? [beside] : [modes, models]
+}
+
+// The lines that lead the band, each only when it holds something: the identity, then the modes and models under it
+// ('own'), or the modes after the identity on line 1 where the two fit the width, else the identity alone ('joined')
 export function leadLines(input: BandInput, modesKeep: ModesKeep, failures: Line = []): Line[] {
   const identity = identityLine(input, failures)
   const modes = input.modes ?? []
-  if (modesKeep === 'own') return [identity, modes].filter(line => line.length > 0)
+  if (modesKeep === 'own') return [identity, ...modeLines(input)].filter(line => line.length > 0)
   const joined = joinItems([identity, modes])
   return joined.length === 0 ? [] : [widthOf(joined) <= input.columns ? joined : identity].filter(line => line.length > 0)
 }

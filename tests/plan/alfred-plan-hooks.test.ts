@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { shownPlan } from '../../hooks/plan/plan'
+import { isPlanRunning, shownPlan } from '../../hooks/plan/plan'
 import { START, engine, stubAll, watchState } from '../kit'
 import type { FileStub } from '../kit'
 import { PLAN_JSON, SCORING_JSON, STATUS_JSON } from '../plans'
@@ -23,8 +23,8 @@ const session = (plan: string | null): FileStub => ({
 })
 const statusWith = (over: Record<string, unknown>, mtimeMs = 2): FileStub => ({ text: JSON.stringify({ ...JSON.parse(STATUS_JSON), ...over }), mtimeMs })
 
-async function start($: Engine, on: On, files: Record<string, FileStub>) {
-  const kit = stubAll(on, { files, now: 1000 })
+async function start($: Engine, on: On, files: Record<string, FileStub>, o: Parameters<typeof stubAll>[1] = {}) {
+  const kit = stubAll(on, { files, now: 1000, ...o })
   const state = watchState(on)
   engine(on)
   await $.session.start(START)
@@ -144,4 +144,69 @@ test('the first read of a named folder never takes the same-named own plan as it
   await clock.advance(30_000)
   expect(p().planFiles.find(w => w.name === 'waste-bin')?.value?.title).toBe('Waste bin (plannings)')
   expect(toasts.some(t => t.startsWith('Plan done'))).toBe(false)
+})
+
+// plansFolder `.alfred` (the user's ruling, 2026-11-25): every plan folder of Alfred Code's is read, named or not
+const ALFRED_CHOSEN = { sources: { project: { 'alfred-mods': { plansFolder: '.alfred' } } } }
+const planAt = (name: string, mtimeMs: number): Record<string, FileStub> =>
+  ({ [`.alfred/docs/work/plans/${name}/status.json`]: statusWith({ title: name }, mtimeMs) })
+
+test('with plansFolder .alfred every plan folder under .alfred/docs/work/plans is read, with its scores', async ($, on) => {
+  const { p } = await start($, on, {
+    ...planAt('first', 2), ...planAt('second', 3), [`.alfred/docs/work/plans/second/scoring.json`]: { text: SCORING_JSON, mtimeMs: 3 },
+    '.alfred/docs/work/plans/empty/empty.md': { text: '# x', mtimeMs: 1 },
+  }, ALFRED_CHOSEN)
+  expect(p().planFiles.map(w => w.name).sort()).toEqual(['first', 'second'])
+  expect(p().planFiles.find(w => w.name === 'second')?.value?.title).toBe('second')
+  expect(p().scoreFiles.map(w => w.name)).toEqual(['second'])
+  expect(p().alfredFolder).toBeNull()
+})
+
+test("Alfred Code's plan stands in for a same-named file of the mod's own folder, and the others stay", async ($, on) => {
+  const own = { text: PLAN_JSON, mtimeMs: 9 }
+  const { p } = await start($, on, { ...planAt('shared', 2), '.alfred/alfred-mods/plans/shared.json': own, '.alfred/alfred-mods/plans/kit.json': own }, ALFRED_CHOSEN)
+  expect(p().planFiles.map(w => w.name).sort()).toEqual(['kit', 'shared'])
+  expect(p().planFiles.find(w => w.name === 'shared')?.value?.title).toBe('shared')
+})
+
+test('the plan the status file names is listed once, named, beside the others', async ($, on) => {
+  const { p } = await start($, on, { [STATUS]: session(FOLDER), [PLAN_STATUS]: { text: STATUS_JSON, mtimeMs: 2 }, ...planAt('first', 3) }, ALFRED_CHOSEN)
+  expect(p().planFiles.map(w => w.name).sort()).toEqual(['first', 'waste-bin'])
+  expect(p().planFiles.find(w => w.name === 'waste-bin')?.isNamed).toBe(true)
+})
+
+test('only the 20 plans written last are read', async ($, on) => {
+  const many = Object.assign({}, ...Array.from({ length: 23 }, (_, i) => planAt(`p${String(i).padStart(2, '0')}`, i + 1))) as Record<string, FileStub>
+  const { p, files } = await start($, on, many, ALFRED_CHOSEN)
+  expect(p().planFiles).toHaveLength(20)
+  expect(p().planFiles.some(w => w.name === 'p00' || w.name === 'p02')).toBe(false)
+  expect(files.reads.some(path => path.includes('/p00/'))).toBe(false)
+})
+
+test('with another plansFolder no plan folder of Alfred Code is listed', async ($, on) => {
+  const { p, files } = await start($, on, planAt('first', 2))
+  expect(p().planFiles).toEqual([])
+  expect(files.lists.some(path => path.endsWith('.alfred/docs/work/plans'))).toBe(false)
+})
+
+test('with .alfred, a plan the status file lets go unfinished is no longer named, so it stops counting as running', async ($, on) => {
+  const { p, files, clock } = await start($, on, { [STATUS]: session(FOLDER), [PLAN_STATUS]: { text: STATUS_JSON, mtimeMs: 2 } }, ALFRED_CHOSEN)
+  expect(p().planFiles.find(w => w.name === 'waste-bin')?.isNamed).toBe(true)
+  files.current[STATUS] = session(null)
+  await clock.advance(30_000)
+  await clock.advance(30_000)
+  const letGo = p().planFiles.find(w => w.name === 'waste-bin')
+  expect(p().alfredFolder).toBeNull()
+  expect(letGo?.isNamed).not.toBe(true)
+  expect(isPlanRunning(letGo as NonNullable<typeof letGo>, p().watchedSince)).toBe(false)
+})
+
+test("an Alfred Code plan that replaces a same-named file of the mod's folder says nothing of the old one: no toast", async ($, on) => {
+  const open = { text: PLAN_JSON, mtimeMs: 2 }
+  const { p, files, clock, toasts } = await start($, on, { '.alfred/alfred-mods/plans/login.json': open }, ALFRED_CHOSEN)
+  files.current['.alfred/docs/work/plans/login/status.json'] = statusWith({ title: 'login', completedAt: '2026-11-13T12:00Z' }, 3)
+  await clock.advance(30_000)
+  expect(p().planFiles.find(w => w.name === 'login')?.value?.title).toBe('login')
+  expect(toasts).toEqual([])
+  expect(p().finishedAt.login).toBeUndefined()
 })

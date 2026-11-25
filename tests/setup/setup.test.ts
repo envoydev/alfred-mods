@@ -5,7 +5,7 @@ import { SETUP_USAGE } from '../../hooks/setup/constants'
 
 const CHOICES = [
   '/alfred-mods:init .alfred-mods (recommended - no permission asks)',
-  "/alfred-mods:init .alfred (beside Alfred Code's state)",
+  "/alfred-mods:init .alfred (reads Alfred Code's plans too)",
   '/alfred-mods:init default (.claude/session-inspector - Claude Code asks before each write)',
 ]
 
