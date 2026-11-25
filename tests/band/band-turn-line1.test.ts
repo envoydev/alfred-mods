@@ -81,7 +81,7 @@ test('a full band whose plan row maxRows dropped keeps PLAN on the merged line',
   expect(lines[0]).toContain('│ PLAN 3/5')
 })
 test('with no identity the turn stays its own row; under the input the action row comes first; one row fewer than before', () => {
-  const bare = texts(bandLines(input({ account: undefined, ...failed })))
+  const bare = texts(bandLines(input({ columns: 150, account: undefined, ...failed })))
   expect(bare[0]).toBe('✗ 1 new ') // today's line 1 with no identity: the failures item alone
   expect(bare[1]).toMatch(/^✓ Turn 1/)
   const merged = bandLines(acme({ columns: 150, ...failed })).length

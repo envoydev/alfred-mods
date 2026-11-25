@@ -41,9 +41,9 @@ type Keep = { modes: ModesKeep; infoUpTo: number; isPlaceKept: boolean; toolRows
 
 const KEEP_ALL: Keep = { modes: 'own', infoUpTo: 2, isPlaceKept: true, toolRowsKept: Infinity, isUsageKept: true, isPlanKept: true }
 
-// Line 1 is the identity ('● REC' while REC is on, the signed-in account and Claude Code's version), left out when it holds
-// nothing; the turn joins it where the width holds both, else leads the body. Then the body: the info line, the gauges, the modes lines (alfred-code's, then claude-kit's)
-// and the rows under them (the user's order, 2026-11-25).
+// Line 1 is the identity ('● REC' while REC is on, the signed-in account and Claude Code's version), left out when it
+// holds nothing; the turn joins it where the width holds both, else leads the body. Then the body: the info line, the
+// gauges, the modes lines (alfred-code's, then claude-kit's) and the rows under them (the user's order, 2026-11-25).
 // The identity is never dropped for rows or width.
 export function bandLines(input: BandInput): Line[] {
   // "band": "off" draws none, above or under, and the pinned line counts it as out of view

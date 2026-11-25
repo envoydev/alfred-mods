@@ -625,9 +625,9 @@ gives up its Show and Copy buttons. A narrow pane, down to 24 columns, keeps the
 tool's column to keep its counts, and the Timeline leaves out the prompt's time to keep how long each turn took and
 its tokens.
 
-By default the band is the identity line, the turn while one runs, or the finished turn while something needs you (the idle, healthy band has no turn row; on line 1 where the width holds both,
-else a row of its own), an info line, the gauges, the modes lines and rows
-under them. Line 1 is the identity: `● REC` while recording mode is on, the account the session is signed in to,
+By default the band is the identity line, the turn while one runs, or the finished turn while something needs you
+(the idle, healthy band has no turn row; on line 1 where the width holds both, else a row of its own), an info line,
+the gauges, the modes lines and rows under them. Line 1 is the identity: `● REC` while recording mode is on, the account the session is signed in to,
 Claude Code's version, the MCP item, and the new tool failures with their Inspect button once Claude has answered. Under
 the gauges, `alfred-code:` and `claude-kit:` each show the modes that source has on, claude-kit's with its models. A line
 with nothing on it is not drawn.
