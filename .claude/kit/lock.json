@@ -1,5 +1,5 @@
 {
-  "kit": "claude-kit@0fcc919",
+  "kit": "claude-kit@4870cdb",
   "files": {
     ".claude/agents/audit-editor.md": "f0534debec1297a47109feca99a10f6167b2031264f3909875a6111cf9a8e4fe",
     ".claude/agents/audit-planner.md": "00d15258bb15bf0e4ae02397cb2cf5669f8b891470b768aaaa4240045a0dc6a9",
@@ -37,7 +37,7 @@
     ".claude/skills/plugin-packaging/references/manifest-and-marketplace.md": "bb95566e76cd5d6661011b9f3be7377e5f0f4a24bea90d09b977f1e5cb2ac522",
     ".claude/skills/plugin-packaging/references/security-and-governance.md": "1e060dfd86fb6ad6aae9e36529e7f817bbe81994c1cd6ac08b85e141d210fa9a",
     ".claude/skills/project-structure/SKILL.md": "003b7835f8124770a96201943066f160b2d75cbf42f7305b16c1aade41c2b7fc",
-    ".claude/skills/refining-plans/SKILL.md": "53bfd4bce1d106b4d6eeee6dc629f68f46379ecb6308abde8de5d36e5d159402",
+    ".claude/skills/refining-plans/SKILL.md": "f5a0e9f5555b89c9fb79afafdb14f812dff449461156cbdd5bb508c6d567f5ed",
     ".claude/skills/refining-plans/references/reviewer-prompt.md": "24d7f43a615e87662c159941c6e7ee035cd8c849366ee32d295b4025bc013631",
     ".claude/skills/refining-plans/references/rubric.md": "8c6bf43913654af755c55363ac5614cb0c86a7168b7d4cebb0567f9902507b84",
     ".claude/skills/repo-audit-agent-md/SKILL.md": "972ebdaad1bd81f5dda775f257217a0debf4a8569d9ad2d2c5552987a047aeed",
