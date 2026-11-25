@@ -2,7 +2,7 @@
 import type { EngineInterface } from 'claude-code'
 import { oneLine } from '../core/format'
 import { PLANS_ROOTS, PLANS_SUBFOLDER, SCORES_SUBFOLDER } from '../plan/constants'
-import { noteMovedFiles, originalMtime } from '../plan/effects'
+import { noteMovedFiles, originalMtime } from '../planfiles/effects'
 import { parsePlan, plansRoots } from '../plan/plan'
 import type { PlansFolder } from '../plan/types'
 import { resolvedSettings, userSettingsPath, writeUserFieldResult } from '../settings/effects'
