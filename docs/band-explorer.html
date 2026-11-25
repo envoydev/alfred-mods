@@ -193,7 +193,7 @@ table.steps { min-width: 720px; }
   <section class="tabpanel" role="tabpanel" id="panel-box" aria-labelledby="tab-box">
     <section class="panel" aria-label="The band">
       <div><h2>The band - the session at a glance</h2>
-        <p class="muted">The band sits right above the box you type in. It shows where the session stands without a command: how full the context is, your limits, the cost, and what Claude is using. When something needs you, it adds a row that says what, and which key to press. Line 1 is the account you are signed in to and Claude Code's version: <code>Acme | Team | CC 2.1.331</code> for a company's plan, <code>Personal</code> for a free, Pro or Max plan, <code>org | unknown</code> for a token login. It is a quick check, not proof. Line 1 then counts the MCP servers and, once Claude has answered, the new tool failures with their Inspect button: <code>Acme | Team | CC 2.1.330 │ mcp ✗ 1 · ✓ 10 │ ✗ 6 new 1: Inspect</code>. Line 2 is the modes on, from Alfred Code and claude-kit: <code>auto-run · auto-compact 400k · scoring 90 3</code>. claude-kit's models follow them, or take the next line where the band is narrow: <code>plan opus | audit opus | review opus | implement sonnet | search haiku</code>. Then the turn while one runs, the info line, the gauges and the rows under them. Pick a situation to see it react.</p></div>
+        <p class="muted">The band sits right above the box you type in. It shows where the session stands without a command: how full the context is, your limits, the cost, and what Claude is using. When something needs you, it adds a row that says what, and which key to press. Line 1 is the account you are signed in to and Claude Code's version: <code>Acme | Team | CC 2.1.331</code> for a company's plan, <code>Personal</code> for a free, Pro or Max plan, <code>org | unknown</code> for a token login. It is a quick check, not proof. Line 1 then counts the MCP servers and, once Claude has answered, the new tool failures with their Inspect button: <code>Acme | Team | CC 2.1.330 │ mcp ✗ 1 · ✓ 10 │ ✗ 6 new 1: Inspect</code>. A server you turned off in <code>/mcp</code> or in a settings file is not counted, and one whose state cannot be read leaves the count after 60 seconds with no tools. Then the turn while one runs, the info line and the gauges. Under them each source has its own modes line: <code>alfred-code: auto-run · auto-compact 400k · scoring 90 3</code> from Alfred Code's status file, its rounds as <code>/alfred-code:mode:scoring</code> sets them, and <code>claude-kit: auto-run · scoring 90 6 · plan opus | audit opus | review opus | implement sonnet | search haiku</code> from claude-kit's settings file, its rounds the ones its grading loop runs - 3, or 6 under its auto-run. Then the rows under them. Pick a situation to see it react.</p></div>
       <div class="live-tools">
         <label for="preset">Situation <select id="preset"></select></label>
         <label class="width" for="cols">Terminal width <output id="colsOut"></output><input type="range" id="cols" min="24" max="270" step="1"></label>
@@ -364,7 +364,7 @@ table.steps { min-width: 720px; }
 </div>
 
 <script>
-// alfred-mods band code, bundled from hooks/ (core/constants.ts, core/format.ts, agents/agents.ts, cache/constants.ts, cache/cache.ts, core/forecast.ts, session/windows.ts, place/place.ts, context/constants.ts, context/rules.ts, context/parts.ts, plan/planlines.ts, kit/constants.ts, band/constants.ts, band/gauges.ts, band/wrap.ts, band/detail.ts, band/project.ts, band/info.ts, skip/constants.ts, band/working.ts, account/constants.ts, band/lines.ts, band/band.ts, mcp/constants.ts, mcp/mcp.ts, core/guards.ts, kit/kit.ts, kit/kitlines.ts, band/modes.ts, handoff/handoff.ts, stack/constants.ts, stack/stack.ts, tools/constants.ts, tools/compact.ts, plan/constants.ts, plan/plan.ts)
+// alfred-mods band code, bundled from hooks/ (core/constants.ts, core/format.ts, agents/agents.ts, cache/constants.ts, cache/cache.ts, core/forecast.ts, session/windows.ts, place/place.ts, context/constants.ts, context/rules.ts, context/parts.ts, plan/planlines.ts, kit/constants.ts, band/constants.ts, band/gauges.ts, band/wrap.ts, band/detail.ts, band/project.ts, band/info.ts, skip/constants.ts, band/working.ts, account/constants.ts, band/lines.ts, band/band.ts, mcp/constants.ts, mcp/mcp.ts, core/guards.ts, kit/kit.ts, kit/kitlines.ts, band/modes.ts, handoff/handoff.ts, stack/constants.ts, stack/stack.ts, tools/constants.ts, tools/compact.ts, plan/constants.ts, plan/plan.ts, rec/samples.ts, rec/rec.ts, settings/settings.ts, core/folders.ts, plugins/constants.ts, plugins/plugins.ts)
 const BandCore = (() => {
 const __m = {};
 // ---- hooks/core/constants.ts
@@ -4003,7 +4003,633 @@ function candidatesByName                                             (byFolder 
 
 return { time, json, parsePlan, parseScores, isFinishedStep, isPlanDone, isSamePlan, isPlanRunning, shownPlan, creditedPlan, planView, scoresView, tasksAfter, taskView, taskStatusKey, stepStatusKey, FINISH_SHOWN_MS, newUserNotes, plansRoots, chosenPlansDir, plansPlaces, plansDirs, scoresDirs, candidatesByName };
 })();
-return { bandLines: __m['band/band.ts'].bandLines, statusText: __m['band/band.ts'].statusText, underRows: __m['band/band.ts'].underRows, cellsOf: __m['band/wrap.ts'].cellsOf, groupLines: __m['tools/compact.ts'].groupLines, mcpItem: __m['mcp/mcp.ts'].mcpItem, kitLines: __m['kit/kitlines.ts'].kitLines, modesLine: __m['band/modes.ts'].modesLine, modelsLine: __m['band/modes.ts'].modelsLine, stackLines: __m['stack/stack.ts'].stackLines, planView: __m['plan/plan.ts'].planView, newRow: __m['agents/agents.ts'].newRow };
+// ---- hooks/rec/samples.ts
+__m['rec/samples.ts'] = (() => {
+                                     
+
+const whole = (text        , token        )         => ({ text, masked: token })
+const key = (text        )         => whole(text, '‹key›')
+
+const KEYS           = [
+  key('sk-' + 'ant-api03-' + 'Ab3d'.repeat(10)),
+  key('sk-' + 'proj-' + 'Qx7z'.repeat(10)),
+  key('gh' + 'p_' + 'aB3'.repeat(12)),
+  key('github' + '_pat_' + '11' + 'AbC4'.repeat(15)),
+  key('xo' + 'xb-' + '1234567890' + '-' + '0987654321' + '-' + 'aBcD'.repeat(6)),
+  // AWS's own documented example key id
+  key('AK' + 'IA' + 'IOSFODNN7' + 'EXAMPLE'),
+  key('AI' + 'za' + 'Sy' + 'B'.repeat(33)),
+  key('sk' + '_live_' + 'Ab12'.repeat(6)),
+  key('ey' + 'JhbGciOiJIUzI1NiJ9' + '.' + 'ey' + 'JzdWIiOiIxMjM0In0' + '.' + 'abcDEF123_-xyzXYZ789'),
+  key('-----BEGIN ' + 'OPENSSH PRIV' + 'ATE KEY-----\n' + 'b3BlbnNzaC1rZXktdjEAAAAABG5vbmU=\n' + '-----END ' + 'OPENSSH PRIV' + 'ATE KEY-----'),
+  { text: 'Authorization: ' + 'Bearer ' + 'abcdefghijklmnop1234', masked: 'Authorization: Bearer ‹key›' },
+  { text: 'API_KEY=' + 'hunter2hunter2', masked: 'API_KEY=‹key›' },
+  { text: '"password": "' + 'correct-horse"', masked: '"password": "‹key›"' },
+  // The short named form, a secret flag, an Authorization header of any scheme, and credentials in a URL
+  { text: 'password=' + 'hunter2', masked: 'password=‹key›' },
+  { text: '--password ' + 'hunter2', masked: '--password ‹key›' },
+  { text: '--token=' + 'abcd1234', masked: '--token=‹key›' },
+  { text: 'Authorization: ' + 'Basic ' + 'dXNlcjpwYXNz', masked: 'Authorization: Basic ‹key›' },
+  { text: 'authorization=' + 'Token ' + 'abcd', masked: 'authorization=Token ‹key›' },
+  { text: 'postgres://admin:' + 'hunter2' + '@localhost', masked: 'postgres://admin:‹key›@localhost' },
+]
+
+const EMAILS           = ['jane.doe@example.com', 'a+b@sub.example.co.uk', 'ops@example.io'].map(address => whole(address, '‹email›'))
+
+const PHONES           = [
+  '+1 415 555 0132', '+44 20 7946 0958', '(415) 555-0132', '415-555-0132', '+380 44 123 4567', '+4915123456789',
+].map(number => whole(number, '‹phone›'))
+
+// Shown at every level; the last, an amount, only below strict
+const LEFT_ALONE           = [
+  'c50c7aa', 'c50c7aa' + '0123456789abcdef0123456789abcdef0', '14:05', '2026-10-28', '(28.10 16:15)', '2.1.312',
+  '180k cached', '1,234,567 tokens', 'localhost:8080', 'src/auth/refresh.ts', 'https://example.com/a?b=1',
+  '123e4567-e89b-12d3-a456-426614174000', '12345678901', '10.100.200.150',
+  // Near misses of the key forms
+  'Basic usage', '$ pwd', 'key: id', 'password: null', 'secret: true', '--token-file ./t', 'https://example.com/a:b@c',
+  '$3.12',
+]
+
+const AMOUNTS           = [
+  { text: '$3.12', masked: '$•.••' }, { text: '≈ $1.44', masked: '≈ $•.••' }, { text: '$1,204.50', masked: '$•,•••.••' },
+]
+
+// Strict's home paths and account, from the home folder: the prefix with either separator, and the name alone
+function strictSamples(home        )           {
+  const name = home.split(/[\\/]/).filter(segment => segment !== '').pop() ?? ''
+  return [
+    { text: `${home.replace(/\\/g, '/')}/src`, masked: '~/src' },
+    { text: `${home.replace(/\//g, '\\')}\\src`, masked: '~\\src' },
+    ...(name.length >= 3 ? [{ text: `by ${name} today`, masked: 'by ‹user› today' }] : []),
+  ]
+}
+
+return { KEYS, EMAILS, PHONES, LEFT_ALONE, AMOUNTS, strictSamples };
+})();
+// ---- hooks/rec/rec.ts
+__m['rec/rec.ts'] = (() => {
+// REC's masker: the classes of what a recording hides, compiled once per level and word list, and the one pass over a
+// text that replaces each match with its token (spec 'What each class hides').
+const { AMOUNTS, EMAILS, KEYS, LEFT_ALONE, PHONES, strictSamples } = __m['rec/samples.ts'];
+                                         
+                                                                       
+
+const whole = (token        ) => (match                 )      => ({ start: match.index, end: match.index + match[0].length, text: token })
+
+// The tokens REC draws, kept as they are, so a masked string masks to itself
+const TOKENS        = { re: /‹(?:key|email|phone|private|user)(?: \d+)?›/g, hit: match => whole(match[0])(match) }
+
+// Each letter of a word either case, as one class of the key regex is case-sensitive and another is not
+const either = (word        )         => [...word].map(char => `[${char.toUpperCase()}${char.toLowerCase()}]`).join('')
+const NAMES = ['key', 'token', 'secret', 'passwd', 'password', 'pwd'].map(either).join('|')
+const VALUE = String.raw`[^\s"'` + '`' + ']{8,}'
+// The names whose value hides from 4 characters, and the whole values that are no secret
+const SHORT_NAMES = ['secret', 'passwd', 'password', 'pwd'].map(either).join('|')
+const NOT_SECRET = ['null', 'true', 'false', 'none'].map(either).join('|')
+const SHORT_VALUE = String.raw`(?!(?:${NOT_SECRET})(?![^\s"'` + '`' + String.raw`]))[^\s"'` + '`' + String.raw`]{4,7}(?![^\s"'` + '`' + '])'
+const VALUE4 = String.raw`[^\s"'` + '`' + ']{4,}'
+const FLAGS = ['password', 'passwd', 'token', 'secret', 'api-key', 'apikey', 'auth-token'].join('|')
+const VALUE1 = String.raw`[^\s"'` + '`' + ']{1,}'
+
+// One regex for every key form. A named, flag, header or bearer value hides the value alone, the group that ends the
+// match; URL credentials hide the password from its ':' on, a start before the email class's, so a password that
+// reads as an email's start stays one key. A name is at most 64 characters, so no part backtracks over more.
+const KEY = new RegExp([
+  String.raw`(?<![\w-])(?:sk-[\w-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_\w{20,}|xox[abposr]-[A-Za-z0-9-]{10,}|(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{10,}|AIza[\w-]{35,}|eyJ[\w-]{4,}\.[\w-]{4,}\.[\w-]{4,})`,
+  String.raw`(?<![A-Z0-9])(?:AKIA|ASIA)[A-Z0-9]{16}(?![A-Z0-9])`,
+  // A block with no end hides to the end of the text, as its body would show otherwise
+  String.raw`-----BEGIN[A-Z ]{0,40}PRIVATE KEY-----(?:[\s\S]*?-----END[A-Z ]{0,40}PRIVATE KEY-----|[\s\S]*)`,
+  String.raw`\b[Bb]earer +(?<bearer>${VALUE})`,
+  String.raw`(?<![\w.-])(?=[\w.-]{0,64}?(?:${NAMES}))[\w.-]{1,64}["']?[ \t]{0,4}[:=][ \t]{0,4}["']?(?<named>${VALUE})`,
+  String.raw`(?<![\w.-])(?=[\w.-]{0,64}?(?:${SHORT_NAMES}))[\w.-]{1,64}["']?[ \t]{0,4}[:=][ \t]{0,4}["']?(?<short>${SHORT_VALUE})`,
+  String.raw`(?<![\w-])--(?:${FLAGS})(?:[ \t]{1,4}|=)["']?(?!-)(?<flag>${VALUE4})`,
+  // A scheme is one word of letters (Basic, Bearer, Bot, ApiKey, SSWS); its credential hides at any length, and a value
+  // with no scheme from 4 characters
+  String.raw`(?<![\w-])(?:${either('proxy')}-)?${either('authorization')}["']?[ \t]{0,4}[:=][ \t]{0,4}["']?(?:[A-Za-z][A-Za-z-]{1,30}[ \t]{1,4}(?<auth>${VALUE1})|(?<authBare>${VALUE4}))`,
+  // From the ':' alone, so a token as the user still matches as a token; the user may be empty (redis://:pw@host), and
+  // the password runs to the last '@' before the host, so one holding '@' hides whole
+  String.raw`:(?<=[A-Za-z][A-Za-z0-9+.-]{1,20}:\/\/[^\s:@\/]{0,64}:)(?<url>[^\s\/?#]{1,128})(?=@)`,
+].join('|'), 'g')
+
+const keyHit = (match                 )      => {
+  const groups = match.groups ?? {}
+  const end = match.index + match[0].length
+  if (groups['url'] !== undefined) return { start: match.index, end, text: ':‹key›' }
+  const value = groups['bearer'] ?? groups['named'] ?? groups['short'] ?? groups['flag'] ?? groups['auth'] ?? groups['authBare']
+  return { start: value === undefined ? match.index : end - value.length, end, text: '‹key›' }
+}
+
+const EMAIL = /(?<![\w.%+-])[\w.%+-]{1,64}@[A-Za-z0-9.-]{1,253}\.[A-Za-z]{2,24}(?![A-Za-z0-9-])/g
+
+// A + and 8 to 15 digits; or 10 or 11 digits in two to four groups, its last of 4. An IPv4 address's last group has at
+// most 3 digits, so it never matches.
+const PHONE = new RegExp(String.raw`(?<![\w+.-])(?:(?<intl>\+\d(?:[ .()-]{0,2}\d){7,14})|(?<national>(?:\(\d{1,4}\) ?\d{1,4}[ .-]|\d{1,4}[ .-]\d{1,4}[ .-]\d{1,4}[ .-]|\d{1,7}[ .-]\d{1,7}[ .-]|\d{6,7}[ .-])\d{4}))(?!\w|[.-]\d)`, 'g')
+
+const phoneHit = (match                 )             => {
+  const national = match.groups?.['national']
+  if (national !== undefined && ![10, 11].includes(national.replace(/\D/g, '').length)) return null
+  return whole('‹phone›')(match)
+}
+
+const AMOUNT        = {
+  re: /\$\d[\d,]{0,20}(?:\.\d{1,6})?/g,
+  hit: match => ({ start: match.index, end: match.index + match[0].length, text: match[0].replace(/\d/g, '•') }),
+}
+
+// What a u-flag regex escapes outside a class
+const escape = (text        )         => text.replace(/[\\^$.*+?()[\]{}|\/]/g, '\\$&')
+const WORD_EDGE = String.raw`[\p{L}\p{N}_]`
+
+// A home and its other spelling on Windows: Git Bash's HOME /c/Users/jane is C:\Users\jane to Claude Code and Windows
+// tools, and a Windows home is /c/Users/jane inside Git Bash
+function homeForms(home        )           {
+  // Each pattern's two groups are required, so a match holds both
+  const bash = /^\/([A-Za-z])(\/.+)$/.exec(home)
+  if (bash !== null) return [home, `${bash[1] }:${bash[2] }`]
+  const drive = /^([A-Za-z]):([\\/].+)$/.exec(home)
+  if (drive !== null) return [home, `/${drive[1] .toLowerCase()}${drive[2] .replace(/\\/g, '/')}`]
+  return [home]
+}
+
+function homeClasses(home        )          {
+  const forms = homeForms(home)
+  const isWindows = forms.length > 1 || /^[A-Za-z]:/.test(home) || home.includes('\\')
+  const out          = []
+  let name = ''
+  for (const form of forms) {
+    const parts = form.split(/[\\/]+/)
+    while (parts.length > 0 && parts[parts.length - 1] === '') parts.pop()
+    if (parts.filter(part => part !== '').length === 0) continue
+    out.push({ re: new RegExp(`${parts.map(escape).join('[\\\\/]')}(?![\\p{L}\\p{N}_.-])`, isWindows ? 'giu' : 'gu'), hit: whole('~') })
+    // The empty parts at the end are gone and one that is not empty is left, so a last part is there
+    name = parts[parts.length - 1] 
+  }
+  if (name.length >= 3) out.push({ re: new RegExp(`(?<!${WORD_EDGE})${escape(name)}(?!${WORD_EDGE})`, 'giu'), hit: whole('‹user›') })
+  return out
+}
+
+function compile(level          , words          , home               )           {
+  if (level === 'off') return { level, classes: [] }
+  const classes          = [TOKENS, { re: KEY, hit: keyHit }, { re: EMAIL, hit: whole('‹email›') }, { re: PHONE, hit: phoneHit }]
+  // The longest word first, so the longest at a start wins
+  const sorted = [...words].sort((left, right) => right.length - left.length).map(escape)
+  if (sorted.length > 0) classes.push({ re: new RegExp(sorted.join('|'), 'giu'), hit: whole('‹private›') })
+  if (level === 'strict') {
+    if (home !== null) classes.push(...homeClasses(home))
+    classes.push(AMOUNT)
+  }
+  return { level, classes }
+}
+
+// One pass: every class finds its matches in the original text, the overlaps go to the earliest start and then the
+// longest, and no match is scanned again.
+function maskText(compiled          , text        )         {
+  const hits = maskHits(compiled, text)
+  if (hits.length === 0) return text
+  let out = ''
+  let at = 0
+  for (const hit of hits) {
+    out += text.slice(at, hit.start) + hit.text
+    at = hit.end
+  }
+  return out + text.slice(at)
+}
+
+// The matches the one pass keeps, in order and apart: by start, the longest first where two start together
+function maskHits(compiled          , text        )        {
+  if (compiled.classes.length === 0 || text === '') return []
+  const hits        = []
+  for (const matcher of compiled.classes) {
+    matcher.re.lastIndex = 0
+    for (let found = matcher.re.exec(text); found !== null; found = matcher.re.exec(text)) {
+      const hit = matcher.hit(found)
+      if (hit !== null) hits.push(hit)
+      // A refused match, or an empty one, lets the next start one character on
+      if (hit === null || found[0] === '') matcher.re.lastIndex = found.index + 1
+    }
+  }
+  hits.sort((left, right) => left.start - right.start || (right.end - right.start) - (left.end - left.start))
+  const kept        = []
+  let at = 0
+  for (const hit of hits) {
+    if (hit.start < at) continue
+    kept.push(hit)
+    at = hit.end
+  }
+  return kept
+}
+
+const LEVELS             = ['off', 'on', 'strict']
+
+// The stored words, anything else read as none
+function parseWords(value         )           {
+  return Array.isArray(value) ? value.filter((item)                 => typeof item === 'string') : []
+}
+
+const countText = (wordCount        )         => `${wordCount} private ${wordCount === 1 ? 'word' : 'words'}`
+
+// '● REC on · hiding keys · emails · phones · 3 private words', strict adding what it hides; off is 'REC off'
+function recStatus(level          , count        )         {
+  if (level === 'off') return 'REC off'
+  const parts = ['keys', 'emails', 'phones', ...(count > 0 ? [countText(count)] : [])]
+  if (level === 'strict') parts.push('account', 'home paths', '$ amounts')
+  return `● REC ${level} · hiding ${parts.join(' · ')}`
+}
+
+const REC_USAGE = 'Usage: /rec [on|strict|off|test|words [close]]'
+
+// The model's note for a level, which rides the person's next prompt (spec 'The model's note')
+const NOTE_ON = 'Screen recording is on (alfred-mods REC). Until told it is off, do not write secret values, API keys, tokens, passwords, email addresses or phone numbers in replies; refer to them by name, such as "the token in .env". Work on the task as usual.'
+const NOTE_STRICT = 'Also leave out account names, home folder paths and dollar amounts.'
+const NOTE_OFF = 'Screen recording is off (alfred-mods REC); the earlier limit on secret values no longer applies.'
+
+function recNote(level          )         {
+  return level === 'off' ? NOTE_OFF : level === 'strict' ? `${NOTE_ON} ${NOTE_STRICT}` : NOTE_ON
+}
+
+// The /rec help text: the usage and what REC cannot hide (spec 'What REC cannot hide')
+const REC_HELP = [
+  REC_USAGE,
+  'The level is the "rec" field of "alfred-mods" in a settings file: "off", "on" or "strict". /rec on, strict and off set it in ~/.claude/settings.json, /rec test checks it, /rec words opens the private-words pane and /rec words close closes it.',
+  'REC cannot hide:',
+  "- what you type in the prompt box",
+  '- a prompt the mod fills into the prompt box',
+  "- Claude Code's own screens and dialogs: the permission dialog, /context, /usage, /config, the status line and the welcome header",
+  "- other plugins' bands and panes",
+  '- the option labels of a question Claude asks: Claude Code draws them as asked',
+  "- a private key's middle lines in a diff that does not show its BEGIN line",
+  '- other open sessions, for up to 30 seconds after a change: run /rec in each one on screen',
+  '- rows drawn before REC went on: turn it on before recording, then clear the terminal or start a new session',
+  '- files on disk and the transcript: HANDOFF.md gets only its key, email and phone masking',
+  '- anything the model reads',
+].join('\n')
+
+// A word added in the pane: trimmed, 3 to 64 characters, at most 100 words, none twice ignoring case
+function addWord(words          , raw        )                                           {
+  const word = raw.trim()
+  if (word.length < 3 || word.length > 64) return { reason: 'A word needs 3 to 64 characters.' }
+  if (words.some(listed => listed.toLowerCase() === word.toLowerCase())) return { reason: 'That word is already in the list.' }
+  if (words.length >= 100) return { reason: 'The list holds 100 words at most.' }
+  return { words: [...words, word] }
+}
+
+// The rec pane's lines above its field: with REC off the words, each with its remove button; with REC on the count
+function recPaneLines(level          , words          )         {
+  if (level !== 'off') return [[{ text: 'Private words', bold: true }], [{ text: `${countText(words.length)} · turn REC off to see or remove them` }]]
+  const out         = [[{ text: 'Private words', bold: true }, { text: `  ${words.length} of 100`, tone: 'dim' }]]
+  if (words.length === 0) out.push([{ text: 'No private words yet.', tone: 'dim' }])
+  words.forEach((listed, i) => out.push([{ text: `${listed}  ` }, { button: { key: `remove-${i}`, label: 'remove' } }]))
+  out.push([{ text: 'The field shows what you type: add words before recording starts.', tone: 'dim' }])
+  return out
+}
+
+const row = (ok         , label        , hidden        , total        , tail        )         =>
+  `${ok ? '✓' : '✗'} ${label.padEnd(14)} ${`${hidden}/${total}`.padStart(5)} ${tail}`
+
+// /rec test: the masker over the fake samples, one set per class, and the person's words, at the level that applies.
+// A failed sample prints its class and the fake sample; a failed private word, its position only.
+function recTest(level          , words          , home               )         {
+  const compiled = compile(level, words, home)
+  const out = [`/rec test · level ${level}`]
+  const failed           = []
+  const check = (label        , samples                                    )       => {
+    const bad = samples.filter(sample => maskText(compiled, sample.text) !== sample.masked)
+    out.push(row(bad.length === 0, label, samples.length - bad.length, samples.length, 'hidden'))
+    for (const sample of bad) failed.push(`  ✗ ${label}: ${sample.text}`)
+  }
+  check('keys', KEYS)
+  check('emails', EMAILS)
+  check('phones', PHONES)
+  if (words.length > 0) {
+    const bad = words.flatMap((listed, i) => (maskText(compiled, listed) === listed ? [i + 1] : []))
+    out.push(row(bad.length === 0, 'private words', words.length - bad.length, words.length, 'hidden (not shown)'))
+    for (const i of bad) failed.push(`  ✗ private word ${i} shown`)
+  }
+  const alone = LEFT_ALONE.filter(sample => level !== 'strict' || !sample.startsWith('$'))
+  const moved = alone.filter(sample => maskText(compiled, sample) !== sample)
+  out.push(row(moved.length === 0, 'left alone', alone.length - moved.length, alone.length, 'shown (SHA, time, date, version, token count, port, path, URL, UUID, digits, IP, key near misses, $ off strict)'))
+  for (const sample of moved) failed.push(`  ✗ left alone: ${sample}`)
+  const strict = compile('strict', words, home)
+  const part = (label        , samples                                    )         => {
+    const ok = samples.filter(sample => maskText(strict, sample.text) === sample.masked).length
+    return `${ok === samples.length ? '✓' : '✗'} ${label} ${ok}/${samples.length}`
+  }
+  const homeSamples = home === null ? [] : strictSamples(home)
+  const homes = homeSamples.filter(sample => sample.masked !== 'by ‹user› today')
+  const account = homeSamples.filter(sample => sample.masked === 'by ‹user› today')
+  out.push(`strict: ${[
+    home === null ? 'home path skipped (no home folder)' : part('home path', homes),
+    home === null ? 'account skipped' : account.length === 0 ? 'account skipped (name under 3 characters)' : part('account', account),
+    part('$ amounts', AMOUNTS),
+  ].join(' · ')}`)
+  return [...out, ...failed].join('\n')
+}
+
+const recSummary = (rec          )                                              => ({ level: rec.level, words: rec.wordCount })
+
+return { compile, maskText, maskHits, LEVELS, parseWords, recStatus, recNote, REC_HELP, addWord, recPaneLines, recTest, recSummary };
+})();
+// ---- hooks/settings/settings.ts
+__m['settings/settings.ts'] = (() => {
+// The mod's switches as values under one "alfred-mods" key in Claude Code's settings files (spec 2026-11-11
+// settings-values, S1-S3): each field read per file, the first valid value in the order policy, flag, local, project,
+// user, then an earlier command's choice, then the default. Pure: settings/effects.ts reads the files and the store.
+const { MODES, isThreshold } = __m['handoff/handoff.ts'];
+const { isRecord } = __m['core/guards.ts'];
+const { LEVELS } = __m['rec/rec.ts'];
+const { PLANS_FOLDERS, UNSET_PLANS_FOLDER } = __m['plan/constants.ts'];
+                                             
+                                            
+                                                                                          
+
+const FIELDS                   = ['band', 'bandPlace', 'bandRows', 'quiet', 'rec', 'handoff', 'handoffAt', 'plansFolder']
+const SOURCES                    = ['policy', 'flag', 'local', 'project', 'user']
+const DEFAULTS                 = { band: 'full', bandPlace: 'above', bandRows: true, quiet: true, rec: 'off', handoff: 'ask', handoffAt: 80, plansFolder: UNSET_PLANS_FOLDER }
+
+// "off" draws no band, above or under (the user, 2026-11-12: '/inspect band off' hides it where nothing takes a key)
+const BAND_MODES                      = ['full', 'calm', 'off']
+
+const isBool = (value         )                   => typeof value === 'boolean'
+
+// Each field's test and the words its toast uses for the values it takes
+const RULES                                                                         = {
+  band: { isValid: value => BAND_MODES.some(mode => mode === value), takes: '"full", "calm" or "off"' },
+  bandPlace: { isValid: value => value === 'above' || value === 'under', takes: '"above" or "under"' },
+  bandRows: { isValid: isBool, takes: 'true or false' },
+  quiet: { isValid: isBool, takes: 'true or false' },
+  rec: { isValid: value => LEVELS.some(level => level === value), takes: '"off", "on" or "strict"' },
+  handoff: { isValid: value => MODES.some(mode => mode === value), takes: '"ask", "auto" or "off"' },
+  handoffAt: { isValid: isThreshold, takes: 'a whole number from 10 to 95' },
+  plansFolder: { isValid: value => PLANS_FOLDERS.some(folder => folder === value), takes: '"default", ".alfred" or ".alfred-mods"' }
+}
+
+const NAMES                       = {
+  user: '~/.claude/settings.json', project: '.claude/settings.json', local: '.claude/settings.local.json',
+  flag: '--settings', policy: 'managed settings', legacy: 'an earlier command', default: 'the default'
+}
+
+function sourceFileName(from      )         {
+  return NAMES[from]
+}
+
+// Each field walks the order down to its first valid value; a bad value on the way is skipped and listed, one under
+// the value in use is not. A key that is not an object, or a file that did not parse (absent), gives no fields.
+function resolveSettings(layers                                  , legacy                         )                   {
+  const values = { ...DEFAULTS }                          
+  const from = {}                       
+  const skipped         = []
+  const userFields          = []
+  for (const field of FIELDS) {
+    const rule = RULES[field]
+    from[field] = 'default'
+    let isSet = false
+    for (const source of SOURCES) {
+      const layer = layers[source]
+      if (!isRecord(layer) || !Object.prototype.hasOwnProperty.call(layer, field)) continue
+      const value = layer[field]
+      if (!rule.isValid(value)) {
+        if (!isSet) skipped.push({ field, source })
+        continue
+      }
+      if (source === 'user') userFields.push(field)
+      if (isSet) continue
+      values[field] = value
+      from[field] = source
+      isSet = true
+    }
+    if (!isSet && legacy[field] !== undefined && rule.isValid(legacy[field])) {
+      values[field] = legacy[field]
+      from[field] = 'legacy'
+    }
+  }
+  return { values: values                  , from, skipped, userFields }
+}
+
+// S3's toast for a skipped value: it names the file, the values the field takes and the value in use, never the bad one
+function skippedToast(skip      , resolved                  )         {
+  const using = JSON.stringify(resolved.values[skip.field])
+  return `"${skip.field}" in ${sourceFileName(skip.source)} takes ${RULES[skip.field].takes} - using ${using} from ${sourceFileName(resolved.from[skip.field])}`
+}
+
+// The old commands' store keys as an earlier command's choices (S7): only the values those commands wrote, so a fresh
+// store, or anything another version or a hand wrote, gives no field
+function legacyOf(raw                                                                                                   )                          {
+  const out                          = {}
+  if (raw.band === 'calm' || raw.band === 'full') out.band = raw.band
+  if (raw.place === 'under') out.bandPlace = 'under'
+  if (raw.tools === 'open' || raw.tools === 'closed') out.bandRows = raw.tools === 'open'
+  if (isBool(raw.quiet)) out.quiet = raw.quiet
+  const level = LEVELS.find(known => known === raw.rec)
+  if (level !== undefined) out.rec = level
+  if (isRecord(raw.handoff)) {
+    const mode = MODES.find(known => known === (raw.handoff                           ).mode)
+    if (mode !== undefined) out.handoff = mode
+    if (isThreshold(raw.handoff.threshold)) out.handoffAt = raw.handoff.threshold
+  }
+  return out
+}
+
+// The order a hold compares sources in, highest first
+const ORDER                  = ['policy', 'flag', 'local', 'project', 'user', 'legacy', 'default']
+
+// S3's one departure, REC's hold: after the session's first read, a lower level lowers REC only when it comes from the
+// source that set the level in force, or one above it. From a lower source - the file that set it gives no valid "rec"
+// any more, which a typo that drops the whole file also does - the level in force holds.
+function holdRec(inForce                                        , next                                 )                                                   {
+  if (inForce === null || LEVELS.indexOf(next.level) >= LEVELS.indexOf(inForce.level) || ORDER.indexOf(next.from) <= ORDER.indexOf(inForce.from)) {
+    return { ...next, isHeld: false }
+  }
+  return { ...inForce, isHeld: true }
+}
+
+// S3's toast for a hold, once per hold. The toast box carries the mod's name and shows three 40-cell lines, so no
+// prefix and under 120 characters (the review's #1, Claude Code 2.1.322)
+function holdToast(level          , from      )         {
+  return `REC stays ${level}: ${sourceFileName(from)} no longer gives "rec" - fix the file, or set "rec": "off" in it`
+}
+
+// S7's toast, once per machine: the earlier commands' choices still in force, as the line to paste, in S2's order. The
+// line comes first, so the box's three lines show it before the why (the review's #1)
+function movedToast(kept                         )         {
+  const fields = FIELDS.filter(name => kept[name] !== undefined).map(field => `"${field}": ${JSON.stringify(kept[field])}`).join(', ')
+  return `Add "alfred-mods": { ${fields} } to ~/.claude/settings.json - the choices your earlier commands made`
+}
+
+// One field of "alfred-mods" set in a settings file's text, for /rec on|strict|off, /auto-handoff ask|auto|off|at and
+// /inspect band (the user's rulings, 2026-11-12): every other key kept in its order, in the file's own indent, line ends and last
+// newline; null or blank text makes the file. A file that is not one JSON object, or whose "alfred-mods" is not an
+// object, is never rewritten: 'parse' or 'key' says which.
+function writeField                 (text               , field   , value                   )                                              {
+  const isBlank = text === null || text.trim() === ''
+  let parsed          = {}
+  if (!isBlank) {
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      return { why: 'parse' }
+    }
+  }
+  if (!isRecord(parsed)) return { why: 'parse' }
+  const block = parsed['alfred-mods']
+  if (block !== undefined && !isRecord(block)) return { why: 'key' }
+  const indent = isBlank ? '  ' : (/\n([ \t]+)\S/.exec(text)?.[1] ?? '  ')
+  const out = JSON.stringify({ ...parsed, 'alfred-mods': { ...block, [field]: value } }, null, indent)
+  const isCrlf = !isBlank && text.includes('\r\n')
+  const last = isBlank || /\n$/.test(text) ? '\n' : ''
+  return { text: (out + last).replace(/\n/g, isCrlf ? '\r\n' : '\n') }
+}
+
+// The old commands' store keys, by the field each held (S7); `settings:handoff` holds two, retired field by field
+const LEGACY_KEYS                                 = {
+  band: 'settings:band', bandPlace: 'settings:band-place', bandRows: 'settings:band-tools', quiet: 'settings:quiet', rec: 'settings:rec',
+}
+
+// A source's name in the commands' answers: an earlier command's choice is named for its command (S7)
+const sourceLabel = (from      , command                                    )         => (from === 'legacy' ? `an earlier ${command}` : sourceFileName(from))
+
+return { FIELDS, SOURCES, DEFAULTS, BAND_MODES, sourceFileName, resolveSettings, skippedToast, legacyOf, holdRec, holdToast, movedToast, writeField, LEGACY_KEYS, sourceLabel };
+})();
+// ---- hooks/core/folders.ts
+__m['core/folders.ts'] = (() => {
+// Folders as Claude Code keys a project in its records. Pure.
+
+// A folder spelled one way: forward slashes, no trailing one
+const folderKey = (folder        )         => folder.replace(/\\/g, '/').replace(/\/+$/, '')
+
+// Whether `folder` is `root` or a folder above it: a session started in a subfolder belongs to the project above
+function isFolderOf(folder        , root        )          {
+  const key = folderKey(folder)
+  const at = folderKey(root)
+  return key === at || (key !== '' && at.startsWith(`${key}/`))
+}
+
+return { folderKey, isFolderOf };
+})();
+// ---- hooks/plugins/constants.ts
+__m['plugins/constants.ts'] = (() => {
+// The plugins folder's named values. Precedence, the install record and the origins are from
+// code.claude.com/docs/en/plugins/loading, 'Find where a plugin is enabled' and 'Find where a plugin came from', read
+// 2026-11-25.
+
+// The settings key that turns a plugin on or off, keyed `<name>@<origin>`
+const ENABLED_KEY = 'enabledPlugins'
+
+// The install record: `<CLAUDE_CONFIG_DIR>/plugins/installed_plugins.json`, else `~/.claude/plugins/...`
+const CLAUDE_FOLDER = '.claude'
+const INSTALLED_FILE = 'plugins/installed_plugins.json'
+const INSTALLED_PLUGINS_KEY = 'plugins'
+const PROJECT_PATH_FIELD = 'projectPath'
+const SCOPE_FIELD = 'scope'
+// The install scopes that reach every project; `project` and `local` reach the one at their projectPath
+const EVERY_PROJECT_SCOPES                    = ['user', 'managed']
+
+// The origins no marketplace install stands behind, so the record cannot tell whether one is there
+const ORIGIN_SEPARATOR = '@'
+const UNRECORDED_ORIGINS                    = ['inline', 'skills-dir', 'synced']
+
+// The envoydev stack, shown first in this order
+const STACK_IDS                    = ['alfred-code@envoydev', 'alfred-tools@envoydev', 'alfred-mods@envoydev']
+
+// The Now tab's section
+const PLUGINS_HEAD = 'PLUGINS'
+const PLUGINS_NOTE = 'Set in settings files; a plugin with no entry follows its default, and --plugin-dir copies are not listed'
+const SHOWN_ROWS = 12
+const ON_WORD = 'on'
+const OFF_WORD = 'off'
+const NOT_INSTALLED = 'not installed here'
+const ROW_JOIN = ' · '
+
+// The rows are read again at most this often while the pane draws
+const READ_EVERY_MS = 5_000
+
+return { ENABLED_KEY, CLAUDE_FOLDER, INSTALLED_FILE, INSTALLED_PLUGINS_KEY, PROJECT_PATH_FIELD, SCOPE_FIELD, EVERY_PROJECT_SCOPES, ORIGIN_SEPARATOR, UNRECORDED_ORIGINS, STACK_IDS, PLUGINS_HEAD, PLUGINS_NOTE, SHOWN_ROWS, ON_WORD, OFF_WORD, NOT_INSTALLED, ROW_JOIN, READ_EVERY_MS };
+})();
+// ---- hooks/plugins/plugins.ts
+__m['plugins/plugins.ts'] = (() => {
+// The plugins the settings files turn on or off, with the file that decides each and whether it is installed here.
+// Pure: effects.ts reads the files.
+const { isFolderOf } = __m['core/folders.ts'];
+const { fitLine, printable } = __m['core/format.ts'];
+const { isRecord } = __m['core/guards.ts'];
+                                         
+const { SOURCES, sourceFileName } = __m['settings/settings.ts'];
+const { CLAUDE_FOLDER, ENABLED_KEY, EVERY_PROJECT_SCOPES, INSTALLED_FILE, INSTALLED_PLUGINS_KEY, NOT_INSTALLED, OFF_WORD, ON_WORD, ORIGIN_SEPARATOR, PLUGINS_HEAD, PLUGINS_NOTE, PROJECT_PATH_FIELD, ROW_JOIN, SCOPE_FIELD, SHOWN_ROWS, STACK_IDS, UNRECORDED_ORIGINS } = __m['plugins/constants.ts'];
+                                                                              
+
+const withoutTrailingSeparators = (folder        )         => folder.replace(/[\\/]+$/, '')
+
+// The install record's path: in CLAUDE_CONFIG_DIR when set, else in the home folder's .claude; null with neither
+function installedPathOf(location                )                {
+  if (location.configDir !== '') return `${withoutTrailingSeparators(location.configDir)}/${INSTALLED_FILE}`
+  return location.home === '' ? null : `${withoutTrailingSeparators(location.home)}/${CLAUDE_FOLDER}/${INSTALLED_FILE}`
+}
+
+// Per plugin id, the value and source of the highest source that names it with true or false
+function decided(layers                        )                                               {
+  const out = new Map                                         ()
+  for (const source of SOURCES) {
+    const layer = layers[source]
+    const enabled = isRecord(layer) ? layer[ENABLED_KEY] : undefined
+    if (!isRecord(enabled)) continue
+    for (const [id, value] of Object.entries(enabled)) if (typeof value === 'boolean' && !out.has(id)) out.set(id, { isOn: value, from: source })
+  }
+  return out
+}
+
+// The install record's plugins, or null for text that is no JSON object or holds none
+function installedPlugins(text               )                                 {
+  if (text === null) return null
+  try {
+    const parsed          = JSON.parse(text)
+    return isRecord(parsed) && isRecord(parsed[INSTALLED_PLUGINS_KEY]) ? parsed[INSTALLED_PLUGINS_KEY] : null
+  } catch {
+    return null
+  }
+}
+
+// Installed for the project at `root`: an install of a scope that reaches every project, or one made for this project or
+// a project above it, as a session started in a subfolder belongs to that one
+function isInstalledHere(entries         , root        )          {
+  if (!Array.isArray(entries)) return false
+  return entries.some(entry => isRecord(entry) && typeof entry[SCOPE_FIELD] === 'string' && (EVERY_PROJECT_SCOPES.includes(entry[SCOPE_FIELD])
+    || (typeof entry[PROJECT_PATH_FIELD] === 'string' && isFolderOf(entry[PROJECT_PATH_FIELD], root))))
+}
+
+const originOf = (id        )         => id.slice(id.lastIndexOf(ORIGIN_SEPARATOR) + 1)
+
+const stackRank = (id        )         => {
+  const at = STACK_IDS.indexOf(id)
+  return at === -1 ? STACK_IDS.length : at
+}
+
+// Every plugin a settings file names, the envoydev stack first in its order, then the rest by id
+function pluginRows(input              )              {
+  const record = installedPlugins(input.installedText)
+  const rows = [...decided(input.layers)].map(([id, { isOn, from }])            => ({
+    id, isOn, from,
+    isInstalled: record === null || UNRECORDED_ORIGINS.includes(originOf(id)) ? null : isInstalledHere(record[id], input.root),
+  }))
+  return rows.sort((a, b) => stackRank(a.id) - stackRank(b.id) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+}
+
+// The Now tab's PLUGINS section: what the rows mean, then each plugin with its value and the file that decides it; one
+// turned on that the record shows is not installed here says so. Past SHOWN_ROWS the rest are counted.
+function pluginLines(rows                      , columns        )         {
+  if (rows.length === 0) return []
+  const shown = rows.slice(0, SHOWN_ROWS).map((row)       => {
+    const parts = [`${printable(row.id)} ${row.isOn ? ON_WORD : OFF_WORD}`, sourceFileName(row.from), ...(row.isOn && row.isInstalled === false ? [NOT_INSTALLED] : [])]
+    return [{ text: fitLine(parts.join(ROW_JOIN), columns), ...(row.isOn && row.isInstalled === false ? { tone: 'warn'          } : {}) }]
+  })
+  const rest = rows.length - shown.length
+  return [
+    [{ text: PLUGINS_HEAD, bold: true }], [{ text: fitLine(PLUGINS_NOTE, columns), tone: 'dim' }], ...shown,
+    ...(rest > 0 ? [[{ text: `${rest} more`, tone: 'dim'          }]] : []),
+  ]
+}
+
+return { installedPathOf, pluginRows, pluginLines };
+})();
+return { bandLines: __m['band/band.ts'].bandLines, statusText: __m['band/band.ts'].statusText, underRows: __m['band/band.ts'].underRows, cellsOf: __m['band/wrap.ts'].cellsOf, groupLines: __m['tools/compact.ts'].groupLines, mcpItem: __m['mcp/mcp.ts'].mcpItem, kitLines: __m['kit/kitlines.ts'].kitLines, alfredModesLine: __m['band/modes.ts'].alfredModesLine, kitModesLine: __m['band/modes.ts'].kitModesLine, modelsLine: __m['band/modes.ts'].modelsLine, pluginRows: __m['plugins/plugins.ts'].pluginRows, pluginLines: __m['plugins/plugins.ts'].pluginLines, SOURCE_LABEL_CELLS: __m['band/constants.ts'].SOURCE_LABEL_CELLS, stackLines: __m['stack/stack.ts'].stackLines, planView: __m['plan/plan.ts'].planView, newRow: __m['agents/agents.ts'].newRow };
 })();
 
 // The explorer's numbers and switches as the band's input, the way hooks/band/effects.ts' readBandInput builds it, and the
@@ -4134,13 +4760,13 @@ const BandAdapter = (() => {
       turns, newFailures: num(d.failures), pace: {}, agents,
       // The login record's reading: 'unknown' (or a blank) is no known org
       models: BandCore.modelsLine(
-        m.kit ? { values: KIT_MODELS } : null, g.columns - 13),
+        m.kit ? { values: KIT_MODELS } : null, g.columns - BandCore.SOURCE_LABEL_CELLS),
       alfredModes: BandCore.alfredModesLine(
         m.alfred ? { state: 'used', reason: null, fullContext: m.runway ? 'fresh-session' : 'compact', model: null, window: null, resumeAt: null, hasNoOffer: false,
           autoRun: !!m.autoRun, scorer: { on: !!m.scorer, level: num(d.scorerVal), rounds: Math.max(1, num(d.scorerRounds)) },
-          autoCompact: { on: !!m.autoCompact, at: num(d.compactAt) > 0 ? num(d.compactAt) * 1000 : null }, hasPrompt: false, plan: null, updatedAt: null, readAt: null, ignoredFields: [] } : null, g.columns - 13),
+          autoCompact: { on: !!m.autoCompact, at: num(d.compactAt) > 0 ? num(d.compactAt) * 1000 : null }, hasPrompt: false, plan: null, updatedAt: null, readAt: null, ignoredFields: [] } : null, g.columns - BandCore.SOURCE_LABEL_CELLS),
       kitModes: BandCore.kitModesLine(
-        m.kit ? { values: { auto_run: m.kitAutoRun ? 'on' : 'off', scoring: m.kitScoring ? 'on' : 'off', pass_score: num(d.kitPass) || 90 } } : null, g.columns - 13),
+        m.kit ? { values: { auto_run: m.kitAutoRun ? 'on' : 'off', scoring: m.kitScoring ? 'on' : 'off', pass_score: num(d.kitPass) || 90 } } : null, g.columns - BandCore.SOURCE_LABEL_CELLS),
       account: { org: ['', 'unknown'].includes(String(d.org ?? 'Personal').trim()) ? null : String(d.org ?? 'Personal').trim(),
         kind: ['Team', 'Enterprise', 'Personal'].includes(String(d.orgKind || '').trim()) ? String(d.orgKind).trim() : null },
       mcp,
@@ -4336,8 +4962,8 @@ const BAND_PRESETS = [
   ['A branch never pushed', 'A local branch has no upstream, so the project row draws no arrows; its uncommitted changes still show. git push -u origin <branch> gives it one.', { running: true, upstream: false }],
   ['Terminal 100 columns wide', 'Under 100 columns the gauges take their narrow form and line 1 shortens. The info line breaks between items onto a second row; past two rows Claude\'s reply time gives way first, then your prompt\'s. The project row shortens its folder.', { running: true, cols: 100 }],
   ['Terminal 48 columns wide', 'Each detail row wraps under its first item. Short of rows, the info line keeps one row and the detail rows go from the last.', { running: true, cols: 48 }],
-  ['Short on rows (a tall draft)', "With 4 rows free: the project row goes first, then the info line's second row, then the detail rows from the last (rules:, agents:, skills:, tools:), then usage:, then the plan row, then the info line.", { running: true, rows: 4, plan: true }],
-  ['MCP servers still loading', 'While a server starts, the info line counts ◐ connected/total; once each is up or has failed it reads ✓ or ✗ with the counts. Claude Code\'s own connectors, such as claude-artifacts, count like any server.', { running: true }, () => ({ mcpOk: 3, mcpFailed: 0, mcpLoading: 2 })],
+  ['Short on rows (a tall draft)', "With 4 rows free: the project row goes first, then the modes lines share one line with no models, then the info line's second row, then the detail rows from the last (rules:, agents:, skills:, tools:), then usage:, then the plan row, then the modes lines, then the info line.", { running: true, rows: 4, plan: true }],
+  ['MCP servers still loading', 'While a server starts, line 1 counts ◐ connected/total; once each is up or has failed it reads ✓ or ✗ with the counts. A server turned off - in /mcp, disabledMcpjsonServers or deniedMcpServers, or computer-use while the project has not turned it on - is not counted, and one whose state cannot be read leaves the count after 60 seconds with no tools. Claude Code\'s own connectors, such as claude-artifacts, count like any server.', { running: true }, () => ({ mcpOk: 3, mcpFailed: 0, mcpLoading: 2 })],
   ['Calm band', "Two lines: no tool count, no today's cost, no info line and no detail rows.", { running: true }, null, { user: { band: 'calm' } }],
   ['Full tool rows', 'Each tool call draws its own rows in the transcript above, with its output preview; the band does not change.', { running: true }, null, { user: { quiet: false } }],
   ['Under the input, fullscreen', "On the terminal only. Claude Code's own mode line stays the footer's first row - it draws it first whatever order a mod gives - and the band follows it, the action row first, right under the input; each button names its command and is pressed by a click.", { fullscreen: true }, d => ({ failures: 1, agents: noRun(d.agents) }), { user: { bandPlace: 'under' } }],
@@ -4827,11 +5453,8 @@ function buildMap() {
 // shows, how it works]. The example is the mod's own lines for that situation, at 150 columns.
 const BAND_PARTS = [
   ['The identity line', 'line 1, always', {}, d => ({ failures: 6, agents: noRun(d.agents) }), { user: { rec: 'on' } }, (t, i) => i === 0,
-    'A red ● REC while Recording mode masks the screen, the account you are signed in to with its plan kind, Claude Code\'s version, the MCP servers (◐ loading, ✓ connected, ✗ failed), and the new tool failures with their Inspect button.',
+    'A red ● REC while Recording mode masks the screen, the account you are signed in to with its plan kind, Claude Code\'s version, the MCP servers (◐ loading, ✓ connected, ✗ failed; one turned off is not counted), and the new tool failures with their Inspect button.',
     'It leads the band in every mode but off and is never dropped for rows. Short of width the version goes first, then the MCP item; REC, the account and the failures stay. The failures wait while a turn runs; 1, or a click, opens /inspect on them, and under the message box the button is the command /inspect. The account comes from the login record on disk.'],
-  ['The modes lines', 'under the gauges, one line per source', { running: true, alfred: true, autoRun: true, autoCompact: true, scorer: true }, null, null, t => /^(alfred-code|claude-kit):/.test(t),
-    'The modes each source runs: alfred-code: auto-run, auto-compact with where Claude Code compacts, and scoring with its level and rounds; claude-kit: auto-run, scoring and its models.',
-    "alfred-code: reads Alfred Code's status file, its rounds as /alfred-code:mode:scoring sets them. claude-kit: reads .claude/kit/settings.json, its rounds the ones its grading loop runs - 3, or 6 under its auto-run. Short of rows the two share one line with no models, then go before the info line; short of width each drops from the end."],
   ['The turn', 'while Claude works', { running: true }, withRun, null, t => /Turn \d/.test(t),
     'The turn Claude is on, how long it has run and its tool calls so far, then the agent at work and what it does now.',
     'Counted from the session\'s own events as they happen. Once Claude has answered, the line stays only while something needs you, as ✓ with the turn\'s total.'],
@@ -4841,6 +5464,9 @@ const BAND_PARTS = [
   ['The gauges', 'always', {}, null, null, t => /^ctx /.test(t),
     'How full the context is, how much of your 5-hour and weekly limits is used and when each resets, then the session\'s cost and today\'s.',
     'From the numbers Claude Code reports with each reply; nothing is fetched. Green under 60%, amber to 85%, red past it. Today\'s cost is the mod\'s own count on this machine.'],
+  ['The modes lines', 'under the gauges, one line per source', { running: true, alfred: true, autoRun: true, autoCompact: true, scorer: true }, null, null, t => /^(alfred-code|claude-kit):/.test(t),
+    'The modes each source runs: alfred-code: auto-run, auto-compact with where Claude Code compacts, and scoring with its level and rounds; claude-kit: auto-run, scoring and its models.',
+    "alfred-code: reads Alfred Code's status file, its rounds as /alfred-code:mode:scoring sets them. claude-kit: reads .claude/kit/settings.json, its rounds the ones its grading loop runs - 3, or 6 under its auto-run. Short of rows the two share one line with no models, then go before the info line; short of width each drops from the end."],
   ['project:', 'full band', {}, null, null, t => /^project:/.test(t),
     'The project, the git branch with ↑ commits ahead of and ↓ behind its upstream, the uncommitted lines added and removed, and the folder Claude works in now.',
     'Follows Claude: its last cd, or the last file it edited. Read from git after each Bash call, edit and write, and every 30 seconds. The mod never fetches, so the arrows are as of your last fetch.'],
@@ -4995,6 +5621,12 @@ function tabNow(d, m, p, w) {
   // claude-kit's switches and models, as the mod draws them from .claude/kit/settings.json (hooks/kit/kitlines.ts)
   BandCore.kitLines({ values: p.kit && typeof p.kit === 'object' ? p.kit : null }, w).forEach((line, i) =>
     L.push(line.map(seg => S(i === 0 ? seg.text : '  ' + seg.text, seg.bold ? 'bold' : ''))));
+  // The plugins the settings files turn on or off, as the mod draws them (hooks/plugins/plugins.ts) from this sample's files
+  const enabled = { user: { enabledPlugins: { 'alfred-mods@envoydev': true, 'alfred-tools@envoydev': true } },
+    project: { enabledPlugins: m.alfred ? { 'alfred-code@envoydev': true } : {} } };
+  const record = JSON.stringify({ version: 2, plugins: { 'alfred-mods@envoydev': [{ scope: 'user' }], 'alfred-tools@envoydev': [{ scope: 'user' }], 'alfred-code@envoydev': [{ scope: 'user' }] } });
+  BandCore.pluginLines(BandCore.pluginRows({ layers: enabled, installedText: record, root: '/work/app' }), w).forEach((line, i) =>
+    L.push(line.map(seg => S(i === 0 ? seg.text : '  ' + seg.text, seg.bold ? 'bold' : seg.tone === 'dim' ? 'dim' : seg.tone === 'warn' ? 'warn' : ''))));
   const run = (p.agents || []).filter(a => a.state === 'running');
   L.push([S('AGENTS ', 'f-agents bold'), S(run.length ? `${run.length} running` : 'none running', run.length ? '' : 'dim')]);
   run.forEach(a => L.push([S('  ⟳ ', 'bold'), S(a.type + ' ', 'bold'), S(`[${a.model}${a.effort ? ' ◑ ' + a.effort : ''}]`, modelCls(a.model)),
