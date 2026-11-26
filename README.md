@@ -783,10 +783,13 @@ to get it sooner. The calm band waits for the first reading, as before.
 Until a request tells the effort, the band and the `/inspect` Usage tab show the level Claude Code should send, marked
 `◑ ≈medium`. It follows Claude Code's own order ([Adjust effort level](https://code.claude.com/docs/en/model-config#adjust-effort-level)):
 `CLAUDE_CODE_EFFORT_LEVEL`, then the settings files (`modelSettings` and `effortLevel`, capped by `maxEffortLevel`),
-then the model's default. A mod cannot read `claude --effort`, a `/effort` pick for one session, or an organization's
-default or limit, so the guess can differ from them. It reads a `modelSettings` entry written under a full model id, not
-under an alias such as `opus`. The mark goes as the first request is sent, with the level it carries. A
-model that takes no effort, or one newer than this version knows, shows none.
+then the model's default. A `/effort max`, which Claude Code keeps for the session alone, counts on every
+model after `CLAUDE_CODE_EFFORT_LEVEL` and before the files, until a `/effort` with another level or `auto`. A mod cannot read `claude --effort`, a
+level picked for this session alone in the `/effort` or `/model` picker, or an organization's default or limit, so the
+guess can differ from them. It reads a `modelSettings` entry written under a full model id, not under an alias such as
+`opus`. The mark goes as the first request is sent, with the level it carries. A `/effort` brings the mark back at
+once, and a `/model` within a second, with the guess for the new model; both reach the band under a managed guard
+too. A model that takes no effort, or one newer than this version knows, shows none.
 
 An agent whose last step stopped at the output limit ends its Agents row with `⚠ max_tokens`, and its result reads
 `result (cut off): …`, as the report ends mid-way. The Timeline's `spend` is the session's spend while the turn ran,
@@ -841,8 +844,8 @@ conversation of one prompt fills it too, into the empty box, never sent. What it
   row; one Claude loads with its Skill tool is there;
 - time you spend at a permission prompt counts toward a plan step's time;
 - the cache's rewrite cost (`rewrite ≈ $…`) is never shown;
-- after a `/model`, the band names the new model at its first reply, not at once, and until then the cache reads as
-  the old model's, its cold-cache toast included;
+- after a `/model`, the band names the new model and reads the cache cold within a second, read from the session
+  rather than the switch's report, so no rewrite cost is known;
 - the band's `rules:` row counts rules loaded by path from the session transcript, as under
   [What it shows](#what-it-shows); on a build with no transcript path it lists only the rules loaded at start and ends
   `by path not tracked`;

@@ -4,8 +4,8 @@
 import { isRecord } from '../core/guards'
 import { modelParts } from '../core/format'
 import { SOURCES } from '../settings/settings'
-import { EFFORT_LEVELS, EFFORT_MODELS, MODEL_DATE, NO_LEVEL_WORDS, SAVED_LEVELS } from './constants'
-import type { EffortLayers, EffortLevel, EffortModel } from './types'
+import { CLEAR_PICK_WORD, EFFORT_LEVELS, EFFORT_MODELS, MODEL_DATE, NO_LEVEL_WORDS, SAVED_LEVELS } from './constants'
+import type { EffortLayers, EffortLevel, EffortModel, EffortPick } from './types'
 
 const nameOf = (model: string): string => {
   const parts = modelParts(model.replace(MODEL_DATE, ''))
@@ -43,7 +43,17 @@ function capOf(layers: EffortLayers, name: string): EffortLevel {
   return caps.reduce((lowest, cap) => (rankOf(cap) < rankOf(lowest) ? cap : lowest), 'max')
 }
 
-export function predictedEffort(input: { model: string; envLevel: string | undefined; layers: EffortLayers }): EffortLevel | null {
+// The level a /effort names, read as Claude Code reads it
+export function pickOf(args: string): EffortPick {
+  const word = args.trim().toLowerCase()
+  if (word === CLEAR_PICK_WORD) return { kind: 'clear' }
+  const level = levelIn(EFFORT_LEVELS, word)
+  if (level === undefined) return { kind: 'none' }
+  return { kind: SAVED_LEVELS.includes(level) ? 'saved' : 'session', level }
+}
+
+// A level kept for the session comes after CLAUDE_CODE_EFFORT_LEVEL and before the settings files
+export function predictedEffort(input: { model: string; envLevel: string | undefined; layers: EffortLayers; picked?: EffortLevel | undefined }): EffortLevel | null {
   const name = nameOf(input.model)
   const model = EFFORT_MODELS[name]
   if (model === undefined) return null
@@ -51,7 +61,7 @@ export function predictedEffort(input: { model: string; envLevel: string | undef
   const word = input.envLevel?.trim().toLowerCase() ?? ''
   const isNoLevel = NO_LEVEL_WORDS.includes(word)
   if (isNoLevel && cap === 'max') return null
-  const wanted = isNoLevel ? model.fallback : levelIn(EFFORT_LEVELS, word) ?? savedLevel(input.layers, name, model) ?? model.fallback
+  const wanted = isNoLevel ? model.fallback : levelIn(EFFORT_LEVELS, word) ?? input.picked ?? savedLevel(input.layers, name, model) ?? model.fallback
   const highest = Math.min(rankOf(wanted), rankOf(cap))
   return model.levels.filter(level => rankOf(level) <= highest).at(-1) ?? null
 }

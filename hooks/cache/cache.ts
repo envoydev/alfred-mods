@@ -79,6 +79,12 @@ export function takeSwitch(
   return hasSwitched ? { ...out, lastRequestAt: null } : out
 }
 
+// A switch no report told of, read at the tick: the cache is forfeit, and with no estimate there is no rate. One the
+// report already took for that model keeps its tier and rate.
+export function forfeitFor(cache: Cache, model: string): Cache {
+  return cache.rateModel === model ? cache : { ...cache, lastRequestAt: null, rateModel: model, ratePerToken: null }
+}
+
 // A resume's or fork's estimate gives the rate alone
 export function takeRate(cache: Cache, usdCost: number, contextTokens: number, model: string | null): Cache {
   return { ...cache, ratePerToken: rateOf(usdCost, contextTokens), rateModel: model }

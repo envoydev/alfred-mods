@@ -5,7 +5,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, ModelUsage } from 'claude-code'
 import type { Cache, CacheConfig } from './types'
 import { TOAST_HOP_MS } from './constants'
-import { addRequest, afterCompact, billingOf, cacheView, idleOf, isIdleSurfaceOf, minutesLeftText, pinOf, takeRate, takeSwitch, toastAt } from './cache'
+import { addRequest, afterCompact, billingOf, cacheView, forfeitFor, idleOf, isIdleSurfaceOf, minutesLeftText, pinOf, takeRate, takeSwitch, toastAt } from './cache'
 import { noteCompaction, readLive, readUsage, setModel } from '../session/effects'
 import { guessEffort } from '../effort/effects'
 import type { Pending, HookInput, HookNext } from '../core/types'
@@ -147,6 +147,11 @@ export async function trackModelSwitchAsk($: EngineInterface, e: HookInput<'clas
   if (done.block !== undefined || done.permissionDecision === 'deny' || done.permissionDecision === 'ask') return done
   await takeSwitchReport($, e, false, pending)
   return done
+}
+
+// A /model that no PostModelSwitch reported, read at the tick
+export async function forfeitCacheFor($: EngineInterface, model: string): Promise<void> {
+  await updateCache($, cache => forfeitFor(cache, model))
 }
 
 // A main-loop request's cache figures, at the time its step started

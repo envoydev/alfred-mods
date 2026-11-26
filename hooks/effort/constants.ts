@@ -11,6 +11,12 @@ export const SAVED_LEVELS: readonly EffortLevel[] = ['low', 'medium', 'high', 'x
 // CLAUDE_CODE_EFFORT_LEVEL's words for sending no level
 export const NO_LEVEL_WORDS: readonly string[] = ['auto', 'unset']
 
+// `/effort auto`: the model's saved level, else its default, in place of a level picked for the session
+export const CLEAR_PICK_WORD = 'auto'
+
+// How long after a /effort the tick reads the settings again each second: the picker saves after the command answers
+export const REREAD_WINDOW_MS = 30_000
+
 const NO_XHIGH: readonly EffortLevel[] = ['low', 'medium', 'high', 'max']
 const newer = (fallback: EffortLevel): EffortModel => ({ fallback, levels: EFFORT_LEVELS, readsUserTop: false })
 const older = (fallback: EffortLevel, levels = EFFORT_LEVELS): EffortModel => ({ fallback, levels, readsUserTop: true })
