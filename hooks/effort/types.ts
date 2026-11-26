@@ -1,7 +1,9 @@
 // The effort folder's types
 import type { SettingsSource } from 'claude-code'
 
-export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+import type { EffortLevel, EffortPickState } from '../../types'
+
+export type { EffortLevel, EffortPickState }
 
 // One model's effort support: its default, the levels it takes, and whether a top-level `effortLevel` in the user's
 // own settings file counts for it

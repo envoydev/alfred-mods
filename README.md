@@ -844,8 +844,8 @@ conversation of one prompt fills it too, into the empty box, never sent. What it
   row; one Claude loads with its Skill tool is there;
 - time you spend at a permission prompt counts toward a plan step's time;
 - the cache's rewrite cost (`rewrite ≈ $…`) is never shown;
-- after a `/model`, the band names the new model within a second, but until its first reply the cache reads as the
-  old model's, its cold-cache toast included;
+- after a `/model`, the band names the new model and reads the cache cold within a second, read from the session
+  rather than the switch's report, so no rewrite cost is known;
 - the band's `rules:` row counts rules loaded by path from the session transcript, as under
   [What it shows](#what-it-shows); on a build with no transcript path it lists only the rules loaded at start and ends
   `by path not tracked`;

@@ -186,9 +186,9 @@ export async function releaseEffort($: EngineInterface): Promise<void> {
 }
 
 // The effort worked out for `model` before a request tells it. One a request told stays, and a guess for a model the
-// session has since left is dropped.
-export async function setEffortGuess($: EngineInterface, model: string, effort: string | null): Promise<void> {
-  const isKept = (session: Session): boolean => session.model !== model || session.effortFrom === 'step' || session.effort === effort
+// session has since left, or one a later guess has replaced (`isCurrent`), is dropped.
+export async function setEffortGuess($: EngineInterface, model: string, effort: string | null, isCurrent: () => boolean = () => true): Promise<void> {
+  const isKept = (session: Session): boolean => !isCurrent() || session.model !== model || session.effortFrom === 'step' || session.effort === effort
   if (isKept(await readSession($))) return
   await updateSession($, session => (isKept(session) ? session : { ...session, effort, effortFrom: 'guess' }))
 }

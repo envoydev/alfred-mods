@@ -1,6 +1,6 @@
 // The lifecycle folder's effects: what it reads and writes through $
 import { readBandSetting, resetBandFooter, syncStatusLine } from '../band/effects'
-import { armCacheToast, readCache, readCacheConfig, resetCache, takeResumeRate } from '../cache/effects'
+import { armCacheToast, forfeitCacheFor, readCache, readCacheConfig, resetCache, takeResumeRate } from '../cache/effects'
 import { setCostBaseline, bumpTick, dropPassedWindows, forgetMidTurnRead, forgetStoredWindows, forgetTurnSpend, refreshUsageMidTurn, isMidTurnReadDue, isTodayStale, markResumed, pruneCost, readLive, readModelAndVersion, readUsage, resetLive, resetSession, resetPace, resetTick, resetTotals, resetTurns, resetUsage, seedRateWindows, refreshUsage, readTodayUsd } from '../session/effects'
 import { followModel, guessEffort, rereadEffortIfDue } from '../effort/effects'
 import { readAgents, refreshLiveAgents, resetAgents, resetLoops } from '../agents/effects'
@@ -56,8 +56,9 @@ async function runTick($: EngineInterface): Promise<void> {
   const now = await $.clock.now()
   if (anyLive) await refreshLiveAgents($, rows, now)
   await dropPassedWindows($, now)
-  // A /model or /effort that no classic hook reported, as under a managed guard
-  await followModel($)
+  // A /model or /effort that no classic hook reported, as under a managed guard: a switch forfeits the cache
+  const switchedTo = await followModel($)
+  if (switchedTo !== null) await forfeitCacheFor($, switchedTo)
   await rereadEffortIfDue($, now)
   const isWarm = needsTick(await readCache($), billingOf((await readUsage($)).rateWindows), now)
   const minute = Math.floor(now / 60_000)

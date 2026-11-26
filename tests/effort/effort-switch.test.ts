@@ -179,3 +179,44 @@ test('CLAUDE_CODE_EFFORT_LEVEL comes before a /effort pick', async ($, on) => {
 
   expect(effortOf(state)).toEqual([SONNET, 'low', 'guess'])
 })
+
+test('a guess that was reading when a /effort landed never writes its level after the /effort\'s', async ($, on) => {
+  let sourceReads = 0
+  let isRun = false
+  const afterRun: unknown[] = []
+  // The session's first guess has read the five settings files and is about to write when the person types /effort low
+  const beforeWholeSource = async (): Promise<void> => {
+    sourceReads += 1
+  }
+  const { sources } = stubAll(on, { usage: READING, model: SONNET, sources: { user: saved('high') }, beforeWholeSource })
+  coreEffort(on, sources.user, SONNET)
+  const state = watchState(on)
+  engine(on)
+  on('state.get', async (_, e, next) => {
+    if (e.key === 'session' && sourceReads === 5 && !isRun) {
+      isRun = true
+      await runEffort($, 'low')
+    }
+    const read = await next(e)
+    if (isRun && e.key === 'session') afterRun.push(effortOf(state)[1])
+    return read
+  })
+
+  await $.session.start(START)
+
+  expect([isRun, afterRun.includes('high'), effortOf(state)]).toEqual([true, false, [SONNET, 'low', 'guess']])
+})
+
+test('a /effort max pick is kept in $.state, which a reload keeps, and holds over a second start', async ($, on) => {
+  const { sources } = stubAll(on, { usage: READING, model: SONNET, sources: { user: saved('high') } })
+  coreEffort(on, sources.user, SONNET)
+  const state = watchState(on)
+  engine(on)
+  await $.session.start(START)
+
+  await runEffort($, 'max')
+  // A reload keeps $.state and runs register and session.start again
+  await $.session.start(START)
+
+  expect([state.get('effort'), effortOf(state)]).toEqual([{ sessionLevel: 'max' }, [SONNET, 'max', 'guess']])
+})

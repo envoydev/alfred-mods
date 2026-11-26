@@ -97,6 +97,11 @@ export type CacheCounts = { read: number; write: number; input: number }
 // VS Code's chat panel or the desktop app's Code tab, when the session runs on the machine or over SSH (settings-reference, `idleCompaction`, read
 // 2026-11-19).
 export type CacheConfig = { pin: { tier: CacheTier; from: string } | null; isIdleCompactOff: boolean; idleMinTokens: number; isIdleSurface: boolean }
+// A level of effort, lowest first in Claude Code's order
+export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+// The level a /effort kept for the session alone (max), on any model; a reload keeps it, as Claude Code does
+export type EffortPickState = { sessionLevel: EffortLevel | null }
+
 export type Cache = {
   // The last model switch's report, and the billing it was made under
   tier: CacheTier | null; tierAt: number | null; tierBilling: Billing | null
@@ -271,6 +276,7 @@ declare module 'claude-code' {
       transcript: Shaped<TranscriptReader>
       skip: Shaped<SkipAsk>
       mcp: Shaped<McpServer[]>
+      effort: Shaped<EffortPickState>
     }
   }
 }
