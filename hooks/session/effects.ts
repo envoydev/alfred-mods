@@ -180,6 +180,11 @@ export async function setModel($: EngineInterface, model: string): Promise<void>
   })
 }
 
+// A /effort: the last request's level stands until a guess replaces it, which a request's level would not allow
+export async function releaseEffort($: EngineInterface): Promise<void> {
+  await updateSession($, session => (session.effortFrom === 'step' ? { ...session, effortFrom: 'guess' } : session))
+}
+
 // The effort worked out for `model` before a request tells it. One a request told stays, and a guess for a model the
 // session has since left is dropped.
 export async function setEffortGuess($: EngineInterface, model: string, effort: string | null): Promise<void> {

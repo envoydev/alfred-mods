@@ -2,7 +2,7 @@
 import { readBandSetting, resetBandFooter, syncStatusLine } from '../band/effects'
 import { armCacheToast, readCache, readCacheConfig, resetCache, takeResumeRate } from '../cache/effects'
 import { setCostBaseline, bumpTick, dropPassedWindows, forgetMidTurnRead, forgetStoredWindows, forgetTurnSpend, refreshUsageMidTurn, isMidTurnReadDue, isTodayStale, markResumed, pruneCost, readLive, readModelAndVersion, readUsage, resetLive, resetSession, resetPace, resetTick, resetTotals, resetTurns, resetUsage, seedRateWindows, refreshUsage, readTodayUsd } from '../session/effects'
-import { guessEffort } from '../effort/effects'
+import { followModel, guessEffort, rereadEffortIfDue } from '../effort/effects'
 import { readAgents, refreshLiveAgents, resetAgents, resetLoops } from '../agents/effects'
 import { notePermissionMode, resetBlockers, resetFailures, resetQuiet, resetStats } from '../tools/effects'
 import { refreshAccount } from '../account/effects'
@@ -39,6 +39,8 @@ const tickMemory = { minute: -1, startedAt: 0 }
 async function readStartFacts($: EngineInterface): Promise<void> {
   await readModelAndVersion($)
   await guessEffort($)
+  // The mark a /model is read against at the tick
+  await followModel($)
   await readPlace($).catch(() => undefined)
   await seedRateWindows($).catch(() => undefined)
   await resetBandFooter($)
@@ -54,6 +56,9 @@ async function runTick($: EngineInterface): Promise<void> {
   const now = await $.clock.now()
   if (anyLive) await refreshLiveAgents($, rows, now)
   await dropPassedWindows($, now)
+  // A /model or /effort that no classic hook reported, as under a managed guard
+  await followModel($)
+  await rereadEffortIfDue($, now)
   const isWarm = needsTick(await readCache($), billingOf((await readUsage($)).rateWindows), now)
   const minute = Math.floor(now / 60_000)
   const isNewMinute = minute !== tickMemory.minute && (await readBandSetting($)).mode === 'full'

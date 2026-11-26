@@ -113,8 +113,9 @@ export function stubAll(on: On, o: Options = {}): {
   // `set <key>` and `delete <key>`
   store: { get(key: string): unknown; keys(): string[]; set(key: string, value: unknown): void; writes: string[] }
   // A test changes the session id mid-test, as a /clear does, through `session.id`; `turns` is how many prompts the
-  // session's transcript holds, 1 right after a /clear (its own row) and more after a resume
-  session: { id: string; turns: number; root: string | null | undefined }
+  // session's transcript holds, 1 right after a /clear (its own row) and more after a resume; `model` is what
+  // `$.session.model()` answers, which a test changes as a /model would
+  session: { id: string; turns: number; root: string | null | undefined; model: string | undefined }
   // Each settings file by source, which a test changes mid-test, as an edit would: `sources.local['alfred-mods'] = ...`
   sources: Record<SettingsSource, Record<string, unknown>>
   // The names of the commands the mod registered, in order
@@ -142,7 +143,7 @@ export function stubAll(on: On, o: Options = {}): {
     return usage.refuse ? { deny: 'test: usage refused' } : { value: usage.current }
   })
   // `root`, once set, is what `$.session.root()` answers, as a `/cd` moves it; null makes the call reject
-  const session = { id: o.sessionId ?? 's1', turns: 0, root: undefined as string | null | undefined }
+  const session = { id: o.sessionId ?? 's1', turns: 0, root: undefined as string | null | undefined, model: o.model }
   on('session.id', () => ({ value: session.id }))
   on('session.turns', () => ({ value: session.turns }))
   on('session.surfaces', () => ({ value: o.surfaces ?? ['terminal'] }))
@@ -151,7 +152,7 @@ export function stubAll(on: On, o: Options = {}): {
     const root = session.root === undefined ? o.root : session.root
     return root === null ? { deny: 'test: no root' } : { value: root ?? o.cwd ?? '/w' }
   })
-  on('session.model', () => (o.model === undefined ? { deny: 'test: no model' } : { value: o.model }))
+  on('session.model', () => (session.model === undefined ? { deny: 'test: no model' } : { value: session.model }))
   on('session.version', () => (o.version === undefined ? { deny: 'test: no version' } : { value: { version: o.version } }))
   on('session.repo', () => (o.repo === undefined ? { deny: 'test: no repo' } : { value: (o.repo === null ? null : { remote: null, internal: false, ...o.repo }) as never }))
   const registered: string[] = []

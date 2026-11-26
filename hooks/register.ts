@@ -27,6 +27,7 @@ import { reloadSettingsSoon } from './settings/effects'
 import { followSessionStart, startSession } from './lifecycle/effects'
 import { recordAttachment } from './prompt/effects'
 import { trackMcpConnect } from './mcp/effects'
+import { trackEffortCommand } from './effort/effects'
 
 export const register: Register = (on, options) => {
   // The person's word that a managed plugin sends these events on past the mod: Claude Code then tells the model, once
@@ -122,6 +123,10 @@ export const register: Register = (on, options) => {
     // (spec 2026-11-23, D5). Left out with the others, the band's MCP item comes from the tool list alone.
     on('mcp.connect', ($, e, next) => trackMcpConnect($, e, next)).catch(($, e, next) => next(e))
   }
+
+  // Claude Code's own /effort, observed and passed on: no classic hook, so a managed guard does not skip it. The level it
+  // names shows at once, and one the picker saves at the tick.
+  on('command.run', { command: 'effort' }, ($, e, next) => trackEffortCommand($, e, next)).catch(($, e, next) => next(e))
 
   // '/inspect [tab]': opens the pane, never on its own. '/inspect plan <name>' pins that plan; 'plan' alone clears it.
   on('command.run', { command: 'inspect' }, ($, e) => runInspectCommand($, e)).catch(($, e, next) => ({ text: commandFailed('/inspect', next.error.kind) }))

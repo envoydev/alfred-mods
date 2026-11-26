@@ -9,3 +9,7 @@ export type EffortModel = { fallback: EffortLevel; levels: readonly EffortLevel[
 
 // Each settings file as it was read, as a person wrote it
 export type EffortLayers = Partial<Record<SettingsSource, Readonly<Record<string, unknown>>>>
+
+// What a /effort's arguments say: a level Claude Code saves for the model, one it keeps for the session alone (max),
+// back to the saved level, or nothing to read (the picker)
+export type EffortPick = { kind: 'saved' | 'session'; level: EffortLevel } | { kind: 'clear' } | { kind: 'none' }
